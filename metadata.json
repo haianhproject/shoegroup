@@ -1,0 +1,6 @@
+{
+  "name": "ShoeGroup",
+  "description": "E-commerce platform for shoes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
