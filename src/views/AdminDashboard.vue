@@ -527,7 +527,6 @@ import { ref, computed, reactive } from 'vue'
 const isNavOpen = ref(true)
 const activeTab = ref('dashboard') 
 
-// ĐỊNH HÌNH TIÊU ĐỀ BREADCRUMB
 const menuTitles = {
   'dashboard': 'Báo Cáo Tổng Quan Doanh Nghiệp',
   'products': 'Danh Mục Hàng Hóa & Giá Bán',
@@ -546,9 +545,6 @@ const changeTab = (tabId) => {
   if (window.innerWidth < 992) isNavOpen.value = false
 }
 
-// ==========================================
-// CƠ SỞ DỮ LIỆU MOCK (BUSINESS LOGIC)
-// ==========================================
 const db = reactive({
   products: [
     { id: '1001', name: 'Nike Air Force 1 All White', category: 'Giày Sneaker', price: 2650000, status: 'Đang bán' },
@@ -585,18 +581,12 @@ const db = reactive({
   ]
 })
 
-// ==========================================
-// TRẠNG THÁI MODAL XÁC NHẬN (Thay alert/confirm)
-// ==========================================
 const confirmModal = reactive({ isOpen: false, title: '', message: '', onConfirmCallback: null })
 const triggerConfirm = (title, message, callback) => {
   confirmModal.title = title; confirmModal.message = message; confirmModal.onConfirmCallback = callback; confirmModal.isOpen = true
 }
 const executeConfirm = () => { if (confirmModal.onConfirmCallback) confirmModal.onConfirmCallback(); confirmModal.isOpen = false }
 
-// ==========================================
-// QUẢN LÝ ĐA FORM (Sản Phẩm, Danh Mục, Khuyến Mãi)
-// ==========================================
 const formState = ref('add') 
 const showProductForm = ref(false); const showCategoryForm = ref(false); const showDiscountForm = ref(false);
 
@@ -627,14 +617,12 @@ const saveForm = (type) => {
   showProductForm.value = false; showCategoryForm.value = false; showDiscountForm.value = false;
 }
 
-// XÓA DỮ LIỆU CHUNG KÈM MODAL
 const deleteItem = (collection, id) => {
   triggerConfirm('Bảo Mật Dữ Liệu', `Hệ thống sẽ xóa vĩnh viễn dữ liệu ID [${id}]. Bạn có chắc chắn thực hiện thao tác này?`, 
     () => { db[collection] = db[collection].filter(p => p.id !== id) }
   )
 }
 
-// KHÓA TÀI KHOẢN KÈM MODAL
 const toggleAccountLock = (acc) => {
   if(acc.active) {
     triggerConfirm('Khóa Quyền Truy Cập', `Tài khoản [${acc.username}] sẽ bị từ chối truy cập vào hệ thống ngay lập tức. Xác nhận khóa?`, () => { acc.active = false })
@@ -647,10 +635,6 @@ const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' 
 </script>
 
 <style scoped>
-/* =======================================
-   STYLE DOANH NGHIỆP: MODERN CORPORATE
-   ======================================= */
-/* Tự động tải bộ Icon Bootstrap cho dự án */
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css");
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
@@ -658,14 +642,12 @@ const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' 
 .bg-light-gray { background-color: #f3f4f6; }
 .line-height-md { line-height: 1.6; }
 
-/* Palette Màu Thanh Bên (Đen Thuần) */
 .bg-sidebar { background-color: #000000; }
 .bg-sidebar-darker { background-color: #111111; } 
 
 .tracking-wider { letter-spacing: 1.5px; }
 .tracking-wide { letter-spacing: 0.5px; }
 
-/* Layout App */
 .fixed-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; }
 .transition-main { transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 .transition-sidebar { transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -673,34 +655,27 @@ const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' 
 .z-index-1050 { z-index: 1050; }
 .z-index-10 { z-index: 10; }
 
-/* Overlay Làm mờ Focus */
 .mobile-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.3); z-index: 1045; backdrop-filter: blur(2px); }
 .custom-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
 
-/* Chuyển động Animation Mềm */
 .fade-in { animation: fadeIn 0.3s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 .fade-in-scale { animation: fadeInScale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-/* Tùy chỉnh Các khối Card */
 .dashboard-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.06) !important; }
 
-/* Menu Trái Hover */
 .custom-nav-item { transition: all 0.2s ease; color: rgba(255, 255, 255, 0.6) !important; padding: 12px 16px; font-size: 0.85rem; }
 .custom-nav-item:hover { color: #fff !important; background-color: rgba(255, 255, 255, 0.06) !important; }
 .active-nav { background-color: #ffffff !important; color: #000 !important; font-weight: 600; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
 .active-nav i { color: #000 !important; }
 
-/* Input Focus */
 .form-control:focus, .form-select:focus { border-color: #000; box-shadow: 0 0 0 0.15rem rgba(0, 0, 0, 0.15); }
 
-/* Nút gạt Tắt bật (Toggle) */
 .form-switch .form-check-input:checked { background-color: #000; border-color: #000; }
 
-/* Thiết kế Scrollbar ẩn tinh tế */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scrollbar-light::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar-light::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
