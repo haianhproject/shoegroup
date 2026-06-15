@@ -682,3 +682,4 @@ const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' 
 .custom-scrollbar-dark::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar-dark::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
 </style>
+<!-- sua -->
