@@ -41,4 +41,10 @@ import { computed } from 'vue'
       </div>
     </div>
   </header>
+  <router-link 
+  to="/admin" 
+  class="fixed top-4 left-4 z-[999] bg-black text-white px-4 py-2 border-2 border-black font-bold uppercase text-xs tracking-widest shadow-[4px_4px_0_0_#555] hover:shadow-[0_0_0_0_#000] hover:translate-x-1 hover:translate-y-1 transition-all duration-200"
+>
+  Vào Trang Admin
+</router-link>
 </template>
