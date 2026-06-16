@@ -1,21 +1,17 @@
 {
-  "name": "react-example",
+  "name": "shoegroup",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
+<<<<<<< HEAD
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
@@ -23,18 +19,19 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-router-dom": "^7.15.1",
+=======
+>>>>>>> 33a62cd99c1a99fcc81cd10d35ca19b565838f4f
     "vue": "^3.5.35",
-    "vue-router": "^5.0.7"
+    "vue-router": "^4.0.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-vue": "^6.0.7",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
-    "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
+    "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "~5.8.2",
+<<<<<<< HEAD
     "vite": "^6.4.3"
+=======
+    "vite": "^6.2.3",
+    "vue-tsc": "^2.0.0"
+>>>>>>> 33a62cd99c1a99fcc81cd10d35ca19b565838f4f
   }
 }
