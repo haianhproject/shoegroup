@@ -69,20 +69,17 @@ export const products = [
 
 let detailId = 1;
 
-export const product_details = products.flatMap((product) => {
-  return sizes.flatMap((size) => {
-    return colors.map((color) => {
-      return {
-        id_product_detail: detailId++,
-        id_product: product.id_product,
-        id_size: size.id_size,
-        id_color: color.id_color,
-        stock_quantity: 6,
-        stock_quality: 6,
-      };
-    });
-  });
-});
+export const product_details = products.flatMap((product) =>
+  sizes.flatMap((size) =>
+    colors.map((color) => ({
+      id_product_detail: detailId++,
+      id_product: product.id_product,
+      id_size: size.id_size,
+      id_color: color.id_color,
+      stock_quantity: 6, // chỉ giữ stock_quantity
+    })),
+  ),
+);
 
 export const users = [
   {

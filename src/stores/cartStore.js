@@ -20,6 +20,39 @@ const clampQuantity = (quantity, stock) => {
   return Math.max(1, Math.min(number, stock));
 };
 
+const setDetailStock = (detail, stock) => {
+  if (!detail) return;
+
+  const nextStock = Math.max(0, Number(stock) || 0);
+
+  detail.stock_quantity = nextStock;
+  detail.stock_quality = nextStock;
+};
+
+const reduceDetailStock = (detail, quantity = 1) => {
+  if (!detail) return false;
+
+  const stock = getDetailStock(detail);
+  const quantityNumber = Math.max(1, Number(quantity) || 1);
+
+  if (stock < quantityNumber) {
+    console.log("Hết hàng!");
+    return false;
+  }
+
+  setDetailStock(detail, stock - quantityNumber);
+  console.log("Đã thêm vào giỏ, còn lại:", getDetailStock(detail));
+
+  return true;
+};
+
+const restoreDetailStock = (detail, quantity = 1) => {
+  if (!detail) return;
+
+  const quantityNumber = Math.max(1, Number(quantity) || 1);
+  setDetailStock(detail, getDetailStock(detail) + quantityNumber);
+};
+
 const loadCartFromStorage = () => {
   if (typeof localStorage === "undefined") return [];
 
@@ -32,14 +65,19 @@ const loadCartFromStorage = () => {
         const detail = findDetail(item.id_product_detail);
         const stock = getDetailStock(detail);
 
-        if (!product || !detail || stock <= 0) return null;
+        if (!product || !detail) return null;
+
+        const quantity = clampQuantity(
+          item.quantity,
+          stock + Number(item.quantity || 0),
+        );
 
         return {
           id_product: product.id_product,
           id_product_detail: detail.id_product_detail,
           id_size: detail.id_size,
           id_color: detail.id_color,
-          quantity: clampQuantity(item.quantity, stock),
+          quantity,
         };
       })
       .filter(Boolean);
@@ -83,7 +121,7 @@ export const cartItems = computed(() => {
 
       if (!product || !detail) return null;
 
-      const stockQuantity = getDetailStock(detail);
+      const remainingStock = getDetailStock(detail);
 
       return {
         ...item,
@@ -91,7 +129,8 @@ export const cartItems = computed(() => {
         detail,
         size,
         color,
-        stockQuantity,
+        remainingStock,
+        stockQuantity: item.quantity + remainingStock,
         unitPrice: product.price,
         subtotal: product.price * item.quantity,
       };
@@ -115,7 +154,22 @@ export const cartTotal = computed(() => {
   return cartSubtotal.value + cartShippingFee.value;
 });
 
-export const addToCart = ({ productId, detailId, quantity = 1 }) => {
+export const addToCart = (payload) => {
+  const isDetailIdOnly = typeof payload === "number";
+
+  const payloadDetail = isDetailIdOnly ? findDetail(payload) : null;
+
+  const productId = isDetailIdOnly
+    ? payloadDetail?.id_product
+    : payload?.productId;
+
+  const detailId = isDetailIdOnly ? payload : payload?.detailId;
+
+  const requestedQuantity = Math.max(
+    1,
+    Number(isDetailIdOnly ? 1 : payload?.quantity) || 1,
+  );
+
   const product = findProduct(productId);
 
   if (!product) {
@@ -132,6 +186,8 @@ export const addToCart = ({ productId, detailId, quantity = 1 }) => {
     );
 
   if (!detail) {
+    console.log("Hết hàng!");
+
     return {
       ok: false,
       message: "Sản phẩm đã hết hàng.",
@@ -140,26 +196,32 @@ export const addToCart = ({ productId, detailId, quantity = 1 }) => {
 
   const stock = getDetailStock(detail);
 
+  if (stock <= 0) {
+    console.log("Hết hàng!");
+
+    return {
+      ok: false,
+      message: "Sản phẩm đã hết hàng.",
+    };
+  }
+
+  const quantityToAdd = Math.min(requestedQuantity, stock);
+
   const existingItem = cartState.items.find(
     (item) => item.id_product_detail === detail.id_product_detail,
   );
 
-  const requestedQuantity = Math.max(1, Number(quantity) || 1);
+  const reduced = reduceDetailStock(detail, quantityToAdd);
+
+  if (!reduced) {
+    return {
+      ok: false,
+      message: "Sản phẩm đã hết hàng.",
+    };
+  }
 
   if (existingItem) {
-    const nextQuantity = Math.min(
-      existingItem.quantity + requestedQuantity,
-      stock,
-    );
-
-    if (nextQuantity === existingItem.quantity) {
-      return {
-        ok: false,
-        message: `Số lượng đã đạt tối đa tồn kho (${stock}).`,
-      };
-    }
-
-    existingItem.quantity = nextQuantity;
+    existingItem.quantity += quantityToAdd;
 
     return {
       ok: true,
@@ -172,7 +234,7 @@ export const addToCart = ({ productId, detailId, quantity = 1 }) => {
     id_product_detail: detail.id_product_detail,
     id_size: detail.id_size,
     id_color: detail.id_color,
-    quantity: Math.min(requestedQuantity, stock),
+    quantity: quantityToAdd,
   });
 
   return {
@@ -204,10 +266,19 @@ export const increaseQuantity = (detailId) => {
 
   const stock = getDetailStock(detail);
 
-  if (item.quantity >= stock) {
+  if (stock <= 0) {
     return {
       ok: false,
-      message: `Không thể vượt quá tồn kho hiện có (${stock}).`,
+      message: "Không thể vượt quá tồn kho hiện có.",
+    };
+  }
+
+  const reduced = reduceDetailStock(detail, 1);
+
+  if (!reduced) {
+    return {
+      ok: false,
+      message: "Sản phẩm đã hết hàng.",
     };
   }
 
@@ -238,7 +309,10 @@ export const decreaseQuantity = (detailId) => {
     };
   }
 
+  const detail = findDetail(detailId);
+
   item.quantity -= 1;
+  restoreDetailStock(detail, 1);
 
   return {
     ok: true,
@@ -252,11 +326,22 @@ export const removeFromCart = (detailId) => {
   );
 
   if (index !== -1) {
+    const item = cartState.items[index];
+    const detail = findDetail(detailId);
+
+    restoreDetailStock(detail, item.quantity);
     cartState.items.splice(index, 1);
   }
 };
 
-export const clearCart = () => {
+export const clearCart = ({ restoreStock = false } = {}) => {
+  if (restoreStock) {
+    cartState.items.forEach((item) => {
+      const detail = findDetail(item.id_product_detail);
+      restoreDetailStock(detail, item.quantity);
+    });
+  }
+
   cartState.items.splice(0);
 };
 
