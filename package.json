@@ -11,38 +11,15 @@
   "dependencies": {
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 435f69c0b87c904358a6398b67c661298f08bf74
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "react-router-dom": "^7.15.1",
-<<<<<<< HEAD
-=======
->>>>>>> 33a62cd99c1a99fcc81cd10d35ca19b565838f4f
-=======
-    "vite": "^6.2.3",
->>>>>>> 435f69c0b87c904358a6398b67c661298f08bf74
     "vue": "^3.5.35",
     "vue-router": "^4.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "~5.8.2",
-<<<<<<< HEAD
-<<<<<<< HEAD
-    "vite": "^6.4.3"
-=======
-    "vite": "^6.2.3",
+    "vite": "^6.4.3",
     "vue-tsc": "^2.0.0"
->>>>>>> 33a62cd99c1a99fcc81cd10d35ca19b565838f4f
-=======
-    "vite": "^6.2.3"
->>>>>>> 435f69c0b87c904358a6398b67c661298f08bf74
   }
 }
