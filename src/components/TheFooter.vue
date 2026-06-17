@@ -6,7 +6,7 @@
     <div class="container-fluid px-4">
       <div class="row mb-4 row-gap-4">
         <div class="col-md-3">
-          <h3 class="fw-bold fs-4 mb-3">ShoeGroup</h3>
+          <h3 class="fw-bold fs-4 mb-3">ShoeGroups</h3>
           <p class="text-secondary small lh-lg">Hệ thống phân phối giày sneaker chính hãng hàng đầu. Cung cấp sản phẩm chất lượng với dịch vụ tốt nhất.</p>
         </div>
         <div class="col-md-3">
