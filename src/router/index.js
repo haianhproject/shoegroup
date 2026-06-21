@@ -48,16 +48,15 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      path: "/orders",
-      name: "orders",
-      component: () => import("../views/MyOrders.vue"),
-      meta: { requiresAuth: true },
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminDashboard.vue')
     },
     {
-      path: "/admin",
-      name: "admin",
-      component: () => import("../views/AdminDashboard.vue"),
-    },
+  path: '/admin/products',
+  name: 'ProductManagement',
+  component: () => import('../views/ProductManagement.vue')
+}
   ],
   scrollBehavior() {
     return { top: 0 };
