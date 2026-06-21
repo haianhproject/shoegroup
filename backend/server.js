@@ -136,58 +136,79 @@ app.delete("/api/categories/:id", async (req, res) => {
 
 // --- 3. MÃ GIẢM GIÁ (THÊM, SỬA, XÓA) ---
 // --- 3. MÃ GIẢM GIÁ (THÊM, SỬA, XÓA) ---
-app.get('/api/discounts', async (req, res) => {
-    try { 
-        // Đã bọc [percent] và [limit] vào ngoặc vuông để tránh đụng độ từ khóa hệ thống của SQL
-        let r = await pool.request().query("SELECT CouponID as id, CouponCode as code, DiscountPercent as [percent], UsageLimit as [limit], UsedCount as used, CONVERT(varchar, ExpiryDate, 23) as expiry, IsActive as active FROM Coupons ORDER BY CouponID DESC"); 
-        res.json(r.recordset); 
-    } catch (e) { 
-        console.log("Lỗi load Mã giảm giá:", e.message);
-        res.status(500).json([]); 
-    }
+app.get("/api/discounts", async (req, res) => {
+  try {
+    // Đã bọc [percent] và [limit] vào ngoặc vuông để tránh đụng độ từ khóa hệ thống của SQL
+    let r = await pool
+      .request()
+      .query(
+        "SELECT CouponID as id, CouponCode as code, DiscountPercent as [percent], UsageLimit as [limit], UsedCount as used, CONVERT(varchar, ExpiryDate, 23) as expiry, IsActive as active FROM Coupons ORDER BY CouponID DESC",
+      );
+    res.json(r.recordset);
+  } catch (e) {
+    console.log("Lỗi load Mã giảm giá:", e.message);
+    res.status(500).json([]);
+  }
 });
 
-app.post('/api/discounts', async (req, res) => {
-    try { 
-        await pool.request()
-            .input('c', sql.VarChar, req.body.code)
-            .input('p', sql.Int, req.body.percent)
-            .input('l', sql.Int, req.body.limit)
-            .input('e', sql.DateTime, req.body.expiry)
-            .input('a', sql.Bit, req.body.active)
-            .query("INSERT INTO Coupons (CouponCode, DiscountPercent, UsageLimit, ExpiryDate, IsActive) VALUES (@c, @p, @l, @e, @a)"); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error: e.message}); }
+app.post("/api/discounts", async (req, res) => {
+  try {
+    await pool
+      .request()
+      .input("c", sql.VarChar, req.body.code)
+      .input("p", sql.Int, req.body.percent)
+      .input("l", sql.Int, req.body.limit)
+      .input("e", sql.DateTime, req.body.expiry)
+      .input("a", sql.Bit, req.body.active)
+      .query(
+        "INSERT INTO Coupons (CouponCode, DiscountPercent, UsageLimit, ExpiryDate, IsActive) VALUES (@c, @p, @l, @e, @a)",
+      );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.put('/api/discounts/:id', async (req, res) => {
-    try { 
-        await pool.request()
-            .input('id', sql.Int, req.params.id)
-            .input('c', sql.VarChar, req.body.code)
-            .input('p', sql.Int, req.body.percent)
-            .input('l', sql.Int, req.body.limit)
-            .input('e', sql.DateTime, req.body.expiry)
-            .input('a', sql.Bit, req.body.active)
-            .query("UPDATE Coupons SET CouponCode=@c, DiscountPercent=@p, UsageLimit=@l, ExpiryDate=@e, IsActive=@a WHERE CouponID=@id"); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error: e.message}); }
+app.put("/api/discounts/:id", async (req, res) => {
+  try {
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("c", sql.VarChar, req.body.code)
+      .input("p", sql.Int, req.body.percent)
+      .input("l", sql.Int, req.body.limit)
+      .input("e", sql.DateTime, req.body.expiry)
+      .input("a", sql.Bit, req.body.active)
+      .query(
+        "UPDATE Coupons SET CouponCode=@c, DiscountPercent=@p, UsageLimit=@l, ExpiryDate=@e, IsActive=@a WHERE CouponID=@id",
+      );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.delete('/api/discounts/:id', async (req, res) => {
-    try { 
-        await pool.request().input('id', sql.Int, req.params.id).query("DELETE FROM Coupons WHERE CouponID=@id"); 
-        res.json({ success: true }); 
-    } catch (e) { res.status(500).json({error: e.message}); }
+app.delete("/api/discounts/:id", async (req, res) => {
+  try {
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .query("DELETE FROM Coupons WHERE CouponID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- BỔ SUNG NHỎ: API LẤY SỐ LƯỢNG ĐƠN HÀNG ---
 // (Tôi bổ sung thêm hàm này để thẻ "Đơn Hàng Mới" ở màn hình Tổng quan đếm được số liệu thật thay vì hiển thị 0)
-app.get('/api/orders', async (req, res) => {
-    try { 
-        let r = await pool.request().query("SELECT OrderID as id FROM Orders"); 
-        res.json(r.recordset); 
-    } catch (e) { res.status(500).json([]); }
+app.get("/api/orders", async (req, res) => {
+  try {
+    let r = await pool.request().query("SELECT OrderID as id FROM Orders");
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json([]);
+  }
 });
 
 // --- 4. CRM VÀ API BIỂU ĐỒ SÓNG ---
