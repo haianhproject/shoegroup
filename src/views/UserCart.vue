@@ -148,7 +148,7 @@ const handleDecrease = (detailId) => {
       </div>
 
       <div class="col-lg-4">
-        <div class="card border-0 rounded-4 shadow-sm sticky-top" style="top: 100px;">
+        <div class="card border-0 rounded-4 shadow-sm sticky-top" style="top: 100px; z-index: 1;">
           <div class="card-body p-4">
             <h4 class="fw-bold fs-4 mb-4">Tóm tắt đơn hàng</h4>
 
