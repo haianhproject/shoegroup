@@ -8,11 +8,29 @@ import {
   formatCurrency,
   showMiniCart,
   hideMiniCart,
-  toggleMiniCart,
   removeFromCart
-} from '../stores/cartStore'
+} from '../stores/cartStore' // Đã bỏ toggleMiniCart vì không cần dùng nữa
 
 const miniCartItems = computed(() => cartItems.value.slice(0, 3))
+
+// Thêm biến để lưu timeout delay
+let hideTimeout = null
+
+// Hàm xử lý khi chuột di vào: Hiện giỏ hàng và hủy lệnh ẩn nếu đang có
+const handleMouseEnter = () => {
+  if (hideTimeout) {
+    clearTimeout(hideTimeout)
+    hideTimeout = null
+  }
+  showMiniCart()
+}
+
+// Hàm xử lý khi chuột rời đi: Đợi 300ms mới ẩn để người dùng kịp di chuyển chuột
+const handleMouseLeave = () => {
+  hideTimeout = setTimeout(() => {
+    hideMiniCart()
+  }, 300) // Anh có thể tăng lên 500 nếu muốn thời gian chờ lâu hơn
+}
 </script>
 
 <template>
@@ -52,21 +70,21 @@ const miniCartItems = computed(() => cartItems.value.slice(0, 3))
             </router-link>
           </li>
 
-          <li class="nav-item d-none d-lg-block">
-            <router-link class="nav-link fw-semibold text-secondary" active-class="text-dark" to="/">
-              Sản phẩm
-            </router-link>
-          </li>
+        <li class="nav-item d-none d-lg-block">
+          <router-link class="nav-link fw-semibold text-secondary" active-class="text-dark" to="/products">
+            Sản phẩm
+          </router-link>
+        </li>
 
           <li
             class="nav-item position-relative"
-            @mouseenter="showMiniCart"
-            @mouseleave="hideMiniCart"
+            @mouseenter="handleMouseEnter"
+            @mouseleave="handleMouseLeave"
           >
-            <button
-              type="button"
+            <router-link
+              to="/cart"
               class="nav-link position-relative text-secondary d-flex btn btn-link p-0 border-0"
-              @click.stop.prevent="toggleMiniCart"
+              @click="hideMiniCart"
             >
               <i class="bi bi-cart fs-5"></i>
 
@@ -77,7 +95,7 @@ const miniCartItems = computed(() => cartItems.value.slice(0, 3))
               >
                 {{ cartCount }}
               </span>
-            </button>
+            </router-link>
 
             <div
               v-if="cartState.isMiniCartOpen"
