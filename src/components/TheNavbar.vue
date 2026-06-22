@@ -1,5 +1,6 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   cartState,
   cartItems,
@@ -9,9 +10,21 @@ import {
   showMiniCart,
   hideMiniCart,
   removeFromCart
-} from '../stores/cartStore' // Đã bỏ toggleMiniCart vì không cần dùng nữa
+} from '../stores/cartStore'
+// Import thêm biến xác thực từ authStore
+import { isAuthenticated, currentUser } from '../stores/authStore'
 
+const router = useRouter()
 const miniCartItems = computed(() => cartItems.value.slice(0, 3))
+
+// Biến và hàm xử lý tìm kiếm
+const searchQuery = ref('')
+const handleSearch = () => {
+  if (searchQuery.value.trim()) {
+    router.push({ path: '/products', query: { search: searchQuery.value.trim() } })
+    searchQuery.value = '' // Xóa trống ô input sau khi tìm
+  }
+}
 
 // Thêm biến để lưu timeout delay
 let hideTimeout = null
@@ -29,7 +42,7 @@ const handleMouseEnter = () => {
 const handleMouseLeave = () => {
   hideTimeout = setTimeout(() => {
     hideMiniCart()
-  }, 300) // Anh có thể tăng lên 500 nếu muốn thời gian chờ lâu hơn
+  }, 300) 
 }
 </script>
 
@@ -53,14 +66,17 @@ const handleMouseLeave = () => {
       </button>
 
       <div class="collapse navbar-collapse" id="navbarContent">
-        <form class="d-flex mx-auto w-50 position-relative d-none d-lg-block">
+        <form class="d-flex mx-auto w-50 position-relative d-none d-lg-block" @submit.prevent="handleSearch">
           <input
+            v-model="searchQuery"
             class="form-control rounded-pill bg-light border-0 ps-4 pe-5 py-2"
             type="search"
             placeholder="Tìm kiếm sản phẩm..."
             aria-label="Search"
           >
-          <i class="bi bi-search position-absolute top-50 translate-middle-y end-0 me-3 text-muted"></i>
+          <button type="submit" class="btn position-absolute top-50 translate-middle-y end-0 me-1 border-0 p-0 text-muted shadow-none h-100 px-3">
+            <i class="bi bi-search"></i>
+          </button>
         </form>
 
         <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center column-gap-4">
@@ -70,11 +86,11 @@ const handleMouseLeave = () => {
             </router-link>
           </li>
 
-        <li class="nav-item d-none d-lg-block">
-          <router-link class="nav-link fw-semibold text-secondary" active-class="text-dark" to="/products">
-            Sản phẩm
-          </router-link>
-        </li>
+          <li class="nav-item d-none d-lg-block">
+            <router-link class="nav-link fw-semibold text-secondary" active-class="text-dark" to="/products">
+              Sản phẩm
+            </router-link>
+          </li>
 
           <li
             class="nav-item position-relative"
@@ -194,20 +210,19 @@ const handleMouseLeave = () => {
           </li>
 
           <li class="nav-item">
-            <router-link class="nav-link text-secondary d-flex" to="/login">
+            <router-link v-if="!isAuthenticated" class="nav-link text-secondary d-flex" to="/login">
               <i class="bi bi-person fs-5"></i>
             </router-link>
+
+            <router-link v-else :to="currentUser?.role === 'Admin' ? '/admin' : '/account'" class="nav-link text-dark d-flex">
+              <i class="bi bi-person-check-fill fs-5"></i>
+            </router-link>
           </li>
+
         </ul>
       </div>
     </div>
   </header>
-  <router-link 
-  to="/admin" 
-  class="fixed top-4 left-4 z-[999] bg-black text-white px-4 py-2 border-2 border-black font-bold uppercase text-xs tracking-widest shadow-[4px_4px_0_0_#555] hover:shadow-[0_0_0_0_#000] hover:translate-x-1 hover:translate-y-1 transition-all duration-200"
->
-  Vào Trang Admin
-</router-link>
 </template>
 
 <style scoped>
