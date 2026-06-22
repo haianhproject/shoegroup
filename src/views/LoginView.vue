@@ -1,5 +1,5 @@
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { login } from '../stores/authStore'
 
@@ -7,23 +7,41 @@ const route = useRoute()
 const router = useRouter()
 
 const form = reactive({
-  email: 'customer1@shoegroup.vn',
-  password: '123456'
+  email: '', // Đã xóa email mặc định
+  password: ''
 })
 
-const handleLogin = () => {
-  const result = login({
-    email: form.email,
-    password: form.password
-  })
+const isLoading = ref(false)
+const errorMessage = ref('') 
 
-  if (!result.ok) {
-    alert(result.message)
-    return
+const handleLogin = async () => {
+  errorMessage.value = ''; 
+  isLoading.value = true;
+  
+  try {
+    const result = await login({
+      email: form.email,
+      password: form.password
+    })
+
+    if (!result.ok) {
+      errorMessage.value = result.message; 
+      isLoading.value = false;
+      return;
+    }
+
+    // --- PHÂN LUỒNG: NẾU LÀ ADMIN THÌ VÀO DASHBOARD, KHÁCH THÌ VÀO ACCOUNT ---
+    if (result.user.role === 'Admin') {
+      router.push('/admin')
+    } else {
+      const redirectPath = route.query.redirect || '/account'
+      router.push(String(redirectPath))
+    }
+    
+  } catch (error) {
+    errorMessage.value = "Hệ thống đang bị lỗi ngầm, không thể gọi API.";
+    isLoading.value = false;
   }
-
-  const redirectPath = route.query.redirect || '/account'
-  router.push(String(redirectPath))
 }
 </script>
 
@@ -36,10 +54,8 @@ const handleLogin = () => {
           <p class="text-secondary fw-medium small">Chào mừng trở lại với ShoeGroup</p>
         </div>
 
-        <div class="alert alert-light border small mb-4">
-          <strong>Tài khoản test:</strong><br>
-          Email: customer1@shoegroup.vn<br>
-          Mật khẩu: 123456
+        <div v-if="errorMessage" class="alert alert-danger py-2 small fw-bold text-center">
+          {{ errorMessage }}
         </div>
 
         <form @submit.prevent="handleLogin">
@@ -50,6 +66,7 @@ const handleLogin = () => {
               type="email"
               class="form-control form-control-lg rounded-4 bg-light border-0 px-4 fw-medium fs-6"
               placeholder="nhapemail@example.com"
+              required
             >
           </div>
 
@@ -64,11 +81,13 @@ const handleLogin = () => {
               type="password"
               class="form-control form-control-lg rounded-4 bg-light border-0 px-4 fw-medium fs-6"
               placeholder="••••••••"
+              required
             >
           </div>
 
-          <button type="submit" class="btn btn-dark w-100 btn-lg rounded-4 fw-bold fs-6 shadow-hover mt-2">
-            Đăng Nhập
+          <button type="submit" class="btn btn-dark w-100 btn-lg rounded-4 fw-bold fs-6 shadow-hover mt-2" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+            {{ isLoading ? 'Đang kết nối...' : 'Đăng Nhập' }}
           </button>
         </form>
 
