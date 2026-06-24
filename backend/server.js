@@ -5,15 +5,13 @@ const sql = require("mssql");
 const app = express();
 const PORT = 5000;
 
-// MỞ RỘNG BỘ NHỚ LÊN 50MB ĐỂ CHỨA ẢNH TỪ MÁY TÍNH
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// CẤU HÌNH KẾT NỐI SQL SERVER
 const dbConfig = {
   user: "sa",
-  password: "123", // <--- Sửa lại mật khẩu ở đây nếu cần
+  password: "123", // Nhớ đổi đúng mật khẩu SQL của bạn
   server: "localhost",
   database: "ShoegroupDB",
   options: {
@@ -25,9 +23,34 @@ const dbConfig = {
 const pool = new sql.ConnectionPool(dbConfig);
 const poolConnect = pool.connect();
 
+// Tự động kiểm tra và thêm các cột, bảng bị thiếu vào CSDL (Địa chỉ, Lý do, Chi tiết SP)
 poolConnect
-  .then(() => {
+  .then(async () => {
     console.log("✅ Đã kết nối thành công với CSDL SQL Server!");
+    try {
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'Status')
+            ALTER TABLE Orders ADD Status NVARCHAR(50) DEFAULT N'Chờ xác nhận';
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'ShippingAddress')
+            ALTER TABLE Orders ADD ShippingAddress NVARCHAR(500) DEFAULT N'Chưa cập nhật địa chỉ';
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'CancelReason')
+            ALTER TABLE Orders ADD CancelReason NVARCHAR(500) NULL;
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OrderDetails')
+        BEGIN
+            CREATE TABLE OrderDetails (
+                OrderDetailID INT IDENTITY(1,1) PRIMARY KEY,
+                OrderID INT FOREIGN KEY REFERENCES Orders(OrderID) ON DELETE CASCADE,
+                ProductID INT FOREIGN KEY REFERENCES Products(ProductID) ON DELETE CASCADE,
+                Quantity INT DEFAULT 1,
+                UnitPrice DECIMAL(18,2) DEFAULT 0,
+                Size NVARCHAR(10) DEFAULT '42'
+            );
+        END
+      `);
+      console.log("✅ Đã đồng bộ cấu trúc Bảng Đơn Hàng (Địa chỉ, Lý do hủy)!");
+    } catch (e) {
+      console.log("⚠️ Chú ý Cấu trúc DB:", e.message);
+    }
   })
   .catch((err) => console.error("❌ Lỗi kết nối DB:", err));
 
@@ -54,9 +77,7 @@ app.post("/api/login", async (req, res) => {
         .json({ success: false, message: "Sai email hoặc mật khẩu" });
     }
   } catch (e) {
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi Server: " + e.message });
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
@@ -81,32 +102,91 @@ app.post("/api/register", async (req, res) => {
       .query(
         "INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.RoleID as role_id VALUES (2, @f, @e, @p, 1)",
       );
-    const user = r.recordset[0];
-    user.role = "Customer";
-    res.json({ success: true, message: "Đăng ký thành công", user });
+
+    res.json({
+      success: true,
+      message: "Đăng ký thành công",
+      user: { ...r.recordset[0], role: "Customer" },
+    });
   } catch (e) {
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi Server: " + e.message });
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
-// ================= API SẢN PHẨM =================
-app.get("/api/products", async (req, res) => {
+// ================= API QUẢN LÝ ĐƠN HÀNG (SHOPEE STYLE) =================
+app.get("/api/orders", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool.request().query(`
-      SELECT p.ProductID as id, p.ProductName as name, p.BasePrice as price, 
-             p.CategoryID as category_id, c.CategoryName as category, 
-             p.ImageURL as image_url, p.IsActive as active 
-      FROM Products p LEFT JOIN Categories c ON p.CategoryID = c.CategoryID ORDER BY p.ProductID DESC
+
+    // Lấy thông tin Đơn hàng và Khách hàng
+    let rOrders = await pool.request().query(`
+      SELECT o.OrderID as id, o.UserID as user_id, u.FullName as customer_name, u.Phone as customer_phone, 
+             ISNULL(o.ShippingAddress, ISNULL(u.Address, N'Chưa cập nhật địa chỉ')) as customer_address,
+             o.TotalAmount as total, 
+             CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) as date, 
+             ISNULL(o.Status, N'Chờ xác nhận') as status, 
+             ISNULL(o.CancelReason, '') as cancel_reason
+      FROM Orders o 
+      LEFT JOIN Users u ON o.UserID = u.UserID 
+      ORDER BY o.OrderID DESC
     `);
-    res.json(r.recordset);
+
+    // Lấy thông tin Chi tiết Sản phẩm của từng Đơn hàng
+    let details = [];
+    try {
+      let rDetails = await pool.request().query(`
+          SELECT od.OrderID, p.ProductName as name, p.ImageURL as image, od.Quantity as quantity, od.UnitPrice as price, ISNULL(od.Size, '42') as size
+          FROM OrderDetails od 
+          LEFT JOIN Products p ON od.ProductID = p.ProductID
+        `);
+      details = rDetails.recordset;
+    } catch (e) {
+      console.log("Lỗi bảng OrderDetails", e.message);
+    }
+
+    // Ghép Sản phẩm vào Đơn hàng tương ứng
+    let orders = rOrders.recordset.map((o) => {
+      o.products = details.filter((d) => d.OrderID === o.id);
+      return o;
+    });
+
+    res.json(orders);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
+app.put("/api/orders/:id/status", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("s", sql.NVarChar, req.body.status)
+      .input("r", sql.NVarChar, req.body.reason || "")
+      .query(
+        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s = N'Đã hủy' THEN @r ELSE CancelReason END WHERE OrderID = @id`,
+      );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= CÁC API SẢN PHẨM, TÀI KHOẢN, DANH MỤC, KHUYẾN MÃI =================
+app.get("/api/products", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool
+      .request()
+      .query(
+        "SELECT p.ProductID as id, p.ProductName as name, p.BasePrice as price, p.CategoryID as category_id, c.CategoryName as category, p.ImageURL as image_url, p.IsActive as active FROM Products p LEFT JOIN Categories c ON p.CategoryID = c.CategoryID ORDER BY p.ProductID DESC",
+      );
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post("/api/products", async (req, res) => {
   try {
     await poolConnect;
@@ -125,7 +205,6 @@ app.post("/api/products", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.put("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -145,7 +224,6 @@ app.put("/api/products/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.delete("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -159,7 +237,6 @@ app.delete("/api/products/:id", async (req, res) => {
   }
 });
 
-// ================= API QUẢN LÝ TÀI KHOẢN =================
 app.get("/api/accounts", async (req, res) => {
   try {
     await poolConnect;
@@ -173,7 +250,6 @@ app.get("/api/accounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.post("/api/accounts", async (req, res) => {
   try {
     await poolConnect;
@@ -191,7 +267,6 @@ app.post("/api/accounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.put("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -209,7 +284,6 @@ app.put("/api/accounts/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.delete("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -223,7 +297,6 @@ app.delete("/api/accounts/:id", async (req, res) => {
   }
 });
 
-// ================= API DANH MỤC =================
 app.get("/api/categories", async (req, res) => {
   try {
     await poolConnect;
@@ -237,7 +310,6 @@ app.get("/api/categories", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.post("/api/categories", async (req, res) => {
   try {
     await poolConnect;
@@ -251,7 +323,6 @@ app.post("/api/categories", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.put("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -268,7 +339,6 @@ app.put("/api/categories/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.delete("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -282,7 +352,6 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// ================= API MÃ KHUYẾN MÃI (ĐÃ SỬA LỖI TỪ KHÓA) =================
 app.get("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
@@ -296,7 +365,6 @@ app.get("/api/discounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.post("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
@@ -305,7 +373,7 @@ app.post("/api/discounts", async (req, res) => {
       .input("c", sql.VarChar, req.body.code)
       .input("p", sql.Int, req.body.percent)
       .input("l", sql.Int, req.body.limit)
-      .input("e", sql.Date, req.body.expiry)
+      .input("e", sql.DateTime, req.body.expiry)
       .input("a", sql.Bit, req.body.active)
       .query(
         "INSERT INTO Coupons (CouponCode, DiscountPercent, UsageLimit, ExpiryDate, IsActive) VALUES (@c, @p, @l, @e, @a)",
@@ -315,7 +383,6 @@ app.post("/api/discounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.put("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -325,7 +392,7 @@ app.put("/api/discounts/:id", async (req, res) => {
       .input("c", sql.VarChar, req.body.code)
       .input("p", sql.Int, req.body.percent)
       .input("l", sql.Int, req.body.limit)
-      .input("e", sql.Date, req.body.expiry)
+      .input("e", sql.DateTime, req.body.expiry)
       .input("a", sql.Bit, req.body.active)
       .query(
         "UPDATE Coupons SET CouponCode=@c, DiscountPercent=@p, UsageLimit=@l, ExpiryDate=@e, IsActive=@a WHERE CouponID=@id",
@@ -335,7 +402,6 @@ app.put("/api/discounts/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.delete("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -349,15 +415,16 @@ app.delete("/api/discounts/:id", async (req, res) => {
   }
 });
 
-// ================= API KHÁCH HÀNG & THỐNG KÊ =================
+// ================= API KHÁCH HÀNG & THỐNG KÊ DOANH THU =================
 app.get("/api/customers", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT u.UserID as id, u.FullName as name, u.Phone as phone, COALESCE(SUM(o.TotalAmount), 0) as spent FROM Users u LEFT JOIN Orders o ON u.UserID = o.UserID WHERE u.RoleID = 2 GROUP BY u.UserID, u.FullName, u.Phone ORDER BY spent DESC",
-      );
+    let r = await pool.request().query(`
+      SELECT u.UserID as id, u.FullName as name, u.Phone as phone, 
+             COALESCE(SUM(CASE WHEN ISNULL(o.Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' THEN o.TotalAmount ELSE 0 END), 0) as spent 
+      FROM Users u LEFT JOIN Orders o ON u.UserID = o.UserID 
+      WHERE u.RoleID = 2 GROUP BY u.UserID, u.FullName, u.Phone ORDER BY spent DESC
+    `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -371,7 +438,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       .request()
       .input("id", sql.Int, req.params.id)
       .query(
-        "SELECT OrderID as id, TotalAmount as total, CONVERT(varchar, OrderDate, 103) as date, N'Đã giao' as status FROM Orders WHERE UserID = @id",
+        "SELECT OrderID as id, TotalAmount as total, CONVERT(varchar, OrderDate, 103) as date, ISNULL(Status, N'Chờ xác nhận') as status FROM Orders WHERE UserID = @id ORDER BY OrderID DESC",
       );
     res.json(r.recordset);
   } catch (e) {
@@ -385,7 +452,7 @@ app.get("/api/chart-data", async (req, res) => {
     let r = await pool
       .request()
       .query(
-        "SELECT MONTH(OrderDate) as month, SUM(TotalAmount) as total FROM Orders GROUP BY MONTH(OrderDate) ORDER BY month",
+        "SELECT MONTH(OrderDate) as month, SUM(TotalAmount) as total FROM Orders WHERE ISNULL(Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' GROUP BY MONTH(OrderDate) ORDER BY month",
       );
     res.json(r.recordset);
   } catch (e) {
@@ -393,7 +460,6 @@ app.get("/api/chart-data", async (req, res) => {
   }
 });
 
-// ================= LỆNH CHẠY MÁY CHỦ (BẮT BUỘC PHẢI LUÔN Ở DƯỚI CÙNG CỦA FILE) =================
 app.listen(PORT, () => {
   console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });
