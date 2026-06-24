@@ -5,15 +5,13 @@ const sql = require("mssql");
 const app = express();
 const PORT = 5000;
 
-// MỞ RỘNG BỘ NHỚ LÊN 50MB ĐỂ CHỨA ẢNH TỪ MÁY TÍNH
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// CẤU HÌNH KẾT NỐI SQL SERVER
 const dbConfig = {
   user: "sa",
-  password: "123", // <--- Sửa lại mật khẩu ở đây nếu cần
+  password: "123", // Nhớ sửa lại mật khẩu SQL của bạn ở đây nếu cần
   server: "localhost",
   database: "ShoegroupDB",
   options: {
@@ -26,8 +24,18 @@ const pool = new sql.ConnectionPool(dbConfig);
 const poolConnect = pool.connect();
 
 poolConnect
-  .then(() => {
+  .then(async () => {
     console.log("✅ Đã kết nối thành công với CSDL SQL Server!");
+    try {
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'Status')
+        BEGIN
+            ALTER TABLE Orders ADD Status NVARCHAR(50) DEFAULT N'Chờ xác nhận';
+        END
+      `);
+    } catch (e) {
+      console.log("Lỗi tạo cột Status", e);
+    }
   })
   .catch((err) => console.error("❌ Lỗi kết nối DB:", err));
 
@@ -39,10 +47,11 @@ app.post("/api/login", async (req, res) => {
     let r = await pool
       .request()
       .input("e", sql.VarChar, email)
-      .input("p", sql.VarChar, password)
-      .query(
-        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, RoleID as role_id FROM Users WHERE Email=@e AND PasswordHash=@p AND IsActive=1",
-      );
+      .input("p", sql.VarChar, password).query(`
+        SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, RoleID as role_id 
+        FROM Users 
+        WHERE Email=@e AND PasswordHash=@p AND IsActive=1
+      `);
 
     if (r.recordset.length > 0) {
       const user = r.recordset[0];
@@ -68,19 +77,22 @@ app.post("/api/register", async (req, res) => {
       .request()
       .input("e", sql.VarChar, email)
       .query("SELECT UserID FROM Users WHERE Email=@e");
-    if (check.recordset.length > 0)
+
+    if (check.recordset.length > 0) {
       return res
         .status(400)
         .json({ success: false, message: "Email này đã được sử dụng." });
+    }
 
     let r = await pool
       .request()
       .input("f", sql.NVarChar, fullName)
       .input("e", sql.VarChar, email)
-      .input("p", sql.VarChar, password)
-      .query(
-        "INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.RoleID as role_id VALUES (2, @f, @e, @p, 1)",
-      );
+      .input("p", sql.VarChar, password).query(`
+        INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) 
+        OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.RoleID as role_id 
+        VALUES (2, @f, @e, @p, 1)
+      `);
     const user = r.recordset[0];
     user.role = "Customer";
     res.json({ success: true, message: "Đăng ký thành công", user });
@@ -282,7 +294,7 @@ app.delete("/api/categories/:id", async (req, res) => {
   }
 });
 
-// ================= API MÃ KHUYẾN MÃI (ĐÃ SỬA LỖI TỪ KHÓA) =================
+// ================= API MÃ KHUYẾN MÃI =================
 app.get("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
@@ -305,7 +317,7 @@ app.post("/api/discounts", async (req, res) => {
       .input("c", sql.VarChar, req.body.code)
       .input("p", sql.Int, req.body.percent)
       .input("l", sql.Int, req.body.limit)
-      .input("e", sql.Date, req.body.expiry)
+      .input("e", sql.DateTime, req.body.expiry)
       .input("a", sql.Bit, req.body.active)
       .query(
         "INSERT INTO Coupons (CouponCode, DiscountPercent, UsageLimit, ExpiryDate, IsActive) VALUES (@c, @p, @l, @e, @a)",
@@ -325,7 +337,7 @@ app.put("/api/discounts/:id", async (req, res) => {
       .input("c", sql.VarChar, req.body.code)
       .input("p", sql.Int, req.body.percent)
       .input("l", sql.Int, req.body.limit)
-      .input("e", sql.Date, req.body.expiry)
+      .input("e", sql.DateTime, req.body.expiry)
       .input("a", sql.Bit, req.body.active)
       .query(
         "UPDATE Coupons SET CouponCode=@c, DiscountPercent=@p, UsageLimit=@l, ExpiryDate=@e, IsActive=@a WHERE CouponID=@id",
@@ -349,15 +361,51 @@ app.delete("/api/discounts/:id", async (req, res) => {
   }
 });
 
-// ================= API KHÁCH HÀNG & THỐNG KÊ =================
+// ================= API QUẢN LÝ ĐƠN HÀNG =================
+app.get("/api/orders", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool.request().query(`
+      SELECT o.OrderID as id, o.UserID as user_id, u.FullName as customer_name, u.Phone as customer_phone, 
+             o.TotalAmount as total, CONVERT(varchar, o.OrderDate, 103) as date, 
+             ISNULL(o.Status, N'Chờ xác nhận') as status 
+      FROM Orders o 
+      LEFT JOIN Users u ON o.UserID = u.UserID
+      ORDER BY o.OrderID DESC
+    `);
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/orders/:id/status", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("s", sql.NVarChar, req.body.status)
+      .query("UPDATE Orders SET Status=@s WHERE OrderID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= API KHÁCH HÀNG & THỐNG KÊ (CHỈ TÍNH DOANH THU KHI ĐÃ GIAO) =================
 app.get("/api/customers", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT u.UserID as id, u.FullName as name, u.Phone as phone, COALESCE(SUM(o.TotalAmount), 0) as spent FROM Users u LEFT JOIN Orders o ON u.UserID = o.UserID WHERE u.RoleID = 2 GROUP BY u.UserID, u.FullName, u.Phone ORDER BY spent DESC",
-      );
+    let r = await pool.request().query(`
+        SELECT u.UserID as id, u.FullName as name, u.Phone as phone, 
+               COALESCE(SUM(CASE WHEN ISNULL(o.Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' THEN o.TotalAmount ELSE 0 END), 0) as spent 
+        FROM Users u 
+        LEFT JOIN Orders o ON u.UserID = o.UserID 
+        WHERE u.RoleID = 2 
+        GROUP BY u.UserID, u.FullName, u.Phone 
+        ORDER BY spent DESC
+    `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -367,12 +415,13 @@ app.get("/api/customers", async (req, res) => {
 app.get("/api/customers/:id/orders", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .query(
-        "SELECT OrderID as id, TotalAmount as total, CONVERT(varchar, OrderDate, 103) as date, N'Đã giao' as status FROM Orders WHERE UserID = @id",
-      );
+    let r = await pool.request().input("id", sql.Int, req.params.id).query(`
+        SELECT OrderID as id, TotalAmount as total, CONVERT(varchar, OrderDate, 103) as date, 
+               ISNULL(Status, N'Chờ xác nhận') as status 
+        FROM Orders 
+        WHERE UserID = @id 
+        ORDER BY OrderID DESC
+      `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json([]);
@@ -382,18 +431,19 @@ app.get("/api/customers/:id/orders", async (req, res) => {
 app.get("/api/chart-data", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT MONTH(OrderDate) as month, SUM(TotalAmount) as total FROM Orders GROUP BY MONTH(OrderDate) ORDER BY month",
-      );
+    let r = await pool.request().query(`
+        SELECT MONTH(OrderDate) as month, SUM(TotalAmount) as total 
+        FROM Orders 
+        WHERE ISNULL(Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' 
+        GROUP BY MONTH(OrderDate) 
+        ORDER BY month
+    `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json([]);
   }
 });
 
-// ================= LỆNH CHẠY MÁY CHỦ (BẮT BUỘC PHẢI LUÔN Ở DƯỚI CÙNG CỦA FILE) =================
 app.listen(PORT, () => {
   console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });
