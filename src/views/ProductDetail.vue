@@ -1,148 +1,76 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { products, sizes, colors, brands, product_details } from '../data/mockData'
 import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
 
 const route = useRoute()
+const product = ref(null)
+const isLoading = ref(true)
 
-const product = computed(() => {
-  return products.find((p) => p.id_product === Number(route.params.id))
-})
+// Dữ liệu Brand mặc định
+const brands = [{ id: 1, brand_name: 'Nike' }, { id: 2, brand_name: 'Adidas' }, { id: 3, brand_name: 'Puma' }]
 
-const brand = computed(() => {
-  return product.value
-    ? brands.find((b) => b.id_brand === product.value.id_brand)
-    : null
-})
-
-const availableDetails = computed(() => {
-  if (!product.value) return []
-  return product_details.filter((detail) => detail.id_product === product.value.id_product)
-})
-
-const availableSizes = computed(() => {
-  return sizes.filter((size) =>
-    availableDetails.value.some((detail) => detail.id_size === size.id_size)
-  )
-})
-
-const availableColors = computed(() => {
-  return colors.filter((color) =>
-    availableDetails.value.some((detail) => detail.id_color === color.id_color)
-  )
-})
-
-const selectedSize = ref(null)
+// Khởi tạo các biến chọn
+const selectedSize = ref('42') // Size mặc định
 const selectedColor = ref(null)
 const quantity = ref(1)
+const mainImage = ref('')
 
-const selectedDetail = computed(() => {
-  return availableDetails.value.find(
-    (detail) =>
-      detail.id_size === selectedSize.value &&
-      detail.id_color === selectedColor.value
-  )
+const availableSizes = ['39', '40', '41', '42', '43', '44']
+
+const brand = computed(() => {
+  return product.value ? brands.find((b) => b.id === product.value.brand_id) : null
 })
 
-const currentStock = computed(() => {
-  return selectedDetail.value?.stock_quantity || 0
-})
-
-const selectedSizeName = computed(() => {
-  return sizes.find((size) => size.id_size === selectedSize.value)?.size_name || ''
-})
-
-const selectedColorName = computed(() => {
-  const color = colors.find((item) => item.id_color === selectedColor.value)
-  return color?.color_label || color?.color_name || ''
-})
-
-watch(
-  product,
-  () => {
-    const firstAvailable =
-      availableDetails.value.find((detail) => detail.stock_quantity > 0) ||
-      availableDetails.value[0]
-
-    selectedSize.value = firstAvailable?.id_size || null
-    selectedColor.value = firstAvailable?.id_color || null
-    quantity.value = 1
-  },
-  { immediate: true }
-)
-
-const isSizeAvailable = (sizeId) => {
-  return availableDetails.value.some(
-    (detail) => detail.id_size === sizeId && detail.stock_quantity > 0
-  )
-}
-
-const isColorAvailableForSelectedSize = (colorId) => {
-  return availableDetails.value.some(
-    (detail) =>
-      detail.id_size === selectedSize.value &&
-      detail.id_color === colorId &&
-      detail.stock_quantity > 0
-  )
-}
-
-const selectSize = (sizeId) => {
-  if (!isSizeAvailable(sizeId)) return
-
-  selectedSize.value = sizeId
-
-  const sameColorDetail = availableDetails.value.find(
-    (detail) =>
-      detail.id_size === sizeId &&
-      detail.id_color === selectedColor.value &&
-      detail.stock_quantity > 0
-  )
-
-  const firstColorDetail = availableDetails.value.find(
-    (detail) => detail.id_size === sizeId && detail.stock_quantity > 0
-  )
-
-  selectedColor.value = sameColorDetail?.id_color || firstColorDetail?.id_color || null
-  quantity.value = 1
-}
-
-const selectColor = (colorId) => {
-  if (!isColorAvailableForSelectedSize(colorId)) return
-
-  selectedColor.value = colorId
-  quantity.value = 1
-}
-
-const decreaseQuantity = () => {
-  if (quantity.value > 1) {
-    quantity.value -= 1
+// Gọi API lấy thông tin sản phẩm chi tiết
+const fetchProductDetail = async () => {
+  try {
+    const res = await fetch('http://localhost:5000/api/products')
+    const data = await res.json()
+    // Tìm sản phẩm dựa trên ID trên thanh địa chỉ URL
+    const foundProduct = data.find(p => p.id === Number(route.params.id))
+    
+    if (foundProduct) {
+      product.value = foundProduct
+      mainImage.value = foundProduct.image_url // Gán ảnh mặc định
+      
+      // Nếu có biến thể màu, mặc định chọn màu đầu tiên
+      if (foundProduct.colors && foundProduct.colors.length > 0) {
+        selectedColor.value = foundProduct.colors[0].color_name
+      }
+    }
+  } catch (error) {
+    console.error('Lỗi API:', error)
+  } finally {
+    isLoading.value = false
   }
 }
 
-const increaseQuantity = () => {
-  if (quantity.value < currentStock.value) {
-    quantity.value += 1
-    return
-  }
-
-  alert(`Không thể vượt quá tồn kho hiện có (${currentStock.value}).`)
+const selectSize = (size) => {
+  selectedSize.value = size
 }
+
+const selectColor = (colorObj) => {
+  selectedColor.value = colorObj.color_name
+  // Khi chọn màu, đổi luôn ảnh chính thành ảnh của màu đó
+  if (colorObj.image_url) {
+    mainImage.value = colorObj.image_url
+  }
+}
+
+const decreaseQuantity = () => { if (quantity.value > 1) quantity.value -= 1 }
+const increaseQuantity = () => { quantity.value += 1 } // Tạm bỏ check tồn kho phức tạp
 
 const handleAddToCart = () => {
-  if (!selectedDetail.value) {
-    alert('Vui lòng chọn size và màu hợp lệ.')
-    return
-  }
-
-  if (currentStock.value <= 0) {
-    alert('Sản phẩm đã hết hàng.')
-    return
-  }
+  if (!product.value) return
 
   const result = addToCart({
-    productId: product.value.id_product,
-    detailId: selectedDetail.value.id_product_detail,
+    productId: product.value.id,
+    name: product.value.name,
+    price: product.value.price,
+    image: mainImage.value,
+    size: selectedSize.value,
+    color: selectedColor.value,
     quantity: quantity.value
   })
 
@@ -150,183 +78,75 @@ const handleAddToCart = () => {
     alert(result.message)
     return
   }
-
   showMiniCart()
 }
 
 onMounted(() => {
   window.scrollTo(0, 0)
+  fetchProductDetail()
 })
 </script>
 
 <template>
-  <div v-if="!product" class="container text-center py-5">
-    <h2 class="fw-bold">Không tìm thấy sản phẩm</h2>
-  </div>
+  <div v-if="isLoading" class="container text-center py-5"><h2 class="fw-bold">Đang tải dữ liệu...</h2></div>
+  <div v-else-if="!product" class="container text-center py-5"><h2 class="fw-bold">Không tìm thấy sản phẩm</h2></div>
 
   <div v-else class="container-fluid px-4 py-5 bg-light min-vh-100">
     <div class="row bg-white rounded-5 shadow-sm p-4 mx-0 g-5">
       <div class="col-lg-6 d-flex flex-column gap-3">
         <div class="bg-light rounded-4 overflow-hidden border">
-          <img
-            :src="product.image_url"
-            :alt="product.product_name"
-            class="w-100 object-fit-cover ratio-1x1 mix-blend-multiply"
-          >
-        </div>
-
-        <div class="row g-3">
-          <div class="col-3" v-for="i in 4" :key="i">
-            <div
-              class="bg-light rounded-3 overflow-hidden border-2 cursor-pointer transition-all h-100"
-              :class="i === 1 ? 'border-dark' : 'border-transparent border-hover-dark'"
-            >
-              <img
-                :src="product.image_url"
-                alt="thumbnail"
-                class="w-100 object-fit-cover mix-blend-multiply h-100"
-              >
-            </div>
-          </div>
+          <img :src="mainImage || 'https://via.placeholder.com/500?text=Shoe'" :alt="product.name" class="w-100 object-fit-cover ratio-1x1 mix-blend-multiply">
         </div>
       </div>
 
       <div class="col-lg-6 d-flex flex-column">
-        <p class="text-secondary fw-bold text-uppercase mb-2">
-          {{ brand?.brand_name }}
-        </p>
-
-        <h1 class="display-5 fw-bold text-dark mb-2">
-          {{ product.product_name }}
-        </h1>
-
-        <p class="fs-1 fw-bold text-dark mb-4">
-          {{ formatCurrency(product.price) }}
-        </p>
+        <p class="text-secondary fw-bold text-uppercase mb-2">{{ brand?.brand_name || 'SHOEGROUP' }}</p>
+        <h1 class="display-5 fw-bold text-dark mb-2">{{ product.name }}</h1>
+        <p class="fs-1 fw-bold text-dark mb-4">{{ formatCurrency(product.price) }}</p>
 
         <div class="mb-4">
-          <h5 class="fw-bold fs-6 text-uppercase mb-3">
-            Chọn Size:
-            <span class="fw-normal">{{ selectedSizeName }}</span>
-          </h5>
-
+          <h5 class="fw-bold fs-6 text-uppercase mb-3">Chọn Size: <span class="fw-normal">{{ selectedSize }}</span></h5>
           <div class="d-flex flex-wrap gap-2">
             <button
-              v-for="size in availableSizes"
-              :key="size.id_size"
-              type="button"
+              v-for="size in availableSizes" :key="size" type="button"
               class="btn fw-bold d-flex align-items-center justify-content-center size-btn"
-              :class="[
-                selectedSize === size.id_size ? 'btn-dark' : 'btn-outline-secondary text-dark',
-                !isSizeAvailable(size.id_size) ? 'disabled opacity-50' : ''
-              ]"
-              :disabled="!isSizeAvailable(size.id_size)"
-              @click="selectSize(size.id_size)"
+              :class="selectedSize === size ? 'btn-dark' : 'btn-outline-secondary text-dark'"
+              @click="selectSize(size)"
             >
-              {{ size.size_name }}
+              {{ size }}
             </button>
           </div>
         </div>
 
-        <div class="mb-4">
-          <h5 class="fw-bold fs-6 text-uppercase mb-3">
-            Chọn Màu:
-            <span class="fw-normal">{{ selectedColorName }}</span>
-          </h5>
-
+        <div class="mb-4" v-if="product.colors && product.colors.length > 0">
+          <h5 class="fw-bold fs-6 text-uppercase mb-3">Chọn Màu: <span class="fw-normal">{{ selectedColor }}</span></h5>
           <div class="d-flex flex-wrap gap-3">
             <button
-              v-for="color in availableColors"
-              :key="color.id_color"
-              type="button"
-              class="color-btn rounded-circle transition-all position-relative"
-              :class="[
-                selectedColor === color.id_color ? 'border-dark active-scale' : 'border-transparent',
-                !isColorAvailableForSelectedSize(color.id_color) ? 'opacity-25' : ''
-              ]"
-              :style="{ backgroundColor: color.hex }"
-              :title="color.color_label || color.color_name"
-              :disabled="!isColorAvailableForSelectedSize(color.id_color)"
-              @click="selectColor(color.id_color)"
+              v-for="color in product.colors" :key="color.color_name" type="button"
+              class="color-btn rounded-circle transition-all position-relative bg-light"
+              :class="selectedColor === color.color_name ? 'border-dark active-scale' : 'border-transparent'"
+              :title="color.color_name"
+              @click="selectColor(color)"
             >
-              <i
-                v-if="selectedColor === color.id_color"
-                class="bi bi-check position-absolute top-50 start-50 translate-middle"
-                :class="color.color_name === 'White' ? 'text-dark' : 'text-white'"
-              ></i>
+              <img :src="color.image_url" class="w-100 h-100 rounded-circle object-fit-cover" :alt="color.color_name">
             </button>
           </div>
         </div>
 
         <div class="mb-4">
           <h5 class="fw-bold fs-6 text-uppercase mb-3">Số lượng</h5>
-
           <div class="d-flex align-items-center gap-3">
             <div class="input-group" style="width: 140px;">
-              <button
-                type="button"
-                class="btn btn-outline-secondary d-flex align-items-center justify-content-center"
-                :disabled="quantity <= 1"
-                @click="decreaseQuantity"
-              >
-                <i class="bi bi-dash"></i>
-              </button>
-
-              <input
-                type="text"
-                class="form-control text-center fw-bold"
-                :value="quantity"
-                readonly
-              >
-
-              <button
-                type="button"
-                class="btn btn-outline-secondary d-flex align-items-center justify-content-center"
-                :disabled="quantity >= currentStock"
-                @click="increaseQuantity"
-              >
-                <i class="bi bi-plus"></i>
-              </button>
+              <button type="button" class="btn btn-outline-secondary" @click="decreaseQuantity"><i class="bi bi-dash"></i></button>
+              <input type="text" class="form-control text-center fw-bold" :value="quantity" readonly>
+              <button type="button" class="btn btn-outline-secondary" @click="increaseQuantity"><i class="bi bi-plus"></i></button>
             </div>
-
-            <span class="text-secondary small">
-              Còn {{ currentStock }} sản phẩm
-            </span>
           </div>
         </div>
 
-        <button
-          type="button"
-          class="btn btn-dark w-100 py-3 rounded-4 fw-bold fs-5 mb-4 shadow-hover d-flex align-items-center justify-content-center gap-2"
-          :disabled="!selectedDetail || currentStock <= 0"
-          @click="handleAddToCart"
-        >
-          <i class="bi bi-bag"></i>
-          THÊM VÀO GIỎ HÀNG
+        <button type="button" class="btn btn-dark w-100 py-3 rounded-4 fw-bold fs-5 mb-4 shadow-hover d-flex align-items-center justify-content-center gap-2" @click="handleAddToCart">
+          <i class="bi bi-bag"></i> THÊM VÀO GIỎ HÀNG
         </button>
-
-        <div class="border-top pt-4 mt-auto">
-          <ul class="nav nav-tabs mb-3" id="productTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-              <button
-                class="nav-link active fw-bold text-dark border-0 border-bottom border-dark border-3 bg-transparent rounded-0"
-                id="detail-tab"
-                data-bs-toggle="tab"
-                data-bs-target="#detail"
-                type="button"
-                role="tab"
-              >
-                Chi tiết sản phẩm
-              </button>
-            </li>
-          </ul>
-
-          <div class="tab-content" id="productTabsContent">
-            <div class="tab-pane fade show active text-secondary" id="detail" role="tabpanel">
-              {{ product.description }}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
