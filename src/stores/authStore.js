@@ -85,7 +85,30 @@ export const logout = () => {
   authState.currentUser = null;
   saveCurrentUser(null);
 };
-export const updateProfile = (data) => {
-  console.log("Tính năng cập nhật hồ sơ đang được phát triển", data);
-  // Có thể gọi API PUT /api/customers/update sau này
+export const updateProfile = async (data) => {
+  try {
+    const res = await fetch(`http://localhost:5000/api/accounts/${data.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: data.email,
+        name: data.full_name,
+        phone: data.phone,
+        address: data.address,
+        role_id: data.role_id || 2,
+      }),
+    });
+
+    if (res.ok) {
+      // Cập nhật lại phiên đăng nhập hiện tại trên trình duyệt
+      authState.currentUser.full_name = data.full_name;
+      authState.currentUser.phone = data.phone;
+      authState.currentUser.address = data.address;
+      saveCurrentUser(authState.currentUser);
+      return { ok: true };
+    }
+    return { ok: false, message: "Cập nhật thất bại." };
+  } catch (error) {
+    return { ok: false, message: "Lỗi kết nối máy chủ." };
+  }
 };
