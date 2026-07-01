@@ -1,86 +1,12 @@
 import { computed, reactive, watch } from "vue";
-import { products, product_details, sizes, colors } from "../data/mockData";
 
-const STORAGE_KEY = "shoegroup_cart_items";
-
-export const getDetailStock = (detail) => {
-  return Number(detail?.stock_quantity ?? detail?.stock_quality ?? 0);
-};
-
-const findProduct = (productId) => {
-  return products.find((p) => p.id_product === Number(productId));
-};
-
-const findDetail = (detailId) => {
-  return product_details.find((d) => d.id_product_detail === Number(detailId));
-};
-
-const clampQuantity = (quantity, stock) => {
-  const number = Number(quantity) || 1;
-  return Math.max(1, Math.min(number, stock));
-};
-
-const setDetailStock = (detail, stock) => {
-  if (!detail) return;
-
-  const nextStock = Math.max(0, Number(stock) || 0);
-
-  detail.stock_quantity = nextStock;
-  detail.stock_quality = nextStock;
-};
-
-const reduceDetailStock = (detail, quantity = 1) => {
-  if (!detail) return false;
-
-  const stock = getDetailStock(detail);
-  const quantityNumber = Math.max(1, Number(quantity) || 1);
-
-  if (stock < quantityNumber) {
-    console.log("Hết hàng!");
-    return false;
-  }
-
-  setDetailStock(detail, stock - quantityNumber);
-  console.log("Đã thêm vào giỏ, còn lại:", getDetailStock(detail));
-
-  return true;
-};
-
-const restoreDetailStock = (detail, quantity = 1) => {
-  if (!detail) return;
-
-  const quantityNumber = Math.max(1, Number(quantity) || 1);
-  setDetailStock(detail, getDetailStock(detail) + quantityNumber);
-};
+// Đổi khóa lưu trữ để dọn dẹp sạch giỏ hàng cũ bị lỗi trên máy của bạn
+const STORAGE_KEY = "shoegroup_cart_v2";
 
 const loadCartFromStorage = () => {
   if (typeof localStorage === "undefined") return [];
-
   try {
-    const rawCart = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-
-    return rawCart
-      .map((item) => {
-        const product = findProduct(item.id_product);
-        const detail = findDetail(item.id_product_detail);
-        const stock = getDetailStock(detail);
-
-        if (!product || !detail) return null;
-
-        const quantity = clampQuantity(
-          item.quantity,
-          stock + Number(item.quantity || 0),
-        );
-
-        return {
-          id_product: product.id_product,
-          id_product_detail: detail.id_product_detail,
-          id_size: detail.id_size,
-          id_color: detail.id_color,
-          quantity,
-        };
-      })
-      .filter(Boolean);
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
   } catch {
     return [];
   }
@@ -102,40 +28,20 @@ watch(
 );
 
 export const formatCurrency = (value) => {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  })
-    .format(Number(value || 0))
-    .replace("₫", "đ");
+  return (
+    new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0)) + " ₫"
+  );
 };
 
 export const cartItems = computed(() => {
-  return cartState.items
-    .map((item) => {
-      const product = findProduct(item.id_product);
-      const detail = findDetail(item.id_product_detail);
-      const size = sizes.find((s) => s.id_size === item.id_size);
-      const color = colors.find((c) => c.id_color === item.id_color);
-
-      if (!product || !detail) return null;
-
-      const remainingStock = getDetailStock(detail);
-
-      return {
-        ...item,
-        product,
-        detail,
-        size,
-        color,
-        remainingStock,
-        stockQuantity: item.quantity + remainingStock,
-        unitPrice: product.price,
-        subtotal: product.price * item.quantity,
-      };
-    })
-    .filter(Boolean);
+  return cartState.items.map((item) => ({
+    ...item,
+    subtotal: item.unitPrice * item.quantity,
+  }));
 });
 
 export const cartCount = computed(() => {
@@ -154,205 +60,98 @@ export const cartTotal = computed(() => {
   return cartSubtotal.value + cartShippingFee.value;
 });
 
+// THÊM VÀO GIỎ HÀNG (Lưu trực tiếp toàn bộ Tên, Ảnh, Giá)
 export const addToCart = (payload) => {
-  const isDetailIdOnly = typeof payload === "number";
+  const {
+    product,
+    quantity = 1,
+    size = { size_name: "42" },
+    color = { color_label: "Mặc định" },
+  } = payload;
 
-  const payloadDetail = isDetailIdOnly ? findDetail(payload) : null;
+  if (!product) return { ok: false, message: "Sản phẩm không hợp lệ." };
 
-  const productId = isDetailIdOnly
-    ? payloadDetail?.id_product
-    : payload?.productId;
+  // Lấy dữ liệu thật từ biến product truyền vào (từ Database API)
+  const productId = product.id_product || product.id || product.ProductID;
+  const productName =
+    product.product_name || product.name || product.ProductName;
+  const productPrice = product.price || product.BasePrice || 0;
+  const productImage = product.image_url || product.ImageURL || product.image;
 
-  const detailId = isDetailIdOnly ? payload : payload?.detailId;
+  const sizeName = size.size_name || "42";
+  const colorName = color.color_label || color.color_name || "Mặc định";
 
-  const requestedQuantity = Math.max(
-    1,
-    Number(isDetailIdOnly ? 1 : payload?.quantity) || 1,
-  );
-
-  const product = findProduct(productId);
-
-  if (!product) {
-    return {
-      ok: false,
-      message: "Không tìm thấy sản phẩm.",
-    };
-  }
-
-  const detail =
-    findDetail(detailId) ||
-    product_details.find(
-      (d) => d.id_product === Number(productId) && getDetailStock(d) > 0,
-    );
-
-  if (!detail) {
-    console.log("Hết hàng!");
-
-    return {
-      ok: false,
-      message: "Sản phẩm đã hết hàng.",
-    };
-  }
-
-  const stock = getDetailStock(detail);
-
-  if (stock <= 0) {
-    console.log("Hết hàng!");
-
-    return {
-      ok: false,
-      message: "Sản phẩm đã hết hàng.",
-    };
-  }
-
-  const quantityToAdd = Math.min(requestedQuantity, stock);
+  // Tạo ID duy nhất cho mỗi phân loại (kết hợp ID + Size + Màu)
+  const detailId = `${productId}_${sizeName}_${colorName}`;
 
   const existingItem = cartState.items.find(
-    (item) => item.id_product_detail === detail.id_product_detail,
+    (item) => item.id_product_detail === detailId,
   );
 
-  const reduced = reduceDetailStock(detail, quantityToAdd);
-
-  if (!reduced) {
-    return {
-      ok: false,
-      message: "Sản phẩm đã hết hàng.",
-    };
-  }
-
   if (existingItem) {
-    existingItem.quantity += quantityToAdd;
-
-    return {
-      ok: true,
-      message: "Đã cập nhật số lượng trong giỏ hàng.",
-    };
+    existingItem.quantity += quantity;
+    // Cập nhật lại giá/ảnh đề phòng Database có thay đổi
+    existingItem.product.price = productPrice;
+    existingItem.product.image_url = productImage;
+    return { ok: true, message: "Đã cập nhật số lượng." };
   }
 
+  // THÊM SẢN PHẨM MỚI VÀO GIỎ
   cartState.items.unshift({
-    id_product: product.id_product,
-    id_product_detail: detail.id_product_detail,
-    id_size: detail.id_size,
-    id_color: detail.id_color,
-    quantity: quantityToAdd,
+    id_product_detail: detailId,
+    id_product: productId,
+    product: {
+      id_product: productId,
+      product_name: productName,
+      price: productPrice,
+      image_url: productImage,
+    },
+    size: { size_name: sizeName },
+    color: { color_label: colorName, color_name: colorName },
+    quantity: quantity,
+    unitPrice: productPrice,
+    stockQuantity: 100, // Tạm thời set 100 vì CSDL chưa quản lý tồn kho chi tiết
   });
 
-  return {
-    ok: true,
-    message: "Đã thêm sản phẩm vào giỏ hàng.",
-  };
+  return { ok: true, message: "Đã thêm vào giỏ hàng." };
 };
 
 export const increaseQuantity = (detailId) => {
   const item = cartState.items.find(
-    (cartItem) => cartItem.id_product_detail === Number(detailId),
+    (cartItem) => cartItem.id_product_detail === detailId,
   );
-
-  if (!item) {
-    return {
-      ok: false,
-      message: "Không tìm thấy sản phẩm trong giỏ hàng.",
-    };
-  }
-
-  const detail = findDetail(detailId);
-
-  if (!detail) {
-    return {
-      ok: false,
-      message: "Không tìm thấy thông tin tồn kho.",
-    };
-  }
-
-  const stock = getDetailStock(detail);
-
-  if (stock <= 0) {
-    return {
-      ok: false,
-      message: "Không thể vượt quá tồn kho hiện có.",
-    };
-  }
-
-  const reduced = reduceDetailStock(detail, 1);
-
-  if (!reduced) {
-    return {
-      ok: false,
-      message: "Sản phẩm đã hết hàng.",
-    };
-  }
-
+  if (!item) return { ok: false, message: "Lỗi" };
   item.quantity += 1;
-
-  return {
-    ok: true,
-    message: "Đã tăng số lượng.",
-  };
+  return { ok: true, message: "Thành công" };
 };
 
 export const decreaseQuantity = (detailId) => {
   const item = cartState.items.find(
-    (cartItem) => cartItem.id_product_detail === Number(detailId),
+    (cartItem) => cartItem.id_product_detail === detailId,
   );
-
-  if (!item) {
-    return {
-      ok: false,
-      message: "Không tìm thấy sản phẩm trong giỏ hàng.",
-    };
-  }
-
-  if (item.quantity <= 1) {
-    return {
-      ok: false,
-      message: "Số lượng không được nhỏ hơn 1.",
-    };
-  }
-
-  const detail = findDetail(detailId);
-
+  if (!item) return { ok: false, message: "Lỗi" };
+  if (item.quantity <= 1)
+    return { ok: false, message: "Số lượng tối thiểu là 1" };
   item.quantity -= 1;
-  restoreDetailStock(detail, 1);
-
-  return {
-    ok: true,
-    message: "Đã giảm số lượng.",
-  };
+  return { ok: true, message: "Thành công" };
 };
 
 export const removeFromCart = (detailId) => {
   const index = cartState.items.findIndex(
-    (item) => item.id_product_detail === Number(detailId),
+    (item) => item.id_product_detail === detailId,
   );
-
-  if (index !== -1) {
-    const item = cartState.items[index];
-    const detail = findDetail(detailId);
-
-    restoreDetailStock(detail, item.quantity);
-    cartState.items.splice(index, 1);
-  }
+  if (index !== -1) cartState.items.splice(index, 1);
 };
 
-export const clearCart = ({ restoreStock = false } = {}) => {
-  if (restoreStock) {
-    cartState.items.forEach((item) => {
-      const detail = findDetail(item.id_product_detail);
-      restoreDetailStock(detail, item.quantity);
-    });
-  }
-
+export const clearCart = () => {
   cartState.items.splice(0);
 };
-
 export const showMiniCart = () => {
   cartState.isMiniCartOpen = true;
 };
-
 export const hideMiniCart = () => {
   cartState.isMiniCartOpen = false;
 };
-
 export const toggleMiniCart = () => {
   cartState.isMiniCartOpen = !cartState.isMiniCartOpen;
 };

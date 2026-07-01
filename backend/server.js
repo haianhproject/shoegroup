@@ -11,7 +11,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const dbConfig = {
   user: "sa",
-  password: "123", // Nhớ đổi đúng mật khẩu SQL của bạn
+  password: "123", // Đổi thành mật khẩu SQL của bạn nếu cần
   server: "localhost",
   database: "ShoegroupDB",
   options: {
@@ -23,34 +23,9 @@ const dbConfig = {
 const pool = new sql.ConnectionPool(dbConfig);
 const poolConnect = pool.connect();
 
-// Tự động kiểm tra và thêm các cột, bảng bị thiếu vào CSDL (Địa chỉ, Lý do, Chi tiết SP)
 poolConnect
-  .then(async () => {
-    console.log("✅ Đã kết nối thành công với CSDL SQL Server!");
-    try {
-      await pool.request().query(`
-        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'Status')
-            ALTER TABLE Orders ADD Status NVARCHAR(50) DEFAULT N'Chờ xác nhận';
-        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'ShippingAddress')
-            ALTER TABLE Orders ADD ShippingAddress NVARCHAR(500) DEFAULT N'Chưa cập nhật địa chỉ';
-        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'CancelReason')
-            ALTER TABLE Orders ADD CancelReason NVARCHAR(500) NULL;
-        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OrderDetails')
-        BEGIN
-            CREATE TABLE OrderDetails (
-                OrderDetailID INT IDENTITY(1,1) PRIMARY KEY,
-                OrderID INT FOREIGN KEY REFERENCES Orders(OrderID) ON DELETE CASCADE,
-                ProductID INT FOREIGN KEY REFERENCES Products(ProductID) ON DELETE CASCADE,
-                Quantity INT DEFAULT 1,
-                UnitPrice DECIMAL(18,2) DEFAULT 0,
-                Size NVARCHAR(10) DEFAULT '42'
-            );
-        END
-      `);
-      console.log("✅ Đã đồng bộ cấu trúc Bảng Đơn Hàng (Địa chỉ, Lý do hủy)!");
-    } catch (e) {
-      console.log("⚠️ Chú ý Cấu trúc DB:", e.message);
-    }
+  .then(() => {
+    console.log("✅ Đã kết nối thành công với CSDL SQL Server (ShoegroupDB)!");
   })
   .catch((err) => console.error("❌ Lỗi kết nối DB:", err));
 
@@ -113,38 +88,114 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// ================= API QUẢN LÝ ĐƠN HÀNG (SHOPEE STYLE) =================
+// ================= API QUẢN LÝ ĐƠN HÀNG VÀ THANH TOÁN =================
+
+// 1. TẠO ĐƠN HÀNG (Từ trang Checkout)
+app.post("/api/orders", async (req, res) => {
+  try {
+    await poolConnect;
+    const {
+      userId,
+      totalAmount,
+      shippingAddress,
+      customerName,
+      customerPhone,
+      shippingFee,
+      discountAmount,
+      paymentMethod,
+      note,
+      items,
+      couponCode,
+    } = req.body;
+
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      const request = new sql.Request(transaction);
+
+      // B1: Lưu vào bảng Orders
+      let orderResult = await request
+        .input("uid", sql.Int, userId)
+        .input("tot", sql.Decimal, totalAmount)
+        .input("cname", sql.NVarChar, customerName)
+        .input("cphone", sql.VarChar, customerPhone)
+        .input("addr", sql.NVarChar, shippingAddress)
+        .input("pay", sql.NVarChar, paymentMethod)
+        .input("sfee", sql.Decimal, shippingFee)
+        .input("disc", sql.Decimal, discountAmount)
+        .input("note", sql.NVarChar, note).query(`
+          INSERT INTO Orders (UserID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, ShippingFee, DiscountAmount, OrderNote) 
+          OUTPUT INSERTED.OrderID 
+          VALUES (@uid, @tot, GETDATE(), N'Chờ xác nhận', @addr, @cname, @cphone, @pay, @sfee, @disc, @note)
+        `);
+
+      const orderId = orderResult.recordset[0].OrderID;
+
+      // B2: Lưu từng sản phẩm vào bảng OrderDetails
+      for (let item of items) {
+        const detailReq = new sql.Request(transaction);
+        await detailReq
+          .input("oid", sql.Int, orderId)
+          .input("pid", sql.Int, item.productId)
+          .input("qty", sql.Int, item.quantity)
+          .input("price", sql.Decimal, item.price)
+          .input("sz", sql.NVarChar, item.size)
+          .input("clr", sql.NVarChar, item.color).query(`
+            INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice, Size, Color)
+            VALUES (@oid, @pid, @qty, @price, @sz, @clr)
+          `);
+      }
+
+      // B3: Cập nhật lượt dùng Mã giảm giá (nếu có)
+      if (couponCode) {
+        const couponReq = new sql.Request(transaction);
+        await couponReq
+          .input("code", sql.VarChar, couponCode)
+          .query(
+            "UPDATE Coupons SET UsedCount = ISNULL(UsedCount, 0) + 1 WHERE CouponCode = @code",
+          );
+      }
+
+      await transaction.commit();
+      res.json({ success: true, orderId });
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 2. Lấy Danh Sách Đơn Hàng (Cho Admin và MyOrders)
 app.get("/api/orders", async (req, res) => {
   try {
     await poolConnect;
 
-    // Lấy thông tin Đơn hàng và Khách hàng
     let rOrders = await pool.request().query(`
-      SELECT o.OrderID as id, o.UserID as user_id, u.FullName as customer_name, u.Phone as customer_phone, 
+      SELECT o.OrderID as id, o.UserID as user_id, 
+             ISNULL(o.CustomerName, u.FullName) as customer_name, 
+             ISNULL(o.CustomerPhone, u.Phone) as customer_phone, 
              ISNULL(o.ShippingAddress, ISNULL(u.Address, N'Chưa cập nhật địa chỉ')) as customer_address,
-             o.TotalAmount as total, 
+             o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
+             o.PaymentMethod as paymentMethod, o.OrderNote as note,
              CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) as date, 
-             ISNULL(o.Status, N'Chờ xác nhận') as status, 
-             ISNULL(o.CancelReason, '') as cancel_reason
-      FROM Orders o 
-      LEFT JOIN Users u ON o.UserID = u.UserID 
-      ORDER BY o.OrderID DESC
+             ISNULL(o.Status, N'Chờ xác nhận') as status, ISNULL(o.CancelReason, '') as cancel_reason
+      FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID ORDER BY o.OrderID DESC
     `);
 
-    // Lấy thông tin Chi tiết Sản phẩm của từng Đơn hàng
     let details = [];
     try {
       let rDetails = await pool.request().query(`
-          SELECT od.OrderID, p.ProductName as name, p.ImageURL as image, od.Quantity as quantity, od.UnitPrice as price, ISNULL(od.Size, '42') as size
-          FROM OrderDetails od 
-          LEFT JOIN Products p ON od.ProductID = p.ProductID
+          SELECT od.OrderID, p.ProductName as name, p.ImageURL as image, od.Quantity as quantity, od.UnitPrice as price, ISNULL(od.Size, '42') as size, ISNULL(od.Color, N'Mặc định') as color
+          FROM OrderDetails od LEFT JOIN Products p ON od.ProductID = p.ProductID
         `);
       details = rDetails.recordset;
     } catch (e) {
-      console.log("Lỗi bảng OrderDetails", e.message);
+      console.log(e.message);
     }
 
-    // Ghép Sản phẩm vào Đơn hàng tương ứng
     let orders = rOrders.recordset.map((o) => {
       o.products = details.filter((d) => d.OrderID === o.id);
       return o;
@@ -156,6 +207,7 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
+// Cập nhật trạng thái đơn hàng (Admin)
 app.put("/api/orders/:id/status", async (req, res) => {
   try {
     await poolConnect;
@@ -187,6 +239,7 @@ app.get("/api/products", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/api/products", async (req, res) => {
   try {
     await poolConnect;
@@ -205,6 +258,7 @@ app.post("/api/products", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.put("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -224,6 +278,7 @@ app.put("/api/products/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.delete("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -250,6 +305,7 @@ app.get("/api/accounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/api/accounts", async (req, res) => {
   try {
     await poolConnect;
@@ -267,6 +323,7 @@ app.post("/api/accounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.put("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -275,15 +332,18 @@ app.put("/api/accounts/:id", async (req, res) => {
       .input("id", sql.Int, req.params.id)
       .input("e", sql.VarChar, req.body.username)
       .input("n", sql.NVarChar, req.body.name)
+      .input("p", sql.VarChar, req.body.phone || "") // Thêm Input SĐT
+      .input("a", sql.NVarChar, req.body.address || "") // Thêm Input Địa chỉ
       .input("r", sql.Int, req.body.role_id)
       .query(
-        "UPDATE Users SET Email=@e, FullName=@n, RoleID=@r WHERE UserID=@id",
+        "UPDATE Users SET Email=@e, FullName=@n, Phone=@p, Address=@a, RoleID=@r WHERE UserID=@id",
       );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.delete("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -310,6 +370,7 @@ app.get("/api/categories", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/api/categories", async (req, res) => {
   try {
     await poolConnect;
@@ -323,6 +384,7 @@ app.post("/api/categories", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.put("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -339,6 +401,7 @@ app.put("/api/categories/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.delete("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -365,6 +428,7 @@ app.get("/api/discounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
@@ -383,6 +447,7 @@ app.post("/api/discounts", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.put("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -402,6 +467,7 @@ app.put("/api/discounts/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.delete("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
@@ -421,7 +487,7 @@ app.get("/api/customers", async (req, res) => {
     await poolConnect;
     let r = await pool.request().query(`
       SELECT u.UserID as id, u.FullName as name, u.Phone as phone, 
-             COALESCE(SUM(CASE WHEN ISNULL(o.Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' THEN o.TotalAmount ELSE 0 END), 0) as spent 
+             COALESCE(SUM(CASE WHEN o.Status = N'Đã giao hàng thành công' THEN o.TotalAmount ELSE 0 END), 0) as spent 
       FROM Users u LEFT JOIN Orders o ON u.UserID = o.UserID 
       WHERE u.RoleID = 2 GROUP BY u.UserID, u.FullName, u.Phone ORDER BY spent DESC
     `);
