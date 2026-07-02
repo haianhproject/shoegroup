@@ -64,7 +64,7 @@ onMounted(() => {
               Bộ Sưu Tập Mới
             </span>
             <h1 class="display-2 fw-black mb-4 text-uppercase lh-1">
-              Nâng Tầm <br><span class="text-warning">Phong Cách</span>
+              Nâng Tầm <br><span class="text-info">Phong Cách</span>
             </h1>
             <p class="fs-5 text-light mb-5 fw-light" style="max-width: 550px;">
               Khám phá những đôi giày thể thao đỉnh cao, mang lại sự thoải mái tuyệt đối và dẫn đầu xu hướng năm nay.
