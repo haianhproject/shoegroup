@@ -229,11 +229,14 @@ app.put("/api/orders/:id/status", async (req, res) => {
 app.get("/api/products", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT p.ProductID as id, p.ProductName as name, p.BasePrice as price, p.CategoryID as category_id, c.CategoryName as category, p.ImageURL as image_url, p.IsActive as active FROM Products p LEFT JOIN Categories c ON p.CategoryID = c.CategoryID ORDER BY p.ProductID DESC",
-      );
+    let r = await pool.request().query(
+      `SELECT p.ProductID as id, p.ProductName as name, p.BasePrice as price, 
+              p.CategoryID as category_id, c.CategoryName as category, 
+              p.ImageURL as image_url, p.IsActive as active,
+              p.Description as description, p.ImageGallery as image_gallery 
+       FROM Products p LEFT JOIN Categories c ON p.CategoryID = c.CategoryID 
+       ORDER BY p.ProductID DESC`,
+    );
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -249,9 +252,11 @@ app.post("/api/products", async (req, res) => {
       .input("p", sql.Decimal, req.body.price)
       .input("c", sql.Int, req.body.category_id)
       .input("img", sql.VarChar(sql.MAX), req.body.image_url || "")
+      .input("desc", sql.NVarChar(sql.MAX), req.body.description || "")
+      .input("ig", sql.NVarChar(sql.MAX), req.body.image_gallery || "")
       .input("a", sql.Bit, req.body.active)
       .query(
-        "INSERT INTO Products (ProductName, BasePrice, CategoryID, BrandID, ImageURL, IsActive) VALUES (@n, @p, @c, 1, @img, @a)",
+        "INSERT INTO Products (ProductName, BasePrice, CategoryID, BrandID, ImageURL, IsActive, Description, ImageGallery) VALUES (@n, @p, @c, 1, @img, @a, @desc, @ig)",
       );
     res.json({ success: true });
   } catch (e) {
@@ -269,16 +274,17 @@ app.put("/api/products/:id", async (req, res) => {
       .input("p", sql.Decimal, req.body.price)
       .input("c", sql.Int, req.body.category_id)
       .input("img", sql.VarChar(sql.MAX), req.body.image_url || "")
+      .input("desc", sql.NVarChar(sql.MAX), req.body.description || "")
+      .input("ig", sql.NVarChar(sql.MAX), req.body.image_gallery || "")
       .input("a", sql.Bit, req.body.active)
       .query(
-        "UPDATE Products SET ProductName=@n, BasePrice=@p, CategoryID=@c, ImageURL=@img, IsActive=@a WHERE ProductID=@id",
+        "UPDATE Products SET ProductName=@n, BasePrice=@p, CategoryID=@c, ImageURL=@img, IsActive=@a, Description=@desc, ImageGallery=@ig WHERE ProductID=@id",
       );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
-
 app.delete("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;

@@ -236,6 +236,14 @@
                  </div>
               </div>
               <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light border rounded-3 px-4 fw-medium" @click="showForm.products = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5 fw-bold">Lưu Dữ Liệu</button></div>
+           <div class="mb-3">
+  <label class="form-label text-secondary small fw-bold">Mô tả sản phẩm</label>
+  <textarea v-model="formData.description" class="form-control rounded-3 bg-light" rows="4" placeholder="Nhập bài viết giới thiệu chi tiết..."></textarea>
+</div>
+<div class="mb-4">
+  <label class="form-label text-secondary small fw-bold">Link Ảnh Bổ Sung (Ngăn cách bằng dấu phẩy ,)</label>
+  <textarea v-model="formData.image_gallery" class="form-control rounded-3 bg-light" rows="3" placeholder="VD: https://anh1.jpg, https://anh2.jpg"></textarea>
+</div>
             </form>
           </div>
         </div>
@@ -645,7 +653,7 @@ const fetchAllData = async () => {
        products: Array.isArray(item.products) ? item.products : []
     })) : [];
     
-    db.products = p.map(item => ({ id: item.id || item.ProductID, name: item.name || item.ProductName || '', price: item.price !== undefined ? item.price : (item.BasePrice || 0), category_id: item.category_id || item.CategoryID || 1, category: item.category || item.CategoryName || 'Không xác định', image_url: item.image_url || item.ImageURL || '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
+    db.products = p.map(item => ({ id: item.id || item.ProductID, name: item.name || item.ProductName || '', price: item.price !== undefined ? item.price : (item.BasePrice || 0), category_id: item.category_id || item.CategoryID || 1, category: item.category || item.CategoryName || 'Không xác định', image_url: item.image_url || item.ImageURL || '', description: item.description || '', image_gallery: item.image_gallery || '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
     db.categories = c.map(item => ({ id: item.id || item.CategoryID, name: item.name || item.CategoryName || '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
     db.accounts = acc.map(item => ({ id: item.id || item.UserID, username: item.username || item.Email || '', name: cleanName(item.name || item.FullName || ''), role_id: Number(item.role_id !== undefined ? item.role_id : (item.RoleID !== undefined ? item.RoleID : 2)) }));
     db.discounts = d.map(item => ({ id: item.id || item.CouponID, code: item.code || item.CouponCode || '', percent: item.percent || item.DiscountPercent || 0, limit: item.limit || item.UsageLimit || 0, used: item.used || item.UsedCount || 0, expiry: item.expiry || item.ExpiryDate ? String(item.expiry || item.ExpiryDate).split('T')[0] : '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
@@ -684,7 +692,7 @@ const renderWaveChart = () => {
 
 const openForm = (type, item = null) => {
   editId.value = item ? item.id : null;
-  if(type === 'products') formData.value = item ? { ...item } : { name: '', price: 0, category_id: db.categories[0]?.id || 1, image_url: '', active: true };
+  if(type === 'products') formData.value = item ? { ...item } : { name: '', price: 0, category_id: db.categories[0]?.id || 1, image_url: '', active: true, description: '', image_gallery: '' };
   if(type === 'categories') formData.value = item ? { ...item } : { name: '', active: true };
   if(type === 'discounts') { let exp = item && item.expiry ? item.expiry : ''; formData.value = item ? { ...item, expiry: exp } : { code: '', percent: 10, limit: 100, expiry: '', active: true }; }
   if(type === 'accounts') { formData.value = item ? { id: item.id, username: item.username, name: item.name, role_id: Number(item.role_id) } : { username: '', name: '', password: '', role_id: 2 }; }
