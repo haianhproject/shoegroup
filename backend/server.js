@@ -521,11 +521,27 @@ app.get("/api/customers/:id/orders", async (req, res) => {
 app.get("/api/chart-data", async (req, res) => {
   try {
     await poolConnect;
+
+    // Nhận query parameters, nếu không truyền lên thì mặc định lấy tháng/năm hiện tại
+    const year = req.query.year
+      ? parseInt(req.query.year)
+      : new Date().getFullYear();
+    const month = req.query.month
+      ? parseInt(req.query.month)
+      : new Date().getMonth() + 1;
+
     let r = await pool
       .request()
-      .query(
-        "SELECT MONTH(OrderDate) as month, SUM(TotalAmount) as total FROM Orders WHERE ISNULL(Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' GROUP BY MONTH(OrderDate) ORDER BY month",
-      );
+      .input("y", sql.Int, year)
+      .input("m", sql.Int, month).query(`
+        SELECT DAY(OrderDate) as day, SUM(TotalAmount) as total 
+        FROM Orders 
+        WHERE ISNULL(Status, N'Chờ xác nhận') = N'Đã giao hàng thành công' 
+          AND YEAR(OrderDate) = @y 
+          AND MONTH(OrderDate) = @m
+        GROUP BY DAY(OrderDate) 
+        ORDER BY day
+      `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json([]);

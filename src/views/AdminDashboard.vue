@@ -58,9 +58,28 @@
             <div class="col-md-3"><div class="card rounded-4 border-0 shadow-sm bg-white h-100 p-4 dashboard-card"><p class="text-secondary fw-semibold mb-2">Hồ Sơ Khách Hàng</p><h3 class="fw-bold text-dark m-0">{{ db.customers.length }} <i class="bi bi-people ms-1 text-muted opacity-50"></i></h3></div></div>
           </div>
           <div class="card rounded-4 border-0 shadow-sm bg-white p-4 mt-2">
-             <h5 class="fw-bold text-dark mb-4">Biểu Đồ Doanh Thu (Chỉ tính đơn Giao thành công)</h5>
-             <div style="height: 380px; width: 100%; position: relative;"><canvas id="waveChart"></canvas></div>
-          </div>
+   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+      <h5 class="fw-bold text-dark m-0">Biểu Đồ Doanh Thu Chi Tiết (Theo Ngày)</h5>
+      
+      <!-- CỤM CHỌN THÁNG / NĂM -->
+      <div class="d-flex gap-2">
+         <select v-model="chartFilter.month" @change="fetchChartData" class="form-select border-0 shadow-sm bg-light fw-medium cursor-pointer">
+            <option v-for="m in 12" :key="m" :value="m">Tháng {{ m }}</option>
+         </select>
+         <select v-model="chartFilter.year" @change="fetchChartData" class="form-select border-0 shadow-sm bg-light fw-medium cursor-pointer">
+            <option v-for="y in availableYears" :key="y" :value="y">Năm {{ y }}</option>
+         </select>
+      </div>
+   </div>
+   
+   <!-- KHUNG BAO BỌC CHO PHÉP SCROLL NGANG -->
+   <div class="custom-scrollbar-light" style="width: 100%; overflow-x: auto; padding-bottom: 10px;">
+      <!-- min-width: 1200px đảm bảo 31 ngày không bị ép dính cục vào nhau -->
+      <div style="min-width: 1200px; height: 350px; position: relative;">
+         <canvas id="waveChart"></canvas>
+      </div>
+   </div>
+</div>
         </div>
 
         <div v-else-if="activeTab === 'orders'" class="fade-in">
@@ -452,6 +471,30 @@ const router = useRouter()
 const isNavOpen = ref(true)
 const activeTab = ref('orders') 
 const isLoading = ref(true) 
+// Quản lý thời gian xem biểu đồ (Mặc định năm/tháng hiện tại)
+const chartFilter = reactive({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear()
+});
+
+// Tạo danh sách năm linh hoạt (Từ 2024 đến năm hiện tại + 2 năm tương lai)
+const availableYears = computed(() => {
+    let years = [];
+    let currentY = new Date().getFullYear();
+    for(let i = 2024; i <= currentY + 2; i++) {
+        years.push(i);
+    }
+    return years.sort((a,b) => b - a); // Đảo năm mới nhất lên đầu
+});
+
+// Hàm gọi API độc lập cho biểu đồ (Khi đổi tháng chỉ load lại biểu đồ, không load toàn bộ trang)
+const fetchChartData = async () => {
+    try {
+        const res = await fetch(`http://localhost:5000/api/chart-data?year=${chartFilter.year}&month=${chartFilter.month}`);
+        db.chartData = await res.json();
+        renderWaveChart();
+    } catch(e) { console.error("Lỗi fetch biểu đồ", e) }
+};
 
 const menuTitles = {
   'dashboard': 'Báo Cáo Tổng Quan Cửa Hàng',
@@ -641,7 +684,7 @@ const fetchAllData = async () => {
     
     const [o, p, c, d, cus, acc, ch] = await Promise.all([
        api('http://localhost:5000/api/orders'), api('http://localhost:5000/api/products'), api('http://localhost:5000/api/categories'),
-       api('http://localhost:5000/api/discounts'), api('http://localhost:5000/api/customers'), api('http://localhost:5000/api/accounts'), api('http://localhost:5000/api/chart-data')
+       api('http://localhost:5000/api/discounts'), api('http://localhost:5000/api/customers'), api('http://localhost:5000/api/accounts'), api(`http://localhost:5000/api/chart-data?year=${chartFilter.year}&month=${chartFilter.month}`)
     ]);
 
     // BẢO VỆ MẢNG DỮ LIỆU ĐỂ TRÁNH LỖI UNDEFINED CỦA VUE
@@ -674,22 +717,73 @@ const renderWaveChart = () => {
   if(chartInstance) chartInstance.destroy();
   
   let gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.5)'); 
+  gradient.addColorStop(0, 'rgba(33, 37, 41, 0.4)'); 
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-  let labels = db.chartData.length > 0 ? db.chartData.map(d => `Tháng ${d.month}`) : ['Chưa có dữ liệu'];
-  let dataPoints = db.chartData.length > 0 ? db.chartData.map(d => d.total) : [0];
+  // LOGIC ĐỈNH CAO: Tự động tính số ngày trong tháng (bao gồm cả năm nhuận tháng 2)
+  // Truyền tham số ngày là 0, Date() sẽ lùi về ngày cuối cùng của tháng trước đó (tức là ra ngày cuối của tháng mình chọn)
+  const daysInMonth = new Date(chartFilter.year, chartFilter.month, 0).getDate();
+
+  let fullMonthLabels = [];
+  let fullMonthData = [];
+
+  // Vòng lặp tạo mảng có 28, 29, 30 hoặc 31 ngày tùy theo tháng hiện tại
+  for (let i = 1; i <= daysInMonth; i++) {
+    fullMonthLabels.push(`Ngày ${i}`);
+    
+    // Tìm xem API trả về có dữ liệu doanh thu của "ngày" hiện tại không
+    let dayData = db.chartData.find(d => Number(d.day) === i);
+    fullMonthData.push(dayData ? dayData.total : 0);
+  }
 
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels, 
-      datasets: [{ label: 'Doanh thu (VNĐ)', data: dataPoints, borderColor: '#000', borderWidth: 3, tension: 0.4, fill: true, backgroundColor: gradient, pointBackgroundColor: '#fff', pointBorderColor: '#000', pointRadius: 5 }]
+      labels: fullMonthLabels, 
+      datasets: [{ 
+        label: 'Doanh thu', 
+        data: fullMonthData, 
+        borderColor: '#212529',
+        borderWidth: 3, 
+        tension: 0.2, // Đường uốn lượn nhẹ nhàng
+        fill: true, 
+        backgroundColor: gradient, 
+        pointBackgroundColor: '#fff', 
+        pointBorderColor: '#212529', 
+        pointRadius: 4,
+        pointHoverRadius: 7
+      }]
     },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-  })
+    options: { 
+      responsive: true, 
+      maintainAspectRatio: false, 
+      plugins: { 
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(context) { return `${context[0].label}/${chartFilter.month}/${chartFilter.year}`; },
+            label: function(context) {
+              return ' Doanh thu: ' + new Intl.NumberFormat('vi-VN').format(context.parsed.y) + ' đ';
+            }
+          }
+        }
+      }, 
+      scales: { 
+        y: { 
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              if (value >= 1000000) return (value / 1000000) + ' Tr';
+              if (value >= 1000) return (value / 1000) + ' k';
+              return value;
+            }
+          }
+        },
+        x: { grid: { display: false } }
+      } 
+    }
+  });
 }
-
 const openForm = (type, item = null) => {
   editId.value = item ? item.id : null;
   if(type === 'products') formData.value = item ? { ...item } : { name: '', price: 0, category_id: db.categories[0]?.id || 1, image_url: '', active: true, description: '', image_gallery: '' };
