@@ -1,8 +1,11 @@
 import { createRouter, createWebHistory } from "vue-router";
+// Import file router của admin vào đây
+import adminRoutes from "../views/admin/adminRoutes.js";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    // --- CÁC ROUTE DÀNH CHO KHÁCH HÀNG ---
     {
       path: "/",
       name: "home",
@@ -53,16 +56,10 @@ const router = createRouter({
       name: "orders",
       component: () => import("../views/MyOrders.vue"),
     },
-    {
-      path: "/admin",
-      name: "admin",
-      component: () => import("../views/AdminDashboard.vue"),
-    },
-    {
-      path: "/admin/products",
-      name: "ProductManagement",
-      component: () => import("../views/ProductManagement.vue"),
-    },
+
+    // --- GỘP TOÀN BỘ ROUTE ADMIN VÀO ĐÂY ---
+    // Dấu 3 chấm (...) sẽ tự giải nén toàn bộ các cấu hình từ file adminRoutes sang đây
+    ...adminRoutes,
   ],
   scrollBehavior() {
     return { top: 0 };
