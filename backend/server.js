@@ -288,11 +288,47 @@ app.put("/api/products/:id", async (req, res) => {
 app.delete("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
+    // THAY VÌ XÓA HẲN, TA CẬP NHẬT TRẠNG THÁI THÀNH 0 (ẨN)
     await pool
       .request()
       .input("id", sql.Int, req.params.id)
-      .query("DELETE FROM Products WHERE ProductID=@id");
+      .query("UPDATE Products SET IsActive = 0 WHERE ProductID=@id");
     res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put("/api/products/:id/restore", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .query("UPDATE Products SET IsActive = 1 WHERE ProductID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get("/api/revenue-by-product", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool.request().query(`
+      SELECT 
+          p.ProductID as id, 
+          p.ProductName as name, 
+          p.ImageURL as image, 
+          p.IsActive as active,
+          SUM(od.Quantity * od.UnitPrice) as revenue,
+          SUM(od.Quantity) as sold
+      FROM OrderDetails od
+      JOIN Orders o ON od.OrderID = o.OrderID
+      JOIN Products p ON od.ProductID = p.ProductID
+      WHERE ISNULL(o.Status, N'Chờ xác nhận') = N'Đã giao hàng thành công'
+      GROUP BY p.ProductID, p.ProductName, p.ImageURL, p.IsActive
+      ORDER BY revenue DESC
+    `);
+    res.json(r.recordset);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
