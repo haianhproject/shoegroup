@@ -35,6 +35,9 @@ export const db = reactive({
   inventory: [],
   returns: [],
   variantDiscounts: [],
+  colors: [],
+  sizes: [],
+  materials: [],
   reviews: [],
 });
 
@@ -69,6 +72,27 @@ export async function api(path, options) {
   } catch (e) {
     console.warn("API lỗi:", path, e.message);
     return null;
+  }
+}
+
+/* apiWrite: dùng cho thêm/sửa/xoá — KHÔNG nuốt lỗi âm thầm,
+   trả về { ok, status, data } để UI báo đúng thành công / thất bại. */
+export async function apiWrite(path, options) {
+  try {
+    const res = await fetch(API + path, options);
+    let data = null;
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = null;
+      }
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    console.warn("API lỗi:", path, e.message);
+    return { ok: false, status: 0, data: null, error: e.message };
   }
 }
 
@@ -533,6 +557,394 @@ export async function confirmPayment(ord) {
   notify("Đã xác nhận thanh toán đơn #" + ord.id, "success");
 }
 
+/* ================================================================
+ * TRANG XÁC NHẬN THANH TOÁN (Online / Offline + Chi tiết + Hóa đơn)
+ * ================================================================ */
+
+// Kênh đang xem: "Online" (khách mua trên mạng) | "Offline" (khách lẻ tại quầy)
+export const paymentChannel = ref("Online");
+export const paymentSearch = ref("");
+
+// Suy ra kênh bán của 1 đơn hàng
+export function getOrderChannel(o) {
+  const pm = (o.payment_method || "").toLowerCase();
+  if (pm.includes("tiền mặt") || pm === "cash") return "Offline";
+  if (o.handled_by) return "Offline";
+  if ((o.customer_name || "") === "Khách lẻ") return "Offline";
+  return "Online";
+}
+
+// Danh sách đơn theo kênh + từ khóa tìm kiếm
+export const paymentChannelOrders = computed(() => {
+  const q = paymentSearch.value.trim().toLowerCase();
+  return db.orders
+    .filter((o) => getOrderChannel(o) === paymentChannel.value)
+    .filter(
+      (o) =>
+        !q ||
+        String(o.id).toLowerCase().includes(q) ||
+        (o.customer_name || "").toLowerCase().includes(q) ||
+        (o.customer_phone || "").includes(q),
+    )
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+});
+export const paymentChannelCount = computed(
+  () => paymentChannelOrders.value.length,
+);
+export function countOrdersByChannel(ch) {
+  return db.orders.filter((o) => getOrderChannel(o) === ch).length;
+}
+
+// Chuẩn hóa phương thức thanh toán -> nhãn pill (BANK_TRANSFER / COD / CASH / UNKNOWN)
+export function getPaymentMethodPill(pm) {
+  const s = (pm || "").toLowerCase();
+  if (s.includes("cod") || s.includes("nhận hàng"))
+    return { code: "COD", cls: "bg-warning-subtle text-warning-emphasis" };
+  if (
+    s.includes("bank") ||
+    s.includes("banking") ||
+    s.includes("atm") ||
+    s.includes("visa") ||
+    s.includes("master") ||
+    s.includes("chuyển khoản") ||
+    s.includes("vnpay") ||
+    s.includes("momo")
+  )
+    return { code: "BANK_TRANSFER", cls: "bg-info-subtle text-info-emphasis" };
+  if (s.includes("tiền mặt") || s === "cash")
+    return { code: "CASH", cls: "bg-success-subtle text-success-emphasis" };
+  return { code: "UNKNOWN", cls: "bg-secondary-subtle text-secondary" };
+}
+
+// Pill trạng thái thanh toán
+// Suy ra trạng thái thanh toán TỰ ĐỘNG (admin KHÔNG cần bấm xác nhận)
+// - Chuyển khoản / ví điện tử: coi như đã thanh toán ngay khi tạo đơn (khách quét link).
+// - Tiền mặt tại quầy (POS): đã thanh toán ngay.
+// - COD: chỉ tính là đã thanh toán khi đơn "Đã giao hàng thành công" (khách nhận & bấm xác nhận).
+export function effectivePaymentStatus(o) {
+  if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
+  if (o.status === "Đã hủy") return "Chưa thanh toán";
+  const pill = getPaymentMethodPill(o.payment_method);
+  if (pill.code === "BANK_TRANSFER" || pill.code === "CASH")
+    return "Đã thanh toán";
+  if (pill.code === "COD")
+    return o.status === "Đã giao hàng thành công"
+      ? "Đã thanh toán"
+      : "Chờ thu khi giao (COD)";
+  return o.payment_status || "Chưa thanh toán";
+}
+export function getPaymentStatusPill(o) {
+  const st = effectivePaymentStatus(o);
+  if (st === "Đã thanh toán")
+    return { label: "Đã thanh toán", cls: "badge-active" };
+  if (st === "Hoàn tiền")
+    return { label: "Hoàn tiền", cls: "bg-info-subtle text-info-emphasis" };
+  if (st === "Chờ thu khi giao (COD)")
+    return {
+      label: "Chờ thu (COD)",
+      cls: "bg-warning-subtle text-warning-emphasis",
+    };
+  if (st === "Chưa thanh toán")
+    return {
+      label: "Chưa thanh toán",
+      cls: "bg-warning-subtle text-warning-emphasis",
+    };
+  return { label: "Không xác định", cls: "bg-secondary-subtle text-secondary" };
+}
+
+// Pill trạng thái đơn (rút gọn theo hình mẫu)
+export function getOrderStatusPill(o) {
+  const map = {
+    "Đã giao hàng thành công": { label: "Hoàn thành", cls: "badge-active" },
+    "Đang vận chuyển": {
+      label: "Đang giao",
+      cls: "bg-primary-subtle text-primary-emphasis",
+    },
+    "Đã xác nhận": {
+      label: "Đã xác nhận",
+      cls: "bg-info-subtle text-info-emphasis",
+    },
+    "Chờ xác nhận": {
+      label: "Chờ xác nhận",
+      cls: "bg-warning-subtle text-warning-emphasis",
+    },
+    "Đã hủy": { label: "Đã hủy", cls: "bg-danger-subtle text-danger-emphasis" },
+  };
+  return (
+    map[o.status] || {
+      label: o.status || "—",
+      cls: "bg-secondary-subtle text-secondary",
+    }
+  );
+}
+
+// Mã vận đơn & mã lấy hàng shipper
+// Mã vận đơn chuẩn: ưu tiên mã đã lưu trong CSDL (Orders.TrackingNumber);
+// nếu chưa có thì sinh mã dạng SGVN + ngày(yyMMdd) + số đơn(5 số) + ký tự kiểm tra.
+export function getTrackingCode(o) {
+  if (o && o.tracking_code) return o.tracking_code;
+  const id = Number(o && o.id) || 0;
+  const d = o && o.date ? new Date(o.date) : new Date();
+  const ymd =
+    String(d.getFullYear()).slice(2) +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    String(d.getDate()).padStart(2, "0");
+  const seq = String(id).padStart(5, "0");
+  const check =
+    String.fromCharCode(65 + ((id * 7 + 3) % 26)) + String((id * 13 + 7) % 10);
+  return "SGVN" + ymd + seq + check;
+}
+export function getShipperCode(o) {
+  return "SHIP-" + String(o.id);
+}
+
+/* ---- Chi tiết đơn hàng (hiển thị khi bấm "Chi tiết") ---- */
+export const orderDetail = reactive({ open: false, order: null });
+export function openOrderDetail(o) {
+  orderDetail.order = o;
+  orderDetail.open = true;
+}
+export function closeOrderDetail() {
+  orderDetail.open = false;
+  orderDetail.order = null;
+}
+
+// Lịch sử đơn hàng dạng dòng thời gian ngang
+export function buildOrderHistory(o) {
+  if (!o) return [];
+  const hist = o._history || [];
+  const findDate = (statuses) => {
+    const h = hist.find((x) => statuses.includes(x.status));
+    return h ? h.date : null;
+  };
+  const created = o.date;
+  const paid = o.payment_status === "Đã thanh toán";
+  const order = [
+    "Chờ xác nhận",
+    "Đã xác nhận",
+    "Đang vận chuyển",
+    "Đã giao hàng thành công",
+  ];
+  const rank = order.indexOf(o.status);
+  return [
+    { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
+    {
+      label: "Chờ xác nhận",
+      icon: "bi-hourglass-split",
+      done: rank >= 0,
+      date: findDate(["Chờ xác nhận"]) || created,
+    },
+    {
+      label: "Xác nhận thanh toán",
+      icon: "bi-credit-card",
+      done: paid,
+      date: paid ? findDate(["Đã xác nhận"]) : null,
+    },
+    {
+      label: "Chờ giao hàng",
+      icon: "bi-box-seam",
+      done: rank >= 1,
+      date: findDate(["Đã xác nhận"]),
+    },
+    {
+      label: "Đang giao hàng",
+      icon: "bi-truck",
+      done: rank >= 2,
+      date: findDate(["Đang vận chuyển"]),
+    },
+    {
+      label: "Đã giao hàng",
+      icon: "bi-check2-circle",
+      done: rank >= 3,
+      date: findDate(["Đã giao hàng thành công"]),
+    },
+  ];
+}
+
+/* ---- Xuất / In hóa đơn (mở cửa sổ in -> Lưu PDF) ---- */
+function escHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+export const SHOP_INFO = {
+  name: "DVTD BASEBALL CAP SHOP",
+  phone: "0906076388",
+  email: "benmnhat@gmail.com",
+  address: "160 Cao Lỗ, Uy Nỗ, Đông Anh, Hà Nội",
+};
+export function printInvoice(o) {
+  if (!o) {
+    notify("Không có dữ liệu đơn hàng để in", "error");
+    return;
+  }
+  const products = o.products || [];
+  let subtotal = 0;
+  const rows = products
+    .map((p, i) => {
+      const qty = Number(p.quantity) || 0;
+      const price = Number(p.price) || 0;
+      const line = qty * price;
+      subtotal += line;
+      const sub =
+        p.color || p.size
+          ? "<div class='muted'>" +
+            escHtml(p.color) +
+            (p.size ? " / Size " + escHtml(p.size) : "") +
+            "</div>"
+          : "";
+      return (
+        "<tr>" +
+        "<td class='c'>" +
+        (i + 1) +
+        "</td>" +
+        "<td>" +
+        escHtml(p.name) +
+        sub +
+        "</td>" +
+        "<td class='c'>" +
+        qty +
+        "</td>" +
+        "<td class='r'>" +
+        formatPrice(price) +
+        "</td>" +
+        "<td class='r'>" +
+        formatPrice(line) +
+        "</td>" +
+        "<td class='c'>" +
+        escHtml(o.status || "") +
+        "</td>" +
+        "</tr>"
+      );
+    })
+    .join("");
+  const grand = Number(o.total) || 0;
+  const shipping = Number(o.shipping_fee) || 0;
+  const discount = Math.max(0, subtotal + shipping - grand);
+  const code = getTrackingCode(o);
+  const qr =
+    "https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=" +
+    encodeURIComponent(code);
+  let bars = "";
+  for (let i = 0; i < code.length * 2; i++) {
+    const w = (code.charCodeAt(i % code.length) % 3) + 1;
+    const black = i % 2 === 0;
+    bars +=
+      "<span style='display:inline-block;width:" +
+      w +
+      "px;height:44px;background:" +
+      (black ? "#111" : "#fff") +
+      "'></span>";
+  }
+  const style =
+    "<style>" +
+    "*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;} " +
+    "body{margin:0;padding:28px;color:#111;} " +
+    ".inv{max-width:720px;margin:0 auto;} " +
+    ".top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;} " +
+    ".brand{font-size:20px;font-weight:800;letter-spacing:1px;} " +
+    ".muted{color:#888;font-size:12px;} " +
+    "h1{font-size:22px;text-align:center;margin:18px 0 4px;letter-spacing:1px;} " +
+    ".meta{display:flex;justify-content:space-between;font-size:13px;margin:14px 0;} " +
+    ".meta div{line-height:1.7;} " +
+    "table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;} " +
+    "th,td{border:1px solid #ddd;padding:8px;} " +
+    "th{background:#111;color:#fff;font-size:12px;text-transform:uppercase;} " +
+    ".c{text-align:center;} .r{text-align:right;} " +
+    ".sum{margin-top:12px;width:280px;margin-left:auto;font-size:13px;} " +
+    ".sum td{border:none;padding:4px 8px;} " +
+    ".sum .grand{font-weight:800;font-size:16px;border-top:2px solid #111;} " +
+    ".foot{display:flex;justify-content:space-between;align-items:center;margin-top:24px;} " +
+    ".thanks{text-align:center;margin-top:20px;font-style:italic;color:#555;} " +
+    "@media print { body { padding:0; } .noprint { display:none; } } " +
+    ".noprint{text-align:center;margin-top:18px;} " +
+    ".btn{background:#111;color:#fff;border:none;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;} " +
+    "</style>";
+  const html =
+    "<!doctype html><html lang='vi'><head><meta charset='utf-8'><title>Hóa đơn " +
+    escHtml(code) +
+    "</title>" +
+    style +
+    "</head><body><div class='inv'>" +
+    "<div class='top'><div><div class='brand'>" +
+    escHtml(SHOP_INFO.name) +
+    "</div><div class='muted'>SĐT: " +
+    escHtml(SHOP_INFO.phone) +
+    "</div><div class='muted'>Email: " +
+    escHtml(SHOP_INFO.email) +
+    "</div><div class='muted'>" +
+    escHtml(SHOP_INFO.address) +
+    "</div></div><div style='text-align:right'><img src='" +
+    qr +
+    "' width='96' height='96' alt='QR'></div></div>" +
+    "<h1>HÓA ĐƠN BÁN HÀNG</h1>" +
+    "<div class='muted' style='text-align:center'>Mã hóa đơn: " +
+    escHtml(code) +
+    "</div>" +
+    "<div class='meta'><div><b>Khách hàng:</b> " +
+    escHtml(o.customer_name || "Khách lẻ") +
+    "<br><b>SĐT:</b> " +
+    escHtml(o.customer_phone || "—") +
+    "<br><b>Địa chỉ nhận hàng:</b> " +
+    escHtml(o.customer_address || "—") +
+    "</div><div style='text-align:right'><b>Ngày:</b> " +
+    escHtml(formatDate(o.date)) +
+    "<br><b>Nhân viên:</b> " +
+    escHtml(o.handled_by || "Admin") +
+    "<br><b>Kênh:</b> " +
+    escHtml(getOrderChannel(o)) +
+    "</div></div>" +
+    "<table><thead><tr><th class='c'>STT</th><th>Tên sản phẩm</th><th class='c'>SL</th><th class='r'>Đơn giá</th><th class='r'>Thành tiền</th><th class='c'>Trạng thái</th></tr></thead><tbody>" +
+    (rows ||
+      "<tr><td colspan='6' class='c muted'>Không có sản phẩm</td></tr>") +
+    "</tbody></table>" +
+    "<table class='sum'><tbody>" +
+    "<tr><td>Tổng tiền hàng</td><td class='r'>" +
+    formatPrice(subtotal) +
+    "</td></tr>" +
+    "<tr><td>Giảm giá</td><td class='r'>- " +
+    formatPrice(discount) +
+    "</td></tr>" +
+    "<tr><td>Phí giao hàng</td><td class='r'>" +
+    formatPrice(shipping) +
+    "</td></tr>" +
+    "<tr class='grand'><td>Tổng cần thanh toán</td><td class='r'>" +
+    formatPrice(grand) +
+    "</td></tr>" +
+    "</tbody></table>" +
+    "<div class='foot'><div><div style='letter-spacing:1px'>" +
+    bars +
+    "</div><div class='muted' style='text-align:center'>" +
+    escHtml(code) +
+    "</div></div><div style='text-align:right'><img src='" +
+    qr +
+    "' width='90' height='90' alt='QR'></div></div>" +
+    "<div class='thanks'>Cảm ơn quý khách! Hẹn gặp lại tại " +
+    escHtml(SHOP_INFO.name) +
+    ".</div>" +
+    "<div class='noprint'><button class='btn' onclick='window.print()'>In / Lưu PDF</button></div>" +
+    "</div></body></html>";
+  const win = window.open("", "_blank", "width=860,height=760");
+  if (!win) {
+    notify(
+      "Trình duyệt đang chặn cửa sổ in. Vui lòng cho phép popup.",
+      "error",
+    );
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => {
+    try {
+      win.print();
+    } catch (e) {}
+  }, 500);
+  notify("Đã mở hóa đơn " + code, "success");
+}
+
 /* ---------------- RETURNS ---------------- */
 export const returnFilter = ref("Tất cả");
 export const filteredReturns = computed(() =>
@@ -544,7 +956,7 @@ export function getReturnBadgeClass(status) {
   return (
     {
       "Chờ xử lý": "bg-warning-subtle text-warning-emphasis",
-      "Đã duyệt": "bg-info-subtle text-info-emphasis",
+      "Đã duy�����t": "bg-info-subtle text-info-emphasis",
       "Từ chối": "bg-danger-subtle text-danger-emphasis",
       "Hoàn tất": "badge-active",
     }[status] || "bg-secondary-subtle text-secondary"
@@ -560,58 +972,426 @@ export async function processReturn(r, status) {
   notify("Yêu cầu trả hàng #" + r.id + ": " + status, "success");
 }
 
-/* ---------------- POS ---------------- */
-export const posSearch = ref("");
-export const posCart = ref([]);
-export const posCustomer = ref("");
-export const posPayment = ref("Tiền mặt");
-export const posProducts = computed(() => {
-  const q = posSearch.value.trim().toLowerCase();
-  return db.products.filter(
-    (p) =>
-      p.active !== false && (!q || (p.name || "").toLowerCase().includes(q)),
+/* ================================================================
+ * TRẢ HÀNG THEO HÓA ĐƠN (tra cứu đơn -> chọn SP trả -> hoàn tiền)
+ * ================================================================ */
+export const returnSearchCode = ref("");
+export const returnFoundOrder = ref(null);
+export const returnItems = ref([]);
+export const returnNote = ref("");
+export function searchReturnOrder() {
+  const raw = returnSearchCode.value.trim();
+  if (!raw) {
+    notify("Vui lòng nhập mã hóa đơn", "error");
+    return;
+  }
+  const code = raw.replace(/^#/, "").replace(/^HD/i, "");
+  const up = raw.toUpperCase();
+  const ord = db.orders.find(
+    (o) =>
+      String(o.id) === code ||
+      String(o.id) === raw ||
+      "HD" + o.id === up ||
+      getTrackingCode(o).toUpperCase() === up,
   );
-});
-export function addToCart(p) {
-  const existing = posCart.value.find((c) => c.id === p.id);
-  if (existing) existing.quantity++;
-  else
-    posCart.value.push({
-      id: p.id,
-      name: p.name,
-      price: p.sale_price || p.price,
-      quantity: 1,
-    });
+  if (!ord) {
+    returnFoundOrder.value = null;
+    returnItems.value = [];
+    notify("Không tìm thấy đơn hàng phù hợp", "error");
+    return;
+  }
+  // CHỈ cho phép trả hàng khi đơn ĐÃ giao thành công (khách đã nhận được hàng).
+  if (ord.status !== "Đã giao hàng thành công") {
+    returnFoundOrder.value = null;
+    returnItems.value = [];
+    notify(
+      "Đơn " +
+        getTrackingCode(ord) +
+        " chưa giao thành công nên chưa thể tạo yêu cầu trả hàng",
+      "error",
+    );
+    return;
+  }
+  returnFoundOrder.value = ord;
+  returnItems.value = (ord.products || []).map((p, idx) => ({
+    idx,
+    name: p.name,
+    color: p.color,
+    size: p.size,
+    image: p.image,
+    price: Number(p.price) || 0,
+    max: Number(p.quantity) || 0,
+    return_qty: 0,
+  }));
+  returnNote.value = "";
+  notify("Tìm thấy đơn hàng có thể trả", "success");
 }
-export const posTotal = computed(() =>
-  posCart.value.reduce(
-    (s, c) => s + (Number(c.price) || 0) * (Number(c.quantity) || 0),
+export const returnRefundTotal = computed(() =>
+  returnItems.value.reduce(
+    (s, it) => s + it.price * (Number(it.return_qty) || 0),
     0,
   ),
 );
-export async function checkoutPos() {
-  if (posCart.value.length === 0) return;
+export const returnSelectedCount = computed(() =>
+  returnItems.value.reduce((s, it) => s + (Number(it.return_qty) || 0), 0),
+);
+export function resetReturnForm() {
+  returnSearchCode.value = "";
+  returnFoundOrder.value = null;
+  returnItems.value = [];
+  returnNote.value = "";
+}
+export async function submitReturn() {
+  const ord = returnFoundOrder.value;
+  if (!ord) return;
+  const items = returnItems.value.filter((it) => Number(it.return_qty) > 0);
+  if (items.length === 0) {
+    notify("Chọn ít nhất 1 sản phẩm để trả", "error");
+    return;
+  }
   const payload = {
-    customer_name: posCustomer.value || "Khách lẻ",
-    payment_method: posPayment.value,
-    payment_status: "Đã thanh toán",
-    status: "Đã giao hàng thành công",
-    total: posTotal.value,
-    products: posCart.value.map((c) => ({
-      name: c.name,
-      quantity: c.quantity,
-      price: c.price,
+    order_id: ord.id,
+    tracking_number: getTrackingCode(ord),
+    return_type: "Trả hàng",
+    reason: returnNote.value || "Khách yêu cầu trả hàng tại quầy",
+    refund_amount: returnRefundTotal.value,
+    status: "Chờ xử lý",
+    items: items.map((it) => ({
+      name: it.name,
+      color: it.color,
+      size: it.size,
+      quantity: it.return_qty,
+      price: it.price,
     })),
   };
-  await api("/orders", {
+  await api("/returns", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  notify("Thanh toán thành công: " + formatPrice(posTotal.value), "success");
-  posCart.value = [];
-  posCustomer.value = "";
+  notify("Đã tạo yêu cầu trả hàng cho đơn #" + ord.id, "success");
+  resetReturnForm();
   fetchAllData();
+}
+
+/* ---------------- POS ---------------- */
+export const POS_MAX_ORDERS = 100;
+let posSeq = 186;
+function newPosOrder() {
+  posSeq += 1;
+  return reactive({
+    code: posSeq,
+    customer_type: "Khách lẻ",
+    customer_name: "",
+    customer_phone: "",
+    customer_note: "",
+    customer_id: null,
+    cart: [],
+    coupon_code: "",
+    payment_method: "Tiền mặt",
+    cash_given: 0,
+  });
+}
+export const posOrders = reactive([newPosOrder()]);
+export const posActiveIndex = ref(0);
+export const activePosOrder = computed(
+  () => posOrders[posActiveIndex.value] || posOrders[0],
+);
+export function createPosOrder() {
+  if (posOrders.length >= POS_MAX_ORDERS) {
+    notify("Chỉ mở tối đa " + POS_MAX_ORDERS + " đơn chờ", "warning");
+    return;
+  }
+  posOrders.push(newPosOrder());
+  posActiveIndex.value = posOrders.length - 1;
+}
+export function selectPosOrder(i) {
+  posActiveIndex.value = i;
+}
+export function removePosOrder(i) {
+  posOrders.splice(i, 1);
+  if (posOrders.length === 0) posOrders.push(newPosOrder());
+  if (posActiveIndex.value >= posOrders.length)
+    posActiveIndex.value = posOrders.length - 1;
+}
+
+export const posSearch = ref("");
+export const posVariants = computed(() => {
+  const q = posSearch.value.trim().toLowerCase();
+  const list = [];
+  const covered = new Set();
+  // 1) Ưu tiên biến thể trong kho (màu/size/SKU/tồn kho)
+  db.inventory.forEach((v) => {
+    covered.add(String(v.product_id));
+    const p = db.products.find((x) => String(x.id) === String(v.product_id));
+    if (p && p.active === false) return;
+    const base = p ? Number(p.sale_price || p.price) || 0 : 0;
+    list.push({
+      id: v.id,
+      variant_id: v.id,
+      product_id: v.product_id,
+      product_name: v.product_name || (p ? p.name : "Sản phẩm"),
+      color: v.color,
+      color_hex: v.color_hex,
+      size: v.size,
+      sku: v.sku,
+      stock: Number(v.stock) || 0,
+      image: p ? p.image_url : "",
+      price: base + (Number(v.price_adjustment) || 0),
+    });
+  });
+  // 2) Sản phẩm chưa có biến thể trong kho -> hiển thị 1 thẻ sản phẩm
+  db.products.forEach((p) => {
+    if (p.active === false) return;
+    if (covered.has(String(p.id))) return;
+    list.push({
+      id: "p-" + p.id,
+      variant_id: null,
+      product_id: p.id,
+      product_name: p.name,
+      color: "",
+      color_hex: "",
+      size: "",
+      sku: p.sku || "",
+      stock: 999,
+      image: p.image_url || "",
+      price: Number(p.sale_price || p.price) || 0,
+    });
+  });
+  return list.filter(
+    (v) =>
+      !q ||
+      (v.product_name || "").toLowerCase().includes(q) ||
+      (v.color || "").toLowerCase().includes(q) ||
+      (v.size || "").toLowerCase().includes(q) ||
+      (v.sku || "").toLowerCase().includes(q),
+  );
+});
+export function addToCart(v, qty) {
+  const order = activePosOrder.value;
+  const n = Math.max(1, Number(qty) || 1);
+  const key = String(v.id);
+  const existing = order.cart.find((c) => String(c.key) === key);
+  if (existing) existing.quantity += n;
+  else
+    order.cart.push({
+      key: v.id,
+      variant_id: v.variant_id,
+      product_id: v.product_id,
+      name: v.product_name,
+      color: v.color,
+      color_hex: v.color_hex,
+      size: v.size,
+      sku: v.sku,
+      price: v.price,
+      quantity: n,
+    });
+}
+export function removeCartItem(i) {
+  activePosOrder.value.cart.splice(i, 1);
+}
+export const posSubtotal = computed(() =>
+  activePosOrder.value.cart.reduce(
+    (s, c) => s + (Number(c.price) || 0) * (Number(c.quantity) || 0),
+    0,
+  ),
+);
+export const posCouponList = computed(() =>
+  db.discounts.filter((d) => d.active && !isExpired(d.expiry)),
+);
+export const posDiscountAmount = computed(() => {
+  const code = activePosOrder.value.coupon_code;
+  if (!code) return 0;
+  const d = db.discounts.find((x) => String(x.code) === String(code));
+  if (!d) return 0;
+  const sub = posSubtotal.value;
+  if (Number(d.min_order) > 0 && sub < Number(d.min_order)) return 0;
+  let amt =
+    d.discount_type === "Cố định"
+      ? Number(d.value) || 0
+      : (sub * (Number(d.value) || 0)) / 100;
+  if (Number(d.max_discount) > 0 && amt > Number(d.max_discount))
+    amt = Number(d.max_discount);
+  if (amt > sub) amt = sub;
+  return Math.round(amt);
+});
+export const posGrandTotal = computed(() =>
+  Math.max(0, posSubtotal.value - posDiscountAmount.value),
+);
+export const posChange = computed(
+  () => (Number(activePosOrder.value.cash_given) || 0) - posGrandTotal.value,
+);
+export function applyPosCoupon() {
+  const code = activePosOrder.value.coupon_code;
+  if (!code) {
+    notify("Chọn một ưu đãi", "error");
+    return;
+  }
+  const d = db.discounts.find((x) => String(x.code) === String(code));
+  if (!d) {
+    notify("Không tìm thấy mã", "error");
+    return;
+  }
+  if (Number(d.min_order) > 0 && posSubtotal.value < Number(d.min_order)) {
+    notify(
+      "Đơn tối thiểu " + formatPrice(d.min_order) + " mới dùng được mã này",
+      "warning",
+    );
+    return;
+  }
+  notify("Đã áp dụng ưu đãi " + d.code, "success");
+}
+export function clearPosCoupon() {
+  activePosOrder.value.coupon_code = "";
+  notify("Đã bỏ ưu đãi", "info");
+}
+export const posCustomerSearch = ref("");
+export const posCustomerResults = computed(() => {
+  const q = posCustomerSearch.value.trim().toLowerCase();
+  return db.customers
+    .filter(
+      (c) =>
+        !q ||
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.phone || "").includes(q),
+    )
+    .slice(0, 30);
+});
+export function pickPosCustomer(c) {
+  const o = activePosOrder.value;
+  o.customer_id = c.id;
+  o.customer_name = c.name;
+  o.customer_phone = c.phone || "";
+}
+/* Lưu khách vãng lai (không có tài khoản) vào danh sách khách hàng.
+   Dùng chung cho nút "Lưu thông tin" và khi thanh toán tại quầy. */
+// Khách vãng lai KHÔNG tạo tài khoản đăng nhập.
+// Thông tin (tên/SĐT) được lưu trực tiếp trên đơn hàng; trang Khách hàng sẽ tự
+// tổng hợp khách vãng lai từ đơn hàng ở lần tải dữ liệu kế tiếp.
+export async function ensureWalkInCustomer(name, phone) {
+  const nm = (name || "").trim();
+  const ph = (phone || "").trim();
+  if (!nm && !ph) return { ok: false, id: null };
+  const existing = db.customers.find(
+    (c) => ph && String(c.phone) === String(ph),
+  );
+  if (existing) {
+    if (nm) existing.name = nm;
+    return { ok: true, id: existing.id };
+  }
+  db.customers.unshift({
+    id: "walkin:" + (ph || Date.now()),
+    name: nm || "Khách lẻ",
+    phone: ph,
+    email: "",
+    address: "",
+    spent: 0,
+    order_count: 0,
+    created_at: new Date().toISOString(),
+    source: "Vãng lai",
+  });
+  return { ok: true, id: null };
+}
+export async function savePosCustomer() {
+  const o = activePosOrder.value;
+  if (o.customer_id) {
+    notify("Khách đã có tài khoản trong hệ thống", "warning");
+    return;
+  }
+  const nm = (o.customer_name || "").trim();
+  const ph = (o.customer_phone || "").trim();
+  if (!nm && !ph) {
+    notify("Nhập tên hoặc SĐT khách để lưu", "error");
+    return;
+  }
+  const res = await ensureWalkInCustomer(nm, ph);
+  if (res.id) o.customer_id = res.id;
+  if (!res.ok) {
+    notify(
+      "Lưu khách thất bại (máy chủ không phản hồi). Kiểm tra API /customers.",
+      "error",
+    );
+    return;
+  }
+  notify("Đã lưu khách vào danh sách khách hàng", "success");
+}
+export async function checkoutPos() {
+  const o = activePosOrder.value;
+  if (o.cart.length === 0) {
+    notify("Chưa có sản phẩm trong đơn", "error");
+    return;
+  }
+  const payload = {
+    customer_name: o.customer_name || "Khách lẻ",
+    customer_phone: o.customer_phone || "",
+    payment_method: o.payment_method,
+    payment_status: "Đã thanh toán",
+    status: "Đã giao hàng thành công",
+    handled_by: "Quầy",
+    order_note: o.customer_note || "",
+    coupon_code: o.coupon_code || null,
+    discount_amount: posDiscountAmount.value,
+    total: posGrandTotal.value,
+    products: o.cart.map((c) => ({
+      product_variant_id: c.variant_id,
+      product_id: c.product_id,
+      name: c.name,
+      color: c.color,
+      size: c.size,
+      quantity: c.quantity,
+      price: c.price,
+    })),
+  };
+  let created = null;
+  try {
+    created = await api("/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    created = null;
+  }
+  // Lưu khách vãng lai (không có tài khoản) vào danh sách khách hàng
+  if (!o.customer_id && (o.customer_name || o.customer_phone)) {
+    try {
+      await ensureWalkInCustomer(o.customer_name, o.customer_phone);
+    } catch (e) {}
+  }
+  // Hiển thị đơn NGAY trên trang Xác nhận thanh toán (tab Offline) kể cả khi
+  // API danh sách chưa kịp cập nhật -> tránh tình trạng "tạo đơn xong không thấy đâu".
+  const newId =
+    (created && (created.OrderID || created.id || created.order_id)) ||
+    "TMP-" + Date.now();
+  const nowIso = new Date().toISOString();
+  db.orders.unshift({
+    id: newId,
+    date: nowIso,
+    total: posGrandTotal.value,
+    status: "Đã giao hàng thành công",
+    customer_name: payload.customer_name,
+    customer_phone: payload.customer_phone,
+    customer_address: "",
+    cancel_reason: "",
+    payment_status: "Đã thanh toán",
+    payment_method: payload.payment_method,
+    handled_by: "Quầy",
+    tracking_code: "",
+    products: payload.products.map((p) => ({
+      name: p.name,
+      color: p.color,
+      size: p.size,
+      quantity: p.quantity,
+      price: p.price,
+      image: "",
+    })),
+    isExpanded: false,
+    _history: [
+      { status: "Đã giao hàng thành công", date: nowIso, note: "Bán tại quầy" },
+    ],
+  });
+  notify("Tạo đơn thành công: " + formatPrice(posGrandTotal.value), "success");
+  removePosOrder(posActiveIndex.value);
 }
 
 /* ---------------- PRODUCTS ---------------- */
@@ -635,7 +1415,7 @@ function emptyProduct() {
     category_id: "",
     brand_id: "",
     collection_id: "",
-    upper_material: "",
+    material_id: "",
     price: 0,
     sale_price: 0,
     image_url: "",
@@ -647,13 +1427,33 @@ function emptyProduct() {
   };
 }
 export const productForm = reactive(emptyProduct());
-export const colorDraft = reactive({ name: "", hex: "#000000" });
+export const colorDraft = ref("");
 export const sizeDraft = ref("");
+export const colorImageDraft = ref("");
+// Size giay chuan cho giay the thao - CHI dung so, khong dung S/M/L/XL
+export const SHOE_SIZES = [
+  "36",
+  "37",
+  "38",
+  "39",
+  "40",
+  "41",
+  "42",
+  "43",
+  "44",
+  "45",
+  "46",
+];
 export function openProductForm(p) {
   Object.assign(productForm, emptyProduct());
   if (p) {
     Object.assign(productForm, JSON.parse(JSON.stringify(p)));
-    productForm.colors = productForm.colors || [];
+    productForm.colors = (productForm.colors || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      hex: c.hex || colorHex(c.name),
+      image: c.image || "",
+    }));
     productForm.sizes = productForm.sizes || [];
     productForm.variants = productForm.variants || [];
   }
@@ -663,28 +1463,97 @@ export function closeProductForm() {
   productFormOpen.value = false;
 }
 export function addColor() {
-  if (!colorDraft.name) return;
-  productForm.colors.push({ name: colorDraft.name, hex: colorDraft.hex });
-  colorDraft.name = "";
-  colorDraft.hex = "#000000";
+  const c = db.colors.find((x) => String(x.id) === String(colorDraft.value));
+  if (!c) {
+    notify("Vui lòng chọn màu", "error");
+    return;
+  }
+  if (productForm.colors.some((x) => x.name === c.name)) {
+    notify("Màu này đã được thêm", "error");
+    return;
+  }
+  productForm.colors.push({
+    id: c.id,
+    name: c.name,
+    hex: c.hex,
+    image: colorImageDraft.value || "",
+  });
+  colorDraft.value = "";
+  colorImageDraft.value = "";
+}
+
+// Doc file anh tu thiet bi -> data URL (base64) de luu vao CSDL
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve("");
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function pickImageFile(e) {
+  const file = e && e.target && e.target.files && e.target.files[0];
+  if (!file) return null;
+  if (!/^image\//.test(file.type)) {
+    notify("Vui lòng chọn tệp ảnh hợp lệ", "error");
+    return null;
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    notify("Ảnh quá lớn (tối đa 3MB)", "error");
+    return null;
+  }
+  return file;
+}
+// Chon anh dai dien san pham tu may
+export async function onProductImageFile(e) {
+  const file = pickImageFile(e);
+  if (!file) return;
+  productForm.image_url = await readImageFile(file);
+  notify("Đã tải ảnh sản phẩm từ thiết bị", "success");
+}
+// Chon anh cho tung mau tu may (doi mau -> doi anh o cua hang)
+export async function onColorImageFile(e, index) {
+  const file = pickImageFile(e);
+  if (!file) return;
+  productForm.colors[index].image = await readImageFile(file);
+  notify("Đã tải ảnh cho màu " + productForm.colors[index].name, "success");
+}
+// Chon anh cho MAU MOI dang them o khung them mau
+export async function onColorDraftImageFile(e) {
+  const file = pickImageFile(e);
+  if (!file) return;
+  colorImageDraft.value = await readImageFile(file);
+  notify("Đã tải ảnh cho màu mới", "success");
+}
+// Chon anh tu may cho form dung chung (vd: logo thuong hieu)
+export async function onFormImageFile(e, key) {
+  const file = pickImageFile(e);
+  if (!file) return;
+  formModal.data[key] = await readImageFile(file);
+  notify("Đã tải ảnh từ thiết bị", "success");
 }
 export function removeColor(i) {
   productForm.colors.splice(i, 1);
 }
 export function addSize() {
-  const raw = sizeDraft.value.trim();
-  if (!raw) return;
-  raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .forEach((s) => {
-      if (!productForm.sizes.includes(s)) productForm.sizes.push(s);
-    });
+  const s = db.sizes.find((x) => String(x.id) === String(sizeDraft.value));
+  if (!s) return;
+  if (!productForm.sizes.includes(s.name)) productForm.sizes.push(s.name);
   sizeDraft.value = "";
 }
 export function removeSize(i) {
   productForm.sizes.splice(i, 1);
+}
+// Chon/bo mot size - cho phep chon NHIEU size cung luc
+export function toggleSize(size) {
+  const s = String(size);
+  const idx = productForm.sizes.findIndex((x) => String(x) === s);
+  if (idx >= 0) productForm.sizes.splice(idx, 1);
+  else productForm.sizes.push(s);
+}
+export function hasSize(size) {
+  return productForm.sizes.some((x) => String(x) === String(size));
 }
 export function generateVariants() {
   const list = [];
@@ -715,6 +1584,17 @@ export function generateVariants() {
   );
   productForm.variants = list;
 }
+export function addVariant() {
+  productForm.variants.push({ color: "", size: "", sku: "", stock: 0 });
+}
+export function colorHex(name) {
+  const c = db.colors.find((x) => x.name === name);
+  return c ? c.hex : "#cccccc";
+}
+export function getMaterialName(id) {
+  const m = db.materials.find((x) => String(x.id) === String(id));
+  return m ? m.name : "—";
+}
 export const collectionsOfBrand = computed(() =>
   productForm.brand_id
     ? db.collections.filter(
@@ -727,20 +1607,43 @@ export async function saveProduct() {
     notify("Vui lòng nhập tên sản phẩm", "error");
     return;
   }
+  if (Number(productForm.price) < 0) {
+    notify("Giá bán không được nhỏ hơn 0", "error");
+    return;
+  }
+  if (
+    Number(productForm.sale_price) > 0 &&
+    Number(productForm.sale_price) > Number(productForm.price)
+  ) {
+    notify("Giá khuyến mãi phải nhỏ hơn hoặc bằng giá bán", "error");
+    return;
+  }
   const isEdit = !!productForm.id;
   const payload = JSON.parse(JSON.stringify(productForm));
-  if (isEdit)
-    await api("/products/" + productForm.id, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  else
-    await api("/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  payload.variants = (payload.variants || []).map((v) => ({
+    ...v,
+    hex: colorHex(v.color),
+  }));
+  const res = isEdit
+    ? await apiWrite("/products/" + productForm.id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+    : await apiWrite("/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+  if (!res.ok) {
+    notify(
+      "Lưu sản phẩm thất bại (mã " +
+        res.status +
+        "). Kiểm tra kết nối máy chủ / cơ sở dữ liệu.",
+      "error",
+    );
+    return;
+  }
   notify(isEdit ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới", "success");
   productFormOpen.value = false;
   fetchAllData();
@@ -760,17 +1663,70 @@ export const filteredInventory = computed(() => {
   );
 });
 export async function updateStock(v) {
-  await api("/inventory/" + v.id, {
+  // Giới hạn hợp lý: tồn kho là số nguyên, không âm, tối đa 100000
+  let stock = Math.floor(Number(v.stock));
+  if (isNaN(stock) || stock < 0) stock = 0;
+  if (stock > 100000) stock = 100000;
+  v.stock = stock;
+  const res = await apiWrite("/inventory/" + v.id, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stock: v.stock }),
+    body: JSON.stringify({ stock }),
   });
-  notify("Đã cập nhật tồn kho: " + v.sku, "success");
+  if (!res.ok) {
+    notify(
+      "Cập nhật tồn kho thất bại (mã " + res.status + ") cho " + v.sku,
+      "error",
+    );
+    return;
+  }
+  notify("Đã cập nhật tồn kho: " + v.sku + " = " + stock, "success");
+}
+
+// ---- Modal chi tiết sản phẩm (hiển thị đầy đủ thuộc tính) ----
+export const productDetailModal = reactive({ open: false, product: null });
+export function openProductDetail(p) {
+  productDetailModal.product = p;
+  productDetailModal.open = true;
+}
+export function closeProductDetail() {
+  productDetailModal.open = false;
+  productDetailModal.product = null;
+}
+export function productVariants(productId) {
+  return db.inventory.filter((v) => String(v.product_id) === String(productId));
+}
+export function productVariantCount(productId) {
+  return db.inventory.filter((v) => String(v.product_id) === String(productId))
+    .length;
+}
+export function productStockTotal(productId) {
+  return productVariants(productId).reduce(
+    (s, v) => s + (Number(v.stock) || 0),
+    0,
+  );
+}
+export function getCollectionName(id) {
+  const c = db.collections.find((x) => String(x.id) === String(id));
+  return c ? c.name : "—";
 }
 
 /* ---------------- CATALOG HELPERS ---------------- */
 export const categorySearch = ref("");
 export const filteredCategories = computed(() => db.categories);
+// Chi cac danh muc dang hoat dong (an danh muc da tat nhu mu/non)
+export const activeCategories = computed(() =>
+  db.categories.filter((c) => c.active),
+);
+// Nhom danh muc theo bo mon the thao (dung cho trang Danh Muc Bo Mon)
+export const categoriesBySport = computed(() => {
+  const groups = {};
+  db.categories.forEach((c) => {
+    const key = c.sport || "Chưa phân loại";
+    (groups[key] = groups[key] || []).push(c);
+  });
+  return Object.keys(groups).map((sport) => ({ sport, items: groups[sport] }));
+});
 export function getProductCount(catId) {
   return db.products.filter((p) => String(p.category_id) === String(catId))
     .length;
@@ -784,6 +1740,12 @@ export function getBrandName(id) {
   return b ? b.name : "—";
 }
 export const filteredCollections = computed(() => db.collections);
+export const filteredColors = computed(() => db.colors);
+export const filteredSizes = computed(() => db.sizes);
+export const filteredMaterials = computed(() => db.materials);
+export function getMaterialProductCount(id) {
+  return db.products.filter((p) => String(p.material_id) === String(id)).length;
+}
 export const filteredDiscounts = computed(() => db.discounts);
 export function isExpired(date) {
   return date ? new Date(date) < new Date() : false;
@@ -793,40 +1755,286 @@ export function getProductName(id) {
   return p ? p.name : "—";
 }
 
-/* ---------------- VARIANT DISCOUNTS ---------------- */
-export const variantDiscountDraft = reactive({
-  product_id: "",
-  color: "",
-  percent: 0,
+/* ================================================================
+ * MÃ KHUYẾN MÃI (nâng cấp: loại giảm, giá trị, đơn tối thiểu,
+ * giảm tối đa, số lượng, thời gian chạy, tìm kiếm + lọc trạng thái)
+ * ================================================================ */
+export const discountTypes = ["Phần trăm", "Cố định"];
+export const discountStatuses = ["Tất cả", "Đang chạy", "Hết hạn", "Tạm dừng"];
+export const discountSearch = ref("");
+export const discountStatusFilter = ref("Tất cả");
+
+export function getDiscountStatus(d) {
+  if (!d.active)
+    return { label: "Tạm dừng", cls: "bg-secondary-subtle text-secondary" };
+  if (isExpired(d.expiry))
+    return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
+  return { label: "Đang chạy", cls: "badge-active" };
+}
+export function formatDiscountValue(d) {
+  return d.discount_type === "Cố định"
+    ? formatPrice(d.value)
+    : (Number(d.value) || 0) + "%";
+}
+export const filteredDiscountsList = computed(() => {
+  const q = discountSearch.value.trim().toLowerCase();
+  return db.discounts.filter((d) => {
+    const okQ =
+      !q ||
+      (d.code || "").toLowerCase().includes(q) ||
+      (d.name || "").toLowerCase().includes(q);
+    const okS =
+      discountStatusFilter.value === "Tất cả" ||
+      getDiscountStatus(d).label === discountStatusFilter.value;
+    return okQ && okS;
+  });
 });
-export const colorsOfProduct = computed(() => {
-  if (!variantDiscountDraft.product_id) return [];
-  return [
-    ...new Set(
-      db.inventory
-        .filter(
-          (v) =>
-            String(v.product_id) === String(variantDiscountDraft.product_id),
-        )
-        .map((v) => v.color)
-        .filter(Boolean),
-    ),
-  ];
-});
-export async function saveVariantDiscount() {
-  if (!variantDiscountDraft.product_id || !variantDiscountDraft.percent) {
-    notify("Chọn sản phẩm và nhập % giảm", "error");
+function emptyDiscount() {
+  return {
+    id: null,
+    code: "",
+    name: "",
+    discount_type: "Phần trăm",
+    value: 0,
+    min_order: 0,
+    max_discount: 0,
+    quantity: 0,
+    start_date: "",
+    expiry: "",
+    description: "",
+    active: true,
+  };
+}
+export const discountModal = reactive({ open: false, data: emptyDiscount() });
+export function openDiscountForm(item) {
+  Object.assign(discountModal.data, emptyDiscount());
+  if (item) Object.assign(discountModal.data, JSON.parse(JSON.stringify(item)));
+  discountModal.open = true;
+}
+export function closeDiscountForm() {
+  discountModal.open = false;
+}
+export async function saveDiscount() {
+  const d = discountModal.data;
+  if (!d.code) {
+    notify("Vui lòng nhập mã giảm giá", "error");
     return;
   }
-  await api("/variantDiscounts", {
-    method: "POST",
+  const val = Number(d.value) || 0;
+  const payload = {
+    CouponCode: d.code,
+    CouponName: d.name,
+    DiscountType: d.discount_type,
+    DiscountValue: val,
+    DiscountPercent: d.discount_type === "Phần trăm" ? val : 0,
+    MinOrderAmount: Number(d.min_order) || 0,
+    MaxDiscountAmount: Number(d.max_discount) || 0,
+    UsageLimit: Number(d.quantity) || 0,
+    StartDate: d.start_date || null,
+    ExpiryDate: d.expiry || null,
+    Description: d.description || "",
+    IsActive: !!d.active,
+  };
+  const isEdit = !!d.id;
+  const res = await apiWrite(isEdit ? "/discounts/" + d.id : "/discounts", {
+    method: isEdit ? "PUT" : "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...variantDiscountDraft }),
+    body: JSON.stringify(payload),
   });
-  notify("Đã lưu giảm giá biến thể", "success");
-  variantDiscountDraft.product_id = "";
-  variantDiscountDraft.color = "";
-  variantDiscountDraft.percent = 0;
+  if (!res.ok) {
+    notify(
+      "Lưu mã giảm giá thất bại (máy chủ " +
+        (res.status || "không phản hồi") +
+        "). Kiểm tra API /discounts.",
+      "error",
+    );
+    return;
+  }
+  discountModal.open = false;
+  notify(isEdit ? "Đã cập nhật mã giảm giá" : "Đã thêm mã giảm giá", "success");
+  fetchAllData();
+}
+
+/* ================================================================
+ * GIẢM GIÁ BIẾN THỂ MÀU (nâng cấp: chọn biến thể màu, loại giảm,
+ * giá trị, tối đa, số lượng/đã dùng, thời gian, lý do, kích hoạt)
+ * ================================================================ */
+export const variantDiscountTypes = ["Theo phần trăm", "Cố định"];
+export const variantReasons = [
+  "Bán chậm",
+  "Theo mùa",
+  "Thanh lý",
+  "Xả kho hàng tồn",
+  "Khác",
+];
+export const variantDiscountSearch = ref("");
+export const variantStatusFilter = ref("Tất cả");
+export const variantReasonFilter = ref("Tất cả");
+
+function productImage(pid) {
+  const p = db.products.find((x) => String(x.id) === String(pid));
+  return p ? p.image_url || "" : "";
+}
+
+// Danh sách biến thể màu để chọn (gộp các size cùng 1 sản phẩm + màu)
+export const variantColorOptions = computed(() => {
+  const map = {};
+  db.inventory.forEach((v) => {
+    const key = v.product_id + "|" + (v.color || "");
+    if (!map[key]) {
+      map[key] = {
+        variant_id: v.id,
+        product_id: v.product_id,
+        product_name: v.product_name || getProductName(v.product_id),
+        color: v.color || "Mặc định",
+        color_hex: v.color_hex || "#d1d5db",
+        sku: v.sku || "",
+        stock: 0,
+      };
+    }
+    map[key].stock += Number(v.stock) || 0;
+  });
+  return Object.values(map);
+});
+
+export function getVariantInfo(vd) {
+  const byId = db.inventory.find((v) => String(v.id) === String(vd.variant_id));
+  if (byId)
+    return {
+      product_name: byId.product_name || getProductName(byId.product_id),
+      color: byId.color || "Mặc định",
+      color_hex: byId.color_hex || "#d1d5db",
+      sku: byId.sku || "",
+      image: productImage(byId.product_id),
+    };
+  return {
+    product_name: getProductName(vd.product_id),
+    color: vd.color || "Mặc định",
+    color_hex: vd.color_hex || "#d1d5db",
+    sku: "",
+    image: productImage(vd.product_id),
+  };
+}
+export function formatVariantDiscountValue(vd) {
+  if (vd.discount_type === "Cố định") return formatPrice(vd.value);
+  let s = (Number(vd.value) || 0) + "%";
+  if (Number(vd.max_discount) > 0)
+    s += " · Tối đa " + formatPrice(vd.max_discount);
+  return s;
+}
+export function getVariantDiscountStatus(vd) {
+  if (!vd.active)
+    return { label: "Tạm dừng", cls: "bg-secondary-subtle text-secondary" };
+  if (isExpired(vd.end_date))
+    return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
+  return { label: "Hoạt động", cls: "badge-active" };
+}
+export function variantAlreadyDiscounted(variantId) {
+  if (!variantId) return false;
+  return db.variantDiscounts.some(
+    (v) =>
+      String(v.variant_id) === String(variantId) &&
+      v.active &&
+      !isExpired(v.end_date),
+  );
+}
+export const filteredVariantDiscounts = computed(() => {
+  const q = variantDiscountSearch.value.trim().toLowerCase();
+  return db.variantDiscounts.filter((vd) => {
+    const info = getVariantInfo(vd);
+    const okQ =
+      !q ||
+      (info.product_name || "").toLowerCase().includes(q) ||
+      (info.color || "").toLowerCase().includes(q);
+    const okS =
+      variantStatusFilter.value === "Tất cả" ||
+      getVariantDiscountStatus(vd).label === variantStatusFilter.value;
+    const okR =
+      variantReasonFilter.value === "Tất cả" ||
+      (vd.reason || "") === variantReasonFilter.value;
+    return okQ && okS && okR;
+  });
+});
+function emptyVariantDiscount() {
+  return {
+    id: null,
+    variant_id: "",
+    product_id: "",
+    color: "",
+    color_hex: "",
+    discount_type: "Theo phần trăm",
+    value: 0,
+    max_discount: 0,
+    quantity: 0,
+    used: 0,
+    start_date: "",
+    end_date: "",
+    reason: "Bán chậm",
+    active: true,
+    description: "",
+  };
+}
+export const variantDiscountModal = reactive({
+  open: false,
+  data: emptyVariantDiscount(),
+});
+export function openVariantDiscountForm(item) {
+  Object.assign(variantDiscountModal.data, emptyVariantDiscount());
+  if (item)
+    Object.assign(variantDiscountModal.data, JSON.parse(JSON.stringify(item)));
+  variantDiscountModal.open = true;
+}
+export function closeVariantDiscountForm() {
+  variantDiscountModal.open = false;
+}
+export async function saveVariantDiscount() {
+  const d = variantDiscountModal.data;
+  if (!d.variant_id) {
+    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
+    return;
+  }
+  if (!d.value) {
+    notify("Vui lòng nhập giá trị giảm", "error");
+    return;
+  }
+  const info = variantColorOptions.value.find(
+    (o) => String(o.variant_id) === String(d.variant_id),
+  );
+  const val = Number(d.value) || 0;
+  const payload = {
+    ProductVariantID: d.variant_id,
+    ProductID: info ? info.product_id : d.product_id,
+    ColorName: info ? info.color : d.color,
+    ColorHex: info ? info.color_hex : d.color_hex,
+    DiscountType: d.discount_type,
+    DiscountValue: val,
+    DiscountPercent: d.discount_type === "Theo phần trăm" ? val : 0,
+    MaxDiscountAmount: Number(d.max_discount) || 0,
+    Quantity: Number(d.quantity) || 0,
+    StartDate: d.start_date || null,
+    EndDate: d.end_date || null,
+    Reason: d.reason || "",
+    IsActive: !!d.active,
+    Description: d.description || "",
+  };
+  const isEdit = !!d.id;
+  if (isEdit)
+    await api("/variantDiscounts/" + d.id, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  else
+    await api("/variantDiscounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  variantDiscountModal.open = false;
+  notify(
+    isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
+    "success",
+  );
   fetchAllData();
 }
 
@@ -868,6 +2076,9 @@ export async function viewCustomerDetails(cus) {
   if (Array.isArray(remote) && remote.length)
     customerModal.orders = remote.map(mapOrder);
 }
+export function closeCustomerDetails() {
+  customerModal.open = false;
+}
 
 /* ---------------- STAFF REPORT ---------------- */
 export const staffStats = computed(() => {
@@ -898,9 +2109,7 @@ export const filteredAccounts = computed(() => {
   );
 });
 export function roleName(roleId) {
-  return (
-    { 1: "Quản trị viên", 2: "Khách hàng", 3: "Nhân viên" }[roleId] || "Khác"
-  );
+  return { 1: "Quản trị viên", 2: "Khách hàng" }[roleId] || "Khác";
 }
 export function getRoleBadgeClass(roleId) {
   return (
@@ -913,14 +2122,29 @@ export function getRoleBadgeClass(roleId) {
 }
 
 /* ---------------- GENERIC CRUD FORM ---------------- */
+// Danh sach bo mon the thao (dung cho danh muc)
+export const SPORTS = [
+  "Chạy Bộ",
+  "Bóng Rổ",
+  "Bóng Đá",
+  "Tennis",
+  "Thời Trang",
+  "Tập Luyện",
+];
+
 const fieldDefs = {
   categories: [
     { key: "name", label: "Tên danh mục" },
+    { key: "sport", label: "Bộ môn thể thao", type: "select" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   brands: [
     { key: "name", label: "Tên thương hiệu" },
-    { key: "logo_url", label: "URL logo" },
+    {
+      key: "logo_url",
+      label: "Logo (URL hoặc chọn ảnh trên máy)",
+      type: "image",
+    },
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
@@ -928,6 +2152,22 @@ const fieldDefs = {
     { key: "name", label: "Tên bộ sưu tập" },
     { key: "brand_id", label: "Thương hiệu", type: "select" },
     { key: "slug", label: "Slug" },
+    { key: "active", label: "Hoạt động", type: "checkbox" },
+  ],
+  materials: [
+    { key: "name", label: "Tên chất liệu" },
+    { key: "active", label: "Hoạt động", type: "checkbox" },
+  ],
+  colors: [
+    { key: "name", label: "Tên màu" },
+    { key: "hex", label: "Mã màu", type: "color" },
+    { key: "sort_order", label: "Thứ tự", type: "number" },
+    { key: "active", label: "Hoạt động", type: "checkbox" },
+  ],
+  sizes: [
+    { key: "name", label: "Tên size (VD: 40)" },
+    { key: "standard", label: "Chuẩn (EU/US/UK)" },
+    { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   discounts: [
@@ -939,10 +2179,13 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   accounts: [
-    { key: "username", label: "Tên đăng nhập" },
+    { key: "username", label: "Email đăng nhập", type: "email" },
     { key: "name", label: "Họ tên" },
-    { key: "email", label: "Email", type: "email" },
-    { key: "role_id", label: "Vai trò", type: "select" },
+    {
+      key: "password",
+      label: "Mật khẩu (để trống nếu không đổi)",
+      type: "password",
+    },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
 };
@@ -960,13 +2203,17 @@ export const formFields = computed(() => {
         ...f,
         options: db.brands.map((b) => ({ value: b.id, label: b.name })),
       };
+    if (f.key === "sport")
+      return {
+        ...f,
+        options: SPORTS.map((s) => ({ value: s, label: s })),
+      };
     if (f.key === "role_id")
       return {
         ...f,
         options: [
           { value: 1, label: "Quản trị viên" },
           { value: 2, label: "Khách hàng" },
-          { value: 3, label: "Nhân viên" },
         ],
       };
     return f;
@@ -976,6 +2223,9 @@ const formTitles = {
   categories: "Danh Mục",
   brands: "Thương Hiệu",
   collections: "Bộ Sưu Tập",
+  materials: "Chất Liệu",
+  colors: "Màu Sắc",
+  sizes: "Kích Thước",
   discounts: "Mã Giảm Giá",
   accounts: "Tài Khoản",
 };
@@ -994,19 +2244,41 @@ export function openForm(type, item) {
 export async function saveForm() {
   const type = formModal.type;
   const data = formModal.data;
+  if (!data.name) {
+    notify("Vui lòng nhập tên", "error");
+    return;
+  }
+  if (type === "accounts") {
+    if (!data.username) {
+      notify("Vui lòng nhập email đăng nhập", "error");
+      return;
+    }
+    if (!data.id && !(data.password && String(data.password).trim())) {
+      notify("Vui lòng nhập mật khẩu cho tài khoản mới", "error");
+      return;
+    }
+  }
   const isEdit = !!data.id;
-  if (isEdit)
-    await api("/" + type + "/" + data.id, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  else
-    await api("/" + type, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+  const res = isEdit
+    ? await apiWrite("/" + type + "/" + data.id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+    : await apiWrite("/" + type, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+  if (!res.ok) {
+    notify(
+      "Lưu thất bại (mã " +
+        res.status +
+        "). Kiểm tra kết nối máy chủ / cơ sở dữ liệu.",
+      "error",
+    );
+    return;
+  }
   formModal.open = false;
   notify(
     isEdit ? "Đã cập nhật thành công" : "Đã thêm mới thành công",
@@ -1022,10 +2294,16 @@ export const confirmModal = reactive({
   message: "",
   type: "",
   id: null,
+  mode: "generic", // 'generic' | 'soft' | 'hard'
+  danger: false,
+  confirmLabel: "Xac nhan",
 });
 export function deleteItem(type, id, name) {
   confirmModal.type = type;
   confirmModal.id = id;
+  confirmModal.mode = "generic";
+  confirmModal.danger = false;
+  confirmModal.confirmLabel = "Xác nhận";
   confirmModal.title = "Xác nhận xoá";
   confirmModal.message =
     'Bạn có chắc muốn xoá "' +
@@ -1033,12 +2311,67 @@ export function deleteItem(type, id, name) {
     '"? Hành động này không thể hoàn tác.';
   confirmModal.open = true;
 }
+
+// Kiem tra san pham dang o trang thai xoa mem (da an)
+export function isProductSoftDeleted(p) {
+  return !!(p && p.active === false);
+}
+
+// Nut xoa tren trang san pham: lan 1 = xoa mem (an), lan 2 (khi da an) = xoa cung
+export function deleteProduct(p) {
+  confirmModal.type = "products";
+  confirmModal.id = p.id;
+  if (isProductSoftDeleted(p)) {
+    confirmModal.mode = "hard";
+    confirmModal.danger = true;
+    confirmModal.confirmLabel = "Xoá cứng";
+    confirmModal.title = "Xoá cứng sản phẩm?";
+    confirmModal.message =
+      'Bạn sắp XOÁ CỨNG "' +
+      (p.name || "#" + p.id) +
+      '" khỏi cơ sở dữ liệu. Toàn bộ biến thể, ảnh và chi tiết đơn hàng liên quan sẽ bị xoá vĩnh viễn và KHÔNG THỂ khôi phục. Việc này có thể ẢNH HƯỞ-NG ĐẾN DOANH THU đã ghi nhận.';
+  } else {
+    confirmModal.mode = "soft";
+    confirmModal.danger = false;
+    confirmModal.confirmLabel = "Xoá mềm (ẩn)";
+    confirmModal.title = "Xoá mềm sản phẩm?";
+    confirmModal.message =
+      'Ẩn "' +
+      (p.name || "#" + p.id) +
+      '" khỏi cửa hàng (xoá mềm). Dữ liệu vẫn được giữ lại. Bấm xoá lần nữa khi sản phẩm đã ẩn để xoá cứng.';
+  }
+  confirmModal.open = true;
+}
 export async function executeConfirm() {
-  await api("/" + confirmModal.type + "/" + confirmModal.id, {
-    method: "DELETE",
-  });
+  const suffix =
+    confirmModal.type === "products" && confirmModal.mode === "soft"
+      ? "?soft=1"
+      : "";
+  const res = await apiWrite(
+    "/" + confirmModal.type + "/" + confirmModal.id + suffix,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    notify(
+      "Xoá thất bại (máy chủ " +
+        (res.status || "không phản hồi") +
+        "). Kiểm tra API /" +
+        confirmModal.type +
+        ".",
+      "error",
+    );
+    return;
+  }
+  const doneMode = confirmModal.mode;
   confirmModal.open = false;
-  notify("Đã xoá thành công", "success");
+  notify(
+    doneMode === "soft"
+      ? "Đã xoá mềm (ẩn) sản phẩm"
+      : doneMode === "hard"
+        ? "Đã xoá cứng sản phẩm khỏi CSDL"
+        : "Đã xoá thành công",
+    "success",
+  );
   fetchAllData();
 }
 
@@ -1056,6 +2389,7 @@ export function mapOrder(o) {
     payment_status: o.PaymentStatus ?? o.payment_status ?? "Chưa thanh toán",
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
     handled_by: o.HandledBy ?? o.handled_by ?? "",
+    tracking_code: o.TrackingNumber ?? o.tracking_code ?? "",
     products: (o.products || o.OrderDetails || []).map((d) => ({
       name: d.ProductName ?? d.name ?? "",
       color: d.ColorName ?? d.color ?? "",
@@ -1086,6 +2420,9 @@ export async function fetchAllData() {
     inventory,
     returns,
     variantDiscounts,
+    colors,
+    sizes,
+    materials,
   ] = await Promise.all([
     api("/orders"),
     api("/products"),
@@ -1098,6 +2435,9 @@ export async function fetchAllData() {
     api("/inventory"),
     api("/returns"),
     api("/variantDiscounts"),
+    api("/colors"),
+    api("/sizes"),
+    api("/materials"),
   ]);
   db.orders = (orders || []).map(mapOrder);
   db.products = (products || []).map((p) => ({
@@ -1110,9 +2450,10 @@ export async function fetchAllData() {
     brand_id: p.BrandID ?? p.brand_id,
     brand: p.BrandName ?? p.brand ?? "",
     collection_id: p.CollectionID ?? p.collection_id,
+    material_id: p.MaterialID ?? p.material_id ?? null,
     image_url: p.ImageURL ?? p.image_url ?? "",
     description: p.Description ?? p.description ?? "",
-    upper_material: p.UpperMaterial ?? p.upper_material ?? "",
+    parent_sku: p.ParentSKU ?? p.parent_sku ?? "",
     is_featured: p.IsFeatured ?? p.is_featured ?? false,
     active: (p.IsActive ?? p.active) !== false,
     colors: p.colors || [],
@@ -1122,15 +2463,23 @@ export async function fetchAllData() {
   db.categories = (categories || []).map((c) => ({
     id: c.CategoryID ?? c.id,
     name: c.CategoryName ?? c.name,
+    sport: c.Sport ?? c.sport ?? "",
     active: (c.IsActive ?? c.active) !== false,
   }));
   db.discounts = (discounts || []).map((d) => ({
     id: d.CouponID ?? d.id,
     code: d.CouponCode ?? d.code,
+    name: d.CouponName ?? d.name ?? "",
+    discount_type: d.DiscountType ?? d.discount_type ?? "Phần trăm",
+    value: d.DiscountValue ?? d.value ?? d.DiscountPercent ?? d.percent ?? 0,
     percent: d.DiscountPercent ?? d.percent ?? 0,
+    min_order: d.MinOrderAmount ?? d.min_order ?? 0,
+    max_discount: d.MaxDiscountAmount ?? d.max_discount ?? 0,
+    quantity: d.UsageLimit ?? d.quantity ?? d.limit ?? 0,
     limit: d.UsageLimit ?? d.limit,
     used: d.UsedCount ?? d.used ?? 0,
-    expiry: d.ExpiryDate ?? d.expiry,
+    start_date: d.StartDate ?? d.start_date ?? null,
+    expiry: d.ExpiryDate ?? d.expiry ?? null,
     description: d.Description ?? d.description ?? "",
     active: (d.IsActive ?? d.active) !== false,
   }));
@@ -1138,7 +2487,12 @@ export async function fetchAllData() {
     id: c.UserID ?? c.id,
     name: c.FullName ?? c.name,
     phone: c.Phone ?? c.phone ?? "",
+    email: c.Email ?? c.email ?? "",
+    address: c.Address ?? c.address ?? "",
     spent: c.TotalSpent ?? c.spent ?? 0,
+    order_count: c.OrderCount ?? c.order_count ?? 0,
+    created_at: c.CreatedAt ?? c.created_at ?? null,
+    source: c.Source ?? c.source ?? "",
   }));
   db.accounts = (accounts || []).map((a) => ({
     id: a.UserID ?? a.id,
@@ -1146,7 +2500,7 @@ export async function fetchAllData() {
       a.Username ?? a.username ?? (a.Email ?? a.email ?? "").split("@")[0],
     name: a.FullName ?? a.name ?? "",
     email: a.Email ?? a.email ?? "",
-    role_id: a.RoleID ?? a.role_id ?? 2,
+    role_id: a.RoleID ?? a.role_id ?? 1,
     active: (a.IsActive ?? a.active) !== false,
   }));
   db.brands = (brands || []).map((b) => ({
@@ -1183,10 +2537,41 @@ export async function fetchAllData() {
     status: r.Status ?? r.status ?? "Chờ xử lý",
   }));
   db.variantDiscounts = (variantDiscounts || []).map((v) => ({
-    id: v.id ?? v.VariantDiscountID,
-    product_id: v.product_id ?? v.ProductID,
-    color: v.color ?? v.ColorName ?? "",
-    percent: v.percent ?? v.DiscountPercent ?? 0,
+    id: v.VariantDiscountID ?? v.id,
+    variant_id: v.ProductVariantID ?? v.variant_id ?? v.product_variant_id,
+    product_id: v.ProductID ?? v.product_id,
+    color: v.ColorName ?? v.color ?? "",
+    color_hex: v.ColorHex ?? v.color_hex ?? "",
+    discount_type: v.DiscountType ?? v.discount_type ?? "Theo phần trăm",
+    value: v.DiscountValue ?? v.value ?? v.percent ?? v.DiscountPercent ?? 0,
+    percent: v.DiscountPercent ?? v.percent ?? 0,
+    max_discount: v.MaxDiscountAmount ?? v.max_discount ?? 0,
+    quantity: v.Quantity ?? v.quantity ?? 0,
+    used: v.UsedCount ?? v.used ?? 0,
+    start_date: v.StartDate ?? v.start_date ?? null,
+    end_date: v.EndDate ?? v.end_date ?? null,
+    reason: v.Reason ?? v.reason ?? "",
+    active: (v.IsActive ?? v.active) !== false,
+    description: v.Description ?? v.description ?? "",
+  }));
+  db.colors = (colors || []).map((c) => ({
+    id: c.ColorID ?? c.id,
+    name: c.ColorName ?? c.name,
+    hex: c.ColorHex ?? c.hex ?? "#000000",
+    sort_order: c.SortOrder ?? c.sort_order ?? 0,
+    active: (c.IsActive ?? c.active) !== false,
+  }));
+  db.sizes = (sizes || []).map((s) => ({
+    id: s.SizeID ?? s.id,
+    name: s.SizeName ?? s.name,
+    standard: s.SizeStandard ?? s.standard ?? "",
+    sort_order: s.SortOrder ?? s.sort_order ?? 0,
+    active: (s.IsActive ?? s.active) !== false,
+  }));
+  db.materials = (materials || []).map((m) => ({
+    id: m.MaterialID ?? m.id,
+    name: m.MaterialName ?? m.name,
+    active: (m.IsActive ?? m.active) !== false,
   }));
   // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
   const reviews = await api("/reviews");
