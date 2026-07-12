@@ -7,7 +7,7 @@ import {
   statAccounts, statProducts, statOrders, statRevenue, formatPrice, formatDate,
   trendMode, setTrendMode, buildTrendData, isLoading, ordersInRange,
   avgOrderValue, recentOrdersByDate, buildOrderStatusData, buildPaymentMethodData,
-  buildTopProductsData, inventoryByColor, lowStockList, topCustomerByOrders,
+  buildTopProductsData, lowStockList, topCustomerByOrders,
   topCustomerBySpending, ratingStats
 } from '../adminStore'
 
@@ -199,17 +199,7 @@ onBeforeUnmount(() => { [trendChart, statusChart, payChart, topChart].forEach(c 
           <p class="text-secondary small fw-medium mb-2">Top sản phẩm &amp; brand bán chạy</p>
           <div style="height: 300px;"><canvas ref="topCanvas"></canvas></div>
         </div>
-        <div class="col-12 col-md-6 col-lg-3">
-          <p class="text-secondary small fw-medium mb-2">Tồn kho theo màu</p>
-          <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light pe-1">
-            <div v-for="c in inventoryByColor" :key="c.color" class="d-flex align-items-center justify-content-between py-1 border-bottom">
-              <span class="d-flex align-items-center gap-2 small"><span class="color-dot" :style="{ background: c.hex }"></span><span v-text="c.color"></span></span>
-              <span class="badge rounded-pill bg-light text-dark border" v-text="c.total"></span>
-            </div>
-            <div v-if="inventoryByColor.length === 0" class="text-secondary small py-2">Chưa có dữ liệu tồn kho.</div>
-          </div>
-        </div>
-        <div class="col-12 col-md-6 col-lg-4">
+        <div class="col-12 col-lg-7">
           <p class="text-secondary small fw-medium mb-2">Sản phẩm sắp hết hàng <span class="badge rounded-pill bg-danger" v-text="lowStockList.length"></span></p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
             <table class="table table-sm align-middle mb-0 small">

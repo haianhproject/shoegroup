@@ -2,11 +2,11 @@
 <script setup>
 import {
   paymentChannel, paymentSearch,
-  paymentChannelOrders, paymentChannelCount, countOrdersByChannel,
+  paymentChannelOrders, paymentChannelCount, paymentTotalCount, countOrdersByChannel,
   getPaymentMethodPill, getPaymentStatusPill, getOrderStatusPill,
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
-  buildOrderHistory, printInvoice,
+  buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
   formatDate, formatPrice,
 } from '../adminStore'
 </script>
@@ -21,9 +21,9 @@ import {
         <div>
           <h5 class="fw-bold mb-1 text-dark">Quản lý xác nhận thanh toán</h5>
           <p class="text-secondary small mb-0">Online: khách mua trên mạng &nbsp;|&nbsp; Offline: khách lẻ mua tại quầy</p>
-          <p class="text-secondary mb-0" style="font-size:0.75rem;"><i class="bi bi-info-circle me-1"></i>Trạng thái thanh toán được tính tự động: chuyển khoản = đã thanh toán khi quét link, COD = đã thanh toán khi giao thành công — admin không cần bấm xác nhận.</p>
+          <p class="text-secondary mb-0" style="font-size:0.75rem;"><i class="bi bi-info-circle me-1"></i>Trạng thái thanh toán đĐơn chuyển khoản: khách phải chuyển khoản TRƯỚC rồi mới xác nhận & hoàn thành đơn. Đơn COD: xác nhận → giao → thu tiền → hoàn thành đơn.</p>
         </div>
-        <span class="badge rounded-pill bg-dark text-white px-3 py-2" v-text="paymentChannelCount + ' đơn'"></span>
+        <span class="badge rounded-pill bg-dark text-white px-3 py-2" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
       </div>
 
       <div class="bg-white rounded-4 shadow-sm p-3 p-md-4">
@@ -156,6 +156,11 @@ import {
             <div class="d-flex justify-content-between align-items-center mb-3">
               <span class="text-secondary small">Trạng thái đơn</span>
               <span class="badge rounded-pill" :class="getOrderStatusPill(orderDetail.order).cls" v-text="getOrderStatusPill(orderDetail.order).label"></span>
+            </div>
+            <div class="text-secondary text-uppercase mb-2" style="font-size:0.68rem;">Tiến trình đơn hàng</div>
+            <div class="d-grid gap-2 mb-3">
+              <button v-for="act in getOrderActions(orderDetail.order)" :key="act.key" @click="runOrderAction(orderDetail.order, act)" :disabled="act.locked" class="btn rounded-3 fw-bold" :class="act.class" v-text="act.text"></button>
+              <div v-if="getOrderActions(orderDetail.order).length === 0" class="text-secondary small text-center py-1">Đơn đã hoàn tất hoặc đã hủy — không còn thao tác.</div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-3">
               <span class="text-secondary small">Thanh toán</span>

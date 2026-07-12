@@ -259,6 +259,7 @@ app.get("/api/products", async (req, res) => {
               p.CategoryID as category_id, c.CategoryName as category,
               p.BrandID as brand_id, b.BrandName as brand,
               p.CollectionID as collection_id, p.MaterialID as material_id,
+              p.SoleID as sole_id, p.CushioningID as cushioning_id,
               p.ImageURL as image_url, p.IsActive as active,
               p.Description as description, p.ImageGallery as image_gallery,
               p.ParentSKU as parent_sku, p.IsFeatured as is_featured
@@ -392,6 +393,8 @@ function bindProduct(request, b) {
     .input("br", sql.Int, b.brand_id || null)
     .input("col", sql.Int, b.collection_id || null)
     .input("mid", sql.Int, b.material_id || null)
+    .input("sole", sql.Int, b.sole_id || null)
+    .input("cush", sql.Int, b.cushioning_id || null)
     .input("img", sql.VarChar(sql.MAX), b.image_url || "")
     .input("desc", sql.NVarChar(sql.MAX), b.description || "")
     .input("psku", sql.VarChar, b.parent_sku || "")
@@ -404,9 +407,9 @@ app.post("/api/products", async (req, res) => {
     await poolConnect;
     const b = req.body || {};
     let r = await bindProduct(pool.request(), b).query(`
-      INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
+      INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, SoleID, CushioningID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
       OUTPUT INSERTED.ProductID
-      VALUES (@n, @p, @sp, @c, @br, @col, @mid, @img, @desc, @psku, @feat, @a)
+      VALUES (@n, @p, @sp, @c, @br, @col, @mid, @sole, @cush, @img, @desc, @psku, @feat, @a)
     `);
     const newId = r.recordset[0].ProductID;
     await upsertVariants(newId, b.variants);
@@ -424,7 +427,7 @@ app.put("/api/products/:id", async (req, res) => {
     await bindProduct(pool.request().input("id", sql.Int, req.params.id), b)
       .query(`
       UPDATE Products SET ProductName=@n, BasePrice=@p, SalePrice=@sp, CategoryID=@c, BrandID=@br, CollectionID=@col,
-        MaterialID=@mid, ImageURL=@img, Description=@desc,
+        MaterialID=@mid, SoleID=@sole, CushioningID=@cush, ImageURL=@img, Description=@desc,
         ParentSKU=@psku, IsFeatured=@feat, IsActive=@a WHERE ProductID=@id
     `);
     await upsertVariants(Number(req.params.id), b.variants);
@@ -777,6 +780,168 @@ app.delete("/api/materials/:id", async (req, res) => {
       .request()
       .input("id", sql.Int, req.params.id)
       .query("UPDATE Materials SET IsActive = 0 WHERE MaterialID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= API DE GIAY (Soles) =================
+app.get("/api/soles", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool
+      .request()
+      .query(
+        "SELECT SoleID as id, SoleName as name, IsActive as active FROM Soles ORDER BY SoleID",
+      );
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post("/api/soles", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("n", sql.NVarChar, req.body.name)
+      .input("a", sql.Bit, req.body.active !== false)
+      .query("INSERT INTO Soles (SoleName, IsActive) VALUES (@n, @a)");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put("/api/soles/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("n", sql.NVarChar, req.body.name)
+      .input("a", sql.Bit, req.body.active !== false)
+      .query("UPDATE Soles SET SoleName=@n, IsActive=@a WHERE SoleID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.delete("/api/soles/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .query("UPDATE Soles SET IsActive = 0 WHERE SoleID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= API DEM GIAY (Cushionings) =================
+app.get("/api/cushionings", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool
+      .request()
+      .query(
+        "SELECT CushioningID as id, CushioningName as name, IsActive as active FROM Cushionings ORDER BY CushioningID",
+      );
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post("/api/cushionings", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("n", sql.NVarChar, req.body.name)
+      .input("a", sql.Bit, req.body.active !== false)
+      .query(
+        "INSERT INTO Cushionings (CushioningName, IsActive) VALUES (@n, @a)",
+      );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put("/api/cushionings/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("n", sql.NVarChar, req.body.name)
+      .input("a", sql.Bit, req.body.active !== false)
+      .query(
+        "UPDATE Cushionings SET CushioningName=@n, IsActive=@a WHERE CushioningID=@id",
+      );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.delete("/api/cushionings/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .query("UPDATE Cushionings SET IsActive = 0 WHERE CushioningID=@id");
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= API TRA HANG (Returns) =================
+app.get("/api/returns", async (req, res) => {
+  try {
+    await poolConnect;
+    let r = await pool
+      .request()
+      .query(
+        "SELECT ReturnID, OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt FROM Returns ORDER BY ReturnID DESC",
+      );
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post("/api/returns", async (req, res) => {
+  try {
+    await poolConnect;
+    const b = req.body || {};
+    let r = await pool
+      .request()
+      .input("oid", sql.Int, b.order_id || null)
+      .input("rt", sql.VarChar(20), b.return_type || "CUSTOMER")
+      .input("trk", sql.VarChar, b.tracking_number || "")
+      .input("rs", sql.NVarChar(sql.MAX), b.reason || "")
+      .input("st", sql.NVarChar, b.status || "Chờ xử lý")
+      .input("amt", sql.Decimal(18, 0), b.refund_amount || 0)
+      .query(
+        "INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rt, @trk, @rs, @st, @amt, GETDATE())",
+      );
+    res.json({ success: true, ReturnID: r.recordset[0].ReturnID });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put("/api/returns/:id/status", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("st", sql.NVarChar, req.body.status)
+      .query(
+        "UPDATE Returns SET Status=@st, UpdatedAt=GETDATE() WHERE ReturnID=@id",
+      );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

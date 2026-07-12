@@ -2,7 +2,8 @@
 <script setup>
 import { ref } from 'vue'
 import {
-  posOrders, posActiveIndex, activePosOrder, createPosOrder, selectPosOrder, removePosOrder, POS_MAX_ORDERS,
+  posOrders, posActiveIndex, activePosOrder, createPosOrder, selectPosOrder, removePosOrder,
+  posOrderSearch, filteredPosOrders, posPayModal, confirmPosPaid, cancelPosPay,
   posSearch, posVariants, addToCart, removeCartItem,
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
@@ -96,20 +97,21 @@ function addWithQty(v) {
         <!-- Đơn chờ -->
         <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-hourglass-split me-2"></i>Đơn chờ <span class="text-secondary" v-text="posOrders.length + '/' + POS_MAX_ORDERS"></span></h6>
+            <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-hourglass-split me-2"></i>Đơn chờ <span class="text-secondary" v-text="'(' + posOrders.length + ')'"></span></h6>
             <button @click="createPosOrder()" class="btn btn-sm btn-dark rounded-3 fw-bold"><i class="bi bi-plus-lg me-1"></i>Tạo đơn</button>
           </div>
-          <div class="d-flex flex-wrap gap-2 mb-2">
-            <div v-for="(o, i) in posOrders" :key="o.code" @click="selectPosOrder(i)" class="d-inline-flex align-items-center gap-2 rounded-pill px-3 py-1 border" style="cursor:pointer;" :class="i === posActiveIndex ? 'bg-dark text-white border-dark fw-bold' : 'bg-white text-secondary'">
-              <i class="bi" :class="i === posActiveIndex ? 'bi-check-circle-fill' : 'bi-hourglass'"></i>
-              <span class="small fw-medium" v-text="'#' + o.code + ' · ' + (o.customer_name || 'Khách lẻ')"></span>
-              <i class="bi bi-x-circle" @click.stop="removePosOrder(i)"></i>
+          <div class="position-relative mb-2">
+            <i class="bi bi-search position-absolute text-secondary" style="left:12px;top:50%;transform:translateY(-50%);font-size:0.85rem;"></i>
+            <input v-model="posOrderSearch" type="text" class="form-control form-control-sm rounded-3 ps-4" placeholder="Tìm đơn chờ theo mã số...">
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-1" style="max-height:170px;overflow:auto;">
+            <div v-for="row in filteredPosOrders" :key="row.o.code" @click="selectPosOrder(row.i)" class="d-inline-flex align-items-center gap-2 rounded-pill px-3 py-1 border" style="cursor:pointer;" :class="row.i === posActiveIndex ? 'bg-dark text-white border-dark fw-bold' : 'bg-white text-secondary'">
+              <i class="bi" :class="row.i === posActiveIndex ? 'bi-check-circle-fill' : 'bi-hourglass'"></i>
+              <span class="small fw-medium" v-text="'#' + row.o.code + ' · ' + (row.o.customer_name || 'Khách lẻ')"></span>
+              <i class="bi bi-x-circle" @click.stop="removePosOrder(row.i)"></i>
             </div>
+            <div v-if="filteredPosOrders.length === 0" class="text-secondary small py-1">Không tìm thấy đơn chờ nào.</div>
           </div>
-          <div class="progress rounded-pill" style="height:6px;">
-            <div class="progress-bar bg-dark" :style="{ width: (posOrders.length / POS_MAX_ORDERS * 100) + '%' }"></div>
-          </div>
-          <p class="text-secondary mb-0 mt-1" style="font-size:0.72rem;" v-text="'Đã dùng ' + posOrders.length + '/' + POS_MAX_ORDERS + ' đơn chờ'"></p>
         </div>
 
         <!-- Đơn hiện tại -->
@@ -165,5 +167,23 @@ function addWithQty(v) {
         </div>
       </div>
     </div>
+
+    <!-- MODAL QR chuyển khoản tại quầy (hiện 1 lần khi bấm thanh toán) -->
+    <Teleport to="body">
+      <div v-if="posPayModal.open" class="custom-modal-overlay" @click.self="cancelPosPay()">
+        <div class="custom-modal-box fade-in-scale" style="max-width:380px;">
+          <div class="p-4 text-center">
+            <h6 class="fw-bold text-dark mb-1"><i class="bi bi-qr-code me-2"></i>Quét mã chuyển khoản</h6>
+            <p class="text-secondary small mb-3">Khách quét mã QR để chuyển khoản. Nhấn "Đã thanh toán" sau khi nhận được tiền.</p>
+            <img :src="posPayModal.qr" class="rounded-3 border mb-3" style="width:240px;height:240px;object-fit:contain;" alt="QR">
+            <div class="mb-3"><span class="text-secondary small">Số tiền</span><h4 class="fw-bolder text-dark mb-0" v-text="formatPrice(posPayModal.amount)"></h4></div>
+            <div class="d-grid gap-2">
+              <button @click="confirmPosPaid()" class="btn btn-dark rounded-3 fw-bold py-2"><i class="bi bi-check2-circle me-2"></i>Đã thanh toán</button>
+              <button @click="cancelPosPay()" class="btn btn-light border rounded-3">Hủy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
