@@ -15,16 +15,15 @@ import {
   onColorDraftImageFile,
   activeCategories,
   SHOE_SIZES,
-  toggleSize,
-  hasSize,
   productFormOpen,
   closeProductForm,
   productForm,
   colorDraft,
+  colorNoteDraft,
   addColor,
   removeColor,
-  generateVariants,
-  addVariant,
+  toggleColorSize,
+  colorHasSize,
   colorHex,
   saveProduct,
   productDetailModal,
@@ -36,6 +35,10 @@ import {
   getMaterialName,
   getBrandName,
   LOW_STOCK_THRESHOLD,
+  productFormVariantCount,
+  productFormStockTotal,
+  productFormColorCount,
+  colorStockTotal,
 } from "../adminStore";
 </script>
 
@@ -91,7 +94,7 @@ import {
               <th>Thương Hiệu</th>
               <th>Chất Liệu</th>
               <th class="text-center">Số Biến Thể</th>
-              <th class="text-center">Tổng Tồn Kho</th>
+              <th class="text-center">Tổng Sản Phẩm</th>
               <th>Trạng Thái</th>
               <th class="text-end pe-4">Thao Tác</th>
             </tr>
@@ -278,6 +281,36 @@ import {
               </select>
             </div>
             <div class="col-md-6">
+              <label class="form-label small fw-medium">Đế giày</label
+              ><select
+                v-model="productForm.sole_id"
+                class="form-select rounded-3"
+              >
+                <option value="">-- Chọn --</option>
+                <option
+                  v-for="s in db.soles"
+                  :key="s.id"
+                  :value="s.id"
+                  v-text="s.name"
+                ></option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-medium">Đệm giày</label
+              ><select
+                v-model="productForm.cushioning_id"
+                class="form-select rounded-3"
+              >
+                <option value="">-- Chọn --</option>
+                <option
+                  v-for="cs in db.cushionings"
+                  :key="cs.id"
+                  :value="cs.id"
+                  v-text="cs.name"
+                ></option>
+              </select>
+            </div>
+            <div class="col-md-6">
               <label class="form-label small fw-medium">Giá bán (VNĐ)</label
               ><input
                 v-model.number="productForm.price"
@@ -300,6 +333,28 @@ import {
         <div class="bg-white rounded-4 shadow-sm p-4">
           <h6 class="fw-bold mb-3 text-dark">Màu Sắc &amp; Kích Cỡ</h6>
 
+          <!-- TONG HOP: tach theo bien the -->
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <span
+              class="badge rounded-pill bg-dark-subtle text-dark border px-3 py-2"
+            >
+              <i class="bi bi-palette me-1"></i>Số màu:
+              <b v-text="productFormColorCount"></b>
+            </span>
+            <span
+              class="badge rounded-pill bg-primary-subtle text-primary-emphasis border px-3 py-2"
+            >
+              <i class="bi bi-diagram-3 me-1"></i>Số biến thể:
+              <b v-text="productFormVariantCount"></b>
+            </span>
+            <span
+              class="badge rounded-pill bg-success-subtle text-success-emphasis border px-3 py-2"
+            >
+              <i class="bi bi-box-seam me-1"></i>Tổng sản phẩm (tồn kho):
+              <b v-text="productFormStockTotal"></b>
+            </span>
+          </div>
+
           <!-- MAU SAC: moi mau kem 1 anh -->
           <label class="form-label small fw-medium"
             >Màu sắc (mỗi màu kèm 1 ảnh)</label
@@ -307,27 +362,86 @@ import {
           <p class="text-secondary mb-2" style="font-size: 0.75rem">
             Khi khách đổi màu ở cửa hàng, ảnh sản phẩm sẽ đổi theo màu đó.
           </p>
-          <div class="d-flex flex-wrap gap-2 mb-2">
+          <div class="d-flex flex-column gap-2 mb-2">
             <div
               v-for="(c, i) in productForm.colors"
               :key="i"
-              class="border rounded-3 p-2 d-flex align-items-center gap-2"
+              class="border rounded-3 p-3"
             >
-              <img
-                :src="c.image || 'https://via.placeholder.com/40'"
-                class="rounded-2 border"
-                style="width: 40px; height: 40px; object-fit: cover"
-                @error="$event.target.src = 'https://via.placeholder.com/40'"
-              />
-              <span class="color-dot" :style="{ background: c.hex }"></span>
-              <span class="small fw-medium" v-text="c.name"></span>
-              <button
-                @click="removeColor(i)"
-                class="btn btn-sm btn-link text-danger p-0 ms-1"
-                title="Bỏ màu"
-              >
-                <i class="bi bi-x-circle-fill"></i>
-              </button>
+              <div class="d-flex align-items-center gap-3">
+                <img
+                  :src="c.image || 'https://via.placeholder.com/44'"
+                  class="rounded-2 border"
+                  style="width: 44px; height: 44px; object-fit: cover"
+                  @error="$event.target.src = 'https://via.placeholder.com/44'"
+                />
+                <span class="color-dot" :style="{ background: c.hex }"></span>
+                <span class="small fw-medium" v-text="c.name"></span>
+                <span
+                  class="badge rounded-pill bg-light text-secondary border fw-normal"
+                  v-text="
+                    (c.variants ? c.variants.length : 0) +
+                    ' size · ' +
+                    colorStockTotal(c) +
+                    ' sp'
+                  "
+                ></span>
+                <span
+                  v-if="c.note"
+                  class="badge rounded-pill bg-light text-secondary border fw-normal"
+                  v-text="c.note"
+                ></span>
+                <span v-else class="text-secondary small fst-italic"
+                  >(không có chú thích)</span
+                >
+                <button
+                  @click="removeColor(i)"
+                  class="btn btn-sm btn-link text-danger p-0 ms-auto"
+                  title="Bỏ màu"
+                >
+                  <i class="bi bi-x-circle-fill"></i>
+                </button>
+              </div>
+              <div class="mt-2 pt-2 border-top">
+                <label class="form-label small fw-medium mb-1"
+                  >Kích cỡ &amp; số lượng cho màu này</label
+                >
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                  <button
+                    v-for="s in SHOE_SIZES"
+                    :key="s"
+                    type="button"
+                    @click="toggleColorSize(i, s)"
+                    class="btn btn-sm rounded-3"
+                    :class="colorHasSize(c, s) ? 'btn-dark' : 'btn-outline-secondary'"
+                    v-text="s"
+                  ></button>
+                </div>
+                <div v-if="c.variants && c.variants.length" class="row g-2">
+                  <div
+                    v-for="(sv, si) in c.variants"
+                    :key="si"
+                    class="col-6 col-sm-4 col-md-3"
+                  >
+                    <div class="input-group input-group-sm">
+                      <span
+                        class="input-group-text"
+                        v-text="'Size ' + sv.size"
+                      ></span>
+                      <input
+                        v-model.number="sv.stock"
+                        type="number"
+                        min="0"
+                        class="form-control text-end"
+                        placeholder="SL"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <span v-else class="text-secondary small fst-italic"
+                  >Chọn size ở trên rồi nhập số lượng.</span
+                >
+              </div>
             </div>
             <span
               v-if="!productForm.colors.length"
@@ -339,7 +453,7 @@ import {
           <!-- 1 KHUNG: them mau + anh -->
           <div class="border rounded-3 p-3 mb-3 bg-light-gray">
             <div class="row g-2 align-items-end">
-              <div class="col-12 col-sm-5">
+              <div class="col-12 col-sm-3">
                 <label class="form-label small fw-medium mb-1">Màu</label>
                 <select
                   v-model="colorDraft"
@@ -354,7 +468,7 @@ import {
                   ></option>
                 </select>
               </div>
-              <div class="col-12 col-sm-5">
+              <div class="col-12 col-sm-4">
                 <label class="form-label small fw-medium mb-1"
                   >Ảnh của màu</label
                 >
@@ -385,6 +499,17 @@ import {
                   /></label>
                 </div>
               </div>
+              <div class="col-12 col-sm-3">
+                <label class="form-label small fw-medium mb-1"
+                  >Chú thích (không bắt buộc)</label
+                >
+                <input
+                  v-model="colorNoteDraft"
+                  type="text"
+                  class="form-control form-control-sm rounded-3"
+                  placeholder="VD: Đỏ đô, Trắng kem..."
+                />
+              </div>
               <div class="col-12 col-sm-2 d-grid">
                 <button @click="addColor" class="btn btn-sm btn-dark rounded-3">
                   Thêm màu
@@ -393,117 +518,6 @@ import {
             </div>
           </div>
 
-          <!-- KICH CO: chi so, chon nhieu -->
-          <label class="form-label small fw-medium"
-            >Kích cỡ (chọn nhiều size)</label
-          >
-          <p class="text-secondary mb-2" style="font-size: 0.75rem">
-            Giày chỉ dùng size số. Bấm để chọn hoặc bỏ size.
-          </p>
-          <div class="d-flex flex-wrap gap-2 mb-3">
-            <button
-              v-for="s in SHOE_SIZES"
-              :key="s"
-              type="button"
-              @click="toggleSize(s)"
-              class="btn btn-sm rounded-3"
-              :class="hasSize(s) ? 'btn-dark' : 'btn-outline-secondary'"
-              v-text="s"
-            ></button>
-          </div>
-
-          <div class="d-flex flex-wrap gap-2 mb-3">
-            <button
-              @click="generateVariants"
-              class="btn btn-sm btn-outline-dark rounded-3"
-            >
-              <i class="bi bi-magic me-1"></i> Tạo biến thể từ màu × size</button
-            ><button
-              @click="addVariant"
-              class="btn btn-sm btn-outline-secondary rounded-3"
-            >
-              <i class="bi bi-plus-lg me-1"></i> Thêm biến thể thủ công
-            </button>
-          </div>
-          <div
-            v-if="productForm.variants.length"
-            class="table-responsive border rounded-3"
-          >
-            <table class="table table-sm mb-0 align-middle">
-              <thead>
-                <tr class="text-secondary small text-uppercase">
-                  <th class="ps-3">Màu</th>
-                  <th>Size</th>
-                  <th>SKU</th>
-                  <th class="text-end">Tồn kho</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(v, i) in productForm.variants" :key="i">
-                  <td class="ps-3">
-                    <div class="d-flex align-items-center gap-1">
-                      <span
-                        class="color-dot"
-                        :style="{ background: colorHex(v.color) }"
-                      ></span
-                      ><select
-                        v-model="v.color"
-                        class="form-select form-select-sm"
-                        style="min-width: 120px"
-                      >
-                        <option value="">-- Màu --</option>
-                        <option
-                          v-for="c in db.colors"
-                          :key="c.id"
-                          :value="c.name"
-                          v-text="c.name"
-                        ></option>
-                      </select>
-                    </div>
-                  </td>
-                  <td>
-                    <select
-                      v-model="v.size"
-                      class="form-select form-select-sm"
-                      style="min-width: 90px"
-                    >
-                      <option value="">-- Size --</option>
-                      <option
-                        v-for="s in SHOE_SIZES"
-                        :key="s"
-                        :value="s"
-                        v-text="s"
-                      ></option>
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      v-model="v.sku"
-                      type="text"
-                      class="form-control form-control-sm"
-                      style="min-width: 120px"
-                    />
-                  </td>
-                  <td class="text-end" style="width: 110px">
-                    <input
-                      v-model.number="v.stock"
-                      type="number"
-                      class="form-control form-control-sm text-end"
-                    />
-                  </td>
-                  <td>
-                    <button
-                      @click="productForm.variants.splice(i, 1)"
-                      class="btn btn-sm btn-link text-danger p-0"
-                    >
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
 

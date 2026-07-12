@@ -38,6 +38,8 @@ export const db = reactive({
   colors: [],
   sizes: [],
   materials: [],
+  soles: [],
+  cushionings: [],
   reviews: [],
 });
 
@@ -197,10 +199,12 @@ export const ordersInRange = computed(() => {
 export const statAccounts = computed(() => db.accounts.length);
 export const statProducts = computed(() => db.products.length);
 export const statOrders = computed(() => ordersInRange.value.length);
-export const statRevenue = computed(() =>
-  ordersInRange.value
-    .filter((o) => o.status !== "Đã hủy")
-    .reduce((s, o) => s + (Number(o.total) || 0), 0),
+export const statRevenue = computed(
+  () =>
+    ordersInRange.value
+      .filter((o) => o.status !== "Đã hủy")
+      .reduce((s, o) => s + (Number(o.total) || 0), 0) -
+    completedReturnsRefundInRange.value,
 );
 
 export function exportReport() {
@@ -492,6 +496,115 @@ export async function processOrderFlow(ord) {
   notify("Đơn #" + ord.id + ": " + prev + " → " + action.next, "success");
 }
 
+// Máy trạng thái đơn theo phương thức thanh toán.
+// - Chuyển khoản: khách phải chuyển khoản TRƯỚC (ở trang khách hàng) mới được xác nhận & hoàn thành đơn.
+// - COD: xác nhận → giao → THU TIỀN (gần cuối) → hoàn thành đơn.
+export function getOrderActions(o) {
+  if (!o || o.status === "Đã hủy" || o.status === "Đã giao hàng thành công")
+    return [];
+  const method = getPaymentMethodPill(o.payment_method).code;
+  const paid = (o.payment_status || "") === "Đã thanh toán";
+  const acts = [];
+  if (method === "BANK_TRANSFER") {
+    if (!paid)
+      return [
+        {
+          key: "wait_bank",
+          text: "Chờ khách chuyển khoản",
+          locked: true,
+          class: "btn-light text-secondary border",
+        },
+      ];
+    if (o.status === "Chờ xác nhận")
+      acts.push({
+        key: "confirm",
+        text: "Xác nhận đơn",
+        next: "Đã xác nhận",
+        class: "btn-dark text-white",
+      });
+    else
+      acts.push({
+        key: "complete",
+        text: "Hoàn thành đơn",
+        next: "Đã giao hàng thành công",
+        class: "btn-success text-white",
+      });
+    return acts;
+  }
+  // COD (và các phương thức khác)
+  if (o.status === "Chờ xác nhận")
+    acts.push({
+      key: "confirm",
+      text: "Xác nhận đơn",
+      next: "Đã xác nhận",
+      class: "btn-dark text-white",
+    });
+  else if (o.status === "Đã xác nhận")
+    acts.push({
+      key: "ship",
+      text: "Giao vận chuyển",
+      next: "Đang vận chuyển",
+      class: "btn-primary text-white",
+    });
+  else if (o.status === "Đang vận chuyển") {
+    if (method === "COD" && !paid)
+      acts.push({
+        key: "cod_paid",
+        text: "Thanh toán thành công (thu COD)",
+        markPaid: true,
+        class: "btn-warning text-dark",
+      });
+    else
+      acts.push({
+        key: "complete",
+        text: "Hoàn thành đơn",
+        next: "Đã giao hàng thành công",
+        class: "btn-success text-white",
+      });
+  }
+  return acts;
+}
+export async function runOrderAction(o, act) {
+  if (!o || !act || act.locked) return;
+  if (act.markPaid) {
+    o.payment_status = "Đã thanh toán";
+    o._history = o._history || [];
+    o._history.push({
+      status: "Thanh toán thành công",
+      date: new Date().toISOString(),
+      note: "Thu tiền COD",
+    });
+    await api("/orders/" + o.id + "/payment", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment_status: "Đã thanh toán" }),
+    });
+    notify("Đơn #" + o.id + ": đã thu tiền COD", "success");
+    return;
+  }
+  if (act.next) {
+    const prev = o.status;
+    o.status = act.next;
+    if (
+      act.next === "Đã giao hàng thành công" &&
+      getPaymentMethodPill(o.payment_method).code === "COD"
+    )
+      o.payment_status = "Đã thanh toán";
+    o._history = o._history || [];
+    o._history.push({
+      status: act.next,
+      date: new Date().toISOString(),
+      note: "Cập nhật bởi " + getDisplayName.value,
+    });
+    await api("/orders/" + o.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: act.next }),
+    });
+    notify("Đơn #" + o.id + ": " + prev + " → " + act.next, "success");
+  }
+}
+
 export const cancelReasons = [
   "Hết hàng",
   "Khách yêu cầu hủy",
@@ -591,6 +704,8 @@ export const paymentChannelOrders = computed(() => {
 export const paymentChannelCount = computed(
   () => paymentChannelOrders.value.length,
 );
+// Tổng số đơn (cố định, không đổi khi chuyển tab) = Online + Offline
+export const paymentTotalCount = computed(() => db.orders.length);
 export function countOrdersByChannel(ch) {
   return db.orders.filter((o) => getOrderChannel(o) === ch).length;
 }
@@ -625,10 +740,14 @@ export function effectivePaymentStatus(o) {
   if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
   if (o.status === "Đã hủy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
-  if (pill.code === "BANK_TRANSFER" || pill.code === "CASH")
-    return "Đã thanh toán";
+  if (pill.code === "CASH") return "Đã thanh toán";
+  if (pill.code === "BANK_TRANSFER")
+    return (o.payment_status || "") === "Đã thanh toán"
+      ? "Đã thanh toán"
+      : "Chờ chuyển khoản";
   if (pill.code === "COD")
-    return o.status === "Đã giao hàng thành công"
+    return o.status === "Đã giao hàng thành công" ||
+      (o.payment_status || "") === "Đã thanh toán"
       ? "Đã thanh toán"
       : "Chờ thu khi giao (COD)";
   return o.payment_status || "Chưa thanh toán";
@@ -639,6 +758,11 @@ export function getPaymentStatusPill(o) {
     return { label: "Đã thanh toán", cls: "badge-active" };
   if (st === "Hoàn tiền")
     return { label: "Hoàn tiền", cls: "bg-info-subtle text-info-emphasis" };
+  if (st === "Chờ chuyển khoản")
+    return {
+      label: "Chờ chuyển khoản",
+      cls: "bg-warning-subtle text-warning-emphasis",
+    };
   if (st === "Chờ thu khi giao (COD)")
     return {
       label: "Chờ thu (COD)",
@@ -718,7 +842,7 @@ export function buildOrderHistory(o) {
     return h ? h.date : null;
   };
   const created = o.date;
-  const paid = o.payment_status === "Đã thanh toán";
+  const paid = effectivePaymentStatus(o) === "Đã thanh toán";
   const order = [
     "Chờ xác nhận",
     "Đã xác nhận",
@@ -726,39 +850,60 @@ export function buildOrderHistory(o) {
     "Đã giao hàng thành công",
   ];
   const rank = order.indexOf(o.status);
-  return [
+  const isBank = getPaymentMethodPill(o.payment_method).code === "BANK_TRANSFER";
+  const steps = [
     { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
-    {
-      label: "Chờ xác nhận",
-      icon: "bi-hourglass-split",
-      done: rank >= 0,
-      date: findDate(["Chờ xác nhận"]) || created,
-    },
-    {
-      label: "Xác nhận thanh toán",
-      icon: "bi-credit-card",
+  ];
+  if (isBank) {
+    // Chuyển khoản: khách thanh toán trước, rồi mới xác nhận & hoàn thành
+    steps.push({
+      label: "Chuyển khoản",
+      icon: "bi-bank",
       done: paid,
-      date: paid ? findDate(["Đã xác nhận"]) : null,
-    },
-    {
-      label: "Chờ giao hàng",
-      icon: "bi-box-seam",
+      date: paid ? findDate(["Đã thanh toán"]) || created : null,
+    });
+    steps.push({
+      label: "Xác nhận đơn",
+      icon: "bi-check2-circle",
       done: rank >= 1,
       date: findDate(["Đã xác nhận"]),
-    },
-    {
+    });
+    steps.push({
+      label: "Hoàn thành đơn",
+      icon: "bi-bag-check",
+      done: rank >= 3,
+      date: findDate(["Đã giao hàng thành công"]),
+    });
+  } else {
+    // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
+    steps.push({
+      label: "Xác nhận đơn",
+      icon: "bi-check2-circle",
+      done: rank >= 1,
+      date: findDate(["Đã xác nhận"]),
+    });
+    steps.push({
       label: "Đang giao hàng",
       icon: "bi-truck",
       done: rank >= 2,
       date: findDate(["Đang vận chuyển"]),
-    },
-    {
-      label: "Đã giao hàng",
-      icon: "bi-check2-circle",
+    });
+    steps.push({
+      label: "Thanh toán (COD)",
+      icon: "bi-cash-coin",
+      done: paid,
+      date: paid
+        ? findDate(["Thanh toán thành công", "Đã giao hàng thành công"])
+        : null,
+    });
+    steps.push({
+      label: "Hoàn thành đơn",
+      icon: "bi-bag-check",
       done: rank >= 3,
       date: findDate(["Đã giao hàng thành công"]),
-    },
-  ];
+    });
+  }
+  return steps;
 }
 
 /* ---- Xuất / In hóa đơn (mở cửa sổ in -> Lưu PDF) ---- */
@@ -979,6 +1124,20 @@ export const returnSearchCode = ref("");
 export const returnFoundOrder = ref(null);
 export const returnItems = ref([]);
 export const returnNote = ref("");
+// Loại trả hàng: "CUSTOMER" = khách yêu cầu (cần duyệt); "DIRECT" = trả trực tiếp tại quầy (hoàn tất ngay)
+export const returnType = ref("CUSTOMER");
+export function getReturnTypeLabel(t) {
+  return t === "DIRECT" || t === "Trực tiếp"
+    ? "Trả trực tiếp tại quầy"
+    : "Trả theo yêu cầu khách hàng";
+}
+// Tổng tiền hoàn của các đơn trả ĐÃ HOÀN TẤT (dùng để TRỪ vào doanh thu)
+export const completedReturnsRefundInRange = computed(() => {
+  const ids = new Set(ordersInRange.value.map((o) => String(o.id)));
+  return (db.returns || [])
+    .filter((r) => r.status === "Hoàn tất" && ids.has(String(r.order_id)))
+    .reduce((s, r) => s + (Number(r.refund_amount) || 0), 0);
+});
 export function searchReturnOrder() {
   const raw = returnSearchCode.value.trim();
   if (!raw) {
@@ -1013,6 +1172,8 @@ export function searchReturnOrder() {
     return;
   }
   returnFoundOrder.value = ord;
+  // Đơn bán tại quầy (offline) => trả trực tiếp; đơn online => trả theo yêu cầu KH
+  returnType.value = getOrderChannel(ord) === "Offline" ? "DIRECT" : "CUSTOMER";
   returnItems.value = (ord.products || []).map((p, idx) => ({
     idx,
     name: p.name,
@@ -1040,6 +1201,7 @@ export function resetReturnForm() {
   returnFoundOrder.value = null;
   returnItems.value = [];
   returnNote.value = "";
+  returnType.value = "CUSTOMER";
 }
 export async function submitReturn() {
   const ord = returnFoundOrder.value;
@@ -1049,13 +1211,19 @@ export async function submitReturn() {
     notify("Chọn ít nhất 1 sản phẩm để trả", "error");
     return;
   }
+  const direct = returnType.value === "DIRECT";
+  // Trả trực tiếp tại quầy (khách mua trực tiếp): hoàn tất ngay, không cần duyệt.
+  // Trả theo yêu cầu khách hàng (đơn online): tạo yêu cầu, chờ duyệt rồi hoàn tất.
+  const status = direct ? "Hoàn tất" : "Chờ xử lý";
   const payload = {
     order_id: ord.id,
     tracking_number: getTrackingCode(ord),
-    return_type: "Trả hàng",
-    reason: returnNote.value || "Khách yêu cầu trả hàng tại quầy",
+    return_type: returnType.value,
+    reason:
+      returnNote.value ||
+      (direct ? "Khách trả trực tiếp tại quầy" : "Khách yêu cầu trả hàng"),
     refund_amount: returnRefundTotal.value,
-    status: "Chờ xử lý",
+    status,
     items: items.map((it) => ({
       name: it.name,
       color: it.color,
@@ -1064,14 +1232,35 @@ export async function submitReturn() {
       price: it.price,
     })),
   };
-  await api("/returns", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  let res = null;
+  try {
+    res = await apiWrite("/returns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    // Máy chủ có thể chưa sẵn sàng — vẫn ghi nhận cục bộ để hiển thị
+  }
+  const newId =
+    (res && res.data && (res.data.ReturnID || res.data.id)) ||
+    "R-" + Date.now();
+  db.returns.unshift({
+    id: newId,
+    order_id: ord.id,
+    return_type: returnType.value,
+    reason: payload.reason,
+    refund_amount: payload.refund_amount,
+    status,
+    created_at: new Date().toISOString(),
   });
-  notify("Đã tạo yêu cầu trả hàng cho đơn #" + ord.id, "success");
+  notify(
+    direct
+      ? "Đã trả hàng trực tiếp & hoàn tất cho đơn #" + ord.id
+      : "Đã tạo yêu cầu trả hàng cho đơn #" + ord.id,
+    "success",
+  );
   resetReturnForm();
-  fetchAllData();
 }
 
 /* ---------------- POS ---------------- */
@@ -1098,10 +1287,6 @@ export const activePosOrder = computed(
   () => posOrders[posActiveIndex.value] || posOrders[0],
 );
 export function createPosOrder() {
-  if (posOrders.length >= POS_MAX_ORDERS) {
-    notify("Chỉ mở tối đa " + POS_MAX_ORDERS + " đơn chờ", "warning");
-    return;
-  }
   posOrders.push(newPosOrder());
   posActiveIndex.value = posOrders.length - 1;
 }
@@ -1113,6 +1298,22 @@ export function removePosOrder(i) {
   if (posOrders.length === 0) posOrders.push(newPosOrder());
   if (posActiveIndex.value >= posOrders.length)
     posActiveIndex.value = posOrders.length - 1;
+}
+export const posOrderSearch = ref("");
+export const filteredPosOrders = computed(() => {
+  const q = posOrderSearch.value.trim().toLowerCase();
+  return posOrders
+    .map((o, i) => ({ o, i }))
+    .filter((row) => !q || String(row.o.code).toLowerCase().includes(q));
+});
+// Modal QR chuyển khoản cho bán hàng tại quầy
+export const posPayModal = reactive({ open: false, qr: "", amount: 0 });
+export function cancelPosPay() {
+  posPayModal.open = false;
+}
+export async function confirmPosPaid() {
+  posPayModal.open = false;
+  await finalizePosOrder();
 }
 
 export const posSearch = ref("");
@@ -1315,7 +1516,24 @@ export async function savePosCustomer() {
   }
   notify("Đã lưu khách vào danh sách khách hàng", "success");
 }
-export async function checkoutPos() {
+export function checkoutPos() {
+  const o = activePosOrder.value;
+  if (o.cart.length === 0) {
+    notify("Chưa có sản phẩm trong đơn", "error");
+    return;
+  }
+  // Chuyển khoản: hiện mã QR 1 lần để khách quét, xác nhận "Đã thanh toán" rồi mới tạo đơn
+  if (o.payment_method === "Chuyển khoản") {
+    posPayModal.amount = posGrandTotal.value;
+    posPayModal.qr =
+      "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" +
+      encodeURIComponent("SHOEGROUP " + o.code + " " + posGrandTotal.value);
+    posPayModal.open = true;
+    return;
+  }
+  finalizePosOrder();
+}
+async function finalizePosOrder() {
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
@@ -1327,7 +1545,7 @@ export async function checkoutPos() {
     payment_method: o.payment_method,
     payment_status: "Đã thanh toán",
     status: "Đã giao hàng thành công",
-    handled_by: "Quầy",
+    handled_by: getDisplayName.value || "Quầy",
     order_note: o.customer_note || "",
     coupon_code: o.coupon_code || null,
     discount_amount: posDiscountAmount.value,
@@ -1375,7 +1593,7 @@ export async function checkoutPos() {
     cancel_reason: "",
     payment_status: "Đã thanh toán",
     payment_method: payload.payment_method,
-    handled_by: "Quầy",
+    handled_by: getDisplayName.value || "Quầy",
     tracking_code: "",
     products: payload.products.map((p) => ({
       name: p.name,
@@ -1421,6 +1639,7 @@ function emptyProduct() {
     image_url: "",
     is_featured: false,
     active: true,
+    default_stock: 0,
     colors: [],
     sizes: [],
     variants: [],
@@ -1430,6 +1649,7 @@ export const productForm = reactive(emptyProduct());
 export const colorDraft = ref("");
 export const sizeDraft = ref("");
 export const colorImageDraft = ref("");
+export const colorNoteDraft = ref("");
 // Size giay chuan cho giay the thao - CHI dung so, khong dung S/M/L/XL
 export const SHOE_SIZES = [
   "36",
@@ -1444,17 +1664,59 @@ export const SHOE_SIZES = [
   "45",
   "46",
 ];
+// ---- Tong hop bien the tren FORM dang mo (tach theo bien the) ----
+// So bien the = tong so (mau x size) da chon.
+export const productFormVariantCount = computed(() =>
+  (productForm.colors || []).reduce(
+    (n, c) => n + (Array.isArray(c.variants) ? c.variants.length : 0),
+    0,
+  ),
+);
+// Tong san pham = tong so luong ton kho cua tat ca bien the.
+export const productFormStockTotal = computed(() =>
+  (productForm.colors || []).reduce(
+    (sum, c) =>
+      sum +
+      (Array.isArray(c.variants)
+        ? c.variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+        : 0),
+    0,
+  ),
+);
+// So mau da chon.
+export const productFormColorCount = computed(
+  () => (productForm.colors || []).length,
+);
+// So luong ton kho cho RIENG 1 mau (dung hien thi tach theo mau).
+export function colorStockTotal(c) {
+  return Array.isArray(c && c.variants)
+    ? c.variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    : 0;
+}
 export function openProductForm(p) {
   Object.assign(productForm, emptyProduct());
   if (p) {
     Object.assign(productForm, JSON.parse(JSON.stringify(p)));
+    const loadedVariants = productForm.variants || [];
     productForm.colors = (productForm.colors || []).map((c) => ({
       id: c.id,
       name: c.name,
       hex: c.hex || colorHex(c.name),
       image: c.image || "",
+      note: c.note || "",
+      // Tai lai size + so luong (bien the) da luu cho tung mau
+      variants: loadedVariants
+        .filter((v) => String(v.color) === String(c.name))
+        .map((v) => ({ size: String(v.size), stock: Number(v.stock) || 0 })),
     }));
-    productForm.sizes = productForm.sizes || [];
+    productForm.sizes =
+      productForm.sizes && productForm.sizes.length
+        ? productForm.sizes
+        : Array.from(new Set(loadedVariants.map((v) => String(v.size))));
+    const _stocks = loadedVariants
+      .map((v) => Number(v.stock) || 0)
+      .filter((n) => n > 0);
+    productForm.default_stock = _stocks.length ? Math.max(..._stocks) : 0;
     productForm.variants = productForm.variants || [];
   }
   productFormOpen.value = true;
@@ -1477,9 +1739,11 @@ export function addColor() {
     name: c.name,
     hex: c.hex,
     image: colorImageDraft.value || "",
+    note: (colorNoteDraft.value || "").trim(),
   });
   colorDraft.value = "";
   colorImageDraft.value = "";
+  colorNoteDraft.value = "";
 }
 
 // Doc file anh tu thiet bi -> data URL (base64) de luu vao CSDL
@@ -1535,6 +1799,23 @@ export async function onFormImageFile(e, key) {
 }
 export function removeColor(i) {
   productForm.colors.splice(i, 1);
+}
+// Chon/bo size cho RIENG tung mau + nhap so luong
+export function toggleColorSize(colorIndex, size) {
+  const c = productForm.colors[colorIndex];
+  if (!c) return;
+  if (!Array.isArray(c.variants)) c.variants = [];
+  const s = String(size);
+  const idx = c.variants.findIndex((v) => String(v.size) === s);
+  if (idx >= 0) c.variants.splice(idx, 1);
+  else c.variants.push({ size: s, stock: 0 });
+}
+export function colorHasSize(c, size) {
+  return (
+    !!c &&
+    Array.isArray(c.variants) &&
+    c.variants.some((v) => String(v.size) === String(size))
+  );
 }
 export function addSize() {
   const s = db.sizes.find((x) => String(x.id) === String(sizeDraft.value));
@@ -1620,10 +1901,29 @@ export async function saveProduct() {
   }
   const isEdit = !!productForm.id;
   const payload = JSON.parse(JSON.stringify(productForm));
-  payload.variants = (payload.variants || []).map((v) => ({
-    ...v,
-    hex: colorHex(v.color),
-  }));
+  const flatVariants = [];
+  // Moi mau co danh sach size + so luong rieng (c.variants).
+  // Lay dung so luong nguoi dung nhap cho tung bien the -> luu len CSDL.
+  (productForm.colors || []).forEach((c) => {
+    (c.variants || []).forEach((sv) => {
+      let stock = Number(sv.stock) || 0;
+      if (stock < 0) stock = 0;
+      flatVariants.push({
+        color: c.name,
+        hex: colorHex(c.name),
+        size: String(sv.size),
+        sku:
+          (productForm.name || "SP").slice(0, 4).toUpperCase() +
+          "-" +
+          (c.name || "").slice(0, 2).toUpperCase() +
+          "-" +
+          sv.size,
+        stock,
+      });
+    });
+  });
+  payload.variants = flatVariants;
+  payload.sizes = Array.from(new Set(flatVariants.map((v) => String(v.size))));
   const res = isEdit
     ? await apiWrite("/products/" + productForm.id, {
         method: "PUT",
@@ -1745,6 +2045,22 @@ export const filteredSizes = computed(() => db.sizes);
 export const filteredMaterials = computed(() => db.materials);
 export function getMaterialProductCount(id) {
   return db.products.filter((p) => String(p.material_id) === String(id)).length;
+}
+export const filteredSoles = computed(() => db.soles);
+export function getSoleProductCount(id) {
+  return db.products.filter((p) => String(p.sole_id) === String(id)).length;
+}
+export function getSoleName(id) {
+  const s = db.soles.find((x) => String(x.id) === String(id));
+  return s ? s.name : "—";
+}
+export const filteredCushionings = computed(() => db.cushionings);
+export function getCushioningProductCount(id) {
+  return db.products.filter((p) => String(p.cushioning_id) === String(id)).length;
+}
+export function getCushioningName(id) {
+  const c = db.cushionings.find((x) => String(x.id) === String(id));
+  return c ? c.name : "—";
 }
 export const filteredDiscounts = computed(() => db.discounts);
 export function isExpired(date) {
@@ -2158,6 +2474,14 @@ const fieldDefs = {
     { key: "name", label: "Tên chất liệu" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+  soles: [
+    { key: "name", label: "Tên đế giày" },
+    { key: "active", label: "Hoạt động", type: "checkbox" },
+  ],
+  cushionings: [
+    { key: "name", label: "Tên đệm giày" },
+    { key: "active", label: "Hoạt động", type: "checkbox" },
+  ],
   colors: [
     { key: "name", label: "Tên màu" },
     { key: "hex", label: "Mã màu", type: "color" },
@@ -2181,6 +2505,7 @@ const fieldDefs = {
   accounts: [
     { key: "username", label: "Email đăng nhập", type: "email" },
     { key: "name", label: "Họ tên" },
+    { key: "role_id", label: "Phân quyền", type: "select" },
     {
       key: "password",
       label: "Mật khẩu (để trống nếu không đổi)",
@@ -2211,8 +2536,10 @@ export const formFields = computed(() => {
     if (f.key === "role_id")
       return {
         ...f,
+        disabled: !!formModal.data.id,
         options: [
           { value: 1, label: "Quản trị viên" },
+          { value: 3, label: "Nhân viên" },
           { value: 2, label: "Khách hàng" },
         ],
       };
@@ -2224,6 +2551,8 @@ const formTitles = {
   brands: "Thương Hiệu",
   collections: "Bộ Sưu Tập",
   materials: "Chất Liệu",
+  soles: "Đế Giày",
+  cushionings: "Đệm Giày",
   colors: "Màu Sắc",
   sizes: "Kích Thước",
   discounts: "Mã Giảm Giá",
@@ -2236,6 +2565,7 @@ export function openForm(type, item) {
   (fieldDefs[type] || []).forEach((f) => {
     base[f.key] = f.type === "checkbox" ? true : "";
   });
+  if (type === "accounts" && !item) base.role_id = 3;
   formModal.data = item
     ? { ...base, ...JSON.parse(JSON.stringify(item)) }
     : base;
@@ -2423,6 +2753,8 @@ export async function fetchAllData() {
     colors,
     sizes,
     materials,
+    soles,
+    cushionings,
   ] = await Promise.all([
     api("/orders"),
     api("/products"),
@@ -2438,6 +2770,8 @@ export async function fetchAllData() {
     api("/colors"),
     api("/sizes"),
     api("/materials"),
+    api("/soles"),
+    api("/cushionings"),
   ]);
   db.orders = (orders || []).map(mapOrder);
   db.products = (products || []).map((p) => ({
@@ -2451,6 +2785,8 @@ export async function fetchAllData() {
     brand: p.BrandName ?? p.brand ?? "",
     collection_id: p.CollectionID ?? p.collection_id,
     material_id: p.MaterialID ?? p.material_id ?? null,
+    sole_id: p.SoleID ?? p.sole_id ?? null,
+    cushioning_id: p.CushioningID ?? p.cushioning_id ?? null,
     image_url: p.ImageURL ?? p.image_url ?? "",
     description: p.Description ?? p.description ?? "",
     parent_sku: p.ParentSKU ?? p.parent_sku ?? "",
@@ -2572,6 +2908,16 @@ export async function fetchAllData() {
     id: m.MaterialID ?? m.id,
     name: m.MaterialName ?? m.name,
     active: (m.IsActive ?? m.active) !== false,
+  }));
+  db.soles = (soles || []).map((s) => ({
+    id: s.SoleID ?? s.id,
+    name: s.SoleName ?? s.name,
+    active: (s.IsActive ?? s.active) !== false,
+  }));
+  db.cushionings = (cushionings || []).map((c) => ({
+    id: c.CushioningID ?? c.id,
+    name: c.CushioningName ?? c.name,
+    active: (c.IsActive ?? c.active) !== false,
   }));
   // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
   const reviews = await api("/reviews");

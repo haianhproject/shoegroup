@@ -7,7 +7,7 @@
     - Các modal & toast dùng chung nằm ở đây để phủ lên mọi trang
 -->
 <script setup>
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   isNavOpen,
@@ -38,6 +38,7 @@ import {
 } from "./adminStore";
 
 const route = useRoute();
+const passwordVisible = ref(false);
 const router = useRouter();
 
 // Cấu trúc menu -> mỗi mục trỏ đến 1 route con riêng
@@ -432,6 +433,7 @@ onMounted(fetchAllData);
             <select
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]"
+              :disabled="f.disabled"
               class="form-select rounded-3"
             >
               <option
@@ -487,6 +489,22 @@ onMounted(fetchAllData);
                 placeholder="Hoặc dán URL ảnh..."
               />
             </div>
+            <div v-else-if="f.type === 'password'" class="input-group">
+              <input
+                v-model="formModal.data[f.key]"
+                :type="passwordVisible ? 'text' : 'password'"
+                class="form-control rounded-start-3"
+                autocomplete="new-password"
+              />
+              <button
+                type="button"
+                class="btn btn-outline-secondary rounded-end-3"
+                @click="passwordVisible = !passwordVisible"
+                :title="passwordVisible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+              >
+                <i class="bi" :class="passwordVisible ? 'bi-eye-slash' : 'bi-eye'"></i>
+              </button>
+            </div>
             <input
               v-else
               v-model="formModal.data[f.key]"
@@ -508,9 +526,9 @@ onMounted(fetchAllData);
       </div>
     </div>
 
-    <!-- Customer detail -->
+    <!-- Customer detail: đã chuyển sang trang Khách Hàng để tránh trùng modal -->
     <div
-      v-if="customerModal.open"
+      v-if="false"
       class="custom-modal-overlay"
       @click.self="customerModal.open = false"
     >

@@ -27,11 +27,13 @@ const sections = computed(function () {
   const list = filtered.value
   const admins = list.filter(function (a) { return Number(a.role_id) === 1 })
   const customers = list.filter(function (a) { return Number(a.role_id) === 2 })
+  const employees = list.filter(function (a) { return Number(a.role_id) === 3 })
   const others = list.filter(function (a) {
-    return Number(a.role_id) !== 1 && Number(a.role_id) !== 2
+    return Number(a.role_id) !== 1 && Number(a.role_id) !== 2 && Number(a.role_id) !== 3
   })
   const arr = [
     { key: 'admin', title: 'Quan tri vien', icon: 'bi-shield-lock', rows: admins },
+    { key: 'employee', title: 'Nhan vien', icon: 'bi-person-badge', rows: employees },
     { key: 'customer', title: 'Khach hang', icon: 'bi-people', rows: customers },
   ]
   if (others.length) {
@@ -95,7 +97,6 @@ async function changeRole(a, value) {
                 <th class="ps-4">Tai Khoan</th>
                 <th>Email</th>
                 <th>Vai Tro</th>
-                <th>Phan Quyen</th>
                 <th>Trang Thai</th>
                 <th class="text-end pe-4">Hanh Dong</th>
               </tr>
@@ -113,14 +114,6 @@ async function changeRole(a, value) {
                 </td>
                 <td class="small" v-text="a.email"></td>
                 <td><span class="badge rounded-pill" :class="getRoleBadgeClass(a.role_id)" v-text="roleName(a.role_id)"></span></td>
-                <td>
-                  <select class="form-select form-select-sm rounded-3" style="width:160px;"
-                          :value="Number(a.role_id)" :disabled="savingId === a.id"
-                          @change="changeRole(a, $event.target.value)">
-                    <option :value="1">Quan tri vien</option>
-                    <option :value="2">Khach hang</option>
-                  </select>
-                </td>
                 <td><span class="badge rounded-pill" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-secondary'" v-text="a.active !== false ? 'Hoat dong' : 'Khoa'"></span></td>
                 <td class="text-end pe-4">
                   <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button>
@@ -128,7 +121,7 @@ async function changeRole(a, value) {
                 </td>
               </tr>
               <tr v-if="!sec.rows.length">
-                <td colspan="6" class="text-center text-secondary small py-4">Chua co tai khoan trong nhom nay</td>
+                <td colspan="5" class="text-center text-secondary small py-4">Chua co tai khoan trong nhom nay</td>
               </tr>
             </tbody>
           </table>
