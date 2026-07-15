@@ -1,6 +1,4 @@
 import { createRouter, createWebHistory } from "vue-router";
-import HomeDisplay from "../views/HomeDisplay.vue";
-import { getCurrentUser } from "../stores/authStore";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,23 +6,17 @@ const router = createRouter({
     {
       path: "/",
       name: "home",
-      component: HomeDisplay,
+      component: () => import("../views/HomeDisplay.vue"),
+    },
+    {
+      path: "/products",
+      name: "products",
+      component: () => import("../views/ProductsView.vue"),
     },
     {
       path: "/product/:id",
-      name: "product-detail",
+      name: "ProductDetail",
       component: () => import("../views/ProductDetail.vue"),
-    },
-    {
-      path: "/cart",
-      name: "cart",
-      component: () => import("../views/UserCart.vue"),
-    },
-    {
-      path: "/checkout",
-      name: "checkout",
-      component: () => import("../views/CheckoutView.vue"),
-      meta: { requiresAuth: true },
     },
     {
       path: "/login",
@@ -37,6 +29,16 @@ const router = createRouter({
       component: () => import("../views/RegisterView.vue"),
     },
     {
+      path: "/cart",
+      name: "UserCart",
+      component: () => import("../views/UserCart.vue"),
+    },
+    {
+      path: "/checkout",
+      name: "checkout",
+      component: () => import("../views/CheckoutView.vue"),
+    },
+    {
       path: "/forgot-password",
       name: "forgot-password",
       component: () => import("../views/ForgotPasswordView.vue"),
@@ -45,33 +47,26 @@ const router = createRouter({
       path: "/account",
       name: "account",
       component: () => import("../views/AccountView.vue"),
-      meta: { requiresAuth: true },
     },
     {
-      path: '/admin',
-      name: 'admin',
-      component: () => import('../views/AdminDashboard.vue')
+      path: "/orders",
+      name: "orders",
+      component: () => import("../views/MyOrders.vue"),
     },
     {
-  path: '/admin/products',
-  name: 'ProductManagement',
-  component: () => import('../views/ProductManagement.vue')
-}
+      path: "/admin",
+      name: "admin",
+      component: () => import("../views/AdminDashboard.vue"),
+    },
+    {
+      path: "/admin/products",
+      name: "ProductManagement",
+      component: () => import("../views/ProductManagement.vue"),
+    },
   ],
   scrollBehavior() {
     return { top: 0 };
   },
-});
-
-router.beforeEach((to) => {
-  if (to.meta.requiresAuth && !getCurrentUser()) {
-    return {
-      path: "/login",
-      query: { redirect: to.fullPath },
-    };
-  }
-
-  return true;
 });
 
 export default router;

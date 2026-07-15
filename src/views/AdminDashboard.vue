@@ -1,637 +1,776 @@
 <template>
   <div class="fixed-overlay d-flex flex-column bg-light-gray font-sans" style="overflow-x: hidden;">
     
-    <aside class="sidebar-left bg-sidebar text-white position-fixed top-0 start-0 h-100 d-flex flex-column transition-sidebar z-index-1050 shadow-sm"
+    <aside class="sidebar-left bg-sidebar text-white position-fixed top-0 start-0 h-100 d-flex flex-column transition-sidebar z-index-1050 shadow-lg"
            :style="{ width: '260px', transform: isNavOpen ? 'translateX(0)' : 'translateX(-100%)' }">
-      
-      <div class="p-4 d-flex align-items-center justify-content-center border-bottom border-light border-opacity-10" style="height: 72px;">
-        <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-4">
-          <i class="bi bi-box-fill me-2 fs-5"></i>SHOEGROUP
-        </h3>
+      <div class="p-4 d-flex align-items-center justify-content-center border-bottom border-secondary border-opacity-25" style="height: 72px;">
+        <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-4"><i class="bi bi-box-fill me-2 fs-5"></i>SHOEGROUP</h3>
       </div>
 
       <div class="flex-grow-1 overflow-auto py-3 px-3 list-group custom-scrollbar-dark">
-        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 tracking-wide" style="font-size: 0.65rem;">Hệ thống</p>
-        <button @click="changeTab('dashboard')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'dashboard' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-grid-1x2-fill me-3 fs-6"></i> Tổng Quan
-        </button>
+        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 tracking-wide" style="font-size: 0.65rem;">Quản Trị Hệ Thống</p>
+        <button @click="changeTab('dashboard')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'dashboard' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-grid-1x2-fill me-3 fs-6"></i> Tổng Quan Doanh Thu</button>
         
-        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Hàng Hóa & Kho</p>
-        <button @click="changeTab('products')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'products' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-bag-check-fill me-3 fs-6"></i> Quản Lý Sản Phẩm
+        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Mặt Hàng & Giao Dịch</p>
+        <button @click="changeTab('orders')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex justify-content-between align-items-center" :class="activeTab === 'orders' ? 'active-nav' : 'text-light bg-transparent'">
+          <span><i class="bi bi-cart-check-fill me-3 fs-6"></i> Quản Lý Đơn Hàng</span>
+          <span v-if="pendingOrdersCount > 0" class="badge bg-danger rounded-pill shadow-sm">{{ pendingOrdersCount }}</span>
         </button>
-        <button @click="changeTab('categories')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'categories' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-tags-fill me-3 fs-6"></i> Loại Sản Phẩm
-        </button>
-        <button @click="changeTab('inventory')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'inventory' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-box-seam-fill me-3 fs-6"></i> Lịch Sử Nhập Kho
-        </button>
+        <button @click="changeTab('products')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'products' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-box-seam-fill me-3 fs-6"></i> Quản Lý Sản Phẩm</button>
+        <button @click="changeTab('categories')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'categories' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-tags-fill me-3 fs-6"></i> Nhóm Danh Mục</button>
 
-        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Thương Mại</p>
-        <button @click="changeTab('orders')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'orders' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-receipt-cutoff me-3 fs-6"></i> Điều Phối Đơn Hàng
-        </button>
-        <button @click="changeTab('discounts')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'discounts' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-ticket-perforated-fill me-3 fs-6"></i> Mã Giảm Giá
-        </button>
+        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Đối Tác & Tiếp Thị</p>
+        <button @click="changeTab('discounts')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'discounts' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-ticket-perforated-fill me-3 fs-6"></i> Mã Khuyến Mãi</button>
+        <button @click="changeTab('customers')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'customers' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-people-fill me-3 fs-6"></i> Khách Hàng (CRM)</button>
 
-        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Đối Tác & Bảo Mật</p>
-        <button @click="changeTab('customers')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'customers' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-people-fill me-3 fs-6"></i> Khách Hàng (CRM)
-        </button>
-        <button @click="changeTab('accounts')" class="list-group-item list-group-item-action border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex align-items-center" :class="activeTab === 'accounts' ? 'active-nav' : 'text-light bg-transparent'">
-          <i class="bi bi-shield-lock-fill me-3 fs-6"></i> Phân Quyền
-        </button>
+        <p class="text-white-50 fw-semibold text-uppercase px-2 mb-2 mt-4 tracking-wide" style="font-size: 0.65rem;">Bảo Mật</p>
+        <button @click="changeTab('accounts')" class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item" :class="activeTab === 'accounts' ? 'active-nav' : 'text-light bg-transparent'"><i class="bi bi-shield-lock-fill me-3 fs-6"></i> Quản Lý Tài Khoản</button>
       </div>
 
-      <div class="p-4 bg-sidebar-darker mt-auto border-top border-light border-opacity-10">
-        <div class="d-flex align-items-center mb-4">
-          <div class="bg-white text-dark rounded-circle d-flex justify-content-center align-items-center fw-bolder shadow-sm me-3" style="width: 42px; height: 42px; font-size: 1rem;">
-            HA
-          </div>
-          <div class="overflow-hidden">
-            <p class="mb-0 fw-semibold text-truncate text-white" style="font-size: 0.9rem;">Hải Anh</p>
-            <small class="text-white-50" style="font-size: 0.75rem;">Giám đốc vận hành</small>
-          </div>
-        </div>
-        <router-link to="/" class="btn btn-outline-light rounded-3 w-100 fw-medium shadow-sm py-2" style="font-size: 0.85rem; border-color: rgba(255,255,255,0.2);">
-          <i class="bi bi-box-arrow-left me-2"></i> Trở Về Cửa Hàng
-        </router-link>
+      <div class="p-4 bg-sidebar-darker mt-auto border-top border-secondary border-opacity-25">
+        <button @click="handleLogout" class="btn btn-danger rounded-3 w-100 fw-bold shadow-sm py-2 d-flex align-items-center justify-content-center"><i class="bi bi-box-arrow-right me-2"></i> Đăng Xuất</button>
       </div>
     </aside>
 
     <main class="flex-grow-1 transition-main d-flex flex-column bg-light-gray" :style="{ marginLeft: isNavOpen ? '260px' : '0' }">
-      
       <header class="d-flex justify-content-between align-items-center px-4 bg-white shadow-sm z-index-10 position-sticky top-0" style="height: 72px;">
         <div class="d-flex align-items-center gap-3">
-          <button class="btn btn-light border-0 rounded-circle d-flex align-items-center justify-content-center text-dark bg-light-gray" style="width: 40px; height: 40px;" @click="isNavOpen = !isNavOpen">
-             <i class="bi bi-list fs-5"></i>
-          </button>
+          <button class="btn btn-light border-0 rounded-circle d-flex align-items-center justify-content-center text-dark bg-light-gray" style="width: 40px; height: 40px;" @click="isNavOpen = !isNavOpen"><i class="bi bi-list fs-5"></i></button>
           <h2 class="h5 mb-0 fw-bold text-dark d-none d-md-block tracking-wide">{{ activeTabTitle }}</h2>
         </div>
-        <div class="d-flex align-items-center gap-3">
-           <span class="badge bg-dark text-white rounded-pill px-3 py-2 fw-medium border shadow-sm">
-             <i class="bi bi-circle-fill text-success me-2" style="font-size: 0.5rem;"></i>Hệ thống Trực tuyến
-           </span>
+        <div class="d-flex align-items-center gap-2">
+           <div class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border" style="width: 40px; height: 40px;">{{ getDisplayName.charAt(0).toUpperCase() }}</div>
+           <span class="fw-bold text-dark d-none d-sm-block">Xin chào, {{ getDisplayName }}</span>
         </div>
       </header>
 
-      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
+      <div v-if="isLoading" class="d-flex flex-column justify-content-center align-items-center h-100 flex-grow-1">
+          <div class="spinner-border text-dark mb-3"></div><p class="fw-medium text-secondary">Đang nạp dữ liệu từ CSDL...</p>
+      </div>
+
+      <div v-else class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
         
         <div v-if="activeTab === 'dashboard'" class="fade-in">
           <div class="row g-4 mb-4">
-            <div class="col-md-3">
-              <div class="card rounded-4 border-0 shadow-sm bg-white h-100 dashboard-card p-2">
-                <div class="card-body d-flex flex-column">
-                  <div class="d-flex justify-content-between align-items-start mb-3">
-                    <p class="text-secondary fw-semibold mb-0" style="font-size: 0.85rem;">Doanh Thu Thực Tế</p>
-                    <div class="bg-light text-dark rounded-circle d-flex align-items-center justify-content-center border" style="width: 36px; height: 36px;">
-                      <i class="bi bi-cash-stack"></i>
-                    </div>
-                  </div>
-                  <h3 class="fw-bold text-dark mb-0">{{ formatPrice(db.orders.reduce((sum, o) => o.status === 'Đã giao' ? sum + o.total : sum, 0)) }}</h3>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <div class="card rounded-4 border-0 shadow-sm bg-dark text-white h-100 dashboard-card p-2">
-                <div class="card-body d-flex flex-column">
-                  <div class="d-flex justify-content-between align-items-start mb-3">
-                    <p class="text-white-50 fw-semibold mb-0" style="font-size: 0.85rem;">Đơn Chờ Xử Lý</p>
-                    <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
-                      <i class="bi bi-cart-exclamation"></i>
-                    </div>
-                  </div>
-                  <h3 class="fw-bold mb-0 text-white">{{ db.orders.filter(o => o.status === 'Chờ xử lý').length }} Đơn</h3>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-3">
-              <div class="card rounded-4 border-0 shadow-sm bg-white h-100 dashboard-card p-2">
-                <div class="card-body d-flex flex-column">
-                   <div class="d-flex justify-content-between align-items-start mb-3">
-                    <p class="text-secondary fw-semibold mb-0" style="font-size: 0.85rem;">Tổng Sản Phẩm</p>
-                    <div class="bg-light text-dark rounded-circle d-flex align-items-center justify-content-center border" style="width: 36px; height: 36px;">
-                      <i class="bi bi-box2"></i>
-                    </div>
-                  </div>
-                  <h3 class="fw-bold text-dark mb-0">{{ db.products.length }} Mẫu</h3>
-                </div>
-              </div>
-            </div>
-             <div class="col-md-3">
-              <div class="card rounded-4 border-0 shadow-sm bg-white h-100 dashboard-card p-2">
-                <div class="card-body d-flex flex-column">
-                  <div class="d-flex justify-content-between align-items-start mb-3">
-                    <p class="text-secondary fw-semibold mb-0" style="font-size: 0.85rem;">Khách Hàng (CRM)</p>
-                    <div class="bg-light text-dark rounded-circle d-flex align-items-center justify-content-center border" style="width: 36px; height: 36px;">
-                      <i class="bi bi-people"></i>
-                    </div>
-                  </div>
-                  <h3 class="fw-bold text-dark mb-0">{{ db.customers.length }}</h3>
-                </div>
-              </div>
-            </div>
+            <div class="col-md-3"><div class="card rounded-4 border-0 shadow-sm bg-dark text-white h-100 p-4 dashboard-card"><p class="text-white-50 fw-semibold mb-2">Doanh Thu (Hoàn thành)</p><h3 class="fw-bold m-0 text-success">{{ formatPrice(totalRevenue) }}</h3></div></div>
+            <div class="col-md-3"><div class="card rounded-4 border-0 shadow-sm bg-white h-100 p-4 dashboard-card"><p class="text-secondary fw-semibold mb-2">Đơn Chờ Xác Nhận</p><h3 class="fw-bold text-danger m-0">{{ pendingOrdersCount }} <i class="bi bi-bell ms-1 text-muted opacity-50"></i></h3></div></div>
+            <div class="col-md-3"><div class="card rounded-4 border-0 shadow-sm bg-white h-100 p-4 dashboard-card"><p class="text-secondary fw-semibold mb-2">Sản Phẩm Trưng Bày</p><h3 class="fw-bold text-dark m-0">{{ db.products.length }} <i class="bi bi-box-seam ms-1 text-muted opacity-50"></i></h3></div></div>
+            <div class="col-md-3"><div class="card rounded-4 border-0 shadow-sm bg-white h-100 p-4 dashboard-card"><p class="text-secondary fw-semibold mb-2">Hồ Sơ Khách Hàng</p><h3 class="fw-bold text-dark m-0">{{ db.customers.length }} <i class="bi bi-people ms-1 text-muted opacity-50"></i></h3></div></div>
           </div>
-          <div class="card rounded-4 border-0 shadow-sm bg-white p-5 d-flex align-items-center justify-content-center" style="min-height: 350px;">
-             <div class="text-center text-muted">
-                <i class="bi bi-bar-chart-line display-1 opacity-25 mb-3"></i>
-                <p class="fw-medium mb-0 small text-uppercase tracking-wide">Khu vực nhúng biểu đồ phân tích tăng trưởng</p>
-             </div>
-          </div>
-        </div>
-
-        <div v-else-if="activeTab === 'products'" class="fade-in">
-          <div v-if="!showProductForm" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
-            <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Danh Sách Mặt Hàng</h5>
-              <button class="btn btn-dark rounded-3 fw-medium px-4 shadow-sm" style="font-size: 0.85rem;" @click="openForm('product')"><i class="bi bi-plus-lg me-2"></i>Thêm Mới</button>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Mã SP</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Tên Sản Phẩm</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Phân Loại</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Giá Bán</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Trạng Thái</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Hành Động</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-if="db.products.length === 0"><td colspan="6" class="py-5 text-center text-muted">Dữ liệu trống.</td></tr>
-                  <tr v-for="prod in db.products" :key="prod.id">
-                    <td class="py-3 px-4 text-secondary">#{{ prod.id }}</td>
-                    <td class="py-3 px-4 fw-medium text-dark">{{ prod.name }}</td>
-                    <td class="py-3 px-4 text-secondary">{{ prod.category }}</td>
-                    <td class="py-3 px-4 text-dark fw-bold text-end">{{ formatPrice(prod.price) }}</td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge rounded-pill px-3 py-2 fw-medium border" :class="prod.status === 'Đang bán' ? 'bg-dark text-white' : 'bg-light text-secondary'">{{ prod.status }}</span>
-                    </td>
-                    <td class="py-3 px-4 text-end">
-                      <button class="btn btn-sm btn-light text-dark border rounded-3 me-2 px-3" @click="openForm('product', prod)"><i class="bi bi-pencil-square"></i></button>
-                      <button class="btn btn-sm btn-light text-danger border rounded-3 px-3" @click="deleteItem('products', prod.id)"><i class="bi bi-trash"></i></button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-0 mx-auto fade-in" style="max-width: 800px;">
-            <div class="bg-white p-4 border-bottom d-flex justify-content-between align-items-center">
-              <h5 class="fw-semibold text-dark m-0">{{ formState === 'edit' ? 'Cập Nhật Sản Phẩm' : 'Khai Báo Sản Phẩm Mới' }}</h5>
-            </div>
-            <div class="p-4">
-              <form @submit.prevent="saveForm('product')">
-                <div class="mb-4">
-                  <label class="form-label fw-medium text-secondary small text-uppercase">Tên sản phẩm <span class="text-danger">*</span></label>
-                  <input v-model="productForm.name" type="text" class="form-control form-control-lg rounded-3 fs-6" required placeholder="Nhập tên giày...">
-                </div>
-                <div class="row mb-4 g-4">
-                  <div class="col-md-6">
-                    <label class="form-label fw-medium text-secondary small text-uppercase">Loại Sản Phẩm</label>
-                    <select v-model="productForm.category" class="form-select rounded-3">
-                      <option v-for="c in db.categories" :key="c.id" :value="c.name">{{ c.name }}</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label fw-medium text-secondary small text-uppercase">Trạng thái hiển thị</label>
-                    <select v-model="productForm.status" class="form-select rounded-3">
-                      <option value="Đang bán">Đang bán</option>
-                      <option value="Tạm ẩn">Tạm ẩn</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="mb-4">
-                  <label class="form-label fw-medium text-secondary small text-uppercase">Giá bán dự kiến (VNĐ) <span class="text-danger">*</span></label>
-                  <input v-model="productForm.price" type="number" class="form-control rounded-3" required min="0" step="1000">
-                </div>
-                <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-                  <button type="button" class="btn btn-light border rounded-3 fw-medium px-4 text-dark" @click="showProductForm = false">Hủy Bỏ</button>
-                  <button type="submit" class="btn btn-dark rounded-3 fw-medium px-5">Lưu Thay Đổi</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="activeTab === 'categories'" class="fade-in">
-          <div v-if="!showCategoryForm" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden mx-auto" style="max-width: 900px;">
-            <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Nhóm Cấu Trúc Sản Phẩm</h5>
-              <button class="btn btn-dark rounded-3 fw-medium px-4 shadow-sm" style="font-size: 0.85rem;" @click="openForm('category')"><i class="bi bi-plus-lg me-2"></i>Tạo Danh Mục</button>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Mã Nhóm</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Tên Loại Sản Phẩm</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Số Mặt Hàng</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Tình Trạng</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Hành Động</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-for="cat in db.categories" :key="cat.id">
-                    <td class="py-3 px-4 text-secondary">{{ cat.id }}</td>
-                    <td class="py-3 px-4 fw-bold text-dark">{{ cat.name }}</td>
-                    <td class="py-3 px-4 text-center fw-medium text-secondary">
-                       {{ db.products.filter(p => p.category === cat.name).length }} sản phẩm
-                    </td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge rounded-pill px-3 py-2 fw-medium border" :class="cat.status === 'Hoạt động' ? 'bg-dark text-white' : 'bg-light text-secondary'">{{ cat.status }}</span>
-                    </td>
-                    <td class="py-3 px-4 text-end">
-                      <button class="btn btn-sm btn-light text-dark border rounded-3 me-2 px-3" @click="openForm('category', cat)"><i class="bi bi-pencil-square"></i></button>
-                      <button class="btn btn-sm btn-light text-danger border rounded-3 px-3" @click="deleteItem('categories', cat.id)"><i class="bi bi-trash"></i></button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-0 mx-auto fade-in" style="max-width: 600px;">
-             <div class="bg-white p-4 border-bottom"><h5 class="fw-semibold text-dark m-0">{{ formState === 'edit' ? 'Sửa Tên Danh Mục' : 'Tạo Danh Mục Mới' }}</h5></div>
-             <div class="p-4">
-                <form @submit.prevent="saveForm('category')">
-                  <div class="mb-4">
-                    <label class="form-label fw-medium text-secondary small text-uppercase">Tên Phân Loại Nhóm</label>
-                    <input v-model="categoryForm.name" type="text" class="form-control rounded-3" required placeholder="VD: Giày Thể Thao">
-                  </div>
-                  <div class="mb-4">
-                    <label class="form-label fw-medium text-secondary small text-uppercase">Trạng thái áp dụng</label>
-                    <select v-model="categoryForm.status" class="form-select rounded-3">
-                      <option value="Hoạt động">Hoạt động (Cho phép chọn)</option>
-                      <option value="Tạm ẩn">Tạm ẩn</option>
-                    </select>
-                  </div>
-                  <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top"><button type="button" class="btn btn-light rounded-3 px-4 border" @click="showCategoryForm = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-4">Lưu Danh Mục</button></div>
-                </form>
-             </div>
-          </div>
-        </div>
-
-        <div v-else-if="activeTab === 'inventory'" class="fade-in">
-          <div class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
-             <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Sổ Quản Lý Phiếu Nhập (Receipts)</h5>
-              <button class="btn btn-outline-dark rounded-3 fw-medium px-4 shadow-sm" style="font-size: 0.85rem;" @click="triggerConfirm('Thông báo', 'Tính năng tạo phiếu nhập chi tiết đang được mở khóa.', null)"><i class="bi bi-file-earmark-plus me-2"></i>Tạo Phiếu Nhập</button>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Mã Phiếu Nhập</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Nhà Cung Cấp (Supplier)</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Ngày Yêu Cầu</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Tổng Trị Giá Giao Dịch</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Thanh Toán / Kế Toán</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-for="inv in db.inventory" :key="inv.id">
-                    <td class="py-3 px-4 text-secondary fw-medium">#{{ inv.id }}</td>
-                    <td class="py-3 px-4 fw-bold text-dark">{{ inv.supplier }}</td>
-                    <td class="py-3 px-4 text-secondary">{{ inv.date }}</td>
-                    <td class="py-3 px-4 text-dark fw-bold text-end">{{ formatPrice(inv.total) }}</td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge rounded-pill px-3 py-2 fw-medium border" :class="inv.status === 'Đã thanh toán' ? 'bg-dark text-white border-dark' : 'bg-light text-dark'">{{ inv.status }}</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+          <div class="card rounded-4 border-0 shadow-sm bg-white p-4 mt-2">
+             <h5 class="fw-bold text-dark mb-4">Biểu Đồ Doanh Thu (Chỉ tính đơn Giao thành công)</h5>
+             <div style="height: 380px; width: 100%; position: relative;"><canvas id="waveChart"></canvas></div>
           </div>
         </div>
 
         <div v-else-if="activeTab === 'orders'" class="fade-in">
-          <div class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
-            <div class="card-header bg-white border-bottom py-3 px-4">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Điều Phối Đơn Hàng Bán Lẻ</h5>
+           <div class="mx-auto" style="max-width: 1100px;">
+             <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+               <h5 class="mb-0 fw-bold fs-5 text-dark">Danh Sách Đơn Hàng</h5>
+               <div class="d-flex gap-2">
+                 <select v-model="filterOrderStatus" class="form-select border-0 shadow-sm rounded-3 fw-medium" style="width: 200px;">
+                   <option value="">Tất cả trạng thái</option>
+                   <option value="Chờ xác nhận">Chờ xác nhận</option>
+                   <option value="Đã xác nhận">Đã xác nhận</option>
+                   <option value="Đang vận chuyển">Đang vận chuyển</option>
+                   <option value="Đã giao hàng thành công">Đã giao hàng thành công</option>
+                   <option value="Đã hủy">Đã hủy</option>
+                 </select>
+                 <input v-model="searchQuery.orders" type="text" class="form-control border-0 shadow-sm rounded-3" placeholder="Tìm Mã Đơn / Tên Khách..." style="width: 250px;">
+               </div>
+             </div>
+
+             <div v-if="filteredOrders.length === 0" class="text-center py-5 text-secondary">Không tìm thấy đơn hàng nào.</div>
+             
+             <div v-for="ord in filteredOrders" :key="ord.id" class="card rounded-4 border-0 shadow-sm mb-4 bg-white overflow-hidden order-card">
+               
+               <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+                 <div class="d-flex align-items-center gap-3">
+                   <span class="fw-bold text-dark fs-5">Mã đơn: #ORD-{{ ord.id }}</span>
+                   <span class="text-secondary small fw-medium"><i class="bi bi-clock me-1"></i> Đặt lúc: {{ ord.date }}</span>
+                 </div>
+                 <span class="badge px-3 py-2 rounded-pill fs-6" :class="getStatusBadgeClass(ord.status)">{{ ord.status }}</span>
+               </div>
+
+               <div class="card-body p-0">
+                 <div class="row g-0">
+                   <div class="col-md-7 p-4 border-end">
+                     <h6 class="fw-bold mb-3 text-secondary text-uppercase" style="font-size: 0.8rem;">Sản phẩm đặt mua</h6>
+                     
+                     <div v-if="!ord.products || ord.products.length === 0" class="text-secondary small fst-italic mb-3">
+                        Đơn hàng không có chi tiết sản phẩm.
+                     </div>
+                     <template v-else>
+                        <div v-for="(prod, idx) in (ord.isExpanded ? ord.products : ord.products.slice(0, 1))" :key="idx" class="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom border-light">
+                          <img :src="prod?.image || 'https://via.placeholder.com/80?text=Shoe'" class="rounded-3 object-fit-cover shadow-sm border bg-white" style="width: 80px; height: 80px;">
+                          <div class="flex-grow-1">
+                             <h6 class="fw-bold text-dark mb-1">{{ prod?.name || 'Sản phẩm giày' }}</h6>
+                             <p class="text-secondary small mb-0">Phân loại: Size <span class="fw-bold text-dark">{{ prod?.size || '42' }}</span> - Màu: <span class="fw-bold text-dark">{{ prod?.color || 'Mặc định' }}</span></p>
+                          </div>
+                          <div class="text-end">
+                             <p class="text-secondary small mb-0">x{{ prod?.quantity || 1 }}</p>
+                             <p class="fw-bold text-dark mb-0">{{ formatPrice(prod?.price) }}</p>
+                          </div>
+                        </div>
+                        
+                        <div v-if="!ord.isExpanded && ord.products.length > 1" class="text-center">
+                           <button class="btn btn-sm btn-light text-primary fw-medium rounded-pill px-3" @click="ord.isExpanded = true">
+                              Xem thêm {{ ord.products.length - 1 }} sản phẩm khác <i class="bi bi-chevron-down"></i>
+                           </button>
+                        </div>
+                        <div v-if="ord.isExpanded && ord.products.length > 1" class="text-center">
+                           <button class="btn btn-sm btn-light text-secondary fw-medium rounded-pill px-3" @click="ord.isExpanded = false">
+                              Thu gọn <i class="bi bi-chevron-up"></i>
+                           </button>
+                        </div>
+                     </template>
+                   </div>
+                   
+                   <div class="col-md-5 p-4 bg-light-gray bg-opacity-50 d-flex flex-column">
+                      <h6 class="fw-bold mb-3 text-secondary text-uppercase" style="font-size: 0.8rem;">Khách hàng & Giao hàng</h6>
+                      <p class="fw-bold text-dark mb-1 fs-6"><i class="bi bi-person-circle me-2 text-secondary"></i> {{ ord.customer_name }}</p>
+                      <p class="text-dark small mb-2"><i class="bi bi-telephone-fill me-2 text-secondary"></i> {{ ord.customer_phone || 'Chưa cập nhật SĐT' }}</p>
+                      
+                      <p class="text-secondary small mb-3 lh-base" :class="{'text-truncate': !ord.isExpanded}" style="max-height: 45px;"><i class="bi bi-geo-alt-fill me-2 text-secondary"></i> {{ ord.customer_address }}</p>
+                      
+                      <div v-if="ord.status === 'Đã hủy' && ord.cancel_reason" class="p-3 bg-danger bg-opacity-10 border border-danger border-opacity-25 rounded-3 mb-3">
+                         <p class="fw-bold text-danger m-0 small"><i class="bi bi-exclamation-triangle-fill me-1"></i> Lý do hủy:</p>
+                         <p class="text-danger small m-0 mt-1">{{ ord.cancel_reason }}</p>
+                      </div>
+                      
+                      <div class="mt-auto border-top pt-3">
+                         <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-secondary small fw-bold text-uppercase">Tổng thanh toán:</span>
+                            <span class="fw-bold text-success fs-4">{{ formatPrice(ord.total) }}</span>
+                         </div>
+                      </div>
+                   </div>
+                 </div>
+               </div>
+
+               <div class="card-footer bg-white border-top py-3 px-4 d-flex justify-content-end gap-2 align-items-center">
+                  <button v-if="['Chờ xác nhận', 'Đã xác nhận'].includes(ord.status)" 
+                          class="btn btn-outline-danger fw-bold rounded-3 px-4 me-auto"
+                          @click="openCancelModal(ord)">
+                     <i class="bi bi-x-circle me-1"></i> Hủy Đơn Hàng
+                  </button>
+                  
+                  <button v-if="getNextAction(ord.status)" 
+                          class="btn fw-bold rounded-3 px-5 shadow-sm text-white"
+                          :class="getNextAction(ord.status).color"
+                          @click="processOrderFlow(ord.id, getNextAction(ord.status).next)">
+                     {{ getNextAction(ord.status).text }} <i class="bi bi-arrow-right-short ms-1 fs-5"></i>
+                  </button>
+                  
+                  <span v-if="ord.status === 'Đã giao hàng thành công'" class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Giao dịch hoàn tất</span>
+                  <span v-if="ord.status === 'Đã hủy'" class="text-danger fw-bold"><i class="bi bi-x-circle-fill me-1"></i> Đã hủy đơn</span>
+               </div>
+             </div>
+           </div>
+        </div>
+
+        <div v-else-if="activeTab === 'products'" class="fade-in">
+          <div v-if="!showForm.products" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
+            <div class="card-header bg-white border-bottom py-3 px-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+              <div class="d-flex gap-2 align-items-center">
+                <input v-model="searchQuery.products" type="text" class="form-control form-control-sm rounded-pill px-3" placeholder="Tìm tên sản phẩm..." style="width: 200px;">
+                <select v-model.number="filterCategory" class="form-select form-select-sm rounded-pill px-3" style="width: 150px;">
+                  <option value="">Tất cả danh mục</option>
+                  <option v-for="c in db.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+              </div>
+              <button class="btn btn-dark rounded-3 px-4 shadow-sm fw-medium" @click="openForm('products')"><i class="bi bi-plus-lg me-2"></i>Thêm SP Mới</button>
             </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Mã ĐH</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Khách Hàng</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Thanh Toán</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Tổng Thu</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Tình Trạng (Đổi Nhãn)</th>
-                  </tr>
-                </thead>
-                <tbody style="font-size: 0.9rem;">
-                  <tr v-for="order in db.orders" :key="order.id">
-                    <td class="py-3 px-4 fw-bold text-dark">#{{ order.id }}</td>
-                    <td class="py-3 px-4">
-                       <span class="d-block text-dark fw-medium">{{ order.customer }}</span>
-                       <small class="text-secondary" style="font-size: 0.75rem;"><i class="bi bi-calendar-event me-1"></i>{{ order.date }}</small>
-                    </td>
-                    <td class="py-3 px-4 text-center">
-                       <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-credit-card me-1"></i>{{ order.payment }}</span>
-                    </td>
-                    <td class="py-3 px-4 fw-bold text-dark text-end">{{ formatPrice(order.total) }}</td>
-                    <td class="py-3 px-4 d-flex justify-content-end">
-                      <select v-model="order.status" class="form-select form-select-sm rounded-3 shadow-none border fw-medium" 
-                              :class="{'text-dark': order.status==='Chờ xử lý', 'bg-dark text-white border-dark': order.status==='Đang giao', 'text-success': order.status==='Đã giao', 'text-danger': order.status==='Đã hủy'}" style="width: 140px; font-size: 0.85rem;">
-                        <option value="Chờ xử lý" class="bg-white text-dark">Chờ xử lý</option>
-                        <option value="Đang giao" class="bg-white text-dark">Đang giao</option>
-                        <option value="Đã giao" class="bg-white text-dark">Đã giao</option>
-                        <option value="Đã hủy" class="bg-white text-dark">Đã hủy</option>
-                      </select>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light text-secondary">
+                <tr><th>Mã SP</th><th class="text-center">Hình Ảnh</th><th>Tên Sản Phẩm</th><th>Danh Mục</th><th class="text-end">Giá Bán</th><th class="text-center">Trạng Thái</th><th class="text-end pe-4">Hành Động</th></tr>
+              </thead>
+              <tbody>
+                <tr v-if="filteredProducts.length === 0"><td colspan="7" class="text-center py-4 text-secondary">Không tìm thấy sản phẩm phù hợp</td></tr>
+                <tr v-for="p in filteredProducts" :key="p.id">
+                  <td class="text-secondary fw-bold">#{{ p.id }}</td>
+                  <td class="text-center">
+                    <div v-if="!p.image_url" class="bg-light border rounded-3 d-flex align-items-center justify-content-center text-secondary fw-bold mx-auto" style="width: 45px; height: 45px; font-size: 0.65rem;">TRỐNG</div>
+                    <img v-else :src="p.image_url" @error="e => e.target.style.display='none'" class="rounded-3 object-fit-cover border shadow-sm bg-white mx-auto" style="width: 45px; height: 45px;" alt="sp">
+                  </td>
+                  <td class="fw-bold text-dark">{{ p.name }}</td><td class="text-secondary">{{ p.category }}</td>
+                  <td class="fw-bold text-dark text-end">{{ formatPrice(p.price) }}</td>
+                  <td class="text-center"><span class="badge" :class="p.active ? 'bg-success' : 'bg-secondary'">{{ p.active ? 'Đang bán' : 'Tạm ẩn' }}</span></td>
+                  <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-light border text-dark me-2 rounded-3 px-3" @click="openForm('products', p)"><i class="bi bi-pencil-square"></i> Sửa</button>
+                    <button class="btn btn-sm btn-danger rounded-3 px-3" @click="deleteItem('products', p.id)"><i class="bi bi-trash"></i> Xóa</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-5 mx-auto" style="max-width: 750px;">
+            <h5 class="fw-bold border-bottom pb-3 mb-4 text-center">{{ editId ? 'Cập Nhật Sản Phẩm' : 'Thêm Sản Phẩm Mới' }}</h5>
+            <form @submit.prevent="saveForm('products')">
+              <div class="mb-3"><label class="form-label text-secondary small fw-bold">Tên Sản Phẩm</label><input v-model="formData.name" type="text" class="form-control form-control-lg rounded-3" required></div>
+              
+              <div class="mb-4 bg-light p-3 rounded-4 border">
+                 <label class="form-label text-dark fw-bold mb-2"><i class="bi bi-image me-1"></i> Tải ảnh đại diện (Thumbnail):</label>
+                 <input type="file" @change="(e) => handleFile(e, 'main')" class="form-control bg-white mb-2" accept="image/*">
+                 <div v-if="formData.image_url" class="mt-2 position-relative d-inline-block">
+                    <img :src="formData.image_url" style="width: 80px; height: 80px;" class="rounded border shadow-sm object-fit-cover">
+                    <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 rounded-circle translate-middle p-1" @click="formData.image_url = ''"><i class="bi bi-x"></i></button>
+                 </div>
+              </div>
+              
+              <div class="row mb-3">
+                 <div class="col-12 col-md-3"><label class="form-label text-secondary small fw-bold">Giá Bán (VNĐ)</label><input v-model="formData.price" type="number" class="form-control form-control-lg rounded-3" required min="0"></div>
+                 <div class="col-12 col-md-3"><label class="form-label text-secondary small fw-bold">Thương hiệu</label>
+                    <select v-model.number="formData.brand_id" class="form-select form-select-lg rounded-3" required>
+                      <option v-for="b in db.brands" :key="b.id" :value="b.id">{{ b.name }}</option>
+                    </select>
+                 </div>
+                 <div class="col-12 col-md-3"><label class="form-label text-secondary small fw-bold">Chọn Danh mục</label>
+                    <select v-model.number="formData.category_id" class="form-select form-select-lg rounded-3" required>
+                      <option v-for="c in db.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                    </select>
+                 </div>
+                 <div class="col-12 col-md-3"><label class="form-label text-secondary small fw-bold">Trạng thái</label>
+                    <select v-model="formData.active" class="form-select form-select-lg rounded-3">
+                      <option :value="true">Đang bán</option>
+                      <option :value="false">Tạm ẩn</option>
+                    </select>
+                 </div>
+              </div>
+
+              <div class="mt-4 mb-3 border-top pt-4">
+                 <div class="d-flex justify-content-between align-items-center mb-3">
+                    <label class="form-label text-dark fw-bold m-0 fs-6"><i class="bi bi-palette-fill me-1 text-primary"></i> Biến thể màu sắc & Ảnh phụ</label>
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" @click="addColor"><i class="bi bi-plus-lg"></i> Thêm màu</button>
+                 </div>
+                 
+                 <div v-for="(color, index) in formData.colors" :key="index" class="d-flex gap-2 mb-2 align-items-center bg-white p-2 rounded-3 border">
+                     <input v-model="color.color_name" class="form-control form-control-sm" placeholder="Tên màu (VD: Đen)...">
+                     <input type="file" @change="(e) => handleFile(e, 'color', index)" class="form-control form-control-sm" accept="image/*">
+                     <button type="button" class="btn btn-sm btn-danger" @click="removeColor(index)">X</button>
+                     <img v-if="color.image_url" :src="color.image_url" style="width: 30px; height: 30px;" class="rounded border object-fit-cover">
+                 </div>
+                 
+                 <div v-if="!formData.colors || formData.colors.length === 0" class="text-center text-secondary py-3 fst-italic bg-light rounded-4 border">Chưa có biến thể màu nào. Bấm "Thêm màu" để bổ sung.</div>
+              </div>
+
+              <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light border rounded-3 px-4 fw-medium" @click="showForm.products = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5 fw-bold">Lưu Dữ Liệu</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div v-else-if="activeTab === 'categories'" class="fade-in">
+          <div v-if="!showForm.categories" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden mx-auto" style="max-width: 900px;">
+            <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+              <input v-model="searchQuery.categories" type="text" class="form-control form-control-sm rounded-pill px-3" placeholder="Tìm kiếm danh mục..." style="width: 250px;">
+              <button class="btn btn-dark rounded-3 px-4 shadow-sm fw-medium" @click="openForm('categories')"><i class="bi bi-plus-lg me-2"></i>Tạo Danh Mục</button>
             </div>
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light text-secondary"><tr><th>Mã Nhóm</th><th>Tên Danh Mục</th><th class="text-center">Số lượng SP</th><th class="text-center">Trạng Thái</th><th class="text-end pe-4">Hành Động</th></tr></thead>
+              <tbody>
+                <tr v-if="filteredCategories.length === 0"><td colspan="5" class="text-center py-4 text-secondary">Không tìm thấy danh mục phù hợp</td></tr>
+                <tr v-for="c in filteredCategories" :key="c.id">
+                  <td class="text-secondary fw-bold">#{{ c.id }}</td><td class="fw-bold text-dark">{{ c.name }}</td>
+                  <td class="text-center fw-medium">{{ getProductCount(c.id) }} sản phẩm</td>
+                  <td class="text-center"><span class="badge" :class="c.active ? 'bg-success' : 'bg-secondary'">{{ c.active ? 'Hoạt động' : 'Tạm ẩn' }}</span></td>
+                  <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-light border text-dark me-2 rounded-3 px-3" @click="openForm('categories', c)"><i class="bi bi-pencil-square"></i> Sửa</button>
+                    <button class="btn btn-sm btn-danger rounded-3 px-3" @click="deleteItem('categories', c.id)"><i class="bi bi-trash"></i> Xóa</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-5 mx-auto" style="max-width: 500px;">
+             <h5 class="fw-bold border-bottom pb-3 mb-4 text-center">{{ editId ? 'Sửa Tên Danh Mục' : 'Tạo Danh Mục Mới' }}</h5>
+             <form @submit.prevent="saveForm('categories')">
+               <div class="mb-4"><label class="form-label text-secondary small fw-bold text-uppercase">Tên Danh Mục</label><input v-model="formData.name" type="text" class="form-control form-control-lg rounded-3" required></div>
+               <div class="mb-4"><label class="form-label text-secondary small fw-bold text-uppercase">Trạng thái</label><select v-model="formData.active" class="form-select form-select-lg rounded-3"><option :value="true">Hoạt động</option><option :value="false">Tạm ẩn</option></select></div>
+               <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light border rounded-3 px-4 fw-medium" @click="showForm.categories = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5 fw-bold">Lưu Lại</button></div>
+             </form>
           </div>
         </div>
 
         <div v-else-if="activeTab === 'discounts'" class="fade-in">
-          <div v-if="!showDiscountForm" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
+          <div v-if="!showForm.discounts" class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden mx-auto" style="max-width: 1000px;">
              <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Quản Trị Voucher / Coupon</h5>
-              <button class="btn btn-dark rounded-3 fw-medium px-4 shadow-sm" style="font-size: 0.85rem;" @click="openForm('discount')"><i class="bi bi-plus-lg me-2"></i>Tạo Mã Nhập</button>
+              <input v-model="searchQuery.discounts" type="text" class="form-control form-control-sm rounded-pill px-3" placeholder="Tìm mã voucher..." style="width: 250px;">
+              <button class="btn btn-dark rounded-3 px-4 shadow-sm fw-medium" @click="openForm('discounts')"><i class="bi bi-plus-lg me-2"></i>Tạo Mã Mới</button>
             </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Mã CODE</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Giá Trị Giảm</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Lượt Đã Dùng</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Hạn Sử Dụng</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Kích Hoạt (On/Off)</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Hành Động</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-if="db.discounts.length === 0"><td colspan="6" class="py-5 text-center text-muted">Chưa có mã giảm giá.</td></tr>
-                  <tr v-for="disc in db.discounts" :key="disc.id">
-                    <td class="py-3 px-4 text-dark fw-bolder tracking-wide"><i class="bi bi-ticket-detailed me-2 text-secondary"></i>{{ disc.code }}</td>
-                    <td class="py-3 px-4 fw-bold text-dark text-center fs-6">-{{ disc.value }}%</td>
-                    <td class="py-3 px-4 text-center">
-                       <span class="fw-medium text-dark">{{ disc.used }}</span> <span class="text-secondary small">/ {{ disc.limit }}</span>
-                    </td>
-                    <td class="py-3 px-4 text-secondary text-center">{{ disc.expiry }}</td>
-                    <td class="py-3 px-4 text-center">
-                      <div class="form-check form-switch d-flex justify-content-center m-0">
-                        <input class="form-check-input border-secondary fs-5" type="checkbox" v-model="disc.active" :class="disc.active ? 'bg-dark border-dark' : ''" style="cursor: pointer;">
-                      </div>
-                    </td>
-                    <td class="py-3 px-4 text-end">
-                      <button class="btn btn-sm btn-light border text-danger rounded-3 px-3 fw-medium" @click="deleteItem('discounts', disc.id)">Xóa</button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light text-secondary"><tr><th>Mã Voucher</th><th class="text-center">Chiết Khấu</th><th class="text-center">Số Lượng Đã Dùng</th><th>Hết hạn</th><th class="text-center">Trạng Thái</th><th class="text-end pe-4">Hành Động</th></tr></thead>
+              <tbody>
+                <tr v-if="filteredDiscounts.length === 0"><td colspan="6" class="text-center py-4 text-secondary">Không tìm thấy mã khuyến mãi phù hợp</td></tr>
+                <tr v-for="d in filteredDiscounts" :key="d.id">
+                  <td class="fw-bolder text-dark tracking-wide"><i class="bi bi-ticket-detailed me-2 text-secondary"></i> {{ d.code }}</td>
+                  <td class="text-center fw-bold text-danger fs-6">-{{ d.percent }}%</td><td class="text-center">{{ d.used }} / {{ d.limit }}</td>
+                  <td class="text-secondary">{{ d.expiry }}</td>
+                  <td class="text-center"><span class="badge" :class="d.active ? 'bg-success' : 'bg-secondary'">{{ d.active ? 'Đang bật' : 'Đã khóa' }}</span></td>
+                  <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-light border text-dark me-2 rounded-3 px-3" @click="openForm('discounts', d)"><i class="bi bi-pencil-square"></i> Sửa</button>
+                    <button class="btn btn-sm btn-danger rounded-3 px-3" @click="deleteItem('discounts', d.id)"><i class="bi bi-trash"></i> Xóa</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-0 mx-auto fade-in" style="max-width: 600px;">
-             <div class="bg-white p-4 border-bottom"><h5 class="fw-semibold text-dark m-0">Phát Hành Mã Giảm Giá</h5></div>
-             <div class="p-4">
-                <form @submit.prevent="saveForm('discount')">
-                  <div class="mb-4">
-                    <label class="form-label fw-medium text-secondary small text-uppercase">Mã Voucher (Viết liền, không dấu)</label>
-                    <input v-model="discountForm.code" type="text" class="form-control rounded-3 text-uppercase fw-bold" required placeholder="VD: SUMMER26">
-                  </div>
-                  <div class="row mb-4 g-3">
-                    <div class="col-md-6">
-                       <label class="form-label fw-medium text-secondary small text-uppercase">Mức giảm theo %</label>
-                       <div class="input-group">
-                         <input v-model="discountForm.value" type="number" min="1" max="100" class="form-control rounded-start-3" required>
-                         <span class="input-group-text rounded-end-3 bg-light border">%</span>
-                       </div>
-                    </div>
-                    <div class="col-md-6">
-                       <label class="form-label fw-medium text-secondary small text-uppercase">Giới hạn số lượt dùng</label>
-                       <input v-model="discountForm.limit" type="number" class="form-control rounded-3" required min="1">
-                    </div>
-                  </div>
-                  <div class="mb-4">
-                     <label class="form-label fw-medium text-secondary small text-uppercase">Ngày hết hạn</label>
-                     <input v-model="discountForm.expiry" type="date" class="form-control rounded-3" required>
-                  </div>
-                  <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top"><button type="button" class="btn btn-light rounded-3 px-4 border text-dark" @click="showDiscountForm = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5">Phát Hành Mã</button></div>
-                </form>
-             </div>
+          <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-5 mx-auto" style="max-width: 600px;">
+             <h5 class="fw-bold border-bottom pb-3 mb-4 text-center">{{ editId ? 'Sửa Mã Khuyến Mãi' : 'Phát Hành Mã Giảm Giá' }}</h5>
+             <form @submit.prevent="saveForm('discounts')">
+               <div class="mb-4"><label class="form-label text-secondary small fw-bold text-uppercase">Mã Voucher (Viết liền in hoa)</label><input v-model="formData.code" type="text" class="form-control form-control-lg rounded-3 text-uppercase fw-bold" required></div>
+               <div class="row mb-4"><div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Mức giảm (%)</label><input v-model="formData.percent" type="number" min="1" max="100" class="form-control form-control-lg rounded-3" required></div><div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Giới hạn số lượt</label><input v-model="formData.limit" type="number" class="form-control form-control-lg rounded-3" required min="1"></div></div>
+               <div class="row mb-4"><div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Ngày hết hạn</label><input v-model="formData.expiry" type="date" class="form-control form-control-lg rounded-3" required></div><div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Trạng thái phát hành</label><select v-model="formData.active" class="form-select form-select-lg rounded-3"><option :value="true">Bật</option><option :value="false">Tắt</option></select></div></div>
+               <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light border rounded-3 px-4 fw-medium" @click="showForm.discounts = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5 fw-bold">Lưu Mã</button></div>
+             </form>
           </div>
         </div>
 
         <div v-else-if="activeTab === 'customers'" class="fade-in">
-          <div class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
-            <div class="card-header bg-white border-bottom py-3 px-4">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Hồ Sơ Quan Hệ Khách Hàng (CRM)</h5>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Định Danh KH</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Thông Tin Liên Hệ</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Số Đơn Hoàn Tất</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Chi Tiêu Vòng Đời (LTV)</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Phân Hạng Tự Động</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-for="cus in db.customers" :key="cus.id">
-                    <td class="py-3 px-4 text-dark fw-bold">{{ cus.id }}</td>
-                    <td class="py-3 px-4">
-                      <div class="fw-bold text-dark">{{ cus.name }}</div>
-                      <small class="text-secondary"><i class="bi bi-telephone me-1"></i>{{ cus.phone }}</small>
-                    </td>
-                    <td class="py-3 px-4 text-center fw-medium text-dark">{{ cus.orders }}</td>
-                    <td class="py-3 px-4 fw-bold text-dark text-end">{{ formatPrice(cus.spent) }}</td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge rounded-pill px-3 py-1 fw-bold" 
-                            :class="{'bg-dark text-white': cus.rank==='Vàng', 'bg-secondary text-white': cus.rank==='Bạc', 'bg-light text-dark border': cus.rank==='Đồng'}">
-                        {{ cus.rank }}
-                      </span>
-                    </td>
+           <div class="card rounded-4 border-0 shadow-sm bg-white mx-auto" style="max-width: 1000px;">
+             <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+               <h5 class="mb-0 fw-semibold fs-6">Hồ Sơ Quan Hệ Khách Hàng (CRM)</h5>
+               <input v-model="searchQuery.customers" type="text" class="form-control form-control-sm rounded-pill px-3" placeholder="Tìm Tên / SĐT..." style="width: 250px;">
+             </div>
+             <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-secondary"><tr><th>Định Danh KH</th><th>Họ & Tên</th><th>Số Điện Thoại</th><th>Hạng TV</th><th class="text-end">Chi Tiêu Thực Tế</th><th class="text-end pe-4">Hành động</th></tr></thead>
+                <tbody>
+                  <tr v-if="filteredCustomers.length === 0"><td colspan="6" class="text-center py-4 text-secondary">Không tìm thấy khách hàng nào</td></tr>
+                  <tr v-for="cus in filteredCustomers" :key="cus.id">
+                    <td class="text-secondary fw-medium">#CUS-00{{ cus.id }}</td>
+                    <td class="fw-bold text-dark">{{ cus.name }}</td>
+                    <td><i class="bi bi-telephone text-secondary me-2"></i>{{ cus.phone || 'Trống' }}</td>
+                    <td><span class="badge rounded-pill" :class="getRank(cus.spent).bg + ' ' + getRank(cus.spent).color">{{ getRank(cus.spent).name }}</span></td>
+                    <td class="text-end fw-bold text-success">{{ formatPrice(cus.spent) }}</td>
+                    <td class="text-end pe-4"><button class="btn btn-sm btn-outline-dark rounded-3 px-3" @click="viewCustomerDetails(cus)">Xem Lịch Sử</button></td>
                   </tr>
                 </tbody>
               </table>
-            </div>
-          </div>
+           </div>
         </div>
 
         <div v-else-if="activeTab === 'accounts'" class="fade-in">
-          <div class="card rounded-4 border-0 shadow-sm bg-white overflow-hidden">
-            <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
-              <h5 class="mb-0 fw-semibold text-dark fs-6">Danh Sách Nhân Sự & Cấp Quyền</h5>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-hover align-middle mb-0">
-                <thead class="table-light text-secondary">
-                  <tr style="font-size: 0.85rem;">
-                    <th class="py-3 px-4 border-0 fw-semibold">Nhân Sự</th>
-                    <th class="py-3 px-4 border-0 fw-semibold">Tài Khoản Truy Cập</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Vai Trò (Role)</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-center">Trạng Thái Hệ Thống</th>
-                    <th class="py-3 px-4 border-0 fw-semibold text-end">Bảo Mật</th>
-                  </tr>
-                </thead>
-                <tbody class="border-top-0" style="font-size: 0.9rem;">
-                  <tr v-for="acc in db.accounts" :key="acc.username">
-                    <td class="py-3 px-4 fw-bold text-dark">{{ acc.name }}</td>
-                    <td class="py-3 px-4 text-secondary">@{{ acc.username }}</td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge bg-light text-dark border px-2 py-1 fw-medium">{{ acc.role }}</span>
+           <div v-if="!showForm.accounts" class="card rounded-4 border-0 shadow-sm bg-white mx-auto" style="max-width: 900px;">
+             <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+               <input v-model="searchQuery.accounts" type="text" class="form-control form-control-sm rounded-pill px-3" placeholder="Tìm Email / Tên..." style="width: 250px;">
+               <button class="btn btn-dark rounded-3 px-4 shadow-sm fw-medium" @click="openForm('accounts')"><i class="bi bi-plus-lg me-2"></i>Thêm Tài Khoản</button>
+             </div>
+             <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-secondary"><tr><th>Email Đăng Nhập</th><th>Tên Chủ Tài Khoản</th><th class="text-center">Phân Quyền</th><th class="text-end pe-4">Hành động</th></tr></thead>
+                <tbody>
+                  <tr v-if="filteredAccounts.length === 0"><td colspan="4" class="text-center py-4 text-secondary">Không tìm thấy tài khoản nào</td></tr>
+                  <tr v-for="acc in filteredAccounts" :key="acc.id">
+                    <td class="fw-bold text-dark">{{ acc.username }}</td>
+                    <td class="text-secondary">{{ cleanName(acc.name) }}</td>
+                    <td class="text-center">
+                       <span class="badge rounded-pill px-3" :class="Number(acc.role_id) === 1 ? 'bg-dark text-white' : 'bg-light text-dark border'">
+                          {{ Number(acc.role_id) === 1 ? 'Quản Trị Viên (Admin)' : 'Khách Hàng' }}
+                       </span>
                     </td>
-                    <td class="py-3 px-4 text-center">
-                      <span class="badge rounded-pill px-3 py-1 fw-medium border" :class="acc.active ? 'bg-light text-dark border-secondary' : 'bg-dark text-white'">
-                        {{ acc.active ? 'Hoạt động' : 'Đã bị khóa' }}
-                      </span>
-                    </td>
-                    <td class="py-3 px-4 text-end">
-                      <button v-if="acc.role !== 'Giám Đốc'" class="btn btn-sm rounded-3 fw-medium px-3 border transition-all" 
-                              :class="acc.active ? 'btn-light text-danger' : 'btn-dark text-white'"
-                              @click="toggleAccountLock(acc)">
-                        <i :class="acc.active ? 'bi bi-lock' : 'bi bi-unlock'"></i> {{ acc.active ? 'Khóa Quyền' : 'Mở Khóa Lại' }}
-                      </button>
+                    <td class="text-end pe-4">
+                      <button class="btn btn-sm btn-light border text-dark me-2 rounded-3 px-3" @click="openForm('accounts', acc)"><i class="bi bi-pencil-square"></i> Sửa</button>
+                      <button v-if="acc.username !== currentUser?.email" class="btn btn-sm btn-danger rounded-3 px-3" @click="deleteItem('accounts', acc.id)"><i class="bi bi-trash"></i> Xóa</button>
+                      <span v-else class="badge bg-light text-secondary border px-2 py-1" style="font-size: 0.7rem;">Đang dùng</span>
                     </td>
                   </tr>
                 </tbody>
               </table>
-            </div>
+           </div>
+           <div v-else class="card rounded-4 border-0 shadow-sm bg-white p-5 mx-auto" style="max-width: 600px;">
+             <h5 class="fw-bold border-bottom pb-3 mb-4 text-center">{{ editId ? 'Sửa Quyền Tài Khoản' : 'Thêm Tài Khoản Mới' }}</h5>
+             <form @submit.prevent="saveForm('accounts')">
+               <div class="mb-3"><label class="form-label text-secondary small fw-bold">Tên Chủ Tài Khoản</label><input v-model="formData.name" type="text" class="form-control form-control-lg rounded-3" required></div>
+               <div class="mb-3"><label class="form-label text-secondary small fw-bold">Email Đăng Nhập</label><input v-model="formData.username" type="email" class="form-control form-control-lg rounded-3" required :disabled="!!editId"></div>
+               <div v-if="!editId" class="mb-3"><label class="form-label text-secondary small fw-bold">Mật khẩu ban đầu</label><input v-model="formData.password" type="password" class="form-control form-control-lg rounded-3" required></div>
+               <div class="mb-4">
+                  <label class="form-label text-secondary small fw-bold">Cấp Phân Quyền</label>
+                  <select v-model.number="formData.role_id" class="form-select form-select-lg rounded-3">
+                     <option :value="1">Quản Trị Viên (Admin)</option>
+                     <option :value="2">Khách Hàng</option>
+                  </select>
+               </div>
+               <div class="d-flex justify-content-end gap-2 mt-4"><button type="button" class="btn btn-light border rounded-3 px-4 fw-medium" @click="showForm.accounts = false">Hủy</button><button type="submit" class="btn btn-dark rounded-3 px-5 fw-bold">Lưu Tài Khoản</button></div>
+             </form>
           </div>
         </div>
 
       </div>
     </main>
-    
-    <div v-if="confirmModal.isOpen" class="custom-modal-overlay d-flex align-items-center justify-content-center z-index-2000">
-      <div class="card rounded-4 border-0 shadow-lg bg-white p-4 text-center fade-in-scale mx-3" style="max-width: 380px; width: 100%;">
-        <div class="mb-3 text-dark">
-          <i class="bi bi-exclamation-circle fs-1"></i>
-        </div>
-        <h5 class="fw-bold text-dark mb-2 tracking-wide fs-5">{{ confirmModal.title }}</h5>
-        <p class="text-secondary small mb-4 px-2" style="line-height: 1.5;">{{ confirmModal.message }}</p>
-        <div class="d-flex justify-content-center gap-2">
-          <button class="btn btn-light border rounded-3 fw-medium px-4 text-dark small" @click="confirmModal.isOpen = false">Hủy Thao Tác</button>
-          <button class="btn btn-dark rounded-3 fw-medium px-4 small" @click="executeConfirm">Tiếp Tục</button>
+
+    <div v-if="selectedCustomer" class="custom-modal-overlay d-flex align-items-center justify-content-center z-index-2000" @click.self="selectedCustomer = null">
+      <div class="card rounded-4 border-0 shadow-lg bg-white p-4 fade-in-scale mx-3" style="max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;">
+         <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+            <div>
+              <h5 class="fw-bold m-0 fs-5">{{ selectedCustomer.name }}</h5>
+              <p class="text-secondary small m-0"><i class="bi bi-telephone me-1"></i> {{ selectedCustomer.phone || 'Chưa cập nhật' }} | Hạng: <span class="fw-bold" :class="getRank(selectedCustomer.spent).color">{{ getRank(selectedCustomer.spent).name }}</span></p>
+            </div>
+            <button class="btn btn-light rounded-circle" @click="selectedCustomer = null"><i class="bi bi-x-lg"></i></button>
+         </div>
+         <h6 class="fw-bold mb-3">Lịch Sử Mua Hàng</h6>
+         <div v-if="customerOrders.length === 0" class="text-center py-4 text-secondary">Khách hàng chưa có đơn hàng nào.</div>
+         <div v-else class="list-group">
+            <div v-for="order in customerOrders" :key="order.id" class="list-group-item border-0 bg-light mb-3 rounded-4 p-4 shadow-sm">
+               <div class="d-flex justify-content-between align-items-center mb-3">
+                 <span class="fw-bold text-dark fs-6"><i class="bi bi-receipt text-secondary me-2"></i>Mã Đơn: #ORD-{{ order.id }}</span>
+                 <span class="badge px-3 py-2 rounded-pill" :class="getStatusBadgeClass(order.status)">{{ order.status }}</span>
+               </div>
+               <div class="d-flex justify-content-between align-items-end">
+                 <span class="text-secondary small"><i class="bi bi-calendar-event me-1"></i> Ngày đặt hàng: <span class="text-dark fw-medium">{{ order.date }}</span></span>
+                 <div class="text-end">
+                    <span class="text-secondary small d-block mb-1">Tổng thanh toán:</span>
+                    <span class="fw-bold text-success fs-5">{{ formatPrice(order.total) }}</span>
+                 </div>
+               </div>
+            </div>
+         </div>
+      </div>
+    </div>
+
+    <div v-if="cancelModal.isOpen" class="custom-modal-overlay d-flex align-items-center justify-content-center z-index-2000" @click.self="cancelModal.isOpen = false">
+      <div class="card rounded-4 border-0 shadow-lg bg-white p-4 fade-in-scale mx-3" style="max-width: 400px; width: 100%;">
+        <div class="mb-3 text-danger text-center"><i class="bi bi-x-circle fs-1"></i></div>
+        <h5 class="fw-bold text-dark mb-3 text-center fs-5">Xác Nhận Hủy Đơn</h5>
+        <label class="form-label small fw-bold text-secondary">Vui lòng nhập lý do hủy đơn (Bắt buộc):</label>
+        <textarea v-model="cancelModal.reason" class="form-control rounded-3 mb-4 bg-light border-0 shadow-sm" rows="3" placeholder="Ví dụ: Hết hàng, Sai thông tin..."></textarea>
+        <div class="d-flex justify-content-end gap-2">
+          <button class="btn btn-light border rounded-3 fw-medium px-4 text-dark" @click="cancelModal.isOpen = false">Đóng</button>
+          <button class="btn btn-danger rounded-3 fw-bold px-4" :disabled="!cancelModal.reason.trim()" @click="submitCancelOrder">Xác Nhận Hủy</button>
         </div>
       </div>
     </div>
 
-    <div v-if="isNavOpen" class="mobile-overlay d-lg-none" @click="isNavOpen = false"></div>
+    <div v-if="confirmModal.isOpen" class="custom-modal-overlay d-flex align-items-center justify-content-center z-index-2000">
+      <div class="card rounded-4 border-0 shadow-lg bg-white p-4 text-center fade-in-scale mx-3" style="max-width: 380px; width: 100%;">
+        <div class="mb-3 text-danger"><i class="bi bi-exclamation-circle fs-1"></i></div>
+        <h5 class="fw-bold text-dark mb-2 tracking-wide fs-5">Xác Nhận Xóa</h5>
+        <p class="text-secondary small mb-4 px-2" style="line-height: 1.5;">Hành động này sẽ xóa dữ liệu vĩnh viễn khỏi hệ thống. Bạn có chắc chắn không?</p>
+        <div class="d-flex justify-content-center gap-2">
+          <button class="btn btn-light border rounded-3 fw-medium px-4 text-dark small" @click="confirmModal.isOpen = false">Hủy Bỏ</button>
+          <button class="btn btn-danger rounded-3 fw-medium px-4 small" @click="executeConfirm">Tiến Hành Xóa</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import Chart from 'chart.js/auto'
+import { currentUser, logout } from '../stores/authStore'
 
+const router = useRouter()
 const isNavOpen = ref(true)
-const activeTab = ref('dashboard') 
+const activeTab = ref('products')
+const isLoading = ref(true) 
 
 const menuTitles = {
-  'dashboard': 'Báo Cáo Tổng Quan Doanh Nghiệp',
-  'products': 'Danh Mục Hàng Hóa & Giá Bán',
-  'categories': 'Cấu Trúc Phân Loại Sản Phẩm',
-  'inventory': 'Chuỗi Cung Ứng & Lịch Sử Nhập Kho',
-  'orders': 'Điều Phối & Theo Dõi Đơn Hàng',
-  'discounts': 'Chiến Dịch Khuyến Mãi (Vouchers)',
-  'customers': 'Quản Trị Quan Hệ Khách Hàng (CRM)',
-  'accounts': 'Thiết Lập Phân Quyền Bảo Mật'
+  'dashboard': 'Báo Cáo Tổng Quan Cửa Hàng',
+  'orders': 'Xét Duyệt & Quản Lý Đơn Hàng',
+  'products': 'Quản Lý Sản Phẩm Kinh Doanh',
+  'categories': 'Danh Mục Mặt Hàng',
+  'discounts': 'Chiến Dịch Mã Giảm Giá',
+  'customers': 'Quản Trị Khách Hàng (CRM)',
+  'accounts': 'Quản Lý Tài Khoản Hệ Thống'
 }
 const activeTabTitle = computed(() => menuTitles[activeTab.value] || '')
 
-const changeTab = (tabId) => {
-  activeTab.value = tabId
-  showProductForm.value = false; showCategoryForm.value = false; showDiscountForm.value = false;
-  if (window.innerWidth < 992) isNavOpen.value = false
+const cleanName = (name) => {
+  if (!name) return 'Người dùng mới';
+  return String(name).replace(/\s*\(CEO\)/gi, '').trim();
 }
 
-const db = reactive({
-  products: [
-    { id: '1001', name: 'Nike Air Force 1 All White', category: 'Giày Sneaker', price: 2650000, status: 'Đang bán' },
-    { id: '1002', name: 'Adidas Ultraboost Light 23', category: 'Giày Chạy Bộ', price: 3400000, status: 'Đang bán' },
-    { id: '1003', name: 'Vans Old Skool Classic Black', category: 'Giày Sneaker', price: 1450000, status: 'Tạm ẩn' }
-  ],
-  categories: [
-    { id: 'CAT-01', name: 'Giày Sneaker', status: 'Hoạt động' }, 
-    { id: 'CAT-02', name: 'Giày Chạy Bộ', status: 'Hoạt động' },
-    { id: 'CAT-03', name: 'Giày Lười', status: 'Tạm ẩn' }
-  ],
-  inventory: [
-    { id: 'RC-1045', supplier: 'Tổng Kho Phân Phối Nike VN', date: '10/06/2026', total: 150000000, status: 'Đã thanh toán' },
-    { id: 'RC-1046', supplier: 'Xưởng Sản Xuất Á Châu', date: '12/06/2026', total: 45500000, status: 'Công nợ' }
-  ],
-  orders: [
-    { id: 'ORD-901', customer: 'Nguyễn Văn Hải', date: '15/06/2026', total: 2650000, payment: 'Tiền mặt (COD)', status: 'Chờ xử lý' },
-    { id: 'ORD-902', customer: 'Trần Thị Thu', date: '15/06/2026', total: 6800000, payment: 'Chuyển khoản', status: 'Đang giao' },
-    { id: 'ORD-903', customer: 'Lê Hoàng Minh', date: '14/06/2026', total: 1450000, payment: 'Chuyển khoản', status: 'Đã giao' }
-  ],
-  discounts: [
-    { id: 'D-01', code: 'SUMMER26', value: 15, used: 45, limit: 100, expiry: '30/06/2026', active: true },
-    { id: 'D-02', code: 'FLASH50', value: 50, used: 50, limit: 50, expiry: '01/06/2026', active: false }
-  ],
-  customers: [
-    { id: 'CUS-001', name: 'Nguyễn Văn Hải', phone: '0901234567', orders: 12, spent: 24500000, rank: 'Vàng' },
-    { id: 'CUS-002', name: 'Trần Thị Thu', phone: '0987654321', orders: 4, spent: 6800000, rank: 'Bạc' },
-    { id: 'CUS-003', name: 'Đoàn Nhật Nam', phone: '0912345678', orders: 1, spent: 1250000, rank: 'Đồng' }
-  ],
-  accounts: [
-    { username: 'haianh.ceo', name: 'Hải Anh', role: 'Giám Đốc', active: true },
-    { username: 'hieu.kho', name: 'Minh Hiếu', role: 'Thủ Kho', active: true },
-    { username: 'son.sales', name: 'Quốc Sơn', role: 'Bán Hàng', active: false }
-  ]
+const getDisplayName = computed(() => {
+  let name = currentUser.value?.full_name || 'Admin';
+  return cleanName(name);
 })
 
-const confirmModal = reactive({ isOpen: false, title: '', message: '', onConfirmCallback: null })
-const triggerConfirm = (title, message, callback) => {
-  confirmModal.title = title; confirmModal.message = message; confirmModal.onConfirmCallback = callback; confirmModal.isOpen = true
+const db = reactive({ orders: [], products: [], categories: [], brands: [], discounts: [], customers: [], accounts: [], chartData: [] })
+const showForm = reactive({ products: false, categories: false, discounts: false, accounts: false })
+const formData = ref({})
+const editId = ref(null)
+
+const searchQuery = reactive({ orders: '', products: '', categories: '', discounts: '', customers: '', accounts: '' })
+const filterCategory = ref('')
+const filterOrderStatus = ref('')
+
+const addColor = () => {
+  if (!formData.value.colors) formData.value.colors = [];
+  formData.value.colors.push({ color_name: '', image_url: '' });
+};
+
+const removeColor = (index) => {
+  formData.value.colors.splice(index, 1);
+};
+
+const getStatusBadgeClass = (status) => {
+  if (status === 'Chờ xác nhận') return 'bg-warning text-dark';
+  if (status === 'Đã xác nhận') return 'bg-primary text-white';
+  if (status === 'Đang vận chuyển') return 'bg-info text-white';
+  if (status === 'Đã giao hàng thành công') return 'bg-success text-white';
+  if (status === 'Đã hủy') return 'bg-danger text-white';
+  return 'bg-secondary text-white';
 }
+
+const getNextAction = (status) => {
+  if(status === 'Chờ xác nhận') return { text: 'Duyệt Đơn Hàng', next: 'Đã xác nhận', color: 'btn-dark' };
+  if(status === 'Đã xác nhận') return { text: 'Giao Vận Chuyển', next: 'Đang vận chuyển', color: 'btn-primary' };
+  if(status === 'Đang vận chuyển') return { text: 'Xác Nhận Đã Giao', next: 'Đã giao hàng thành công', color: 'btn-success' };
+  return null; 
+}
+
+const processOrderFlow = async (id, nextStatus) => {
+  try {
+    await fetch(`http://localhost:5000/api/orders/${id}/status`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus, reason: '' })
+    });
+    fetchAllData();
+  } catch(e) { console.error(e) }
+}
+
+const cancelModal = reactive({ isOpen: false, orderId: null, reason: '' })
+const openCancelModal = (ord) => { cancelModal.orderId = ord.id; cancelModal.reason = ''; cancelModal.isOpen = true; }
+const submitCancelOrder = async () => {
+   if(!cancelModal.reason.trim()) return;
+   try {
+    await fetch(`http://localhost:5000/api/orders/${cancelModal.orderId}/status`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Đã hủy', reason: cancelModal.reason })
+    });
+    cancelModal.isOpen = false; fetchAllData();
+  } catch(e) { console.error(e) }
+}
+
+const filteredOrders = computed(() => {
+  if (!Array.isArray(db.orders)) return [];
+  return db.orders.filter(o => {
+    const searchStr = (searchQuery.orders || '').toLowerCase();
+    const matchSearch = String(o.id).includes(searchStr) || (o.customer_name || '').toLowerCase().includes(searchStr) || (o.customer_phone || '').includes(searchStr);
+    const matchStatus = filterOrderStatus.value === '' || o.status === filterOrderStatus.value;
+    return matchSearch && matchStatus;
+  });
+});
+
+const filteredProducts = computed(() => {
+  if (!Array.isArray(db.products)) return [];
+  return db.products.filter(p => {
+    const searchStr = (searchQuery.products || '').toLowerCase();
+    const matchName = (p.name || '').toLowerCase().includes(searchStr);
+    const matchCat = filterCategory.value === '' || Number(p.category_id) === Number(filterCategory.value);
+    return matchName && matchCat;
+  });
+});
+
+const filteredCategories = computed(() => {
+  if (!Array.isArray(db.categories)) return [];
+  return db.categories.filter(c => (c.name || '').toLowerCase().includes((searchQuery.categories || '').toLowerCase()));
+});
+
+const filteredDiscounts = computed(() => {
+  if (!Array.isArray(db.discounts)) return [];
+  return db.discounts.filter(d => (d.code || '').toLowerCase().includes((searchQuery.discounts || '').toLowerCase()));
+});
+
+const filteredCustomers = computed(() => {
+  if (!Array.isArray(db.customers)) return [];
+  return db.customers.filter(c => {
+    const searchStr = (searchQuery.customers || '').toLowerCase();
+    const nameMatch = (c.name || '').toLowerCase().includes(searchStr);
+    const phoneMatch = (c.phone || '').includes(searchStr);
+    return nameMatch || phoneMatch;
+  });
+});
+
+const filteredAccounts = computed(() => {
+  if (!Array.isArray(db.accounts)) return [];
+  return db.accounts.filter(a => {
+    const searchStr = (searchQuery.accounts || '').toLowerCase();
+    const nameMatch = (a.name || '').toLowerCase().includes(searchStr);
+    const userMatch = (a.username || '').toLowerCase().includes(searchStr);
+    return nameMatch || userMatch;
+  });
+});
+
+const getProductCount = (catId) => {
+   if (!Array.isArray(db.products)) return 0;
+   return db.products.filter(p => p.category_id == catId).length;
+}
+
+const totalRevenue = computed(() => {
+   if (!Array.isArray(db.customers)) return 0;
+   return db.customers.reduce((sum, cus) => sum + (Number(cus.spent) || 0), 0);
+})
+
+const pendingOrdersCount = computed(() => {
+   if (!Array.isArray(db.orders)) return 0;
+   return db.orders.filter(o => o.status === 'Chờ xác nhận').length;
+});
+
+const getRank = (spent) => {
+  const val = Number(spent) || 0;
+  if (val >= 10000000) return { name: 'Kim Cương', color: 'text-info', bg: 'bg-info-subtle' }
+  if (val >= 5000000) return { name: 'Vàng', color: 'text-warning', bg: 'bg-warning-subtle' }
+  if (val >= 2000000) return { name: 'Bạc', color: 'text-secondary', bg: 'bg-secondary-subtle' }
+  return { name: 'Thành Viên', color: 'text-dark', bg: 'bg-light border' }
+}
+
+const selectedCustomer = ref(null)
+const customerOrders = ref([])
+
+const viewCustomerDetails = async (cus) => {
+  selectedCustomer.value = cus;
+  try {
+    const res = await fetch(`http://localhost:5000/api/customers/${cus.id}/orders`);
+    const data = await res.json();
+    customerOrders.value = Array.isArray(data) ? data : [];
+  } catch (e) { console.error(e) }
+}
+
+const handleLogout = () => { logout(); router.push('/login'); }
+
+const changeTab = async (tabId) => {
+  activeTab.value = tabId; 
+  Object.keys(showForm).forEach(k => showForm[k] = false);
+  if (window.innerWidth < 992) isNavOpen.value = false;
+  if (tabId === 'dashboard') { await nextTick(); renderWaveChart(); }
+}
+
+const handleFile = (event, type, index = null) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    if (type === 'main') {
+      formData.value.image_url = e.target.result; 
+    } else if (type === 'color') {
+      if (formData.value.colors && formData.value.colors[index]) {
+        formData.value.colors[index].image_url = e.target.result; 
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+const fetchAllData = async () => {
+  isLoading.value = true;
+  try {
+    const api = async (url) => {
+       try { 
+         const res = await fetch(url);
+         const data = await res.json();
+         if (data.error) { console.error(`Lỗi API ${url}:`, data.error); return []; }
+         return Array.isArray(data) ? data : [];
+       } catch { return []; }
+    };
+    
+    const [o, p, c, d, cus, acc, ch] = await Promise.all([
+       api('http://localhost:5000/api/orders'), api('http://localhost:5000/api/products'), api('http://localhost:5000/api/categories'),
+       api('http://localhost:5000/api/discounts'), api('http://localhost:5000/api/customers'), api('http://localhost:5000/api/accounts'), api('http://localhost:5000/api/chart-data')
+    ]);
+
+    db.orders = Array.isArray(o) ? o.map(item => ({ 
+       ...item, 
+       customer_name: item.customer_name || 'Khách vãng lai', 
+       customer_phone: item.customer_phone || '', 
+       isExpanded: false,
+       products: Array.isArray(item.products) ? item.products : []
+    })) : [];
+    
+    // [ĐÃ SỬA VẤN ĐỀ 3] Đã thêm dòng map biến brand_id để giữ nguyên Brand khi bấm sửa
+    db.products = p.map(item => ({ 
+       id: item.id || item.ProductID, 
+       name: item.name || item.ProductName || '', 
+       price: item.price !== undefined ? item.price : (item.BasePrice || 0), 
+       category_id: item.category_id || item.CategoryID || 1, 
+       brand_id: item.brand_id || item.BrandID || 1, 
+       category: item.category || item.CategoryName || 'Không xác định', 
+       image_url: item.image_url || item.ImageURL || '', 
+       active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true), 
+       colors: item.colors || [] 
+    }));
+
+    db.categories = c.map(item => ({ id: item.id || item.CategoryID, name: item.name || item.CategoryName || '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
+    db.accounts = acc.map(item => ({ id: item.id || item.UserID, username: item.username || item.Email || '', name: cleanName(item.name || item.FullName || ''), role_id: Number(item.role_id !== undefined ? item.role_id : (item.RoleID !== undefined ? item.RoleID : 2)) }));
+    db.discounts = d.map(item => ({ id: item.id || item.CouponID, code: item.code || item.CouponCode || '', percent: item.percent || item.DiscountPercent || 0, limit: item.limit || item.UsageLimit || 0, used: item.used || item.UsedCount || 0, expiry: item.expiry || item.ExpiryDate ? String(item.expiry || item.ExpiryDate).split('T')[0] : '', active: item.active !== undefined ? item.active : (item.IsActive !== undefined ? item.IsActive : true) }));
+    db.customers = cus.map(item => ({ id: item.id || item.UserID, name: item.name || item.FullName || '', phone: item.phone || item.Phone || '', spent: item.spent || item.TotalSpent || item.TotalAmount || 0 }));
+    db.chartData = ch;
+    db.brands = [{id: 1, name: 'Nike'}, {id: 2, name: 'Adidas'}, {id: 3, name: 'Puma'}]; 
+    
+    if(activeTab.value === 'dashboard') { await nextTick(); renderWaveChart(); }
+  } catch (error) { console.error("Lỗi Fetch Data", error); } 
+  finally { isLoading.value = false; }
+}
+
+onMounted(() => fetchAllData())
+
+let chartInstance = null;
+const renderWaveChart = () => {
+  const ctx = document.getElementById('waveChart');
+  if(!ctx) return;
+  if(chartInstance) chartInstance.destroy();
+  
+  let gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.5)'); 
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+  let labels = db.chartData.length > 0 ? db.chartData.map(d => `Tháng ${d.month}`) : ['Chưa có dữ liệu'];
+  let dataPoints = db.chartData.length > 0 ? db.chartData.map(d => d.total) : [0];
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels, 
+      datasets: [{ label: 'Doanh thu (VNĐ)', data: dataPoints, borderColor: '#000', borderWidth: 3, tension: 0.4, fill: true, backgroundColor: gradient, pointBackgroundColor: '#fff', pointBorderColor: '#000', pointRadius: 5 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  })
+}
+
+const openForm = (type, item = null) => {
+  editId.value = item ? item.id : null;
+  if(type === 'products') {
+     formData.value = item ? { ...item, colors: item.colors ? JSON.parse(JSON.stringify(item.colors)) : [] } : { name: '', price: 0, category_id: db.categories[0]?.id || 1, brand_id: 1, image_url: '', active: true, colors: [] };
+  }
+  if(type === 'categories') formData.value = item ? { ...item } : { name: '', active: true };
+  if(type === 'discounts') { let exp = item && item.expiry ? item.expiry : ''; formData.value = item ? { ...item, expiry: exp } : { code: '', percent: 10, limit: 100, expiry: '', active: true }; }
+  if(type === 'accounts') { formData.value = item ? { id: item.id, username: item.username, name: item.name, role_id: Number(item.role_id) } : { username: '', name: '', password: '', role_id: 2 }; }
+  showForm[type] = true;
+}
+
+const saveForm = async (type) => {
+  try {
+    const method = editId.value ? 'PUT' : 'POST';
+    const url = `http://localhost:5000/api/${type}${editId.value ? '/' + editId.value : ''}`;
+    
+    let payload = { ...formData.value };
+    if (type === 'products') {
+        payload = {
+            product_name: formData.value.name,
+            price: formData.value.price,
+            id_brand: formData.value.brand_id || 1,
+            id_category: formData.value.category_id,
+            image_url: formData.value.image_url,
+            active: formData.value.active,
+            colors: formData.value.colors || []
+        };
+    }
+
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if(data.error) { alert("Lỗi từ Server SQL: \n" + data.error); return; }
+    showForm[type] = false; fetchAllData();
+  } catch(e) { alert("Lỗi kết nối! Vui lòng khởi động lại Server Node.js"); }
+}
+
+const confirmModal = reactive({ isOpen: false, onConfirmCallback: null })
 const executeConfirm = () => { if (confirmModal.onConfirmCallback) confirmModal.onConfirmCallback(); confirmModal.isOpen = false }
 
-const formState = ref('add') 
-const showProductForm = ref(false); const showCategoryForm = ref(false); const showDiscountForm = ref(false);
-
-const productForm = ref({ id: '', name: '', category: 'Giày Sneaker', price: 0, status: 'Đang bán' })
-const categoryForm = ref({ id: '', name: '', status: 'Hoạt động' })
-const discountForm = ref({ id: '', code: '', value: 0, limit: 100, expiry: '', active: true })
-
-const openForm = (type, data = null) => {
-  formState.value = data ? 'edit' : 'add'
-  if (type === 'product') { productForm.value = data ? { ...data } : { id: '', name: '', category: db.categories[0]?.name, price: 0, status: 'Đang bán' }; showProductForm.value = true }
-  if (type === 'category') { categoryForm.value = data ? { ...data } : { id: '', name: '', status: 'Hoạt động' }; showCategoryForm.value = true }
-  if (type === 'discount') { discountForm.value = data ? { ...data } : { id: '', code: '', value: 0, limit: 100, expiry: '' }; showDiscountForm.value = true }
+const deleteItem = (type, id) => {
+  confirmModal.onConfirmCallback = async () => { await fetch(`http://localhost:5000/api/${type}/${id}`, { method: 'DELETE' }); fetchAllData(); };
+  confirmModal.isOpen = true; 
 }
 
-const saveForm = (type) => {
-  let targetArr = type === 'product' ? db.products : type === 'category' ? db.categories : db.discounts
-  let formRef = type === 'product' ? productForm.value : type === 'category' ? categoryForm.value : discountForm.value
-  
-  if (formState.value === 'edit') {
-    const idx = targetArr.findIndex(item => item.id === formRef.id)
-    if (idx !== -1) targetArr[idx] = { ...formRef }
-  } else {
-    let prefix = type === 'product' ? '' : type === 'category' ? 'CAT-' : 'D-'
-    let newItem = { ...formRef, id: prefix + Math.floor(Math.random() * 9000 + 1000) }
-    if(type === 'discount') { newItem.used = 0; newItem.active = true }
-    targetArr.unshift(newItem)
-  }
-  showProductForm.value = false; showCategoryForm.value = false; showDiscountForm.value = false;
-}
-
-const deleteItem = (collection, id) => {
-  triggerConfirm('Bảo Mật Dữ Liệu', `Hệ thống sẽ xóa vĩnh viễn dữ liệu ID [${id}]. Bạn có chắc chắn thực hiện thao tác này?`, 
-    () => { db[collection] = db[collection].filter(p => p.id !== id) }
-  )
-}
-
-const toggleAccountLock = (acc) => {
-  if(acc.active) {
-    triggerConfirm('Khóa Quyền Truy Cập', `Tài khoản [${acc.username}] sẽ bị từ chối truy cập vào hệ thống ngay lập tức. Xác nhận khóa?`, () => { acc.active = false })
-  } else {
-    acc.active = true
-  }
-}
-
-const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' ₫'
+const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(Number(value) || 0) + ' ₫'
 </script>
 
 <style scoped>
@@ -640,46 +779,33 @@ const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(value) + ' 
 
 .font-sans { font-family: 'Inter', sans-serif; }
 .bg-light-gray { background-color: #f3f4f6; }
-.line-height-md { line-height: 1.6; }
-
 .bg-sidebar { background-color: #000000; }
 .bg-sidebar-darker { background-color: #111111; } 
-
 .tracking-wider { letter-spacing: 1.5px; }
 .tracking-wide { letter-spacing: 0.5px; }
-
 .fixed-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; }
 .transition-main { transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 .transition-sidebar { transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 .z-index-2000 { z-index: 2000; }
 .z-index-1050 { z-index: 1050; }
 .z-index-10 { z-index: 10; }
-
-.mobile-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.3); z-index: 1045; backdrop-filter: blur(2px); }
-.custom-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
-
+.custom-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); z-index: 2000; }
 .fade-in { animation: fadeIn 0.3s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .fade-in-scale { animation: fadeInScale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-
 .dashboard-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.06) !important; }
-
 .custom-nav-item { transition: all 0.2s ease; color: rgba(255, 255, 255, 0.6) !important; padding: 12px 16px; font-size: 0.85rem; }
 .custom-nav-item:hover { color: #fff !important; background-color: rgba(255, 255, 255, 0.06) !important; }
 .active-nav { background-color: #ffffff !important; color: #000 !important; font-weight: 600; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
 .active-nav i { color: #000 !important; }
-
-.form-control:focus, .form-select:focus { border-color: #000; box-shadow: 0 0 0 0.15rem rgba(0, 0, 0, 0.15); }
-
-.form-switch .form-check-input:checked { background-color: #000; border-color: #000; }
-
+.form-control:focus, .form-select:focus, textarea:focus { border-color: #000; box-shadow: 0 0 0 0.15rem rgba(0, 0, 0, 0.15); }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 .custom-scrollbar-light::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar-light::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
 .custom-scrollbar-dark::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar-dark::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+.order-card { transition: all 0.2s ease; border: 1px solid rgba(0,0,0,0.05) !important; }
+.order-card:hover { box-shadow: 0 .5rem 1rem rgba(0,0,0,.08)!important; }
 </style>
-<!-- sua -->

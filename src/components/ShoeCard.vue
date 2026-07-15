@@ -1,6 +1,5 @@
 <script setup>
 import { computed } from 'vue'
-import { brands, product_details } from '../data/mockData'
 import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
 
 const props = defineProps({
@@ -10,34 +9,37 @@ const props = defineProps({
   }
 })
 
+// Dữ liệu Brand giả định (Do DB hiện tại của anh chưa có bảng Brands cho client)
+const brands = [
+  { id: 1, brand_name: 'Nike' },
+  { id: 2, brand_name: 'Adidas' },
+  { id: 3, brand_name: 'Puma' }
+]
+
 const brand = computed(() => {
-  return brands.find((b) => b.id_brand === props.product.id_brand)
+  return brands.find((b) => b.id === props.product.brand_id)
 })
 
-const defaultDetail = computed(() => {
-  return product_details.find(
-    (detail) =>
-      detail.id_product === props.product.id_product &&
-      detail.stock_quantity > 0
-  )
-})
-
+// Kiểm tra tình trạng hoạt động thay cho check tồn kho
 const isOutOfStock = computed(() => {
-  return !defaultDetail.value
+  return !props.product.active
 })
 
 const handleAddToCart = () => {
   const result = addToCart({
-    productId: props.product.id_product,
-    detailId: defaultDetail.value?.id_product_detail,
-    quantity: 1
+    productId: props.product.id, // Dùng product.id của API
+    detailId: null, // Bỏ qua detailId vì API mới lưu theo product thẳng
+    quantity: 1,
+    // Truyền thêm data để giỏ hàng hiển thị đúng
+    name: props.product.name,
+    price: props.product.price,
+    image: props.product.image_url
   })
 
   if (!result.ok) {
     alert(result.message)
     return
   }
-
   showMiniCart()
 }
 </script>
@@ -45,27 +47,27 @@ const handleAddToCart = () => {
 <template>
   <div class="card h-100 border-0 rounded-4 shadow-sm shadow-hover d-flex flex-column overflow-hidden">
     <router-link
-      :to="`/product/${product.id_product}`"
+      :to="`/product/${product.id}`"
       class="ratio ratio-4x3 bg-light d-block text-decoration-none"
     >
       <img
-        :src="product.image_url"
+        :src="product.image_url || 'https://via.placeholder.com/400x300?text=Shoe'"
         class="object-fit-cover w-100 h-100 mix-blend-multiply transition-all card-img-top-hover"
-        :alt="product.product_name"
+        :alt="product.name"
       >
     </router-link>
 
     <div class="card-body d-flex flex-column p-4">
       <p class="text-secondary small fw-bold text-uppercase tracking-wider mb-1">
-        {{ brand?.brand_name || 'Brand' }}
+        {{ brand?.brand_name || 'SHOEGROUP' }}
       </p>
 
       <router-link
-        :to="`/product/${product.id_product}`"
+        :to="`/product/${product.id}`"
         class="text-decoration-none text-dark"
       >
         <h5 class="card-title fw-bold text-truncate mb-2">
-          {{ product.product_name }}
+          {{ product.name }}
         </h5>
       </router-link>
 
@@ -79,28 +81,15 @@ const handleAddToCart = () => {
         :disabled="isOutOfStock"
         @click="handleAddToCart"
       >
-        {{ isOutOfStock ? 'HẾT HÀNG' : 'THÊM VÀO GIỎ' }}
+        {{ isOutOfStock ? 'TẠM ẨN' : 'THÊM VÀO GIỎ' }}
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.object-fit-cover {
-  object-fit: cover;
-}
-
-.mix-blend-multiply {
-  mix-blend-mode: multiply;
-}
-
-.card-img-top-hover:hover {
-  transform: scale(1.05);
-}
-
-.fw-black {
-  font-weight: 900;
-}
+.object-fit-cover { object-fit: cover; }
+.mix-blend-multiply { mix-blend-mode: multiply; }
+.card-img-top-hover:hover { transform: scale(1.05); }
+.fw-black { font-weight: 900; }
 </style>
-
-

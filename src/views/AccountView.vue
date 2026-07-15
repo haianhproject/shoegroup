@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { currentUser, logout } from '../stores/authStore'
+import { currentUser, logout, updateProfile } from '../stores/authStore'
 
 const router = useRouter()
 
@@ -12,28 +12,42 @@ const form = reactive({
   address: ''
 })
 
+// Tự động điền dữ liệu của riêng user này khi load trang
 watch(
-  currentUser,
+  () => currentUser.value,
   (user) => {
-    if (!user) return
-
-    form.fullName = user.full_name || ''
-    form.phone = user.phone || ''
-    form.email = user.email || ''
-    form.address = user.address || ''
+    if (user) {
+      form.fullName = user.full_name || ''
+      form.phone = user.phone || ''
+      form.email = user.email || ''
+      form.address = user.address || ''
+    } else {
+      router.push('/login') // Nếu không đăng nhập thì bị đá ra ngoài
+    }
   },
   { immediate: true }
 )
 
-const displayName = computed(() => currentUser.value?.full_name || 'Khách hàng')
+const displayName = computed(() => {
+  return currentUser.value ? currentUser.value.full_name : 'Khách hàng'
+})
 
 const handleLogout = () => {
   logout()
   router.push('/login')
 }
 
+// Bấm nút Lưu thay đổi
 const saveProfile = () => {
-  alert('Thông tin hồ sơ đã được cập nhật trên giao diện demo.')
+  const result = updateProfile({
+    full_name: form.fullName,
+    phone: form.phone,
+    address: form.address
+  })
+  
+  if (result.ok) {
+    alert('Tuyệt vời! Thông tin cá nhân của bạn đã được lưu thành công.')
+  }
 }
 </script>
 
@@ -83,22 +97,22 @@ const saveProfile = () => {
             <form class="row g-4" @submit.prevent="saveProfile">
               <div class="col-md-6">
                 <label class="form-label fw-bold small text-dark">Họ và Tên</label>
-                <input v-model="form.fullName" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3">
+                <input v-model="form.fullName" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" required>
               </div>
 
               <div class="col-md-6">
                 <label class="form-label fw-bold small text-dark">Số Điện Thoại</label>
-                <input v-model="form.phone" type="tel" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3">
+                <input v-model="form.phone" type="tel" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" placeholder="Nhập SDT...">
               </div>
 
               <div class="col-12">
-                <label class="form-label fw-bold small text-dark">Email</label>
+                <label class="form-label fw-bold small text-dark">Email (Không thể đổi)</label>
                 <input v-model="form.email" type="email" class="form-control form-control-lg rounded-3 border-0 fs-6 fw-medium px-3 text-secondary" style="background-color: #e9ecef;" readonly>
               </div>
 
               <div class="col-12">
-                <label class="form-label fw-bold small text-dark">Địa chỉ giao hàng mặc định</label>
-                <input v-model="form.address" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3">
+                <label class="form-label fw-bold small text-dark">Địa chỉ giao hàng</label>
+                <input v-model="form.address" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" placeholder="Ví dụ: 123 Đường A...">
               </div>
 
               <div class="col-12 d-flex justify-content-end mt-4">
@@ -115,13 +129,6 @@ const saveProfile = () => {
 </template>
 
 <style scoped>
-.form-control:focus {
-  box-shadow: none;
-  background-color: #fff !important;
-  border: 1px solid #212529 !important;
-}
-
-.bg-danger-hover:hover {
-  background-color: #f8d7da;
-}
+.form-control:focus { box-shadow: none; background-color: #fff !important; border: 1px solid #212529 !important; }
+.bg-danger-hover:hover { background-color: #f8d7da; }
 </style>
