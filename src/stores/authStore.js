@@ -180,3 +180,25 @@ export const requestPasswordReset = async (email) => {
     return { ok: false, message: "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
   }
 };
+
+/* Đặt lại mật khẩu bằng token nhận từ email */
+export const resetPassword = async ({ token, newPassword }) => {
+  try {
+    const res = await fetch("http://localhost:5000/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, newPassword }),
+    });
+    const data = await res.json();
+    return {
+      ok: !!data.success,
+      message:
+        data.message ||
+        (data.success
+          ? "Đặt lại mật khẩu thành công."
+          : "Token không hợp lệ hoặc đã hết hạn."),
+    };
+  } catch {
+    return { ok: false, message: "Không thể kết nối đến máy chủ." };
+  }
+};
