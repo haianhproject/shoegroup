@@ -1,126 +1,177 @@
 <script setup>
-import { computed, reactive, watch, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { currentUser, logout, updateProfile } from '../stores/authStore'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { currentUser, updateProfile, logout } from '../stores/authStore'
+import { notify } from '../stores/uiStore'
+import MyOrders from './MyOrders.vue'
 
+const ADDR_KEY = 'shoegroup_addresses_v1'
+const route = useRoute()
 const router = useRouter()
-const isSaving = ref(false)
+const tab = ref(['orders', 'address', 'profile'].includes(route.query.tab) ? route.query.tab : 'profile')
 
-const form = reactive({
-  id: '',
-  fullName: '',
-  phone: '',
-  email: '',
-  address: ''
+onMounted(() => {
+  if (route.query.tab === 'orders') tab.value = 'orders'
 })
-
-watch(
-  () => currentUser.value,
-  (user) => {
-    if (user) {
-      form.id = user.id_user || user.id
-      form.fullName = user.full_name || user.name || ''
-      form.phone = user.phone || ''
-      form.email = user.email || user.username || ''
-      form.address = user.address || ''
-    } else {
-      router.push('/login')
-    }
-  },
-  { immediate: true }
-)
-
-const displayName = computed(() => currentUser.value ? (currentUser.value.full_name || currentUser.value.name) : 'Khách hàng')
 
 const handleLogout = () => {
   logout()
-  router.push('/login')
+  notify({ type: 'success', title: 'Đã đăng xuất', message: 'Hẹn gặp lại bạn!' })
+  router.push('/')
 }
 
-// Gọi API cập nhật
+const profile = reactive({
+  full_name: currentUser.value?.full_name || '',
+  email: currentUser.value?.email || '',
+  phone: currentUser.value?.phone || '',
+})
+const savingProfile = ref(false)
+
 const saveProfile = async () => {
-  isSaving.value = true
-  const result = await updateProfile({
-    id: form.id,
-    email: form.email,
-    full_name: form.fullName,
-    phone: form.phone,
-    address: form.address,
-    role_id: currentUser.value.role_id || 2
-  })
-  isSaving.value = false
-  if (result.ok) {
-    alert('Thành công! Hồ sơ của bạn đã được cập nhật.')
-  } else {
-    alert('Lỗi cập nhật: ' + result.message)
-  }
+  savingProfile.value = true
+  const r = await updateProfile({ id: currentUser.value?.id, full_name: profile.full_name, phone: profile.phone })
+  savingProfile.value = false
+  if (r?.ok === false) { notify({ type: 'error', message: r.message || 'Không thể cập nhật.' }); return }
+  notify({ type: 'success', title: 'Đã lưu', message: 'Thông tin cá nhân đã cập nhật.' })
 }
+
+/* ---- Address CRUD (local) ---- */
+const loadAddrs = () => { try { return JSON.parse(localStorage.getItem(ADDR_KEY) || '[]') } catch { return [] } }
+const addresses = ref(loadAddrs())
+const persist = () => localStorage.setItem(ADDR_KEY, JSON.stringify(addresses.value))
+
+const modal = reactive({ open: false, editId: null, recipient: '', phone: '', province: '', line: '', isDefault: false })
+const openAdd = () => { Object.assign(modal, { open: true, editId: null, recipient: '', phone: '', province: '', line: '', isDefault: addresses.value.length === 0 }) }
+const openEdit = (a) => { Object.assign(modal, { open: true, editId: a.id, recipient: a.recipient, phone: a.phone, province: a.province, line: a.line, isDefault: a.isDefault }) }
+const closeModal = () => { modal.open = false }
+
+const saveAddr = () => {
+  if (!modal.recipient || !modal.phone || !modal.line || !modal.province) { notify({ type: 'error', message: 'Vui lòng nhập đầy đủ thông tin địa chỉ.' }); return }
+  if (modal.isDefault) addresses.value.forEach((a) => { a.isDefault = false })
+  if (modal.editId) {
+    const a = addresses.value.find((x) => x.id === modal.editId)
+    Object.assign(a, { recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
+  } else {
+    addresses.value.push({ id: Date.now(), recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
+  }
+  persist(); closeModal()
+  notify({ type: 'success', title: 'Đã lưu địa chỉ' })
+}
+const deleteAddr = (id) => { addresses.value = addresses.value.filter((a) => a.id !== id); persist(); notify({ type: 'info', message: 'Đã xóa địa chỉ.' }) }
+const setDefault = (id) => { addresses.value.forEach((a) => { a.isDefault = a.id === id }); persist() }
+
+const initials = computed(() => (profile.full_name || 'U').split(' ').map((w) => w[0]).slice(-2).join('').toUpperCase())
 </script>
 
 <template>
-  <div class="container-fluid px-4 py-5 bg-light min-vh-100">
-    <div class="container">
-      <h1 class="fw-bold mb-4 fs-2">Tài Khoản</h1>
+  <div class="account-page">
+    <div class="container-fluid px-4 py-4">
       <div class="row g-4">
-        
-        <div class="col-md-4 col-lg-3">
-          <div class="d-flex flex-column gap-2 bg-white rounded-4 p-3 shadow-sm">
-            <div class="px-3 py-2">
-              <p class="small text-secondary mb-1">Xin chào</p>
-              <h6 class="fw-bold mb-0">{{ displayName }}</h6>
-            </div>
-            <router-link to="/account" class="btn btn-dark text-start border-0 fw-bold px-3 py-2 rounded-3 d-flex align-items-center gap-2">
-              <i class="bi bi-person"></i> Hồ sơ
-            </router-link>
-            <router-link to="/orders" class="btn btn-light text-start border-0 fw-bold px-3 py-2 rounded-3 d-flex align-items-center gap-2 text-secondary" active-class="btn-dark text-white">
-              <i class="bi bi-box"></i> Đơn hàng
-            </router-link>
-            <hr class="my-2 text-secondary">
-            <button type="button" class="btn btn-outline-danger text-start fw-bold px-3 py-2 rounded-3 d-flex align-items-center gap-2 border-0 bg-danger-hover" @click="handleLogout">
-              <i class="bi bi-box-arrow-right"></i> Đăng xuất
-            </button>
+        <!-- Sidebar -->
+        <div class="col-lg-3">
+          <div class="sg-card acc-side">
+            <div class="acc-avatar">{{ initials }}</div>
+            <h6 class="fw-bold mb-0">{{ profile.full_name || 'Khách hàng' }}</h6>
+            <p class="text-muted small">{{ profile.email }}</p>
+            <nav class="acc-nav">
+              <button :class="{ active: tab === 'profile' }" @click="tab = 'profile'"><i class="bi bi-person"></i> Thông tin cá nhân</button>
+              <button :class="{ active: tab === 'address' }" @click="tab = 'address'"><i class="bi bi-geo-alt"></i> Sổ địa chỉ</button>
+              <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'"><i class="bi bi-box-seam"></i> Đơn hàng của tôi</button>
+              <button class="acc-logout" @click="handleLogout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</button>
+            </nav>
           </div>
         </div>
 
-        <div class="col-md-8 col-lg-9">
-          <div class="card border-0 rounded-4 shadow-sm p-4">
-            <div class="border-bottom pb-3 mb-4">
-              <h2 class="fw-bold fs-4 m-0">Hồ sơ cá nhân</h2>
-              <p class="text-secondary small mt-1 mb-0">Quản lý thông tin hồ sơ để bảo mật tài khoản và đặt hàng dễ dàng hơn</p>
+        <div class="col-lg-9">
+          <!-- Profile -->
+          <div v-if="tab === 'profile'" class="sg-card acc-block">
+            <div class="sg-title-bar mb-2"></div>
+            <h5 class="fw-bold">Thông tin cá nhân</h5>
+            <div class="row g-3 mt-1">
+              <div class="col-md-6"><label class="co-label">Họ tên</label><input v-model="profile.full_name" class="sg-input w-100"></div>
+              <div class="col-md-6"><label class="co-label">Số điện thoại</label><input v-model="profile.phone" class="sg-input w-100"></div>
+              <div class="col-md-6"><label class="co-label">Email</label><input v-model="profile.email" class="sg-input w-100" disabled></div>
             </div>
-            <form class="row g-4" @submit.prevent="saveProfile">
-              <div class="col-md-6">
-                <label class="form-label fw-bold small text-dark">Họ và tên</label>
-                <input v-model="form.fullName" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" required>
+            <button class="btn-sg mt-3" :disabled="savingProfile" @click="saveProfile"><i class="bi bi-check2 me-1"></i>{{ savingProfile ? 'Đang lưu…' : 'Lưu thay đổi' }}</button>
+          </div>
+
+          <!-- Orders (inline trong trang cá nhân) -->
+          <div v-else-if="tab === 'orders'" class="acc-orders">
+            <MyOrders />
+          </div>
+
+          <!-- Addresses -->
+          <div v-else-if="tab === 'address'" class="sg-card acc-block">
+            <div class="d-flex justify-content-between align-items-center">
+              <div><div class="sg-title-bar mb-2"></div><h5 class="fw-bold mb-0">Sổ địa chỉ</h5></div>
+              <button class="btn-sg" @click="openAdd"><i class="bi bi-plus-lg me-1"></i>Thêm địa chỉ</button>
+            </div>
+            <div v-if="addresses.length === 0" class="text-center py-5 text-muted">
+              <i class="bi bi-geo-alt" style="font-size:2.4rem"></i><p class="mt-2">Chưa có địa chỉ nào.</p>
+            </div>
+            <div v-else class="addr-list">
+              <div v-for="a in addresses" :key="a.id" class="addr-card" :class="{ def: a.isDefault }">
+                <div class="flex-grow-1">
+                  <div class="d-flex align-items-center gap-2"><strong>{{ a.recipient }}</strong><span class="text-muted">| {{ a.phone }}</span><span v-if="a.isDefault" class="sg-chip sg-chip-blue">Mặc định</span></div>
+                  <div class="text-secondary mt-1">{{ a.line }}, {{ a.province }}</div>
+                </div>
+                <div class="addr-actions">
+                  <button v-if="!a.isDefault" class="link-btn" @click="setDefault(a.id)">Đặt mặc định</button>
+                  <button class="link-btn" @click="openEdit(a)"><i class="bi bi-pencil"></i> Sửa</button>
+                  <button class="link-btn danger" @click="deleteAddr(a.id)"><i class="bi bi-trash3"></i> Xóa</button>
+                </div>
               </div>
-              <div class="col-md-6">
-                <label class="form-label fw-bold small text-dark">Số Điện Thoại</label>
-                <input v-model="form.phone" type="tel" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" placeholder="Nhập SĐT của bạn...">
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-bold small text-dark">Email (Không thể thay đổi)</label>
-                <input v-model="form.email" type="email" class="form-control form-control-lg rounded-3 border-0 fs-6 fw-medium px-3 text-secondary" style="background-color: #e9ecef;" readonly>
-              </div>
-              <div class="col-12">
-                <label class="form-label fw-bold small text-dark">Địa chỉ giao hàng mặc định</label>
-                <input v-model="form.address" type="text" class="form-control form-control-lg rounded-3 bg-light border-0 fs-6 fw-medium px-3" placeholder="Ví dụ: Tòa nhà A, Số 1, Đường Lê Duẩn, Hà Nội...">
-              </div>
-              <div class="col-12 d-flex justify-content-end mt-4">
-                <button type="submit" class="btn btn-dark fw-bold px-5 py-2 rounded-3 shadow-hover" :disabled="isSaving">
-                  <span v-if="isSaving" class="spinner-border spinner-border-sm me-2"></span>
-                  {{ isSaving ? 'Đang lưu...' : 'Lưu Thay Đổi' }}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
-        
       </div>
     </div>
+
+    <!-- Address modal -->
+    <transition name="suc">
+      <div v-if="modal.open" class="modal-overlay" @click.self="closeModal">
+        <div class="sg-card modal-box">
+          <h5 class="fw-bold mb-3">{{ modal.editId ? 'Sửa địa chỉ' : 'Thêm địa chỉ mới' }}</h5>
+          <div class="row g-3">
+            <div class="col-md-6"><label class="co-label">Người nhận</label><input v-model="modal.recipient" class="sg-input w-100"></div>
+            <div class="col-md-6"><label class="co-label">Số điện thoại</label><input v-model="modal.phone" class="sg-input w-100"></div>
+            <div class="col-12"><label class="co-label">Tỉnh / Thành phố</label><input v-model="modal.province" class="sg-input w-100"></div>
+            <div class="col-12"><label class="co-label">Địa chỉ chi tiết</label><input v-model="modal.line" class="sg-input w-100"></div>
+            <div class="col-12"><label class="check-row"><input type="checkbox" v-model="modal.isDefault"> <span>Đặt làm địa chỉ mặc định</span></label></div>
+          </div>
+          <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn-sg-outline" @click="closeModal">Hủy</button>
+            <button class="btn-sg" @click="saveAddr">Lưu địa chỉ</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <style scoped>
-.form-control:focus { box-shadow: none; background-color: #fff !important; border: 1px solid #212529 !important; }
-.bg-danger-hover:hover { background-color: #f8d7da; }
+.account-page { background: var(--sg-canvas); min-height: 100vh; }
+.acc-side { padding: 24px; text-align: center; position: sticky; top: 90px; }
+.acc-avatar { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; background: var(--sg-grad-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.5rem; }
+.acc-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; text-align: left; }
+.acc-nav button, .acc-nav a { border: 0; background: transparent; padding: .7rem 1rem; border-radius: 12px; font-weight: 700; color: var(--sg-ink-2); text-decoration: none; display: flex; align-items: center; gap: 10px; transition: .2s; }
+.acc-nav button:hover, .acc-nav a:hover { background: var(--sg-canvas); }
+.acc-nav .active { background: var(--sg-grad-primary); color: #fff; }
+.acc-logout { color: #ef4444 !important; margin-top: 6px; }
+.acc-logout:hover { background: #fee2e2 !important; }
+.acc-orders :deep(.orders-page) { background: transparent; min-height: auto; padding: 0; }
+.acc-block { padding: 26px; }
+.co-label { font-weight: 700; font-size: .82rem; color: var(--sg-ink-2); margin-bottom: 6px; display: block; }
+.check-row { display: flex; align-items: center; gap: 8px; }
+.check-row input { width: 17px; height: 17px; accent-color: var(--sg-blue); }
+.addr-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.addr-card { display: flex; gap: 12px; border: 1.5px solid var(--sg-line); border-radius: 16px; padding: 16px; transition: .2s; }
+.addr-card.def { border-color: var(--sg-blue); background: var(--sg-soft); }
+.addr-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.link-btn { border: 0; background: transparent; font-weight: 700; font-size: .82rem; color: var(--sg-blue); }
+.link-btn.danger { color: #ef4444; }
+.link-btn:hover { text-decoration: underline; }
+.modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.modal-box { max-width: 520px; width: 100%; padding: 28px; border-radius: 22px; }
+.suc-enter-active { transition: opacity .3s; } .suc-enter-from { opacity: 0; }
 </style>

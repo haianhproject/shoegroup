@@ -9,6 +9,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import BrandLogo from "../../components/BrandLogo.vue";
 import {
   isNavOpen,
   isLoading,
@@ -172,9 +173,10 @@ onMounted(fetchAllData);
         class="p-4 d-flex align-items-center justify-content-center border-bottom border-secondary border-opacity-25"
         style="height: 72px"
       >
-        <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-4">
-          <i class="bi bi-box-fill me-2 fs-5"></i>SHOEGROUP
-        </h3>
+        <div class="d-flex align-items-center gap-2">
+          <BrandLogo :size="36" :radius="11" />
+          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5">SHOE<span style="color:#38bdf8">GROUP</span></h3>
+        </div>
       </div>
 
       <div
@@ -679,10 +681,10 @@ onMounted(fetchAllData);
   background-color: #f3f4f6 !important;
 }
 .bg-sidebar {
-  background-color: #000000 !important;
+  background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%) !important;
 }
 .bg-sidebar-darker {
-  background-color: #111111 !important;
+  background-color: rgba(255, 255, 255, 0.04) !important;
 }
 
 .z-index-1050 {
@@ -725,13 +727,14 @@ onMounted(fetchAllData);
   color: #fff !important;
 }
 .active-nav {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  font-weight: 600 !important;
+  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35);
 }
 .active-nav:hover {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%) !important;
+  color: #ffffff !important;
 }
 
 .custom-scrollbar-light::-webkit-scrollbar,
@@ -785,7 +788,7 @@ onMounted(fetchAllData);
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #000;
+  background: #2563eb;
   margin-top: 4px;
 }
 .timeline-line {

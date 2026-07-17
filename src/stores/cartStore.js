@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from "vue";
 
-// Đổi khóa lưu trữ để dọn dẹp sạch giỏ hàng cũ bị lỗi trên máy của bạn
-const STORAGE_KEY = "shoegroup_cart_v2";
+// Bump storage key when the item shape changes so old, incompatible carts are dropped.
+const STORAGE_KEY = "shoegroup_cart_v3";
 
 const loadCartFromStorage = () => {
   if (typeof localStorage === "undefined") return [];
@@ -33,7 +33,7 @@ export const formatCurrency = (value) => {
       style: "currency",
       currency: "VND",
       maximumFractionDigits: 0,
-    }).format(Number(value || 0)) + " ₫"
+    }).format(Number(value || 0)) + " \u20ab"
   );
 };
 
@@ -44,59 +44,64 @@ export const cartItems = computed(() => {
   }));
 });
 
-export const cartCount = computed(() => {
-  return cartState.items.reduce((total, item) => total + item.quantity, 0);
-});
+export const cartCount = computed(() =>
+  cartState.items.reduce((total, item) => total + item.quantity, 0),
+);
 
-export const cartSubtotal = computed(() => {
-  return cartItems.value.reduce((total, item) => total + item.subtotal, 0);
-});
+export const cartSubtotal = computed(() =>
+  cartItems.value.reduce((total, item) => total + item.subtotal, 0),
+);
 
-export const cartShippingFee = computed(() => {
-  return cartCount.value > 0 ? 30000 : 0;
-});
+// Standard flat fee shown in the mini-cart; the real fee is computed at checkout.
+export const cartShippingFee = computed(() => (cartCount.value > 0 ? 30000 : 0));
 
-export const cartTotal = computed(() => {
-  return cartSubtotal.value + cartShippingFee.value;
-});
+export const cartTotal = computed(() => cartSubtotal.value + cartShippingFee.value);
 
-// THÊM VÀO GIỎ HÀNG (Lưu trực tiếp toàn bộ Tên, Ảnh, Giá)
+/**
+ * Add a product to the cart, storing the FULL set of shoe attributes so the
+ * mini-cart, cart page and order detail can all display them consistently.
+ */
 export const addToCart = (payload) => {
   const {
     product,
     quantity = 1,
     size = { size_name: "42" },
-    color = { color_label: "Mặc định" },
+    color = { color_label: "Ti\u00eau chu\u1ea9n" },
   } = payload;
 
-  if (!product) return { ok: false, message: "Sản phẩm không hợp lệ." };
+  if (!product) return { ok: false, message: "S\u1ea3n ph\u1ea9m kh\u00f4ng h\u1ee3p l\u1ec7." };
 
-  // Lấy dữ liệu thật từ biến product truyền vào (từ Database API)
   const productId = product.id_product || product.id || product.ProductID;
-  const productName =
-    product.product_name || product.name || product.ProductName;
+  const productName = product.product_name || product.name || product.ProductName;
   const productPrice = product.price || product.BasePrice || 0;
   const productImage = product.image_url || product.ImageURL || product.image;
 
-  const sizeName = size.size_name || "42";
-  const colorName = color.color_label || color.color_name || "Mặc định";
+  const sizeName = size.size_name || size.SizeName || "42";
+  const colorName = color.color_label || color.color_name || color.ColorName || "Ti\u00eau chu\u1ea9n";
+  const colorHex = color.color_hex || color.hex || "";
 
-  // Tạo ID duy nhất cho mỗi phân loại (kết hợp ID + Size + Màu)
+  // Full attribute snapshot pulled from the product record (from the DB API).
+  const attributes = {
+    material_name: product.material_name || product.MaterialName || "",
+    sole_name: product.sole_name || product.SoleName || "",
+    cushioning_name: product.cushioning_name || product.CushioningName || "",
+    brand_name: product.brand_name || product.BrandName || "",
+    category_name: product.category_name || product.category || "",
+    sport: product.sport || product.Sport || "",
+    collection_name: product.collection_name || product.CollectionName || "",
+  };
+
   const detailId = `${productId}_${sizeName}_${colorName}`;
-
-  const existingItem = cartState.items.find(
-    (item) => item.id_product_detail === detailId,
-  );
+  const existingItem = cartState.items.find((i) => i.id_product_detail === detailId);
 
   if (existingItem) {
     existingItem.quantity += quantity;
-    // Cập nhật lại giá/ảnh đề phòng Database có thay đổi
+    existingItem.unitPrice = productPrice;
     existingItem.product.price = productPrice;
     existingItem.product.image_url = productImage;
-    return { ok: true, message: "Đã cập nhật số lượng." };
+    return { ok: true, message: "\u0110\u00e3 c\u1eadp nh\u1eadt s\u1ed1 l\u01b0\u1ee3ng." };
   }
 
-  // THÊM SẢN PHẨM MỚI VÀO GIỎ
   cartState.items.unshift({
     id_product_detail: detailId,
     id_product: productId,
@@ -105,53 +110,40 @@ export const addToCart = (payload) => {
       product_name: productName,
       price: productPrice,
       image_url: productImage,
+      ...attributes,
     },
     size: { size_name: sizeName },
-    color: { color_label: colorName, color_name: colorName },
-    quantity: quantity,
+    color: { color_label: colorName, color_name: colorName, color_hex: colorHex },
+    attributes,
+    quantity,
     unitPrice: productPrice,
-    stockQuantity: 100, // Tạm thời set 100 vì CSDL chưa quản lý tồn kho chi tiết
+    stockQuantity: product.stock_quantity || 100,
   });
 
-  return { ok: true, message: "Đã thêm vào giỏ hàng." };
+  return { ok: true, message: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng." };
 };
 
 export const increaseQuantity = (detailId) => {
-  const item = cartState.items.find(
-    (cartItem) => cartItem.id_product_detail === detailId,
-  );
-  if (!item) return { ok: false, message: "Lỗi" };
+  const item = cartState.items.find((i) => i.id_product_detail === detailId);
+  if (!item) return { ok: false, message: "L\u1ed7i" };
   item.quantity += 1;
-  return { ok: true, message: "Thành công" };
+  return { ok: true, message: "Th\u00e0nh c\u00f4ng" };
 };
 
 export const decreaseQuantity = (detailId) => {
-  const item = cartState.items.find(
-    (cartItem) => cartItem.id_product_detail === detailId,
-  );
-  if (!item) return { ok: false, message: "Lỗi" };
-  if (item.quantity <= 1)
-    return { ok: false, message: "Số lượng tối thiểu là 1" };
+  const item = cartState.items.find((i) => i.id_product_detail === detailId);
+  if (!item) return { ok: false, message: "L\u1ed7i" };
+  if (item.quantity <= 1) return { ok: false, message: "S\u1ed1 l\u01b0\u1ee3ng t\u1ed1i thi\u1ec3u l\u00e0 1" };
   item.quantity -= 1;
-  return { ok: true, message: "Thành công" };
+  return { ok: true, message: "Th\u00e0nh c\u00f4ng" };
 };
 
 export const removeFromCart = (detailId) => {
-  const index = cartState.items.findIndex(
-    (item) => item.id_product_detail === detailId,
-  );
+  const index = cartState.items.findIndex((i) => i.id_product_detail === detailId);
   if (index !== -1) cartState.items.splice(index, 1);
 };
 
-export const clearCart = () => {
-  cartState.items.splice(0);
-};
-export const showMiniCart = () => {
-  cartState.isMiniCartOpen = true;
-};
-export const hideMiniCart = () => {
-  cartState.isMiniCartOpen = false;
-};
-export const toggleMiniCart = () => {
-  cartState.isMiniCartOpen = !cartState.isMiniCartOpen;
-};
+export const clearCart = () => { cartState.items.splice(0); };
+export const showMiniCart = () => { cartState.isMiniCartOpen = true; };
+export const hideMiniCart = () => { cartState.isMiniCartOpen = false; };
+export const toggleMiniCart = () => { cartState.isMiniCartOpen = !cartState.isMiniCartOpen; };

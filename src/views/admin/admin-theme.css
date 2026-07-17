@@ -33,7 +33,7 @@
 .swatch-remove:hover { color: #dc2626; }
 
 .pos-product { cursor: pointer; transition: all 0.15s ease; }
-.pos-product:hover { border-color: #000 !important; box-shadow: 0 6px 16px rgba(0,0,0,0.08); transform: translateY(-2px); }
+.pos-product:hover { border-color: #2563eb !important; box-shadow: 0 6px 16px rgba(37,99,235,0.15); transform: translateY(-2px); }
 
 .fade-in { animation: fadeIn 0.35s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -47,3 +47,11 @@
 .custom-modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 560px; box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; }
 .fade-in-scale { animation: fadeInScale 0.22s ease; }
 @keyframes fadeInScale { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+/* ------ Đồng bộ tông màu nút quản trị với giao diện khách hàng (xanh brand) ------ */
+.btn-dark { background: linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%) !important; border-color: transparent !important; }
+.btn-dark:hover, .btn-dark:focus { filter: brightness(1.06); background: linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%) !important; color:#fff !important; }
+.btn-outline-dark { color: #2563eb !important; border-color: #2563eb !important; }
+.btn-outline-dark:hover { background: #2563eb !important; color: #fff !important; }
+.badge-active { background-color: #dbeafe !important; color: #1e40af !important; }
+.stat-icon.bg-dark, .stat-icon.bg-black { background: linear-gradient(135deg,#2563eb,#06b6d4) !important; }
