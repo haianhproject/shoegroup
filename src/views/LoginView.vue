@@ -1,103 +1,57 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { login } from '../stores/authStore'
+import { notify } from '../stores/uiStore'
 
-const route = useRoute()
 const router = useRouter()
+const form = reactive({ email: '', password: '' })
+const showPwd = ref(false)
+const loading = ref(false)
 
-const form = reactive({
-  email: '', // Đã xóa email mặc định
-  password: ''
-})
-
-const isLoading = ref(false)
-const errorMessage = ref('') 
-
-const handleLogin = async () => {
-  errorMessage.value = ''; 
-  isLoading.value = true;
-  
-  try {
-    const result = await login({
-      email: form.email,
-      password: form.password
-    })
-
-    if (!result.ok) {
-      errorMessage.value = result.message; 
-      isLoading.value = false;
-      return;
-    }
-
-    // --- PHÂN LUỒNG: NẾU LÀ ADMIN THÌ VÀO DASHBOARD, KHÁCH THÌ VÀO ACCOUNT ---
-    if (result.user.role === 'Admin') {
-      router.push('/admin')
-    } else {
-      const redirectPath = route.query.redirect || '/account'
-      router.push(String(redirectPath))
-    }
-    
-  } catch (error) {
-    errorMessage.value = "Hệ thống đang bị lỗi ngầm, không thể gọi API.";
-    isLoading.value = false;
-  }
+const submit = async () => {
+  if (!form.email || !form.password) { notify({ type: 'error', message: 'Vui lòng nhập email và mật khẩu.' }); return }
+  loading.value = true
+  const r = await login({ email: form.email, password: form.password })
+  loading.value = false
+  if (!r.ok) { notify({ type: 'error', title: 'Đăng nhập thất bại', message: r.message }); return }
+  notify({ type: 'success', title: 'Chào mừng trở lại!', message: r.user?.full_name || '' })
+  router.push('/')
 }
 </script>
 
 <template>
-  <div class="container d-flex align-items-center justify-content-center min-vh-100 py-5">
-    <div class="card border-0 rounded-5 shadow-lg w-100" style="max-width: 450px;">
-      <div class="card-body p-4 p-md-5">
-        <div class="text-center mb-4">
-          <h2 class="fw-bold text-dark fs-3 mb-2">Đăng Nhập</h2>
-          <p class="text-secondary fw-medium small">Chào mừng trở lại với ShoeGroup</p>
+  <div class="auth-page">
+    <div class="auth-shell sg-card">
+      <!-- LEFT: form -->
+      <div class="auth-form">
+        <router-link to="/" class="auth-logo"><span class="logo-mark"><i class="bi bi-lightning-charge-fill"></i></span> ShoeGroup</router-link>
+        <h2 class="auth-title">Đăng nhập</h2>
+        <p class="auth-sub">Chào mừng bạn quay lại cửa hàng giày thể thao nam hàng đầu.</p>
+
+        <label class="co-label">Email</label>
+        <div class="in-wrap"><i class="bi bi-envelope"></i><input v-model="form.email" type="email" class="auth-input" placeholder="you@example.com" @keyup.enter="submit"></div>
+
+        <label class="co-label">Mật khẩu</label>
+        <div class="in-wrap"><i class="bi bi-lock"></i><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="••••••••" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="bi" :class="showPwd ? 'bi-eye-slash' : 'bi-eye'"></i></button></div>
+
+        <div class="auth-row">
+          <label class="remember"><input type="checkbox" checked> <span>Ghi nhớ trên trình duyệt này</span></label>
+          <router-link to="/forgot-password" class="forgot-link">Quên mật khẩu?</router-link>
         </div>
 
-        <div v-if="errorMessage" class="alert alert-danger py-2 small fw-bold text-center">
-          {{ errorMessage }}
-        </div>
+        <button class="btn-sg w-100" :disabled="loading" @click="submit"><i class="bi bi-box-arrow-in-right me-2"></i>{{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}</button>
+        <p class="auth-foot">Chưa có tài khoản? <router-link to="/register">Đăng ký ngay</router-link></p>
+      </div>
 
-        <form @submit.prevent="handleLogin">
-          <div class="mb-3">
-            <label class="form-label fw-bold text-dark small">Email</label>
-            <input
-              v-model="form.email"
-              type="email"
-              class="form-control form-control-lg rounded-4 bg-light border-0 px-4 fw-medium fs-6"
-              placeholder="nhapemail@example.com"
-              required
-            >
-          </div>
-
-          <div class="mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-              <label class="form-label fw-bold text-dark small mb-0">Mật khẩu</label>
-              <router-link to="/forgot-password" class="text-decoration-none text-primary fw-bold small">Quên?</router-link>
-            </div>
-
-            <input
-              v-model="form.password"
-              type="password"
-              class="form-control form-control-lg rounded-4 bg-light border-0 px-4 fw-medium fs-6"
-              placeholder="••••••••"
-              required
-            >
-          </div>
-
-          <button type="submit" class="btn btn-dark w-100 btn-lg rounded-4 fw-bold fs-6 shadow-hover mt-2" :disabled="isLoading">
-            <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
-            {{ isLoading ? 'Đang kết nối...' : 'Đăng Nhập' }}
-          </button>
-        </form>
-
-        <div class="text-center mt-4">
-          <p class="text-secondary fw-medium small mb-0">
-            Chưa có tài khoản?
-            <router-link to="/register" class="text-dark fw-bold text-decoration-none border-bottom border-dark">
-              Đăng ký ngay
-            </router-link>
-          </p>
+      <!-- RIGHT: model image -->
+      <div class="auth-hero">
+        <img src="https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=900&q=80" alt="Model">
+        <div class="auth-hero-overlay"></div>
+        <div class="auth-hero-text">
+          <span class="sg-chip sg-chip-warm">Bộ sưu tập 2026</span>
+          <h3>Bước chạy bứt phá</h3>
+          <p>Khám phá những đôi giày thể thao nam đỉnh cao — phong cách, hiệu suất và sự thoải mái trong từng sải bước.</p>
         </div>
       </div>
     </div>
@@ -105,9 +59,31 @@ const handleLogin = async () => {
 </template>
 
 <style scoped>
-.form-control:focus {
-  box-shadow: none;
-  background-color: #fff !important;
-  border: 1px solid #212529 !important;
-}
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--sg-grad-hero); }
+.auth-shell { display: grid; grid-template-columns: 1fr 1fr; max-width: 980px; width: 100%; overflow: hidden; padding: 0; border-radius: 28px; }
+.auth-form { padding: 48px 44px; }
+.auth-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--sg-ink); text-decoration: none; }
+.logo-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--sg-grad-primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+.auth-title { font-weight: 900; font-size: 2rem; margin-top: 26px; }
+.auth-sub { color: var(--sg-muted); margin-bottom: 26px; }
+.co-label { font-weight: 700; font-size: .82rem; color: var(--sg-ink-2); margin: 14px 0 6px; display: block; }
+.in-wrap { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--sg-line); border-radius: 12px; padding: 4px 14px; transition: .2s; }
+.in-wrap:focus-within { border-color: var(--sg-blue); box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+.in-wrap i { color: var(--sg-muted); }
+.auth-input { border: 0; outline: none; padding: 12px 0; width: 100%; font-weight: 500; background: transparent; }
+.eye { border: 0; background: transparent; color: var(--sg-muted); }
+.auth-row { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 20px; }
+.remember { display: flex; align-items: center; gap: 7px; font-size: .84rem; color: var(--sg-ink-2); }
+.remember input { width: 16px; height: 16px; accent-color: var(--sg-blue); }
+.forgot-link { font-size: .84rem; font-weight: 700; color: var(--sg-blue); text-decoration: none; }
+.forgot-link:hover { text-decoration: underline; }
+.auth-foot { text-align: center; margin-top: 20px; color: var(--sg-muted); font-size: .9rem; }
+.auth-foot a { font-weight: 800; color: var(--sg-blue); text-decoration: none; }
+.auth-hero { position: relative; }
+.auth-hero img { width: 100%; height: 100%; object-fit: cover; }
+.auth-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15,23,42,.15), rgba(37,99,235,.55)); }
+.auth-hero-text { position: absolute; left: 32px; right: 32px; bottom: 36px; color: #fff; }
+.auth-hero-text h3 { font-weight: 900; font-size: 1.8rem; margin: 12px 0 8px; }
+.auth-hero-text p { opacity: .92; font-size: .92rem; }
+@media (max-width: 820px) { .auth-shell { grid-template-columns: 1fr; } .auth-hero { display: none; } }
 </style>

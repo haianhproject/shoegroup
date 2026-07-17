@@ -107,7 +107,7 @@ app.post("/api/orders", async (req, res) => {
     const paymentMethod = b.paymentMethod ?? b.payment_method ?? "COD";
     const paymentStatus =
       b.paymentStatus ?? b.payment_status ?? "Chua thanh toan";
-    const status = b.status ?? "Cho xac nhan";
+    const status = b.status ?? "Chờ xác nhận";
     const handledBy = b.handledBy ?? b.handled_by ?? null;
     const note = b.note ?? b.order_note ?? "";
     const couponCode = b.couponCode ?? b.coupon_code ?? null;
@@ -133,9 +133,9 @@ app.post("/api/orders", async (req, res) => {
         .input("sfee", sql.Decimal(18, 2), shippingFee)
         .input("disc", sql.Decimal(18, 2), discountAmount)
         .input("note", sql.NVarChar, note).query(`
-          INSERT INTO Orders (UserID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote)
+          INSERT INTO Orders (UserID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline)
           OUTPUT INSERTED.OrderID
-          VALUES (@uid, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note)
+          VALUES (@uid, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()))
         `);
 
       const orderId = orderResult.recordset[0].OrderID;
@@ -201,7 +201,7 @@ app.get("/api/orders", async (req, res) => {
              ISNULL(o.TrackingNumber, '') as tracking_code,
              o.OrderNote as note,
              CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) as date,
-             ISNULL(o.Status, N'Cho xac nhan') as status, ISNULL(o.CancelReason, '') as cancel_reason
+             ISNULL(o.Status, N'Chờ xác nhận') as status, ISNULL(o.CancelReason, '') as cancel_reason
       FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID ORDER BY o.OrderID DESC
     `);
 
@@ -241,8 +241,23 @@ app.put("/api/orders/:id/status", async (req, res) => {
       .input("s", sql.NVarChar, req.body.status)
       .input("r", sql.NVarChar, req.body.reason || "")
       .query(
-        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s = N'Da huy' THEN @r ELSE CancelReason END WHERE OrderID = @id`,
+        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
       );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Cập nhật trạng thái thanh toán từ khu quản trị.
+app.put("/api/orders/:id/payment", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("ps", sql.NVarChar, req.body.payment_status || "Chưa thanh toán")
+      .query("UPDATE Orders SET PaymentStatus=@ps WHERE OrderID=@id");
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -927,6 +942,14 @@ app.post("/api/returns", async (req, res) => {
       .query(
         "INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rt, @trk, @rs, @st, @amt, GETDATE())",
       );
+    if (b.order_id) {
+      await pool
+        .request()
+        .input("oid", sql.Int, b.order_id)
+        .query(
+          "UPDATE Orders SET Status=N'Yêu cầu trả hàng' WHERE OrderID=@oid",
+        );
+    }
     res.json({ success: true, ReturnID: r.recordset[0].ReturnID });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1434,6 +1457,234 @@ app.get("/api/chart-data", async (req, res) => {
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json([]);
+  }
+});
+
+// ============================================================
+//  API BO SUNG (ShoeGroup - cap nhat nghiep vu khach hang)
+// ============================================================
+const crypto = require("crypto");
+
+// Khoang cach uoc luong tu kho Ha Noi (km) theo tinh/thanh
+const HANOI_DISTANCE = {
+  "ha noi": 8,
+  hanoi: 8,
+  "bac ninh": 35,
+  "hung yen": 40,
+  "hai duong": 60,
+  "vinh phuc": 55,
+  "thai nguyen": 80,
+  "nam dinh": 90,
+  "hai phong": 120,
+  "quang ninh": 175,
+  "thanh hoa": 160,
+  "nghe an": 300,
+  vinh: 300,
+  "ha tinh": 340,
+  hue: 660,
+  "da nang": 770,
+  "quang nam": 820,
+  "quy nhon": 1060,
+  "nha trang": 1280,
+  "khanh hoa": 1280,
+  "da lat": 1480,
+  "lam dong": 1480,
+  "vung tau": 1780,
+  "binh duong": 1700,
+  "dong nai": 1680,
+  "ho chi minh": 1720,
+  "tp hcm": 1720,
+  tphcm: 1720,
+  "sai gon": 1720,
+  "can tho": 1880,
+};
+
+// 1) Danh sach buu cuc (cho trang tra hang)
+app.get("/api/postoffices", async (req, res) => {
+  try {
+    await poolConnect;
+    const r = await pool.request().query(
+      `SELECT PostOfficeID as id, Name as name, Address as address, ISNULL(Phone,'') as phone, ISNULL(Province,'') as province
+       FROM PostOffices WHERE ISNULL(IsActive,1) = 1 ORDER BY PostOfficeID`,
+    );
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 2) Tinh phi giao hang theo khoang cach (hoa toc) / co dinh (thuong)
+app.post("/api/shipping/quote", async (req, res) => {
+  try {
+    await poolConnect;
+    const methodCode = (req.body && req.body.methodCode) || "STANDARD";
+    const province = (req.body && req.body.province) || "";
+    let method = null;
+    try {
+      const r = await pool
+        .request()
+        .input("c", sql.VarChar, methodCode)
+        .query(
+          "SELECT MethodCode, MethodName, BasePrice, PricePerKm, EstimatedTimeText FROM ShippingMethods WHERE MethodCode=@c AND ISNULL(IsActive,1)=1",
+        );
+      method = r.recordset[0] || null;
+    } catch (err) {
+      method = null;
+    }
+    if (!method) {
+      method =
+        methodCode === "EXPRESS"
+          ? {
+              MethodCode: "EXPRESS",
+              MethodName: "Giao hoa toc",
+              BasePrice: 40000,
+              PricePerKm: 5000,
+              EstimatedTimeText: "~24 gio",
+            }
+          : {
+              MethodCode: "STANDARD",
+              MethodName: "Giao tieu chuan",
+              BasePrice: 30000,
+              PricePerKm: 0,
+              EstimatedTimeText: "2 - 3 ngay",
+            };
+    }
+    const key = String(province).toLowerCase();
+    let km = 0;
+    for (const k in HANOI_DISTANCE) {
+      if (key.indexOf(k) !== -1) {
+        km = HANOI_DISTANCE[k];
+        break;
+      }
+    }
+    if (method.MethodCode === "EXPRESS" && !km) km = 150;
+    const fee =
+      Number(method.BasePrice) +
+      (method.MethodCode === "EXPRESS" ? km * Number(method.PricePerKm) : 0);
+    res.json({
+      methodCode: method.MethodCode,
+      methodName: method.MethodName,
+      distanceKm: km,
+      fee,
+      eta: method.EstimatedTimeText,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3) Khach xac nhan "Da nhan hang" (giong Shopee) - giu 14 ngay truoc khi tinh doanh thu
+app.put("/api/orders/:id/receive", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .input("hold", sql.Int, 14).query(`
+        UPDATE Orders
+        SET Status = N'Đã nhận hàng',
+            ReceivedConfirmedDate = GETDATE(),
+            RevenueEligibleDate = DATEADD(day, @hold, GETDATE()),
+            IsCountedAsRevenue = 0
+        WHERE OrderID = @id
+      `);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 4) Job: tu dong huy don qua han nhan hang + tinh doanh thu sau 14 ngay
+async function runAutoCancelJob() {
+  try {
+    await poolConnect;
+    await pool
+      .request()
+      .input(
+        "reason",
+        sql.NVarChar,
+        "Shop chua chuan bi hang cho khach. Xin loi quy khach, vui long dat lai don hang.",
+      ).query(`
+        UPDATE Orders
+        SET Status = N'Đã hủy', CancelReason = @reason
+        WHERE AutoCancelDeadline IS NOT NULL
+          AND AutoCancelDeadline < GETDATE()
+          AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+      `);
+    await pool.request().query(`
+      UPDATE Orders SET IsCountedAsRevenue = 1
+      WHERE RevenueEligibleDate IS NOT NULL AND RevenueEligibleDate <= GETDATE()
+        AND Status IN (N'Đã nhận hàng', N'Da nhan hang') AND ISNULL(IsCountedAsRevenue, 0) = 0
+    `);
+  } catch (e) {
+    console.log("AutoCancel job:", e.message);
+  }
+}
+setInterval(runAutoCancelJob, 60 * 60 * 1000);
+setTimeout(runAutoCancelJob, 5000);
+
+// 5) Quen mat khau - tao token, gui email (xem huong dan trong tai lieu)
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    await poolConnect;
+    const email = (req.body && req.body.email) || "";
+    const r = await pool
+      .request()
+      .input("e", sql.VarChar, email)
+      .query("SELECT UserID FROM Users WHERE Email=@e AND IsActive=1");
+    if (r.recordset.length === 0) return res.json({ success: true }); // khong lo email ton tai
+    const token = crypto.randomBytes(32).toString("hex");
+    await pool
+      .request()
+      .input("e", sql.VarChar, email)
+      .input("t", sql.VarChar, token).query(`
+        UPDATE Users
+        SET PasswordResetToken = @t, PasswordResetTokenExpiry = DATEADD(hour, 1, GETDATE())
+        WHERE Email = @e
+      `);
+    const resetLink = "http://localhost:5173/reset-password?token=" + token;
+    console.log(
+      "[ForgotPassword] Link doi mat khau cho",
+      email,
+      ":",
+      resetLink,
+    );
+    // TODO: Gui email that bang nodemailer (xem huong dan). Demo tra token de test.
+    res.json({ success: true, devToken: token, devResetLink: resetLink });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 6) Dat lai mat khau bang token
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    await poolConnect;
+    const token = (req.body && req.body.token) || "";
+    const newPassword = (req.body && req.body.newPassword) || "";
+    const r = await pool
+      .request()
+      .input("t", sql.VarChar, token)
+      .query(
+        "SELECT UserID FROM Users WHERE PasswordResetToken=@t AND PasswordResetTokenExpiry > GETDATE()",
+      );
+    if (r.recordset.length === 0)
+      return res.status(400).json({
+        success: false,
+        message: "Token khong hop le hoac da het han.",
+      });
+    await pool
+      .request()
+      .input("t", sql.VarChar, token)
+      .input("p", sql.VarChar, newPassword).query(`
+        UPDATE Users
+        SET PasswordHash = @p, PasswordResetToken = NULL,
+            PasswordResetTokenExpiry = NULL, LastPasswordChangedAt = GETDATE()
+        WHERE PasswordResetToken = @t
+      `);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 

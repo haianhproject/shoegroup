@@ -1,251 +1,251 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ShoeCard from '../components/ShoeCard.vue'
-import { brands, sizes, colors } from '../data/mockData'
+import {
+  products as mockProducts, categories as mockCats,
+  colors as mockColors, sizes as mockSizes, materials as mockMaterials, sports as mockSports,
+} from '../data/mockData'
 
 const route = useRoute()
 const router = useRouter()
 
-// === STATE DỮ LIỆU TỪ CSDL ===
 const products = ref([])
 const categories = ref([])
+const colors = ref([])
+const sizes = ref([])
+const materials = ref([])
+const sports = ref([])
 const isLoading = ref(true)
 
-// === STATE BỘ LỌC ===
-const searchQuery = ref('')
-const selectedCategory = ref(null)
-const selectedBrands = ref([])
-const selectedSizes = ref([])
-const selectedColors = ref([])
-const priceRange = ref(5000000)
-const sortOrder = ref('new')
+// Filter state
+const search = ref('')
+const selCategory = ref(null)
+const selSports = ref([])
+const selColors = ref([])
+const selSizes = ref([])
+const selMaterials = ref([])
+const priceMax = ref(6000000)
+const sortBy = ref('featured')
+const showFiltersMobile = ref(false)
 
-const fetchProductsData = async () => {
+const API = 'http://localhost:5000/api'
+
+const fetchAll = async () => {
   try {
-    const [resProd, resCat] = await Promise.all([
-      fetch('http://localhost:5000/api/products'),
-      fetch('http://localhost:5000/api/categories')
+    const [rp, rc, rcol, rs, rm] = await Promise.all([
+      fetch(`${API}/products`), fetch(`${API}/categories`),
+      fetch(`${API}/colors`), fetch(`${API}/sizes`), fetch(`${API}/materials`),
     ])
-    
-    const prodData = await resProd.json()
-    const catData = await resCat.json()
-
-    categories.value = catData.filter(c => c.active).map(c => ({
-      id_category: c.id,
-      category_name: c.name
-    }))
-
-    products.value = prodData.filter(p => p.active).map(p => ({
-      id_product: p.id,
-      product_name: p.name,
-      price: p.price,
-      id_category: p.category_id,
-      category_name: p.category,
+    const dp = await rp.json()
+    const dc = await rc.json()
+    const catSportMap = {}
+    dc.forEach((c) => { catSportMap[c.id] = c.sport })
+    products.value = dp.filter((p) => p.active).map((p) => ({
+      id_product: p.id, product_name: p.name, price: p.price,
+      id_category: p.category_id, category_name: p.category,
+      sport: catSportMap[p.category_id] || '',
+      material_id: p.material_id,
+      f_sizes: (p.sizes || []).map((s) => String(s)),
+      f_colors: (p.colors || []).map((c) => c.name),
+      sole_name: p.sole_name, cushioning_name: p.cushioning_name,
       image_url: p.image_url,
-      id_brand: p.id_brand || 1
+      brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || p.brand_id || 1,
     }))
-
-  } catch (err) {
-    console.error('Lỗi khi lấy dữ liệu Sản Phẩm:', err)
+    categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
+    colors.value = (await rcol.json()).map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
+    sizes.value = (await rs.json()).map((s) => ({ id_size: s.id, size_name: String(s.name) }))
+    materials.value = (await rm.json()).map((m) => ({ id_material: m.id, material_name: m.name }))
+    sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
+  } catch (e) {
+    products.value = mockProducts.map((p) => ({ ...p, category_name: mockCats.find((c) => c.id_category === p.id_category)?.category_name, color_name: 'Đen' }))
+    categories.value = mockCats
+    colors.value = mockColors
+    sizes.value = mockSizes
+    materials.value = mockMaterials
+    sports.value = mockSports
   } finally {
     isLoading.value = false
   }
 }
 
-// LẮNG NGHE SỰ THAY ĐỔI CỦA THANH URL ĐỂ TỰ ĐỘNG GÁN VÀO BỘ LỌC
-watch(
-  () => route.query,
-  (query) => {
-    if (query.search !== undefined) {
-      searchQuery.value = query.search
-    } else {
-      searchQuery.value = ''
-    }
-    
-    if (query.category !== undefined) {
-      selectedCategory.value = Number(query.category)
-    } else {
-      selectedCategory.value = null
-    }
-  },
-  { immediate: true }
-)
+// Sync from URL (category / search set by navbar)
+watch(() => route.query, (q) => {
+  selCategory.value = q.category ? Number(q.category) : null
+  search.value = q.search || ''
+}, { immediate: true })
 
-// HÀM: Chuyển đổi chuỗi tiếng Việt có dấu thành không dấu để tìm kiếm gần đúng
-const removeAccents = (str) => {
-  if (!str) return '';
-  return str.toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const toggle = (arr, val) => {
+  // NOTE: In templates, refs are auto-unwrapped, so `arr` here is the array itself (not the ref).
+  const i = arr.indexOf(val)
+  if (i === -1) arr.push(val); else arr.splice(i, 1)
 }
 
-// === LOGIC LỌC SẢN PHẨM ===
-const filteredProducts = computed(() => {
-  let filtered = products.value.filter(p => {
-    // 1. TÌM KIẾM TÊN GẦN ĐÚNG
-    if (searchQuery.value) {
-      const q = removeAccents(searchQuery.value).trim()
-      const pName = removeAccents(p.product_name || p.name || '')
-      // Nếu tên sản phẩm không chứa từ khóa -> Lọc bỏ
-      if (!pName.includes(q)) return false
-    }
-
-    // 2. LỌC THEO DANH MỤC
-    if (selectedCategory.value && p.id_category !== selectedCategory.value) {
-      return false
-    }
-
-    // 3. Lọc theo Thương hiệu
-    if (selectedBrands.value.length > 0 && !selectedBrands.value.includes(p.id_brand)) return false
-    
-    // 4. Lọc theo Khoảng giá
-    if (p.price > priceRange.value) return false
-    
-    return true
-  })
-
-  // Sắp xếp
-  if (sortOrder.value === 'price-asc') filtered.sort((a, b) => a.price - b.price)
-  else if (sortOrder.value === 'price-desc') filtered.sort((a, b) => b.price - a.price)
-  else filtered.sort((a, b) => b.id_product - a.id_product)
-
-  return filtered
-})
-
-const toggleArrayItem = (array, item) => {
-  const index = array.indexOf(item)
-  if (index > -1) array.splice(index, 1)
-  else array.push(item)
-}
-
-const formatPrice = (value) => {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value).replace(' ', '')
-}
-
-// Hàm Xóa Bộ Lọc -> Đồng thời làm sạch thanh URL
 const clearFilters = () => {
-  searchQuery.value = ''
-  selectedCategory.value = null
-  selectedBrands.value = []
-  priceRange.value = 5000000
-  sortOrder.value = 'new'
-  
-  router.push({ path: '/products' }) // Xóa query trên thanh địa chỉ
+  selCategory.value = null; selSports.value = []; selColors.value = []
+  selSizes.value = []; selMaterials.value = []; priceMax.value = 6000000; search.value = ''
+  router.replace({ path: '/products' })
 }
 
-onMounted(() => {
-  window.scrollTo(0, 0)
-  fetchProductsData() 
+const filtered = computed(() => {
+  let list = [...products.value]
+  const q = search.value.trim().toLowerCase()
+  if (q) list = list.filter((p) => (p.product_name || '').toLowerCase().includes(q))
+  if (selCategory.value) list = list.filter((p) => p.id_category === selCategory.value)
+  if (selSports.value.length) list = list.filter((p) => selSports.value.includes(p.sport))
+  if (selColors.value.length) list = list.filter((p) => (p.f_colors || []).some((c) => selColors.value.includes(c)))
+  if (selSizes.value.length) list = list.filter((p) => (p.f_sizes || []).some((s) => selSizes.value.includes(String(s))))
+  if (selMaterials.value.length) list = list.filter((p) => selMaterials.value.includes(p.material_id))
+  list = list.filter((p) => (p.price || 0) <= priceMax.value)
+  if (sortBy.value === 'price-asc') list.sort((a, b) => a.price - b.price)
+  else if (sortBy.value === 'price-desc') list.sort((a, b) => b.price - a.price)
+  else if (sortBy.value === 'name') list.sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''))
+  return list
 })
+
+const activeCategoryName = computed(() => categories.value.find((c) => c.id_category === selCategory.value)?.category_name)
+const fmtPrice = (v) => new Intl.NumberFormat('vi-VN').format(v) + 'đ'
+
+onMounted(fetchAll)
 </script>
 
 <template>
-  <div class="pb-5 bg-light-gray min-vh-100">
-    <section class="page-header py-5 mb-4 bg-dark text-white text-center">
-      <div class="container">
-        <h1 class="display-5 fw-bolder mb-2 text-uppercase tracking-tight">Tất Cả Sản Phẩm</h1>
-        <p class="fs-6 text-light mb-0">
-          <span v-if="searchQuery">Đang tìm kiếm: "<strong class="text-warning">{{ searchQuery }}</strong>"</span>
-          <span v-else>Tìm kiếm đôi giày phù hợp với phong cách của bạn.</span>
-        </p>
+  <div class="products-page">
+    <div class="container-fluid px-4 py-4">
+      <!-- Header -->
+      <div class="page-head">
+        <div>
+          <div class="sg-title-bar mb-2"></div>
+          <h1 class="page-title">{{ activeCategoryName || 'Tất cả sản phẩm' }}</h1>
+          <p class="text-secondary mb-0">{{ filtered.length }} sản phẩm phù hợp</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <button class="btn-sg-outline d-lg-none" @click="showFiltersMobile = !showFiltersMobile"><i class="bi bi-funnel me-1"></i>Lọc</button>
+          <select v-model="sortBy" class="sg-input sort-sel">
+            <option value="featured">Nổi bật</option>
+            <option value="price-asc">Giá thấp → cao</option>
+            <option value="price-desc">Giá cao → thấp</option>
+            <option value="name">Tên A → Z</option>
+          </select>
+        </div>
       </div>
-    </section>
-    
-    <div class="container px-4">
-      <div class="row g-5">
-        <!-- SIDEBAR BỘ LỌC -->
-        <aside class="col-lg-3">
-          <div class="sticky-top" style="top: 100px; z-index: 1;">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h5 class="fw-bold m-0 fs-5"><i class="bi bi-funnel me-2"></i>Bộ Lọc</h5>
-              <button @click="clearFilters" class="btn btn-sm text-decoration-underline text-secondary p-0 shadow-none border-0">Xóa Bộ Lọc</button>
+
+      <div class="row g-4 mt-1">
+        <!-- LEFT FILTERS -->
+        <aside class="col-lg-3" :class="{ 'd-none d-lg-block': !showFiltersMobile }">
+          <div class="filter-panel sg-card">
+            <div class="filter-top">
+              <h6 class="mb-0 fw-bold"><i class="bi bi-sliders me-2"></i>Bộ lọc</h6>
+              <button class="btn-clear" @click="clearFilters">Xóa lọc</button>
             </div>
-            
-            <!-- Tìm kiếm thủ công -->
-            <div class="mb-4">
-              <div class="position-relative">
-                <input v-model="searchQuery" type="text" class="form-control bg-white border-0 shadow-sm py-2 ps-4 pe-5 rounded-3 focus-ring" placeholder="Tìm tên giày...">
-                <i class="bi bi-search position-absolute top-50 translate-middle-y end-0 me-3 text-muted"></i>
+
+            <!-- Type-ahead search -->
+            <div class="filter-group">
+              <label class="filter-label">Tìm theo tên</label>
+              <div class="search-inline">
+                <i class="bi bi-search"></i>
+                <input v-model="search" type="search" placeholder="Nhập từng ký tự…">
               </div>
             </div>
-            
-            <div class="mb-4 bg-white p-4 rounded-4 shadow-sm">
-              <h6 class="fw-bold mb-3 fs-6">Danh Mục</h6>
-              <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-sm rounded-pill fw-medium transition-all" :class="selectedCategory === null ? 'btn-dark' : 'btn-light border'" @click="selectedCategory = null">Tất Cả</button>
-                <button v-for="cat in categories" :key="cat.id_category" class="btn btn-sm rounded-pill fw-medium transition-all" :class="selectedCategory === cat.id_category ? 'btn-dark' : 'btn-light border'" @click="selectedCategory = cat.id_category">
-                  {{ cat.category_name }}
+
+            <!-- Sport / category -->
+            <div class="filter-group">
+              <label class="filter-label">Thể loại thể thao</label>
+              <div class="chip-wrap">
+                <button v-for="s in sports" :key="s" class="filter-chip" :class="{ active: selSports.includes(s) }" @click="toggle(selSports, s)">{{ s }}</button>
+              </div>
+            </div>
+
+            <!-- Colors -->
+            <div class="filter-group">
+              <label class="filter-label">Màu sắc</label>
+              <div class="color-wrap">
+                <button v-for="c in colors" :key="c.id_color" class="color-dot" :class="{ active: selColors.includes(c.color_label) }" :style="{ background: c.hex || '#ccc' }" :title="c.color_label" @click="toggle(selColors, c.color_label)">
+                  <i v-if="selColors.includes(c.color_label)" class="bi bi-check-lg"></i>
                 </button>
               </div>
             </div>
-            
-            <div class="mb-4 bg-white p-4 rounded-4 shadow-sm">
-              <h6 class="fw-bold mb-3 fs-6">Thương Hiệu</h6>
+
+            <!-- Sizes -->
+            <div class="filter-group">
+              <label class="filter-label">Kích cỡ (Size)</label>
+              <div class="size-wrap">
+                <button v-for="s in sizes" :key="s.id_size" class="size-box" :class="{ active: selSizes.includes(s.size_name) }" @click="toggle(selSizes, s.size_name)">{{ s.size_name }}</button>
+              </div>
+            </div>
+
+            <!-- Materials -->
+            <div class="filter-group">
+              <label class="filter-label">Chất liệu</label>
               <div class="d-flex flex-column gap-2">
-                <label v-for="brand in brands" :key="brand.id_brand" class="custom-checkbox-container d-flex align-items-center cursor-pointer">
-                  <input type="checkbox" :value="brand.id_brand" :checked="selectedBrands.includes(brand.id_brand)" @change="toggleArrayItem(selectedBrands, brand.id_brand)" class="d-none">
-                  <span class="custom-checkbox me-2"></span>
-                  <span class="fw-medium text-secondary hover-dark">{{ brand.brand_name }}</span>
+                <label v-for="m in materials" :key="m.id_material" class="check-row">
+                  <input type="checkbox" :value="m.id_material" :checked="selMaterials.includes(m.id_material)" @change="toggle(selMaterials, m.id_material)">
+                  <span>{{ m.material_name }}</span>
                 </label>
               </div>
             </div>
 
-            <div class="mb-4 bg-white p-4 rounded-4 shadow-sm">
-              <h6 class="fw-bold mb-3 fs-6">Mức Giá: Dưới {{ formatPrice(priceRange) }}đ</h6>
-              <input v-model="priceRange" type="range" class="form-range custom-range" min="500000" max="5000000" step="100000">
+            <!-- Price -->
+            <div class="filter-group">
+              <label class="filter-label">Giá tối đa: <strong class="text-sg-blue">{{ fmtPrice(priceMax) }}</strong></label>
+              <input type="range" min="500000" max="6000000" step="100000" v-model.number="priceMax" class="price-range">
             </div>
           </div>
         </aside>
-        
-        <!-- MAIN SẢN PHẨM -->
-        <main class="col-lg-9">
-          <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded-4 shadow-sm">
-            <p class="m-0 fw-medium text-secondary">
-              Hiển thị <span class="text-dark fw-bold">{{ filteredProducts.length }}</span> kết quả
-            </p>
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-secondary small fw-medium text-nowrap">Sắp xếp:</span>
-              <select v-model="sortOrder" class="form-select form-select-sm border-0 bg-light fw-medium shadow-none cursor-pointer w-auto">
-                <option value="new">Mới nhất</option>
-                <option value="price-asc">Giá: Thấp - Cao</option>
-                <option value="price-desc">Giá: Cao - Thấp</option>
-              </select>
-            </div>
-          </div>
 
-          <div v-if="isLoading" class="text-center py-5 bg-white rounded-4 shadow-sm mt-4">
-            <div class="spinner-border text-dark mb-3"></div>
-            <h4 class="fw-bold text-secondary">Đang tải sản phẩm từ CSDL...</h4>
+        <!-- PRODUCT GRID -->
+        <div class="col-lg-9">
+          <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+          <div v-else-if="filtered.length === 0" class="empty-state sg-card">
+            <i class="bi bi-search"></i>
+            <h5>Không tìm thấy sản phẩm</h5>
+            <p class="text-secondary">Thử điều chỉnh bộ lọc hoặc từ khóa khác.</p>
+            <button class="btn-sg" @click="clearFilters">Xóa bộ lọc</button>
           </div>
-
-          <div v-else-if="filteredProducts.length === 0" class="text-center py-5 bg-white rounded-4 shadow-sm mt-4">
-            <i class="bi bi-search display-1 text-secondary opacity-50 mb-3"></i>
-            <h4 class="fw-bold text-secondary">Không tìm thấy sản phẩm phù hợp</h4>
-            <p class="text-muted">Vui lòng điều chỉnh lại bộ lọc hoặc từ khóa tìm kiếm.</p>
-            <button @click="clearFilters" class="btn btn-dark rounded-pill px-4 mt-2 fw-medium">Xem tất cả</button>
-          </div>
-          
-          <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
-            <div class="col fade-in" v-for="product in filteredProducts" :key="product.id_product">
+          <div v-else class="row row-cols-2 row-cols-md-3 g-4">
+            <div class="col fade-in" v-for="product in filtered" :key="product.id_product">
               <ShoeCard :product="product" />
             </div>
           </div>
-        </main>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.bg-light-gray { background-color: #f8f9fa; }
-.tracking-tight { letter-spacing: -0.02em; }
-.fade-in { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.custom-range { height: 4px; }
-.custom-range::-webkit-slider-thumb { background: #212529; }
-.focus-ring:focus { box-shadow: 0 0 0 0.2rem rgba(33,37,41,0.1); border: 1px solid #212529 !important; outline: none; }
-.custom-checkbox-container input:checked ~ .custom-checkbox { background-color: #212529; border-color: #212529; }
-.custom-checkbox-container input:checked ~ .custom-checkbox::after { content: '\F26A'; font-family: 'bootstrap-icons'; color: white; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 10px; }
-.custom-checkbox { width: 18px; height: 18px; border: 2px solid #dee2e6; border-radius: 4px; display: inline-block; position: relative; transition: all 0.2s; }
-.hover-dark { transition: color 0.2s; }
-.custom-checkbox-container:hover .hover-dark { color: #212529 !important; }
+.products-page { background: var(--sg-canvas); min-height: 100vh; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; margin: 0; }
+.sort-sel { padding: .5rem 1rem; font-weight: 600; min-width: 160px; }
+
+.filter-panel { padding: 20px; }
+.filter-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--sg-line); margin-bottom: 16px; }
+.btn-clear { border: 0; background: transparent; color: var(--sg-orange); font-weight: 700; font-size: .85rem; }
+.btn-clear:hover { text-decoration: underline; }
+.filter-group { padding: 14px 0; border-bottom: 1px dashed var(--sg-line); }
+.filter-group:last-child { border-bottom: 0; }
+.filter-label { font-weight: 700; font-size: .85rem; color: var(--sg-ink-2); margin-bottom: 10px; display: block; }
+.search-inline { display: flex; align-items: center; gap: 8px; background: var(--sg-canvas); border: 1.5px solid var(--sg-line); border-radius: 10px; padding: 6px 12px; }
+.search-inline i { color: var(--sg-muted); }
+.search-inline input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
+.chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-chip { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
+.filter-chip:hover { border-color: var(--sg-blue); color: var(--sg-blue); }
+.filter-chip.active { background: var(--sg-ink); color: #fff; border-color: var(--sg-ink); }
+.color-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
+.color-dot { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px var(--sg-line); color: #fff; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; }
+.color-dot:hover { transform: scale(1.12); }
+.color-dot.active { box-shadow: 0 0 0 3px var(--sg-blue); }
+.size-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.size-box { width: 46px; height: 40px; border: 1.5px solid var(--sg-line); background: #fff; border-radius: 10px; font-weight: 700; transition: .2s; }
+.size-box:hover { border-color: var(--sg-blue); }
+.size-box.active { background: var(--sg-grad-primary); color: #fff; border-color: transparent; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; }
+.check-row input { width: 17px; height: 17px; accent-color: var(--sg-blue); }
+.price-range { width: 100%; accent-color: var(--sg-blue); }
+
+.empty-state { text-align: center; padding: 60px 20px; }
+.empty-state i { font-size: 3rem; color: var(--sg-muted); }
+.empty-state h5 { font-weight: 800; margin-top: 12px; }
 </style>

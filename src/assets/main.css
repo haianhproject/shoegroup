@@ -1,36 +1,175 @@
+/* =====================================================================
+   ShoeGroup - Design System (v3)
+   Bright, vibrant men's sportswear theme.
+   - Electric blue + energetic orange, clean surfaces, bold type.
+   - Unique hover states, smooth motion, cherry-blossom (sakura) motif.
+   ===================================================================== */
+
+:root {
+  /* Brand palette */
+  --sg-blue: #2563eb;
+  --sg-blue-600: #1d4ed8;
+  --sg-blue-700: #1e40af;
+  --sg-cyan: #06b6d4;
+  --sg-orange: #ff5a1f;
+  --sg-orange-600: #ea580c;
+  --sg-pink: #ff477e;
+  --sg-lime: #84cc16;
+
+  /* Ink & surfaces */
+  --sg-ink: #0f172a;
+  --sg-ink-2: #334155;
+  --sg-muted: #64748b;
+  --sg-line: #e6e8ee;
+  --sg-surface: #ffffff;
+  --sg-canvas: #f5f7fb;
+  --sg-soft: #eef2ff;
+
+  /* Gradients */
+  --sg-grad-primary: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+  --sg-grad-warm: linear-gradient(135deg, #ff5a1f 0%, #ff477e 100%);
+  --sg-grad-hero: linear-gradient(120deg, #1e3a8a 0%, #2563eb 45%, #06b6d4 100%);
+  --sg-grad-sport: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #ff477e 100%);
+
+  /* Radii & shadow */
+  --sg-r-sm: 10px;
+  --sg-r: 16px;
+  --sg-r-lg: 24px;
+  --sg-shadow-sm: 0 2px 8px rgba(15, 23, 42, .06);
+  --sg-shadow: 0 12px 30px rgba(15, 23, 42, .10);
+  --sg-shadow-lg: 0 24px 60px rgba(30, 64, 175, .18);
+  --sg-ring: 0 0 0 4px rgba(37, 99, 235, .15);
+}
+
+html { scroll-behavior: smooth; }
+
 body {
-  background-color: #f8f9fa;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-    "Noto Sans", "Liberation Sans", Arial, sans-serif;
+  background-color: var(--sg-canvas);
+  color: var(--sg-ink);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-.cursor-pointer {
-  cursor: pointer;
+/* ---------- Utilities ---------- */
+.cursor-pointer { cursor: pointer; }
+.object-fit-cover { object-fit: cover; }
+.object-fit-contain { object-fit: contain; }
+.fw-black { font-weight: 900; }
+.tracking-wide { letter-spacing: .06em; }
+.tracking-wider { letter-spacing: .12em; }
+.tracking-tight { letter-spacing: -.02em; }
+.transition-all { transition: all .3s ease; }
+.text-sg-blue { color: var(--sg-blue) !important; }
+.text-sg-orange { color: var(--sg-orange) !important; }
+.bg-sg-canvas { background: var(--sg-canvas) !important; }
+.bg-sg-soft { background: var(--sg-soft) !important; }
+
+.sg-gradient-text {
+  background: var(--sg-grad-sport);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.shadow-hover:hover {
-  box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15);
-  transform: translateY(-2px);
-  transition: all 0.3s ease;
+/* ---------- Buttons ---------- */
+.btn-sg {
+  --bs-btn-color: #fff;
+  background: var(--sg-grad-primary);
+  color: #fff;
+  border: 0;
+  font-weight: 800;
+  letter-spacing: .02em;
+  border-radius: 999px;
+  padding: .7rem 1.6rem;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, .30);
+  transition: transform .25s cubic-bezier(.25,.8,.25,1), box-shadow .25s ease, filter .25s;
 }
+.btn-sg:hover { color:#fff; transform: translateY(-3px); box-shadow: 0 18px 36px rgba(37,99,235,.42); filter: saturate(1.1); }
+.btn-sg:active { transform: translateY(-1px); }
 
-.transition-all {
-  transition: all 0.3s ease;
+.btn-sg-warm {
+  background: var(--sg-grad-warm);
+  color: #fff; border: 0; font-weight: 800; border-radius: 999px;
+  padding: .7rem 1.6rem; box-shadow: 0 10px 24px rgba(255,90,31,.30);
+  transition: transform .25s cubic-bezier(.25,.8,.25,1), box-shadow .25s ease;
 }
+.btn-sg-warm:hover { color:#fff; transform: translateY(-3px); box-shadow: 0 18px 36px rgba(255,90,31,.42); }
 
-.object-fit-cover {
-  object-fit: cover;
+.btn-sg-ghost {
+  background: rgba(255,255,255,.12);
+  color: #fff; border: 2px solid rgba(255,255,255,.65);
+  font-weight: 800; border-radius: 999px; padding: .62rem 1.5rem;
+  transition: all .25s ease; backdrop-filter: blur(4px);
 }
+.btn-sg-ghost:hover { background:#fff; color: var(--sg-blue); border-color:#fff; transform: translateY(-3px); }
 
-.fw-black {
-  font-weight: 900;
+.btn-sg-outline {
+  background: #fff; color: var(--sg-ink); border: 2px solid var(--sg-line);
+  font-weight: 800; border-radius: 999px; padding: .55rem 1.3rem; transition: all .25s ease;
 }
+.btn-sg-outline:hover { border-color: var(--sg-blue); color: var(--sg-blue); transform: translateY(-2px); box-shadow: var(--sg-shadow-sm); }
 
-.tracking-wider {
-  letter-spacing: 0.04em;
+/* ---------- Cards & surfaces ---------- */
+.sg-card {
+  background: var(--sg-surface);
+  border: 1px solid var(--sg-line);
+  border-radius: var(--sg-r);
+  box-shadow: var(--sg-shadow-sm);
 }
+.sg-chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .3rem .8rem; border-radius: 999px;
+  font-size: .8rem; font-weight: 700; letter-spacing: .02em;
+}
+.sg-chip-blue { background: var(--sg-soft); color: var(--sg-blue-700); }
+.sg-chip-warm { background: #fff1eb; color: var(--sg-orange-600); }
+.sg-chip-lime { background: #f2fbe1; color: #4d7c0f; }
 
-.btn:disabled,
-.disabled {
-  cursor: not-allowed;
+/* Section title accent */
+.sg-title-bar { width: 64px; height: 5px; border-radius: 999px; background: var(--sg-grad-warm); }
+
+/* Inputs */
+.sg-input {
+  border: 1.5px solid var(--sg-line); border-radius: 12px; padding: .72rem 1rem;
+  background: #fff; font-weight: 500; transition: border-color .2s, box-shadow .2s;
+}
+.sg-input:focus { outline: none; border-color: var(--sg-blue); box-shadow: var(--sg-ring); }
+
+/* Focus ring helper */
+.focus-ring:focus { box-shadow: var(--sg-ring) !important; outline: none; }
+
+/* ---------- Animations ---------- */
+.fade-in-up { opacity: 0; animation: sgFadeInUp .8s cubic-bezier(.165,.84,.44,1) forwards; }
+@keyframes sgFadeInUp { from { opacity:0; transform: translateY(38px);} to {opacity:1; transform: translateY(0);} }
+.fade-in { animation: sgFadeIn .4s ease-out; }
+@keyframes sgFadeIn { from { opacity:0; transform: translateY(10px);} to {opacity:1; transform: translateY(0);} }
+
+.btn:disabled, .disabled { cursor: not-allowed; opacity: .6; }
+
+/* Legacy helpers kept for compatibility */
+.shadow-hover:hover { box-shadow: var(--sg-shadow); transform: translateY(-2px); transition: all .3s ease; }
+
+/* ---------- Sakura petals (global) ---------- */
+.sakura-layer {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: hidden; z-index: 60;
+}
+.sakura-petal {
+  position: absolute; top: -8%;
+  width: 14px; height: 14px; will-change: transform, opacity;
+  background: radial-gradient(circle at 30% 30%, #ffd7e2 0%, #ffb7c5 55%, #ff88a6 100%);
+  border-radius: 12px 1px 12px 1px;
+  opacity: .9;
+  animation-name: sakuraFall, sakuraSway;
+  animation-timing-function: linear, ease-in-out;
+  animation-iteration-count: 1, infinite;
+}
+@keyframes sakuraFall {
+  0%   { transform: translateY(-10vh) rotate(0deg); }
+  100% { transform: translateY(110vh) rotate(540deg); }
+}
+@keyframes sakuraSway {
+  0%,100% { margin-left: 0; }
+  50%     { margin-left: 46px; }
 }

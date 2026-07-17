@@ -1,128 +1,85 @@
 <script setup>
+import { useRouter } from 'vue-router'
 import {
-  cartItems,
-  cartSubtotal,
-  cartShippingFee,
-  cartTotal,
-  formatCurrency,
-  increaseQuantity,
-  decreaseQuantity,
-  removeFromCart
+  cartItems, cartCount, cartSubtotal, cartShippingFee, cartTotal,
+  formatCurrency, increaseQuantity, decreaseQuantity, removeFromCart, clearCart,
 } from '../stores/cartStore'
+import { notify } from '../stores/uiStore'
+import { isAuthenticated } from '../stores/authStore'
 
-const handleIncrease = (detailId) => {
-  const result = increaseQuantity(detailId)
-  if (!result.ok) alert(result.message)
+const router = useRouter()
+
+const goCheckout = () => {
+  if (!isAuthenticated.value) {
+    notify({ type: 'warning', title: 'Cần đăng nhập', message: 'Vui lòng đăng nhập để thanh toán.' })
+    router.push('/login')
+    return
+  }
+  router.push('/checkout')
 }
-
-const handleDecrease = (detailId) => {
-  const result = decreaseQuantity(detailId)
-  if (!result.ok) alert(result.message)
+const attrsOf = (item) => {
+  const a = item.attributes || item.product || {}
+  return [
+    { label: 'Size', value: item.size?.size_name },
+    { label: 'Màu', value: item.color?.color_label },
+    { label: 'Chất liệu', value: a.material_name },
+    { label: 'Đế', value: a.sole_name },
+    { label: 'Đệm', value: a.cushioning_name },
+    { label: 'Bộ môn', value: a.sport },
+  ].filter((x) => x.value)
 }
 </script>
 
 <template>
-  <div class="container-fluid px-4 py-5 bg-light min-vh-100">
-    <div class="container">
-      <h1 class="fw-bold mb-4 fs-2">Giỏ Hàng Của Bạn</h1>
-      
-      <div v-if="cartItems.length === 0" class="card border-0 rounded-4 shadow-sm">
-        <div class="card-body text-center py-5">
-          <i class="bi bi-cart-x display-1 text-secondary opacity-50 mb-3"></i>
-          <h3 class="fw-bold mt-3">Giỏ hàng đang trống</h3>
-          <p class="text-secondary mb-4">Hãy thêm sản phẩm vào giỏ để tiếp tục mua sắm nhé.</p>
-          <router-link to="/products" class="btn btn-dark fw-bold rounded-3 px-5 py-2">
-            Tiếp tục mua sắm
-          </router-link>
-        </div>
+  <div class="cart-page">
+    <div class="container-fluid px-4 py-4">
+      <div class="sg-title-bar mb-2"></div>
+      <h1 class="cart-title">Giỏ hàng của bạn</h1>
+      <p class="text-secondary">{{ cartCount }} sản phẩm trong giỏ</p>
+
+      <div v-if="cartCount === 0" class="empty sg-card">
+        <i class="bi bi-bag-x"></i>
+        <h5>Giỏ hàng đang trống</h5>
+        <p class="text-secondary">Hãy khám phá các mẫu giày thể thao mới nhất của chúng tôi.</p>
+        <router-link to="/products" class="btn-sg"><i class="bi bi-bag me-2"></i>Tiếp tục mua sắm</router-link>
       </div>
 
-      <div v-else class="row g-4">
-        <!-- Bảng Giỏ hàng -->
+      <div v-else class="row g-4 mt-1">
         <div class="col-lg-8">
-          <div class="card border-0 rounded-4 shadow-sm overflow-hidden">
-            <div class="table-responsive">
-              <table class="table align-middle mb-0">
-                <thead class="table-light text-secondary text-uppercase small">
-                  <tr>
-                    <th class="py-3 px-4 fw-bold">Sản phẩm</th>
-                    <th class="py-3 px-4 fw-bold text-center">Đơn giá</th>
-                    <th class="py-3 px-4 fw-bold text-center">Số lượng</th>
-                    <th class="py-3 px-4 fw-bold text-end">Tạm tính</th>
-                    <th class="py-3 px-4 fw-bold text-end">Xóa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="item in cartItems" :key="item.id_product_detail">
-                    <td class="p-4">
-                      <div class="d-flex align-items-center gap-3">
-                        <router-link :to="`/product/${item.product?.id_product || item.id_product}`" class="bg-light rounded-3 overflow-hidden border flex-shrink-0" style="width: 80px; height: 80px;">
-                          <img :src="item.product?.image_url || 'https://via.placeholder.com/90'" class="w-100 h-100 object-fit-cover mix-blend-multiply">
-                        </router-link>
-                        <div>
-                          <router-link :to="`/product/${item.product?.id_product || item.id_product}`" class="text-dark fw-bold text-decoration-none hover-primary">
-                            {{ item.product?.product_name || item.product?.name || 'Sản phẩm giày' }}
-                          </router-link>
-                          <p class="text-secondary small mb-1 mt-1">
-                            Size: <span class="fw-bold text-dark">{{ item.size?.size_name || '42' }}</span> | 
-                            Màu: <span class="fw-bold text-dark">{{ item.color?.color_label || item.color?.color_name || 'Mặc định' }}</span>
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="p-4 text-center fw-semibold text-secondary">
-                      {{ formatCurrency(item.unitPrice) }}
-                    </td>
-                    <td class="p-4">
-                      <div class="input-group input-group-sm mx-auto rounded border bg-white" style="width: 100px;">
-                        <button class="btn btn-light border-0" type="button" :disabled="item.quantity <= 1" @click="handleDecrease(item.id_product_detail)">
-                          <i class="bi bi-dash"></i>
-                        </button>
-                        <input type="text" class="form-control text-center border-0 bg-transparent fw-bold px-0" :value="item.quantity" readonly>
-                        <button class="btn btn-light border-0" type="button" @click="handleIncrease(item.id_product_detail)">
-                          <i class="bi bi-plus"></i>
-                        </button>
-                      </div>
-                    </td>
-                    <td class="p-4 text-end fw-bold text-dark">
-                      {{ formatCurrency(item.subtotal) }}
-                    </td>
-                    <td class="p-4 text-end">
-                      <button class="btn btn-sm btn-outline-danger border-0 rounded-3 bg-danger-hover" type="button" @click="removeFromCart(item.id_product_detail)">
-                        <i class="bi bi-trash fs-5"></i>
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          <div class="cart-item sg-card" v-for="item in cartItems" :key="item.id_product_detail">
+            <router-link :to="`/product/${item.id_product}`" class="ci-img">
+              <img :src="item.product?.image_url" :alt="item.product?.product_name">
+            </router-link>
+            <div class="ci-body">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <router-link :to="`/product/${item.id_product}`" class="ci-name">{{ item.product?.product_name }}</router-link>
+                <button class="ci-remove" @click="removeFromCart(item.id_product_detail)"><i class="bi bi-trash3"></i></button>
+              </div>
+              <div class="ci-attrs">
+                <span v-for="a in attrsOf(item)" :key="a.label" class="sg-chip sg-chip-blue">{{ a.label }}: {{ a.value }}</span>
+              </div>
+              <div class="ci-foot">
+                <div class="qty-box">
+                  <button @click="decreaseQuantity(item.id_product_detail)"><i class="bi bi-dash"></i></button>
+                  <span>{{ item.quantity }}</span>
+                  <button @click="increaseQuantity(item.id_product_detail)"><i class="bi bi-plus"></i></button>
+                </div>
+                <div class="ci-price">{{ formatCurrency(item.subtotal) }}</div>
+              </div>
             </div>
           </div>
+          <button class="btn-clear-cart" @click="clearCart"><i class="bi bi-x-circle me-1"></i>Xóa toàn bộ giỏ hàng</button>
         </div>
-        
-        <!-- Summary Giỏ hàng -->
+
         <div class="col-lg-4">
-          <div class="card border-0 rounded-4 shadow-sm sticky-top" style="top: 100px; z-index: 1;">
-            <div class="card-body p-4">
-              <h4 class="fw-bold fs-5 mb-4 border-bottom pb-3">Tổng Đơn Hàng</h4>
-              <div class="d-flex justify-content-between mb-3 text-secondary">
-                <span class="fw-medium">Tạm tính</span>
-                <span class="text-dark fw-bold">{{ formatCurrency(cartSubtotal) }}</span>
-              </div>
-              <div class="d-flex justify-content-between mb-3 text-secondary">
-                <span class="fw-medium">Phí vận chuyển</span>
-                <span class="text-dark fw-bold">Chưa tính</span>
-              </div>
-              <hr class="my-4 text-secondary opacity-25">
-              <div class="d-flex justify-content-between align-items-center mb-4">
-                <span class="fw-bold fs-6">Tổng cộng</span>
-                <span class="text-danger fw-black fs-4">
-                  {{ formatCurrency(cartSubtotal) }}
-                </span>
-              </div>
-              <router-link to="/checkout" class="btn btn-dark w-100 py-3 rounded-3 fw-bold fs-6 shadow-hover text-uppercase tracking-wide text-center d-block text-decoration-none">
-                Tiến hành thanh toán
-              </router-link>
-            </div>
+          <div class="summary sg-card">
+            <h6 class="fw-bold mb-3">Tóm tắt đơn hàng</h6>
+            <div class="sum-row"><span>Tạm tính</span><strong>{{ formatCurrency(cartSubtotal) }}</strong></div>
+            <div class="sum-row"><span>Phí giao hàng (dự kiến)</span><strong>{{ formatCurrency(cartShippingFee) }}</strong></div>
+            <hr>
+            <div class="sum-row total"><span>Tổng cộng</span><strong>{{ formatCurrency(cartTotal) }}</strong></div>
+            <button class="btn-sg w-100 mt-3" @click="goCheckout"><i class="bi bi-credit-card me-2"></i>Tiến hành thanh toán</button>
+            <router-link to="/products" class="btn-sg-outline w-100 mt-2 text-center d-block text-decoration-none">Tiếp tục mua sắm</router-link>
           </div>
         </div>
       </div>
@@ -131,10 +88,31 @@ const handleDecrease = (detailId) => {
 </template>
 
 <style scoped>
-.object-fit-cover { object-fit: cover; }
-.mix-blend-multiply { mix-blend-mode: multiply; }
-.hover-primary:hover { color: #0d6efd !important; }
-.bg-danger-hover:hover { background-color: #f8d7da; }
-.tracking-wide { letter-spacing: 1px; }
-.fw-black { font-weight: 900; }
+.cart-page { background: var(--sg-canvas); min-height: 100vh; }
+.cart-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
+.empty { text-align: center; padding: 60px 20px; margin-top: 20px; }
+.empty i { font-size: 2rem; color: var(--sg-muted); }
+.empty h5 { font-weight: 800; margin-top: 12px; }
+.cart-item { display: flex; gap: 16px; padding: 16px; margin-bottom: 14px; }
+.ci-img { width: 110px; height: 110px; border-radius: 14px; overflow: hidden; background: var(--sg-canvas); flex-shrink: 0; }
+.ci-img img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; }
+.ci-body { flex: 1; min-width: 0; }
+.ci-name { font-weight: 800; color: var(--sg-ink); text-decoration: none; font-size: 1.05rem; }
+.ci-name:hover { color: var(--sg-blue); }
+.ci-remove { border: 0; background: var(--sg-canvas); color: #ef4444; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
+.ci-remove:hover { background: #fee2e2; }
+.ci-attrs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.ci-attrs .sg-chip { font-size: .72rem; }
+.ci-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.qty-box { display: flex; align-items: center; border: 1.5px solid var(--sg-line); border-radius: 999px; overflow: hidden; }
+.qty-box button { width: 38px; height: 40px; border: 0; background: #fff; }
+.qty-box button:hover { background: var(--sg-canvas); }
+.qty-box span { width: 38px; text-align: center; font-weight: 800; }
+.ci-price { font-weight: 900; font-size: 1.15rem; color: var(--sg-blue-700); }
+.btn-clear-cart { border: 0; background: transparent; color: var(--sg-muted); font-weight: 600; font-size: .88rem; margin-top: 6px; }
+.btn-clear-cart:hover { color: #ef4444; }
+.summary { padding: 22px; position: sticky; top: 90px; }
+.sum-row { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--sg-ink-2); }
+.sum-row.total { font-size: 1.2rem; color: var(--sg-ink); }
+.sum-row.total strong { color: var(--sg-blue-700); }
 </style>
