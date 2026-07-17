@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const sql = require("mssql");
+const nodemailer = require("nodemailer");
 
 const app = express();
 const PORT = 5000;
@@ -28,6 +29,25 @@ poolConnect
     console.log("OK Da ket noi thanh cong voi CSDL SQL Server (ShoegroupDB)!");
   })
   .catch((err) => console.error("Loi ket noi DB:", err));
+
+// ================= CAU HINH EMAIL (nodemailer) =================
+// Voi Gmail: bat xac thuc 2 buoc roi tao "App Password" tai:
+//   https://myaccount.google.com/apppasswords
+// Sau do dien EMAIL_USER = email cua ban, EMAIL_PASS = app password 16 ky tu.
+// Nen dat qua bien moi truong khi deploy. Cai thu vien: npm install nodemailer
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const EMAIL_USER = process.env.EMAIL_USER || "anhbhth05764@gmail.com";
+const EMAIL_PASS = process.env.EMAIL_PASS || "labw adqs zelc mcen";
+const mailTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+});
+// Kiem tra dang nhap SMTP NGAY khi khoi dong -> in ket qua ra terminal.
+// Neu thay "[EMAIL] LOI" thi email/app-password sai (hoac chua bat 2FA).
+mailTransporter.verify((err) => {
+  if (err) console.error("[EMAIL] LOI cau hinh gui mail:", err.message);
+  else console.log("[EMAIL] San sang gui mail qua:", EMAIL_USER);
+});
 
 // ================= API XAC THUC =================
 app.post("/api/login", async (req, res) => {
@@ -1642,15 +1662,56 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         SET PasswordResetToken = @t, PasswordResetTokenExpiry = DATEADD(hour, 1, GETDATE())
         WHERE Email = @e
       `);
-    const resetLink = "http://localhost:5173/reset-password?token=" + token;
+    const resetLink = FRONTEND_URL + "/reset-password?token=" + token;
     console.log(
       "[ForgotPassword] Link doi mat khau cho",
       email,
       ":",
       resetLink,
     );
-    // TODO: Gui email that bang nodemailer (xem huong dan). Demo tra token de test.
-    res.json({ success: true, devToken: token, devResetLink: resetLink });
+    // Gui email that bang nodemailer (co nut dan toi trang doi mat khau)
+    try {
+      await mailTransporter.sendMail({
+        from: '"ShoeGroup" <' + EMAIL_USER + '>',
+        to: email,
+        subject: "Đặt lại mật khẩu ShoeGroup",
+        text:
+          "Ban vua yeu cau dat lai mat khau ShoeGroup. Mo lien ket sau (hieu luc 1 gio): " +
+          resetLink,
+        replyTo: EMAIL_USER,
+        headers: {
+          "X-Entity-Ref-ID": token,
+          "List-Unsubscribe": "<mailto:" + EMAIL_USER + "?subject=unsubscribe>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+        html: `
+          <div style="max-width:480px;margin:0 auto;font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
+            <div style="background:linear-gradient(135deg,#2563eb,#1e40af);padding:24px;border-radius:16px 16px 0 0;text-align:center;">
+              <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:.3px;">⚡ ShoeGroup</span>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-top:0;border-radius:0 0 16px 16px;padding:28px 26px;">
+              <h2 style="margin:0 0 10px;font-size:20px;">Đặt lại mật khẩu</h2>
+              <p style="color:#475569;line-height:1.6;margin:0 0 8px;">Bạn vừa yêu cầu đặt lại mật khẩu cho tài khoản ShoeGroup. Nhấn nút bên dưới để tạo mật khẩu mới. Liên kết có hiệu lực trong <b>1 giờ</b>.</p>
+              <div style="text-align:center;margin:26px 0;">
+                <a href="${resetLink}" style="background:linear-gradient(135deg,#2563eb,#1e40af);color:#fff;text-decoration:none;font-weight:700;padding:14px 32px;border-radius:12px;display:inline-block;">Đổi mật khẩu ngay</a>
+              </div>
+              <p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:18px 0 0;">Nếu nút không hoạt động, sao chép liên kết sau vào trình duyệt:<br><span style="color:#2563eb;word-break:break-all;">${resetLink}</span></p>
+              <p style="color:#94a3b8;font-size:13px;margin:14px 0 0;">Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+            </div>
+          </div>`,
+      });
+    } catch (mailErr) {
+      console.error("Loi gui email:", mailErr.message);
+      return res.status(500).json({
+        success: false,
+        message:
+          "Khong gui duoc email. Kiem tra lai EMAIL_USER / EMAIL_PASS trong server.js.",
+      });
+    }
+    res.json({
+      success: true,
+      message: "Da gui email dat lai mat khau. Vui long kiem tra hop thu.",
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
