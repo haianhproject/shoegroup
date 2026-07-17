@@ -13,7 +13,7 @@ const PORT = 5000;
 // thay vi de thang trong code.
 const JWT_SECRET =
   process.env.JWT_SECRET || "shoegroup_super_secret_key_doi_lai_khi_deploy";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 // Dung de gui email quen mat khau. Voi Gmail, KHONG dung mat khau Gmail thuong,
 // ma phai tao "App Password" tai: https://myaccount.google.com/apppasswords
 const EMAIL_USER = process.env.EMAIL_USER || "vietdth005598@gmail.com";
