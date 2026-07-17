@@ -24,13 +24,13 @@ const form = reactive({
 const genTracking = () => 'SG' + Date.now().toString().slice(-9) + Math.floor(Math.random() * 90 + 10)
 
 const fetchData = async () => {
-  const id = Number(route.params.orderId)
+  const id = String(route.params.orderId || '')
   try {
     const r = await fetch(`${API}/postoffices`)
     postOffices.value = (await r.json()).map((p) => ({ id: p.PostOfficeID || p.id, name: p.Name || p.name, address: p.Address || p.address, phone: p.Phone || p.phone }))
   } catch { postOffices.value = mockPO }
   await loadOrders()
-  order.value = ordersByCurrentUser.value.find((o) => o.id === id) || null
+  order.value = ordersByCurrentUser.value.find((o) => String(o.id) === id) || null
   if (order.value) form.items = order.value.items.map((it) => ({ ...it, checked: true }))
   form.postOfficeId = postOffices.value[0]?.id
   isLoading.value = false

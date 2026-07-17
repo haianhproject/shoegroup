@@ -6,12 +6,24 @@ import { notify } from '../stores/uiStore'
 import MyOrders from './MyOrders.vue'
 
 const ADDR_KEY = 'shoegroup_addresses_v1'
+const API = 'http://localhost:5000/api'
 const route = useRoute()
 const router = useRouter()
 const tab = ref(['orders', 'address', 'profile'].includes(route.query.tab) ? route.query.tab : 'profile')
 
-onMounted(() => {
+const getCurrentUserId = () => currentUser.value?.id_user || currentUser.value?.id || currentUser.value?.UserID || null
+const normalizeAddress = (a) => ({
+  id: a.id ?? a.AddressID ?? Date.now(),
+  recipient: a.recipient || a.RecipientName || '',
+  phone: a.phone || a.Phone || '',
+  province: a.province || a.Province || '',
+  line: a.line || a.AddressLine || '',
+  isDefault: !!(a.isDefault ?? a.IsDefault),
+})
+
+onMounted(async () => {
   if (route.query.tab === 'orders') tab.value = 'orders'
+  await loadAddrs()
 })
 
 const handleLogout = () => {
@@ -35,30 +47,89 @@ const saveProfile = async () => {
   notify({ type: 'success', title: 'Đã lưu', message: 'Thông tin cá nhân đã cập nhật.' })
 }
 
-/* ---- Address CRUD (local) ---- */
-const loadAddrs = () => { try { return JSON.parse(localStorage.getItem(ADDR_KEY) || '[]') } catch { return [] } }
-const addresses = ref(loadAddrs())
-const persist = () => localStorage.setItem(ADDR_KEY, JSON.stringify(addresses.value))
+/* ---- Address CRUD (local + backend sync) ---- */
+const loadAddrs = async () => {
+  const userId = getCurrentUserId()
+  if (userId) {
+    try {
+      const res = await fetch(`${API}/addresses?userId=${userId}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          addresses.value = data.map(normalizeAddress)
+          localStorage.setItem(ADDR_KEY, JSON.stringify(addresses.value))
+          return
+        }
+      }
+    } catch {}
+  }
+  try { addresses.value = JSON.parse(localStorage.getItem(ADDR_KEY) || '[]').map(normalizeAddress) } catch { addresses.value = [] }
+}
+const addresses = ref([])
+const persistLocal = () => localStorage.setItem(ADDR_KEY, JSON.stringify(addresses.value))
 
 const modal = reactive({ open: false, editId: null, recipient: '', phone: '', province: '', line: '', isDefault: false })
 const openAdd = () => { Object.assign(modal, { open: true, editId: null, recipient: '', phone: '', province: '', line: '', isDefault: addresses.value.length === 0 }) }
 const openEdit = (a) => { Object.assign(modal, { open: true, editId: a.id, recipient: a.recipient, phone: a.phone, province: a.province, line: a.line, isDefault: a.isDefault }) }
 const closeModal = () => { modal.open = false }
 
-const saveAddr = () => {
+const saveAddr = async () => {
   if (!modal.recipient || !modal.phone || !modal.line || !modal.province) { notify({ type: 'error', message: 'Vui lòng nhập đầy đủ thông tin địa chỉ.' }); return }
   if (modal.isDefault) addresses.value.forEach((a) => { a.isDefault = false })
-  if (modal.editId) {
-    const a = addresses.value.find((x) => x.id === modal.editId)
-    Object.assign(a, { recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
-  } else {
-    addresses.value.push({ id: Date.now(), recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
+  const payload = {
+    userId: getCurrentUserId(),
+    recipient: modal.recipient,
+    phone: modal.phone,
+    province: modal.province,
+    line: modal.line,
+    isDefault: modal.isDefault,
   }
-  persist(); closeModal()
-  notify({ type: 'success', title: 'Đã lưu địa chỉ' })
+  try {
+    if (modal.editId) {
+      const res = await fetch(`${API}/addresses/${modal.editId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const a = addresses.value.find((x) => x.id === modal.editId)
+        if (a) Object.assign(a, normalizeAddress(data.address || { ...a, ...payload }))
+      }
+    } else {
+      const res = await fetch(`${API}/addresses`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        addresses.value.push(normalizeAddress(data.address || { id: Date.now(), ...payload }))
+      } else {
+        addresses.value.push({ id: Date.now(), ...payload, isDefault: modal.isDefault })
+      }
+    }
+  } catch {
+    if (modal.editId) {
+      const a = addresses.value.find((x) => x.id === modal.editId)
+      Object.assign(a, { recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
+    } else {
+      addresses.value.push({ id: Date.now(), recipient: modal.recipient, phone: modal.phone, province: modal.province, line: modal.line, isDefault: modal.isDefault })
+    }
+  }
+  persistLocal(); closeModal(); notify({ type: 'success', title: 'Đã lưu địa chỉ' })
 }
-const deleteAddr = (id) => { addresses.value = addresses.value.filter((a) => a.id !== id); persist(); notify({ type: 'info', message: 'Đã xóa địa chỉ.' }) }
-const setDefault = (id) => { addresses.value.forEach((a) => { a.isDefault = a.id === id }); persist() }
+const deleteAddr = async (id) => {
+  addresses.value = addresses.value.filter((a) => a.id !== id)
+  persistLocal();
+  try {
+    await fetch(`${API}/addresses/${id}`, { method: 'DELETE' })
+  } catch {}
+  notify({ type: 'info', message: 'Đã xóa địa chỉ.' })
+}
+const setDefault = async (id) => {
+  addresses.value.forEach((a) => { a.isDefault = a.id === id })
+  persistLocal()
+  try {
+    await fetch(`${API}/addresses/${id}/default`, { method: 'PUT' })
+  } catch {}
+}
 
 const initials = computed(() => (profile.full_name || 'U').split(' ').map((w) => w[0]).slice(-2).join('').toUpperCase())
 </script>

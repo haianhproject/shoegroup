@@ -11,7 +11,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const dbConfig = {
   user: "sa",
-  password: "123", // Doi thanh mat khau SQL cua ban neu can
+  password: "123456", // Doi thanh mat khau SQL cua ban neu can
   server: "localhost",
   database: "ShoegroupDB",
   options: {
@@ -913,6 +913,108 @@ app.delete("/api/cushionings/:id", async (req, res) => {
   }
 });
 
+// ================= API DIA CHI KHACH HANG =================
+app.get("/api/addresses", async (req, res) => {
+  try {
+    await poolConnect;
+    const userId = req.query.userId || req.query.user_id || null;
+    let query = `SELECT AddressID as id, UserID as user_id, RecipientName as recipient, Phone as phone, Province as province, AddressLine as line, IsDefault as isDefault FROM CustomerAddresses ORDER BY IsDefault DESC, AddressID DESC`;
+    if (userId) {
+      const request = pool.request().input("uid", sql.Int, Number(userId));
+      const r = await request.query(`SELECT AddressID as id, UserID as user_id, RecipientName as recipient, Phone as phone, Province as province, AddressLine as line, IsDefault as isDefault FROM CustomerAddresses WHERE UserID=@uid ORDER BY IsDefault DESC, AddressID DESC`);
+      return res.json(r.recordset);
+    }
+    const r = await pool.request().query(query);
+    res.json(r.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/addresses", async (req, res) => {
+  try {
+    await poolConnect;
+    const b = req.body || {};
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      const req1 = new sql.Request(tx);
+      if (b.isDefault) {
+        await req1.query(`UPDATE CustomerAddresses SET IsDefault = 0 WHERE UserID = ${Number(b.userId || 0)}`);
+      }
+      const insertReq = new sql.Request(tx);
+      const r = await insertReq
+        .input("uid", sql.Int, Number(b.userId || 0))
+        .input("recipient", sql.NVarChar, b.recipient || "")
+        .input("phone", sql.VarChar, b.phone || "")
+        .input("province", sql.NVarChar, b.province || "")
+        .input("line", sql.NVarChar, b.line || "")
+        .input("isDefault", sql.Bit, !!b.isDefault)
+        .query(`INSERT INTO CustomerAddresses (UserID, RecipientName, Phone, Province, AddressLine, IsDefault) OUTPUT INSERTED.AddressID as id VALUES (@uid, @recipient, @phone, @province, @line, @isDefault)`);
+      await tx.commit();
+      res.json({ success: true, address: { id: r.recordset[0].id, ...b } });
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/addresses/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    const b = req.body || {};
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      const req1 = new sql.Request(tx);
+      if (b.isDefault) {
+        await req1.query(`UPDATE CustomerAddresses SET IsDefault = 0 WHERE UserID = ${Number(b.userId || 0)}`);
+      }
+      const updateReq = new sql.Request(tx);
+      await updateReq
+        .input("id", sql.Int, Number(req.params.id))
+        .input("uid", sql.Int, Number(b.userId || 0))
+        .input("recipient", sql.NVarChar, b.recipient || "")
+        .input("phone", sql.VarChar, b.phone || "")
+        .input("province", sql.NVarChar, b.province || "")
+        .input("line", sql.NVarChar, b.line || "")
+        .input("isDefault", sql.Bit, !!b.isDefault)
+        .query(`UPDATE CustomerAddresses SET UserID=@uid, RecipientName=@recipient, Phone=@phone, Province=@province, AddressLine=@line, IsDefault=@isDefault WHERE AddressID=@id`);
+      await tx.commit();
+      res.json({ success: true, address: { id: Number(req.params.id), ...b } });
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/addresses/:id/default", async (req, res) => {
+  try {
+    await poolConnect;
+    const id = Number(req.params.id);
+    await pool.request().input("id", sql.Int, id).query(`UPDATE CustomerAddresses SET IsDefault = 0; UPDATE CustomerAddresses SET IsDefault = 1 WHERE AddressID=@id`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/addresses/:id", async (req, res) => {
+  try {
+    await poolConnect;
+    await pool.request().input("id", sql.Int, Number(req.params.id)).query(`DELETE FROM CustomerAddresses WHERE AddressID=@id`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ================= API TRA HANG (Returns) =================
 app.get("/api/returns", async (req, res) => {
   try {
@@ -931,23 +1033,37 @@ app.post("/api/returns", async (req, res) => {
   try {
     await poolConnect;
     const b = req.body || {};
+    const orderId = b.order_id || b.orderId || null;
+    const returnMethod = b.returnMethod || b.return_method || b.returnType || b.return_type || "SHIPPER";
+    const postOfficeId = b.postOfficeId || b.postOfficeID || b.post_office_id || null;
+    const trackingNumber = b.trackingNumber || b.tracking_number || b.trackingCode || "";
+    const reason = b.reason || "";
+    const refundAmount = b.refundAmount || b.refund_amount || 0;
+    const status = b.status || "Chờ xử lý";
+
     let r = await pool
       .request()
-      .input("oid", sql.Int, b.order_id || null)
-      .input("rt", sql.VarChar(20), b.return_type || "CUSTOMER")
-      .input("trk", sql.VarChar, b.tracking_number || "")
-      .input("rs", sql.NVarChar(sql.MAX), b.reason || "")
-      .input("st", sql.NVarChar, b.status || "Chờ xử lý")
-      .input("amt", sql.Decimal(18, 0), b.refund_amount || 0)
+      .input("oid", sql.Int, orderId)
+      .input("rm", sql.NVarChar, returnMethod)
+      .input("po", sql.Int, postOfficeId)
+      .input("trk", sql.VarChar, trackingNumber)
+      .input("rs", sql.NVarChar(sql.MAX), reason)
+      .input("st", sql.NVarChar, status)
+      .input("amt", sql.Decimal(18, 0), refundAmount)
       .query(
-        "INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rt, @trk, @rs, @st, @amt, GETDATE())",
+        "INSERT INTO Returns (OrderID, ReturnMethod, PostOfficeID, TrackingNumber, Reason, RefundAmount, Status, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rm, @po, @trk, @rs, @amt, @st, GETDATE())",
       );
-    if (b.order_id) {
+    if (orderId) {
       await pool
         .request()
-        .input("oid", sql.Int, b.order_id)
+        .input("oid", sql.Int, orderId)
+        .input("rm", sql.NVarChar, returnMethod)
+        .input("po", sql.Int, postOfficeId)
+        .input("trk", sql.VarChar, trackingNumber)
+        .input("rs", sql.NVarChar(sql.MAX), reason)
+        .input("amt", sql.Decimal(18, 0), refundAmount)
         .query(
-          "UPDATE Orders SET Status=N'Yêu cầu trả hàng' WHERE OrderID=@oid",
+          `UPDATE Orders SET Status=N'Yêu cầu trả hàng', ReturnMethod=@rm, PostOfficeID=@po, TrackingNumber=@trk, ReturnReason=@rs, RefundAmount=@amt, ReturnStatus=@st WHERE OrderID=@oid`,
         );
     }
     res.json({ success: true, ReturnID: r.recordset[0].ReturnID });

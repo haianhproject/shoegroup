@@ -56,6 +56,87 @@ const createOrderId = () => `SG${Date.now().toString().slice(-6)}`;
 export const formatCurrency = (value) =>
   new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " ₫";
 
+const API_BASE = "http://localhost:5000/api";
+
+const buildServerOrderPayload = (order) => {
+  const user = getCurrentUser();
+  const customer = order.customer || {};
+  return {
+    userId: order.userId || user?.id_user || user?.id || user?.UserID || null,
+    totalAmount: order.total ?? order.totalAmount ?? 0,
+    shippingAddress: customer.address || customer.country || "",
+    customerName: customer.fullName || customer.full_name || "",
+    customerPhone: customer.phone || "",
+    shippingFee: order.shippingFee ?? 0,
+    discountAmount: order.discount ?? 0,
+    paymentMethod: order.paymentMethod?.name || order.paymentMethod || "COD",
+    paymentStatus: order.paymentStatus || "Chưa thanh toán",
+    status: "Chờ xác nhận",
+    handledBy: "Online",
+    note: order.note || "",
+    items: (order.items || []).map((item) => ({
+      productId: item.id_product || item.id_product_detail || item.product?.id_product || item.product?.id || null,
+      productVariantId: item.id_product_detail || item.productVariantId || item.variantId || null,
+      quantity: item.quantity || 1,
+      price: item.unitPrice || 0,
+      size: item.size?.size_name || item.size || "",
+      color: item.color?.color_label || item.color?.color_name || item.color || "",
+      name: item.product_name || item.product?.product_name || "",
+    })),
+  };
+};
+
+const syncOrderToServer = async (order) => {
+  try {
+    const res = await fetch(`${API_BASE}/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildServerOrderPayload(order)),
+    });
+    const data = await res.json();
+    if (res.ok && (data?.orderId || data?.OrderID)) {
+      order.serverId = data.orderId || data.OrderID;
+      saveOrders();
+    }
+  } catch {
+    // fallback local only
+  }
+};
+
+const syncReturnToServer = async (order, payload) => {
+  try {
+    const res = await fetch(`${API_BASE}/returns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        order_id: order.serverId || null,
+        returnMethod: payload.method,
+        postOfficeId: payload.postOffice?.id || null,
+        trackingNumber: payload.trackingCode || "",
+        reason: payload.reason || "",
+        refundAmount: payload.refundAmount || 0,
+        status: "Chờ xử lý",
+      }),
+    });
+    if (!res.ok) return;
+  } catch {
+    // fallback local only
+  }
+};
+
+const syncOrderStatusToServer = async (order, status, reason = "") => {
+  if (!order?.serverId) return;
+  try {
+    await fetch(`${API_BASE}/orders/${order.serverId}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, reason }),
+    });
+  } catch {
+    // fallback local only
+  }
+};
+
 /* ---------- State ---------- */
 export const orderState = reactive({
   orders: readOrdersFromStorage(),
@@ -157,6 +238,7 @@ export const createOrder = ({
 
   orderState.orders.unshift(order);
   saveOrders();
+  void syncOrderToServer(order);
   return { ok: true, order };
 };
 
@@ -181,6 +263,7 @@ export const confirmReceived = (orderId) => {
   o.revenueEligibleDate = now + REVENUE_HOLD_DAYS * DAY;
   o.isCountedAsRevenue = false;
   saveOrders();
+  void syncOrderStatusToServer(o, "Đã nhận hàng");
   return { ok: true, order: o };
 };
 
@@ -205,6 +288,7 @@ export const requestReturn = (orderId, payload) => {
     createdAt: Date.now(),
   };
   saveOrders();
+  void syncReturnToServer(o, payload);
   return { ok: true, order: o };
 };
 
@@ -219,6 +303,7 @@ export const cancelOrder = (orderId, reason) => {
   o.status = "CANCELLED";
   o.cancelReason = reason || "Khách hàng hủy đơn.";
   saveOrders();
+  void syncOrderStatusToServer(o, "Đã hủy", reason || "Khách hàng hủy đơn.");
 };
 
 /* Gắn ID đơn hàng phía server để đồng bộ trạng thái sau này */
@@ -226,8 +311,6 @@ export const setServerId = (localId, serverId) => {
   const o = orderState.orders.find((x) => x.id === localId);
   if (o) { o.serverId = serverId; saveOrders(); }
 };
-
-const API_BASE = "http://localhost:5000/api";
 
 /* Ánh xạ trạng thái tiếng Việt (server/Admin) -> KEY nội bộ */
 const SERVER_STATUS_TO_KEY = {
