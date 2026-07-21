@@ -1,44 +1,55 @@
 /* =====================================================================
-   ShoeGroup - Design System (v3)
-   Bright, vibrant men's sportswear theme.
-   - Electric blue + energetic orange, clean surfaces, bold type.
-   - Unique hover states, smooth motion, cherry-blossom (sakura) motif.
+   ShoeGroup - Design System (v4 – Navy Edition)
+   Deep navy-blue brand palette extracted from the ShoeGroup logo.
+   Primary: #1a3a6b  |  Mid: #3b6fb5  |  Light: #7dacd4
+   Accent orange kept for CTAs/badges.
    ===================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 :root {
-  /* Brand palette */
-  --sg-blue: #2563eb;
-  --sg-blue-600: #1d4ed8;
-  --sg-blue-700: #1e40af;
-  --sg-cyan: #06b6d4;
-  --sg-orange: #ff5a1f;
+  /* Brand palette — Navy */
+  --sg-navy:       #1a3a6b;
+  --sg-navy-deep:  #112447;
+  --sg-navy-mid:   #3b6fb5;
+  --sg-navy-light: #7dacd4;
+  --sg-navy-pale:  #e8f0fb;
+
+  /* Legacy aliases (kept so existing components don't break) */
+  --sg-blue:       #235da6;
+  --sg-blue-600:   #1a4a8a;
+  --sg-blue-700:   #1a3a6b;
+  --sg-cyan:       #7dacd4;
+  --sg-orange:     #ff5a1f;
   --sg-orange-600: #ea580c;
-  --sg-pink: #ff477e;
-  --sg-lime: #84cc16;
+  --sg-pink:       #ff477e;
+  --sg-lime:       #84cc16;
 
   /* Ink & surfaces */
-  --sg-ink: #0f172a;
-  --sg-ink-2: #334155;
-  --sg-muted: #64748b;
-  --sg-line: #e6e8ee;
+  --sg-ink:     #0e1e3d;
+  --sg-ink-2:   #2a3f63;
+  --sg-muted:   #5a7099;
+  --sg-line:    #d9e4f0;
   --sg-surface: #ffffff;
-  --sg-canvas: #f5f7fb;
-  --sg-soft: #eef2ff;
+  --sg-canvas:  #f0f5fb;
+  --sg-soft:    #e8f0fb;
 
   /* Gradients */
-  --sg-grad-primary: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
-  --sg-grad-warm: linear-gradient(135deg, #ff5a1f 0%, #ff477e 100%);
-  --sg-grad-hero: linear-gradient(120deg, #1e3a8a 0%, #2563eb 45%, #06b6d4 100%);
-  --sg-grad-sport: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #ff477e 100%);
+  --sg-grad-primary: linear-gradient(135deg, #1a3a6b 0%, #3b6fb5 60%, #7dacd4 100%);
+  --sg-grad-nav:     linear-gradient(135deg, #112447 0%, #1a3a6b 100%);
+  --sg-grad-warm:    linear-gradient(135deg, #ff5a1f 0%, #ff477e 100%);
+  --sg-grad-hero:    linear-gradient(120deg, #0a1c3e 0%, #1a3a6b 50%, #3b6fb5 100%);
+  --sg-grad-sport:   linear-gradient(135deg, #1a3a6b 0%, #235da6 50%, #3b6fb5 100%);
+  --sg-grad-footer:  linear-gradient(160deg, #0a1c3e 0%, #1a3a6b 100%);
 
   /* Radii & shadow */
   --sg-r-sm: 10px;
   --sg-r: 16px;
   --sg-r-lg: 24px;
-  --sg-shadow-sm: 0 2px 8px rgba(15, 23, 42, .06);
-  --sg-shadow: 0 12px 30px rgba(15, 23, 42, .10);
-  --sg-shadow-lg: 0 24px 60px rgba(30, 64, 175, .18);
-  --sg-ring: 0 0 0 4px rgba(37, 99, 235, .15);
+  --sg-shadow-sm: 0 2px 10px rgba(26, 58, 107, .08);
+  --sg-shadow:    0 12px 32px rgba(26, 58, 107, .14);
+  --sg-shadow-lg: 0 24px 60px rgba(26, 58, 107, .22);
+  --sg-ring:      0 0 0 4px rgba(59, 111, 181, .20);
 }
 
 html { scroll-behavior: smooth; }
@@ -66,7 +77,7 @@ body {
 .bg-sg-soft { background: var(--sg-soft) !important; }
 
 .sg-gradient-text {
-  background: var(--sg-grad-sport);
+  background: linear-gradient(135deg, #1a3a6b 0%, #3b6fb5 60%, #7dacd4 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -82,10 +93,10 @@ body {
   letter-spacing: .02em;
   border-radius: 999px;
   padding: .7rem 1.6rem;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, .30);
+  box-shadow: 0 10px 24px rgba(26, 58, 107, .28);
   transition: transform .25s cubic-bezier(.25,.8,.25,1), box-shadow .25s ease, filter .25s;
 }
-.btn-sg:hover { color:#fff; transform: translateY(-3px); box-shadow: 0 18px 36px rgba(37,99,235,.42); filter: saturate(1.1); }
+.btn-sg:hover { color:#fff; transform: translateY(-3px); box-shadow: 0 18px 36px rgba(26,58,107,.42); filter: saturate(1.1); }
 .btn-sg:active { transform: translateY(-1px); }
 
 .btn-sg-warm {
@@ -102,13 +113,13 @@ body {
   font-weight: 800; border-radius: 999px; padding: .62rem 1.5rem;
   transition: all .25s ease; backdrop-filter: blur(4px);
 }
-.btn-sg-ghost:hover { background:#fff; color: var(--sg-blue); border-color:#fff; transform: translateY(-3px); }
+.btn-sg-ghost:hover { background:#fff; color: var(--sg-navy, #1a3a6b); border-color:#fff; transform: translateY(-3px); }
 
 .btn-sg-outline {
   background: #fff; color: var(--sg-ink); border: 2px solid var(--sg-line);
   font-weight: 800; border-radius: 999px; padding: .55rem 1.3rem; transition: all .25s ease;
 }
-.btn-sg-outline:hover { border-color: var(--sg-blue); color: var(--sg-blue); transform: translateY(-2px); box-shadow: var(--sg-shadow-sm); }
+.btn-sg-outline:hover { border-color: var(--sg-navy, #1a3a6b); color: var(--sg-navy, #1a3a6b); transform: translateY(-2px); box-shadow: var(--sg-shadow-sm); }
 
 /* ---------- Cards & surfaces ---------- */
 .sg-card {
@@ -122,12 +133,12 @@ body {
   padding: .3rem .8rem; border-radius: 999px;
   font-size: .8rem; font-weight: 700; letter-spacing: .02em;
 }
-.sg-chip-blue { background: var(--sg-soft); color: var(--sg-blue-700); }
+.sg-chip-blue { background: var(--sg-soft); color: var(--sg-navy, #1a3a6b); }
 .sg-chip-warm { background: #fff1eb; color: var(--sg-orange-600); }
 .sg-chip-lime { background: #f2fbe1; color: #4d7c0f; }
 
 /* Section title accent */
-.sg-title-bar { width: 64px; height: 5px; border-radius: 999px; background: var(--sg-grad-warm); }
+.sg-title-bar { width: 64px; height: 5px; border-radius: 999px; background: linear-gradient(90deg, #1a3a6b, #7dacd4); }
 
 /* Inputs */
 .sg-input {

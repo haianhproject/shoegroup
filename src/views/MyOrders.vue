@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
@@ -43,22 +43,34 @@ const handleReceived = (order) => {
   if (r?.ok === false) { notify({ type: 'error', message: r.message }); return }
   notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${order.id} hoàn tất. Cảm ơn bạn!` })
 }
-const goReturn = (order) => router.push(`/returns/${order.id}`)
-const handleCancel = async (order) => {
-  const reason = window.prompt('Lý do hủy đơn (không bắt buộc):', '')
-  if (reason === null) return
-  cancelOrder(order.id, reason || 'Khách hàng hủy đơn.')
-  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${order.id} đã được hủy.` })
-  if (order.serverId) {
+const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
+
+const handleCancel = (order) => {
+  cancelModal.orderId = order.id
+  cancelModal.serverId = order.serverId
+  cancelModal.reason = ''
+  cancelModal.open = true
+}
+
+const closeCancelModal = () => { cancelModal.open = false }
+
+const submitCancel = async () => {
+  const reason = cancelModal.reason.trim() || 'Khách hàng hủy đơn.'
+  cancelOrder(cancelModal.orderId, reason)
+  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
+  if (cancelModal.serverId) {
     try {
-      await fetch(`http://localhost:5000/api/orders/${order.serverId}/status`, {
+      await fetch(`http://localhost:5000/api/orders/${cancelModal.serverId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Đã hủy', reason: reason || 'Khách hàng hủy đơn.' }),
+        body: JSON.stringify({ status: 'Đã hủy', reason }),
       })
     } catch (e) { /* offline */ }
   }
+  closeCancelModal()
 }
+
+const goReturn = (order) => { window.open('https://zalo.me/0123456789', '_blank') }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
 let pollTimer = null
@@ -138,7 +150,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline" style="color:#b91c1c;border-color:#fecaca;" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
             <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
+            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-chat-dots me-1"></i>Liên hệ shop</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 
@@ -170,6 +182,21 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
         </div>
       </div>
     </div>
+
+    <!-- Cancel Order Modal -->
+    <transition name="suc">
+      <div v-if="cancelModal.open" class="modal-overlay" @click.self="closeCancelModal">
+        <div class="sg-card modal-box">
+          <h5 class="fw-bold mb-3">Lý do hủy đơn</h5>
+          <p class="text-secondary mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
+          <textarea v-model="cancelModal.reason" class="sg-input w-100" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
+          <div class="d-flex gap-2 mt-4 justify-content-end">
+            <button class="btn-sg-outline" @click="closeCancelModal">Đóng</button>
+            <button class="btn-sg" style="background: #ef4444; box-shadow: 0 10px 24px rgba(239, 68, 68, 0.3);" @click="submitCancel">Xác nhận hủy</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -182,7 +209,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .op-search input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
 .op-filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .stat-pill { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .35rem .9rem; font-size: .82rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
-.stat-pill:hover { border-color: var(--sg-blue); color: var(--sg-blue); }
+.stat-pill:hover { border-color: #1a3a6b; color: #1a3a6b; }
 .stat-pill.active { background: var(--sg-ink); color: #fff; border-color: var(--sg-ink); }
 .empty { text-align: center; padding: 60px; }
 .empty i { font-size: 3rem; color: var(--sg-muted); }
@@ -193,7 +220,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-id { font-weight: 900; font-size: 1.05rem; }
 .oc-date { font-size: .82rem; color: var(--sg-muted); }
 .oc-head-r { display: flex; align-items: center; gap: 14px; }
-.oc-total { font-size: 1.1rem; color: var(--sg-blue-700); }
+.oc-total { font-size: 1.1rem; color: #1a3a6b; }
 .oc-caret { transition: transform .3s; color: var(--sg-muted); }
 .oc-caret.open { transform: rotate(180deg); }
 .stat-badge { font-size: .76rem; font-weight: 800; padding: .3rem .7rem; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
@@ -227,14 +254,18 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-steps { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; margin-top: 16px; }
 .oc-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; }
 .oc-step:not(:last-child)::after { content: ''; position: absolute; top: 15px; left: 50%; width: 100%; height: 3px; background: var(--sg-line); z-index: 0; }
-.oc-step.done:not(:last-child)::after { background: var(--sg-blue); }
+.oc-step.done:not(:last-child)::after { background: #1a3a6b; }
 .oc-step-dot { width: 32px; height: 32px; border-radius: 50%; background: #fff; border: 2px solid var(--sg-line); color: var(--sg-muted); display: flex; align-items: center; justify-content: center; font-size: .85rem; z-index: 1; }
-.oc-step.done .oc-step-dot { background: var(--sg-blue); border-color: var(--sg-blue); color: #fff; }
-.oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px #dbeafe; }
+.oc-step.done .oc-step-dot { background: #1a3a6b; border-color: #1a3a6b; color: #fff; }
+.oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px rgba(26,58,107,.2); }
 .oc-step small { font-size: .68rem; color: var(--sg-muted); font-weight: 700; line-height: 1.1; }
 .oc-step.done small { color: var(--sg-ink); }
 .oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
 .oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
 .oc-status-flat.gray { background: #e5e7eb; color: #374151; }
 @media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small { display: none; } }
+.modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.modal-box { max-width: 520px; width: 100%; padding: 28px; border-radius: 22px; }
+.suc-enter-active { transition: opacity .3s; }
+.suc-enter-from { opacity: 0; }
 </style>
