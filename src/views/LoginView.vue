@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
+import BrandLogo from '../components/BrandLogo.vue'
 
 const router = useRouter()
 const form = reactive({ email: '', password: '' })
@@ -25,7 +26,10 @@ const submit = async () => {
     <div class="auth-shell sg-card">
       <!-- LEFT: form -->
       <div class="auth-form">
-        <router-link to="/" class="auth-logo"><span class="logo-mark"><i class="bi bi-lightning-charge-fill"></i></span> ShoeGroup</router-link>
+        <router-link to="/" class="auth-logo">
+          <BrandLogo :size="36" :radius="10" />
+          <span class="auth-logo-text"><span class="logo-shoe">shoe</span><span class="logo-group">group</span></span>
+        </router-link>
         <h2 class="auth-title">Đăng nhập</h2>
         <p class="auth-sub">Chào mừng bạn quay lại cửa hàng giày thể thao nam hàng đầu.</p>
 
@@ -63,25 +67,26 @@ const submit = async () => {
 .auth-shell { display: grid; grid-template-columns: 1fr 1fr; max-width: 980px; width: 100%; overflow: hidden; padding: 0; border-radius: 28px; }
 .auth-form { padding: 48px 44px; }
 .auth-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--sg-ink); text-decoration: none; }
-.logo-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--sg-grad-primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+.auth-logo-text .logo-shoe { color: #1a3a6b; }
+.auth-logo-text .logo-group { color: #3b6fb5; }
 .auth-title { font-weight: 900; font-size: 2rem; margin-top: 26px; }
 .auth-sub { color: var(--sg-muted); margin-bottom: 26px; }
 .co-label { font-weight: 700; font-size: .82rem; color: var(--sg-ink-2); margin: 14px 0 6px; display: block; }
 .in-wrap { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--sg-line); border-radius: 12px; padding: 4px 14px; transition: .2s; }
-.in-wrap:focus-within { border-color: var(--sg-blue); box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+.in-wrap:focus-within { border-color: #1a3a6b; box-shadow: 0 0 0 4px rgba(26,58,107,.12); }
 .in-wrap i { color: var(--sg-muted); }
 .auth-input { border: 0; outline: none; padding: 12px 0; width: 100%; font-weight: 500; background: transparent; }
 .eye { border: 0; background: transparent; color: var(--sg-muted); }
 .auth-row { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 20px; }
 .remember { display: flex; align-items: center; gap: 7px; font-size: .84rem; color: var(--sg-ink-2); }
-.remember input { width: 16px; height: 16px; accent-color: var(--sg-blue); }
-.forgot-link { font-size: .84rem; font-weight: 700; color: var(--sg-blue); text-decoration: none; }
+.remember input { width: 16px; height: 16px; accent-color: #1a3a6b; }
+.forgot-link { font-size: .84rem; font-weight: 700; color: #1a3a6b; text-decoration: none; }
 .forgot-link:hover { text-decoration: underline; }
 .auth-foot { text-align: center; margin-top: 20px; color: var(--sg-muted); font-size: .9rem; }
-.auth-foot a { font-weight: 800; color: var(--sg-blue); text-decoration: none; }
+.auth-foot a { font-weight: 800; color: #1a3a6b; text-decoration: none; }
 .auth-hero { position: relative; }
 .auth-hero img { width: 100%; height: 100%; object-fit: cover; }
-.auth-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15,23,42,.15), rgba(37,99,235,.55)); }
+.auth-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,28,62,.2), rgba(26,58,107,.6)); }
 .auth-hero-text { position: absolute; left: 32px; right: 32px; bottom: 36px; color: #fff; }
 .auth-hero-text h3 { font-weight: 900; font-size: 1.8rem; margin: 12px 0 8px; }
 .auth-hero-text p { opacity: .92; font-size: .92rem; }
