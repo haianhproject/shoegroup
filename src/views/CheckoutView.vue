@@ -21,7 +21,6 @@ const form = reactive({
 const shippingCode = ref('STANDARD')
 const paymentCode = ref('COD')
 const placing = ref(false)
-const successOrder = ref(null)
 
 const payments = [
   { code: 'COD', name: 'Thanh toán khi nhận hàng (COD)', icon: 'bi-cash-coin', desc: 'Trả tiền mặt khi shipper giao đến.' },
@@ -155,88 +154,122 @@ const placeOrder = async () => {
     if (serverId) setServerId(r.order.id, serverId)
   } catch (e) { }
   placing.value = false
-  successOrder.value = r.order
+  await router.push({ path: '/order-success', query: { orderId: r.order.id } })
   clearCart()
 }
-
-const goOrders = () => { successOrder.value = null; router.push('/account?tab=orders') }
-const goHome = () => { successOrder.value = null; router.push('/') }
 </script>
 
 <template>
   <div class="checkout-page">
-    <div class="container-fluid px-4 py-4">
-      <div class="sg-title-bar mb-2"></div>
-      <h1 class="co-title">Thanh toán</h1>
+    <div class="container-fluid px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
+      <h1 class="co-title">THANH TOÁN</h1>
+      <div class="sg-title-bar mb-5"></div>
 
-      <div v-if="cartCount === 0 && !successOrder" class="empty sg-card">
-        <i class="bi bi-bag-x"></i><h5>Không có sản phẩm để thanh toán</h5>
-        <router-link to="/products" class="btn-sg">Mua sắm ngay</router-link>
+      <div v-if="cartCount === 0" class="empty-state">
+        <i class="bi bi-bag"></i>
+        <h5>Không có sản phẩm để thanh toán</h5>
+        <router-link to="/products" class="btn-sg mt-3">MUA SẮM NGAY</router-link>
       </div>
 
-      <div v-else-if="!successOrder" class="row g-4 mt-1">
+      <div v-else class="row g-5">
         <div class="col-lg-7">
-          <div class="sg-card co-block">
-            <h6 class="co-h"><span class="co-num">1</span> Thông tin giao hàng</h6>
-            <div class="row g-3">
-              <div class="col-md-6"><label class="co-label">Họ tên</label><input v-model="form.fullName" class="sg-input w-100"></div>
-              <div class="col-md-6"><label class="co-label">Số điện thoại</label><input v-model="form.phone" class="sg-input w-100"></div>
-              <div class="col-md-6"><label class="co-label">Email</label><input v-model="form.email" class="sg-input w-100"></div>
-              <div class="col-md-6"><label class="co-label">Tỉnh / Thành phố</label><input v-model="form.province" class="sg-input w-100" placeholder="VD: Hà Nội"></div>
-              <div class="col-12"><label class="co-label">Địa chỉ chi tiết</label>
+          
+          <!-- 1. Giao hàng -->
+          <div class="co-block">
+            <h6 class="co-h">
+              <span class="co-num">1</span> THÔNG TIN GIAO HÀNG
+            </h6>
+            <div class="row g-4 mt-2">
+              <div class="col-md-6">
+                <label class="co-label">HỌ TÊN</label>
+                <input v-model="form.fullName" class="sg-input w-100">
+              </div>
+              <div class="col-md-6">
+                <label class="co-label">SỐ ĐIỆN THOẠI</label>
+                <input v-model="form.phone" class="sg-input w-100">
+              </div>
+              <div class="col-md-6">
+                <label class="co-label">EMAIL</label>
+                <input v-model="form.email" class="sg-input w-100">
+              </div>
+              <div class="col-md-6">
+                <label class="co-label">TỈNH / THÀNH PHỐ</label>
+                <input v-model="form.province" class="sg-input w-100" placeholder="VD: Hà Nội">
+              </div>
+              <div class="col-12">
+                <label class="co-label">ĐỊA CHỈ CHI TIẾT</label>
                 <input v-model="form.address" class="sg-input w-100" placeholder="Số nhà, ngõ, đường, phường/xã…">
-                <div class="addr-status" :class="addressVerified ? 'ok' : 'warn'">
-                  <i class="bi" :class="addressVerified ? 'bi-patch-check-fill' : 'bi-exclamation-circle'"></i>
-                  {{ addressVerified ? 'Địa chỉ hợp lệ, đã xác minh.' : 'Cần số nhà và tỉnh/TP để xác minh địa chỉ thật.' }}
+                <div class="addr-status mt-2" :class="addressVerified ? 'text-success' : 'text-warning'">
+                  <i class="bi" :class="addressVerified ? 'bi-check-circle' : 'bi-exclamation-circle'"></i>
+                  {{ addressVerified ? 'Địa chỉ hợp lệ.' : 'Cần số nhà và tỉnh/TP để xác minh.' }}
                 </div>
               </div>
-              <div class="col-12"><label class="co-label">Ghi chú</label><textarea v-model="form.note" class="sg-input w-100" rows="2"></textarea></div>
+              <div class="col-12">
+                <label class="co-label">GHI CHÚ</label>
+                <textarea v-model="form.note" class="sg-input w-100" rows="2"></textarea>
+              </div>
             </div>
-            <div v-if="addressVerified" class="map-wrap">
+            
+            <div v-if="addressVerified" class="map-wrap mt-4">
               <iframe :src="mapUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
             </div>
           </div>
 
-          <div class="sg-card co-block">
-            <h6 class="co-h"><span class="co-num">2</span> Phương thức vận chuyển</h6>
-            <div class="ship-grid">
+          <!-- 2. Vận chuyển -->
+          <div class="co-block">
+            <h6 class="co-h">
+              <span class="co-num">2</span> PHƯƠNG THỨC VẬN CHUYỂN
+            </h6>
+            <div class="ship-grid mt-4">
               <label v-for="m in shippingMethods" :key="m.code" class="ship-opt" :class="{ active: shippingCode === m.code }">
                 <input type="radio" :value="m.code" v-model="shippingCode" hidden>
-                <div class="ship-ic" :class="m.code === 'EXPRESS' ? 'warm' : 'blue'"><i class="bi" :class="m.code === 'EXPRESS' ? 'bi-lightning-charge-fill' : 'bi-truck'"></i></div>
                 <div class="flex-grow-1">
                   <div class="ship-name">{{ m.name }}</div>
                   <div class="ship-desc">{{ m.desc }}</div>
-                  <div class="ship-eta"><i class="bi bi-clock"></i> {{ m.eta }}
-                    <template v-if="m.code === 'EXPRESS' && detectedDistance"> · ~{{ detectedDistance }}km từ Hà Nội</template>
+                  <div class="ship-eta">
+                    Dự kiến: {{ m.eta }}
+                    <template v-if="m.code === 'EXPRESS' && detectedDistance"> · ~{{ detectedDistance }}km</template>
                   </div>
                 </div>
                 <div class="ship-fee">{{ formatCurrency(m.code === 'EXPRESS' ? (m.basePrice + (detectedDistance || 0) * m.pricePerKm) : m.basePrice) }}</div>
+                <div class="ship-check"></div>
               </label>
             </div>
             <div v-if="shippingCode === 'EXPRESS'" class="express-note">
-              <i class="bi bi-info-circle"></i> Giao hỏa tốc tính phí theo khoảng cách từ kho <strong>Hà Nội</strong>: {{ formatCurrency(shippingMethods[1].basePrice) }} + {{ formatCurrency(shippingMethods[1].pricePerKm) }}/km. Thời gian dự kiến khoảng 24 giờ.
+              Giao hỏa tốc tính phí theo khoảng cách từ kho Hà Nội: {{ formatCurrency(shippingMethods[1].basePrice) }} + {{ formatCurrency(shippingMethods[1].pricePerKm) }}/km.
             </div>
           </div>
 
-          <div class="sg-card co-block">
-            <h6 class="co-h"><span class="co-num">3</span> Phương thức thanh toán</h6>
-            <div class="pay-grid">
+          <!-- 3. Thanh toán -->
+          <div class="co-block">
+            <h6 class="co-h">
+              <span class="co-num">3</span> PHƯƠNG THỨC THANH TOÁN
+            </h6>
+            <div class="pay-grid mt-4">
               <label v-for="p in payments" :key="p.code" class="pay-opt" :class="{ active: paymentCode === p.code }">
                 <input type="radio" :value="p.code" v-model="paymentCode" hidden>
                 <i class="bi" :class="p.icon"></i>
-                <div><div class="pay-name">{{ p.name }}</div><div class="pay-desc">{{ p.desc }}</div></div>
-                <span class="pay-check"><i class="bi bi-check-lg"></i></span>
+                <div class="flex-grow-1">
+                  <div class="pay-name">{{ p.name }}</div>
+                  <div class="pay-desc">{{ p.desc }}</div>
+                </div>
+                <div class="pay-check"></div>
               </label>
             </div>
           </div>
+          
         </div>
 
         <div class="col-lg-5">
-          <div class="sg-card co-summary">
-            <h6 class="fw-bold mb-3">Đơn hàng ({{ cartCount }})</h6>
-            <div class="co-items">
+          <div class="co-summary-box">
+            <h6 class="summary-title">ĐƠN HÀNG ({{ cartCount }})</h6>
+            
+            <div class="co-items mt-4">
               <div class="co-item" v-for="item in cartItems" :key="item.id_product_detail">
-                <div class="co-item-img"><img :src="item.product?.image_url"><span class="co-qty">{{ item.quantity }}</span></div>
+                <div class="co-item-img">
+                  <img :src="item.product?.image_url">
+                  <span class="co-qty">{{ item.quantity }}</span>
+                </div>
                 <div class="flex-grow-1">
                   <div class="co-item-name">{{ item.product?.product_name }}</div>
                   <div class="co-item-attr">Size {{ item.size?.size_name }} · {{ item.color?.color_label }}</div>
@@ -246,156 +279,384 @@ const goHome = () => { successOrder.value = null; router.push('/') }
             </div>
             
             <!-- Mã giảm giá -->
-            <div class="coupon-section">
-              <div class="coupon-label"><i class="bi bi-ticket-perforated-fill"></i> Mã giảm giá</div>
-              <div v-if="appliedCoupon" class="coupon-applied">
+            <div class="coupon-section mt-4">
+              <div class="coupon-label">MÃ GIẢM GIÁ</div>
+              <div v-if="appliedCoupon" class="coupon-applied mt-2">
                 <div class="ca-info">
                   <span class="ca-code">{{ appliedCoupon.code }}</span>
                   <span class="ca-desc">{{ appliedCoupon.desc }}</span>
                 </div>
                 <button class="ca-remove" @click="removeCoupon"><i class="bi bi-x"></i></button>
               </div>
-              <div v-else class="coupon-input-row">
-                <input v-model="couponCode" class="sg-input coupon-input" placeholder="Nhập mã giảm giá..." @keyup.enter="applyCoupon" style="text-transform:uppercase">
-                <button class="btn-apply" @click="applyCoupon">Áp dụng</button>
+              <div v-else class="coupon-input-row mt-2">
+                <input v-model="couponCode" class="sg-input flex-grow-1" placeholder="Nhập mã..." @keyup.enter="applyCoupon" style="text-transform:uppercase">
+                <button class="btn-sg-outline" @click="applyCoupon">ÁP DỤNG</button>
               </div>
-              <div v-if="couponError" class="coupon-err"><i class="bi bi-x-circle"></i> {{ couponError }}</div>
-              <!-- Danh sách mã gợi ý -->
-              <div class="coupon-hints">
-                <div class="ch-title">Mã khả dụng:</div>
+              <div v-if="couponError" class="text-danger mt-2" style="font-size: 0.8rem;">{{ couponError }}</div>
+              
+              <div class="coupon-hints mt-3">
                 <div class="ch-list">
-                  <button v-for="c in VALID_COUPONS" :key="c.code" class="ch-pill" :class="{ sel: appliedCoupon?.code === c.code }" @click="couponCode = c.code; applyCoupon()">
-                    <span class="ch-code">{{ c.code }}</span>
-                    <span class="ch-val">{{ c.type === 'percent' ? '-'+c.value+'%' : c.type === 'freeship' ? 'Free ship' : '-'+c.value.toLocaleString('vi-VN')+'đ' }}</span>
+                  <button v-for="c in VALID_COUPONS" :key="c.code" class="ch-btn" :class="{ sel: appliedCoupon?.code === c.code }" @click="couponCode = c.code; applyCoupon()">
+                    {{ c.code }}
                   </button>
                 </div>
               </div>
             </div>
 
-            <hr>
-            <div class="sum-row"><span>Tạm tính</span><strong>{{ formatCurrency(cartSubtotal) }}</strong></div>
-            <div class="sum-row"><span>Phí vận chuyển</span><strong>{{ formatCurrency(shippingFee) }}</strong></div>
-            <div v-if="appliedCoupon" class="sum-row discount">
-              <span>Giảm giá ({{ appliedCoupon.code }})</span>
-              <strong>-{{ formatCurrency(discountAmount) }}</strong>
+            <hr class="summary-divider mt-4">
+            
+            <div class="sum-row mt-4">
+              <span>Tạm tính</span>
+              <span>{{ formatCurrency(cartSubtotal) }}</span>
             </div>
-            <div class="sum-row eta"><span>Dự kiến giao</span><strong>{{ etaText }}</strong></div>
-            <hr>
-            <div class="sum-row total"><span>Tổng thanh toán</span><strong>{{ formatCurrency(total) }}</strong></div>
-            <button class="btn-sg w-100 mt-3" :disabled="placing" @click="placeOrder">
-              <i class="bi bi-lock-fill me-2"></i>{{ placing ? 'Đang xử lý…' : 'Đặt hàng' }}
+            <div class="sum-row">
+              <span>Phí vận chuyển</span>
+              <span>{{ formatCurrency(shippingFee) }}</span>
+            </div>
+            <div v-if="appliedCoupon" class="sum-row text-success">
+              <span>Giảm giá ({{ appliedCoupon.code }})</span>
+              <span>-{{ formatCurrency(discountAmount) }}</span>
+            </div>
+            <div class="sum-row">
+              <span>Dự kiến giao</span>
+              <span>{{ etaText }}</span>
+            </div>
+            
+            <hr class="summary-divider">
+            
+            <div class="sum-row total">
+              <span>TỔNG THANH TOÁN</span>
+              <strong>{{ formatCurrency(total) }}</strong>
+            </div>
+            
+            <button class="btn-sg-warm w-100 mt-4" :disabled="placing" @click="placeOrder">
+              {{ placing ? 'ĐANG XỬ LÝ...' : 'ĐẶT HÀNG' }}
             </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- CENTERED SUCCESS (not a local alert) -->
-    <transition name="suc">
-      <div v-if="successOrder" class="suc-overlay">
-        <div class="suc-card sg-card">
-          <div class="suc-check"><i class="bi bi-check-lg"></i></div>
-          <h3>Đặt hàng thành công!</h3>
-          <p class="text-secondary">Cảm ơn bạn đã mua sắm tại ShoeGroup. Đơn hàng đang được xử lý.</p>
-          <div class="suc-info">
-            <div><span>Mã đơn</span><strong>{{ successOrder.id }}</strong></div>
-            <div><span>Tổng tiền</span><strong>{{ formatCurrency(successOrder.total) }}</strong></div>
-            <div><span>Giao hàng</span><strong>{{ successOrder.shippingMethod.name }}</strong></div>
-            <div><span>Dự kiến</span><strong>{{ successOrder.shippingMethod.eta }}</strong></div>
-          </div>
-          <div class="d-flex gap-2 mt-3">
-            <button class="btn-sg flex-grow-1" @click="goOrders">Xem đơn hàng</button>
-            <button class="btn-sg-outline" @click="goHome">Về trang chủ</button>
-          </div>
-        </div>
-      </div>
-    </transition>
   </div>
 </template>
 
 <style scoped>
-.checkout-page { background: var(--sg-canvas); min-height: 100vh; }
-.co-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
-.empty { text-align: center; padding: 60px; }
-.empty i { font-size: 3rem; color: var(--sg-muted); }
-.co-block { padding: 22px; margin-bottom: 18px; }
-.co-h { font-weight: 800; display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.co-num { width: 28px; height: 28px; border-radius: 50%; background: var(--sg-grad-primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: .9rem; }
-.co-label { font-weight: 700; font-size: .82rem; color: var(--sg-ink-2); margin-bottom: 6px; display: block; }
-.addr-status { font-size: .8rem; font-weight: 600; margin-top: 6px; }
-.addr-status.ok { color: #16a34a; }
-.addr-status.warn { color: #f59e0b; }
-.map-wrap { margin-top: 14px; border-radius: 14px; overflow: hidden; border: 1px solid var(--sg-line); }
-.map-wrap iframe { width: 100%; height: 220px; border: 0; display: block; }
+.checkout-page {
+  background: #ffffff;
+  min-height: 100vh;
+}
+.co-title {
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  color: #1a1a1a;
+  margin: 0 0 4px;
+}
 
-.ship-grid, .pay-grid { display: flex; flex-direction: column; gap: 12px; }
-.ship-opt { display: flex; align-items: center; gap: 14px; border: 2px solid var(--sg-line); border-radius: 16px; padding: 14px; cursor: pointer; transition: .2s; }
-.ship-opt:hover { border-color: #1a3a6b; }
-.ship-opt.active { border-color: #1a3a6b; background: #e8f0fb; }
-.ship-ic { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem; flex-shrink: 0; }
-.ship-ic.blue { background: var(--sg-grad-primary); } .ship-ic.warm { background: var(--sg-grad-warm); }
-.ship-name { font-weight: 800; }
-.ship-desc { font-size: .8rem; color: var(--sg-muted); }
-.ship-eta { font-size: .78rem; color: #1a3a6b; font-weight: 600; margin-top: 3px; }
-.ship-fee { font-weight: 900; color: var(--sg-ink); }
-.express-note { margin-top: 12px; background: #fff1eb; border: 1px solid #ffd9c7; border-radius: 12px; padding: 12px 14px; font-size: .82rem; color: var(--sg-orange-600); }
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+}
+.empty-state i {
+  font-size: 2.5rem;
+  color: #ccc;
+  display: block;
+  margin-bottom: 16px;
+}
 
-.pay-opt { display: flex; align-items: center; gap: 14px; border: 2px solid var(--sg-line); border-radius: 16px; padding: 14px; cursor: pointer; transition: .2s; }
-.pay-opt:hover { border-color: #1a3a6b; }
-.pay-opt.active { border-color: #1a3a6b; background: #e8f0fb; }
-.pay-opt > i { font-size: 1.6rem; color: #1a3a6b; width: 36px; text-align: center; }
-.pay-name { font-weight: 800; }
-.pay-desc { font-size: .8rem; color: var(--sg-muted); }
-.pay-check { margin-left: auto; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--sg-line); color: #fff; display: flex; align-items: center; justify-content: center; transition: .2s; }
-.pay-opt.active .pay-check { background: #1a3a6b; border-color: #1a3a6b; }
+/* Blocks */
+.co-block {
+  margin-bottom: 40px;
+}
+.co-h {
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.co-num {
+  width: 24px;
+  height: 24px;
+  background: #1a1a1a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.co-label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: #555;
+  margin-bottom: 8px;
+  display: block;
+}
 
-.co-summary { padding: 22px; position: sticky; top: 90px; }
-.co-items { display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto; }
-.co-item { display: flex; gap: 10px; align-items: center; }
-.co-item-img { position: relative; width: 54px; height: 54px; border-radius: 10px; overflow: hidden; background: var(--sg-canvas); flex-shrink: 0; }
-.co-item-img img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; }
-.co-qty { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; background: var(--sg-ink); color: #fff; border-radius: 50%; font-size: .7rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.co-item-name { font-weight: 700; font-size: .85rem; line-height: 1.2; }
-.co-item-attr { font-size: .74rem; color: var(--sg-muted); }
-.co-item-price { font-weight: 800; font-size: .85rem; }
-.sum-row { display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--sg-ink-2); }
-.sum-row.eta strong { color: var(--sg-blue-700); }
-.sum-row.total { font-size: 1.2rem; color: var(--sg-ink); }
-.sum-row.total strong { color: #1a3a6b; }
+.addr-status {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
 
-/* Success overlay */
-.suc-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.suc-card { max-width: 440px; width: 100%; padding: 34px; text-align: center; border-radius: 24px; box-shadow: var(--sg-shadow-lg); }
-.suc-check { width: 80px; height: 80px; margin: 0 auto 18px; border-radius: 50%; background: linear-gradient(135deg,#22c55e,#16a34a); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 2.6rem; box-shadow: 0 12px 30px rgba(22,163,74,.4); animation: sucPop .5s cubic-bezier(.34,1.56,.64,1); }
-@keyframes sucPop { from { transform: scale(0); } to { transform: scale(1); } }
-.suc-card h3 { font-weight: 900; }
-.suc-info { background: var(--sg-canvas); border-radius: 14px; padding: 16px; margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
-.suc-info span { display: block; font-size: .74rem; color: var(--sg-muted); }
-.suc-info strong { font-size: .92rem; }
-.suc-enter-active { transition: opacity .3s; }
-.suc-enter-from { opacity: 0; }
+.map-wrap {
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.map-wrap iframe {
+  width: 100%;
+  height: 250px;
+  border: 0;
+  display: block;
+}
 
-/* Coupon section */
-.coupon-section { margin: 14px 0; padding: 14px; background: var(--sg-canvas); border-radius: 14px; border: 1.5px dashed var(--sg-line); }
-.coupon-label { font-weight: 800; font-size: .88rem; color: var(--sg-navy, #1a3a6b); margin-bottom: 10px; display: flex; align-items: center; gap: 7px; }
-.coupon-input-row { display: flex; gap: 8px; }
-.coupon-input { flex: 1; padding: .5rem .8rem; font-size: .88rem; font-weight: 700; letter-spacing: .04em; }
-.btn-apply { background: linear-gradient(135deg, #1a3a6b, #3b6fb5); color: #fff; border: 0; border-radius: 10px; padding: .5rem 1rem; font-weight: 800; font-size: .85rem; flex-shrink: 0; transition: .2s; }
-.btn-apply:hover { opacity: .88; transform: translateY(-1px); }
-.coupon-err { font-size: .78rem; color: #ef4444; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
-.coupon-applied { display: flex; align-items: center; gap: 10px; background: #e8f0fb; border: 1.5px solid #1a3a6b; border-radius: 10px; padding: 8px 12px; }
-.ca-info { flex: 1; }
-.ca-code { font-weight: 900; font-size: .95rem; color: #1a3a6b; letter-spacing: .06em; display: block; font-family: monospace; }
-.ca-desc { font-size: .78rem; color: #2a3f63; }
-.ca-remove { border: 0; background: rgba(26,58,107,.12); color: #1a3a6b; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-.ca-remove:hover { background: #fee2e2; color: #ef4444; }
-.coupon-hints { margin-top: 10px; }
-.ch-title { font-size: .74rem; font-weight: 700; color: var(--sg-muted); margin-bottom: 6px; }
-.ch-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.ch-pill { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .25rem .7rem; font-size: .74rem; transition: .2s; cursor: pointer; display: flex; align-items: center; gap: 5px; }
-.ch-pill:hover { border-color: #1a3a6b; color: #1a3a6b; }
-.ch-pill.sel { background: #1a3a6b; color: #fff; border-color: #1a3a6b; }
-.ch-code { font-weight: 800; font-family: monospace; }
-.ch-val { font-weight: 700; opacity: .8; }
-.sum-row.discount strong { color: #16a34a; }
+/* Grid Options (Shipping/Payment) */
+.ship-grid, .pay-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ship-opt, .pay-opt {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fff;
+}
+.ship-opt:hover, .pay-opt:hover {
+  border-color: #1a1a1a;
+}
+.ship-opt.active, .pay-opt.active {
+  border-color: #1a1a1a;
+  border-width: 2px;
+  padding: 19px; /* adjust for border */
+}
+
+.ship-name, .pay-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+.ship-desc, .pay-desc {
+  font-size: 0.8rem;
+  color: #666;
+}
+.ship-eta {
+  font-size: 0.75rem;
+  color: #1a1a1a;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.ship-fee {
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 0.95rem;
+  margin-right: 16px;
+}
+
+.ship-check, .pay-check {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #d0d0d0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ship-opt.active .ship-check, .pay-opt.active .pay-check {
+  border: 6px solid #1a1a1a;
+}
+
+.pay-opt i {
+  font-size: 1.5rem;
+  color: #1a1a1a;
+  width: 40px;
+  text-align: center;
+}
+
+.express-note {
+  margin-top: 16px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 16px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+/* Summary */
+.co-summary-box {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 32px;
+  position: sticky;
+  top: 100px;
+}
+.summary-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.co-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.co-item {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.co-item-img {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+}
+.co-item-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.co-qty {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: #1a1a1a;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.co-item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: #1a1a1a;
+}
+.co-item-attr {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 4px;
+}
+.co-item-price {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1a1a1a;
+}
+
+.coupon-section {
+  border-top: 1px solid #e5e5e5;
+  padding-top: 24px;
+}
+.coupon-label {
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: #1a1a1a;
+}
+.coupon-input-row {
+  display: flex;
+  gap: 8px;
+}
+.coupon-applied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid #1a1a1a;
+  padding: 12px 16px;
+  border-radius: 4px;
+}
+.ca-code {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #1a1a1a;
+  display: block;
+}
+.ca-desc {
+  font-size: 0.8rem;
+  color: #666;
+}
+.ca-remove {
+  border: 0;
+  background: transparent;
+  color: #888;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.ca-remove:hover {
+  color: #D4001A;
+}
+
+.ch-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ch-btn {
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.ch-btn:hover {
+  border-color: #1a1a1a;
+}
+.ch-btn.sel {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #1a1a1a;
+}
+
+.summary-divider {
+  border-top: 1px solid #e5e5e5;
+  margin: 0;
+}
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #555;
+  font-size: 0.95rem;
+}
+.sum-row.total {
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
 </style>

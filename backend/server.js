@@ -8,12 +8,13 @@ const PORT = 5000;
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
+app.post('/api/log-error', (req, res) => { console.log('[BROWSER ERROR]', req.body); res.sendStatus(200); });
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const dbConfig = {
   user: "sa",
   password: "123", // Doi thanh mat khau SQL cua ban neu can
-  server: "localhost",
+  server: "127.0.0.1",
   database: "ShoegroupDB",
   options: {
     encrypt: false,
@@ -1451,6 +1452,24 @@ app.get("/api/customers/:id/orders", async (req, res) => {
   }
 });
 
+app.get("/api/customers/:id/notifications", async (req, res) => {
+  try {
+    await poolConnect;
+    let rNotifs = await pool
+      .request()
+      .input("id", sql.Int, req.params.id)
+      .query(
+        `SELECT NotificationID as id, Title as title, Message as message, Type as type, RelatedID as related_id, IsRead as is_read, CreatedAt as created_at
+         FROM Notifications 
+         WHERE UserID = @id 
+         ORDER BY CreatedAt DESC`
+      );
+    res.json(rNotifs.recordset);
+  } catch (e) {
+    res.status(500).json([]);
+  }
+});
+
 app.get("/api/chart-data", async (req, res) => {
   try {
     await poolConnect;
@@ -1752,3 +1771,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server dang chay tai http://localhost:${PORT}`);
 });
+
+
+
+

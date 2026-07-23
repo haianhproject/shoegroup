@@ -441,20 +441,20 @@ export function countByStatus(s) {
 export function getStatusBadgeClass(status) {
   return (
     {
-      "Chờ xác nhận": "bg-warning-subtle text-warning-emphasis",
-      "Đã xác nhận": "bg-info-subtle text-info-emphasis",
-      "Đang vận chuyển": "bg-primary-subtle text-primary-emphasis",
-      "Đã giao hàng thành công": "badge-active",
-      "Đã hủy": "bg-danger-subtle text-danger-emphasis",
-    }[status] || "bg-secondary-subtle text-secondary"
+      "Chờ xác nhận": "bg-warning text-dark fw-bold",
+      "Đã xác nhận": "bg-primary text-white fw-bold",
+      "Đang vận chuyển": "bg-info text-dark fw-bold",
+      "Đã giao hàng thành công": "bg-success text-white fw-bold",
+      "Đã hủy": "bg-danger text-white fw-bold",
+    }[status] || "bg-secondary text-white fw-bold"
   );
 }
 export function getPaymentBadgeClass(status) {
   return (
     {
-      "Đã thanh toán": "badge-active",
-      "Hoàn tiền": "bg-info-subtle text-info-emphasis",
-    }[status] || "bg-warning-subtle text-warning-emphasis"
+      "Đã thanh toán": "bg-success text-white fw-bold",
+      "Hoàn tiền": "bg-secondary text-white fw-bold",
+    }[status] || "bg-warning text-dark fw-bold"
   );
 }
 const orderFlow = {
@@ -755,7 +755,7 @@ export function effectivePaymentStatus(o) {
 export function getPaymentStatusPill(o) {
   const st = effectivePaymentStatus(o);
   if (st === "Đã thanh toán")
-    return { label: "Đã thanh toán", cls: "badge-active" };
+    return { label: "Đã thanh toán", cls: "bg-success text-white fw-medium" };
   if (st === "Hoàn tiền")
     return { label: "Hoàn tiền", cls: "bg-info-subtle text-info-emphasis" };
   if (st === "Chờ chuyển khoản")
@@ -771,7 +771,7 @@ export function getPaymentStatusPill(o) {
   if (st === "Chưa thanh toán")
     return {
       label: "Chưa thanh toán",
-      cls: "bg-warning-subtle text-warning-emphasis",
+      cls: "bg-danger-subtle text-danger-emphasis",
     };
   return { label: "Không xác định", cls: "bg-secondary-subtle text-secondary" };
 }
@@ -779,7 +779,7 @@ export function getPaymentStatusPill(o) {
 // Pill trạng thái đơn (rút gọn theo hình mẫu)
 export function getOrderStatusPill(o) {
   const map = {
-    "Đã giao hàng thành công": { label: "Hoàn thành", cls: "badge-active" },
+    "Đã giao hàng thành công": { label: "Hoàn thành", cls: "bg-success text-white fw-medium" },
     "Đang vận chuyển": {
       label: "Đang giao",
       cls: "bg-primary-subtle text-primary-emphasis",
@@ -790,9 +790,9 @@ export function getOrderStatusPill(o) {
     },
     "Chờ xác nhận": {
       label: "Chờ xác nhận",
-      cls: "bg-warning-subtle text-warning-emphasis",
+      cls: "bg-warning text-dark fw-medium",
     },
-    "Đã hủy": { label: "Đã hủy", cls: "bg-danger-subtle text-danger-emphasis" },
+    "Đã hủy": { label: "Đã hủy", cls: "bg-danger text-white fw-medium" },
   };
   return (
     map[o.status] || {
@@ -2738,193 +2738,198 @@ export function mapOrder(o) {
 }
 export async function fetchAllData() {
   isLoading.value = true;
-  const [
-    orders,
-    products,
-    categories,
-    discounts,
-    customers,
-    accounts,
-    brands,
-    collections,
-    inventory,
-    returns,
-    variantDiscounts,
-    colors,
-    sizes,
-    materials,
-    soles,
-    cushionings,
-  ] = await Promise.all([
-    api("/orders"),
-    api("/products"),
-    api("/categories"),
-    api("/discounts"),
-    api("/customers"),
-    api("/accounts"),
-    api("/brands"),
-    api("/collections"),
-    api("/inventory"),
-    api("/returns"),
-    api("/variantDiscounts"),
-    api("/colors"),
-    api("/sizes"),
-    api("/materials"),
-    api("/soles"),
-    api("/cushionings"),
-  ]);
-  db.orders = (orders || []).map(mapOrder);
-  db.products = (products || []).map((p) => ({
-    id: p.ProductID ?? p.id,
-    name: p.ProductName ?? p.name,
-    price: p.BasePrice ?? p.price ?? 0,
-    sale_price: p.SalePrice ?? p.sale_price ?? 0,
-    category_id: p.CategoryID ?? p.category_id,
-    category: p.CategoryName ?? p.category ?? "",
-    brand_id: p.BrandID ?? p.brand_id,
-    brand: p.BrandName ?? p.brand ?? "",
-    collection_id: p.CollectionID ?? p.collection_id,
-    material_id: p.MaterialID ?? p.material_id ?? null,
-    sole_id: p.SoleID ?? p.sole_id ?? null,
-    cushioning_id: p.CushioningID ?? p.cushioning_id ?? null,
-    image_url: p.ImageURL ?? p.image_url ?? "",
-    description: p.Description ?? p.description ?? "",
-    parent_sku: p.ParentSKU ?? p.parent_sku ?? "",
-    is_featured: p.IsFeatured ?? p.is_featured ?? false,
-    active: (p.IsActive ?? p.active) !== false,
-    colors: p.colors || [],
-    sizes: p.sizes || [],
-    variants: p.variants || [],
-  }));
-  db.categories = (categories || []).map((c) => ({
-    id: c.CategoryID ?? c.id,
-    name: c.CategoryName ?? c.name,
-    sport: c.Sport ?? c.sport ?? "",
-    active: (c.IsActive ?? c.active) !== false,
-  }));
-  db.discounts = (discounts || []).map((d) => ({
-    id: d.CouponID ?? d.id,
-    code: d.CouponCode ?? d.code,
-    name: d.CouponName ?? d.name ?? "",
-    discount_type: d.DiscountType ?? d.discount_type ?? "Phần trăm",
-    value: d.DiscountValue ?? d.value ?? d.DiscountPercent ?? d.percent ?? 0,
-    percent: d.DiscountPercent ?? d.percent ?? 0,
-    min_order: d.MinOrderAmount ?? d.min_order ?? 0,
-    max_discount: d.MaxDiscountAmount ?? d.max_discount ?? 0,
-    quantity: d.UsageLimit ?? d.quantity ?? d.limit ?? 0,
-    limit: d.UsageLimit ?? d.limit,
-    used: d.UsedCount ?? d.used ?? 0,
-    start_date: d.StartDate ?? d.start_date ?? null,
-    expiry: d.ExpiryDate ?? d.expiry ?? null,
-    description: d.Description ?? d.description ?? "",
-    active: (d.IsActive ?? d.active) !== false,
-  }));
-  db.customers = (customers || []).map((c) => ({
-    id: c.UserID ?? c.id,
-    name: c.FullName ?? c.name,
-    phone: c.Phone ?? c.phone ?? "",
-    email: c.Email ?? c.email ?? "",
-    address: c.Address ?? c.address ?? "",
-    spent: c.TotalSpent ?? c.spent ?? 0,
-    order_count: c.OrderCount ?? c.order_count ?? 0,
-    created_at: c.CreatedAt ?? c.created_at ?? null,
-    source: c.Source ?? c.source ?? "",
-  }));
-  db.accounts = (accounts || []).map((a) => ({
-    id: a.UserID ?? a.id,
-    username:
-      a.Username ?? a.username ?? (a.Email ?? a.email ?? "").split("@")[0],
-    name: a.FullName ?? a.name ?? "",
-    email: a.Email ?? a.email ?? "",
-    role_id: a.RoleID ?? a.role_id ?? 1,
-    active: (a.IsActive ?? a.active) !== false,
-  }));
-  db.brands = (brands || []).map((b) => ({
-    id: b.BrandID ?? b.id,
-    name: b.BrandName ?? b.name,
-    logo_url: b.LogoURL ?? b.logo_url ?? "",
-    sort_order: b.SortOrder ?? b.sort_order ?? 0,
-    active: (b.IsActive ?? b.active) !== false,
-  }));
-  db.collections = (collections || []).map((c) => ({
-    id: c.CollectionID ?? c.id,
-    name: c.CollectionName ?? c.name,
-    brand_id: c.BrandID ?? c.brand_id,
-    slug: c.Slug ?? c.slug ?? "",
-    active: (c.IsActive ?? c.active) !== false,
-  }));
-  db.inventory = (inventory || []).map((v) => ({
-    id: v.ProductVariantID ?? v.id,
-    product_id: v.ProductID ?? v.product_id,
-    product_name: v.ProductName ?? v.product_name ?? "",
-    size: v.Size ?? v.size ?? "",
-    color: v.ColorName ?? v.color ?? "",
-    color_hex: v.ColorHex ?? v.color_hex ?? "",
-    sku: v.ChildSKU ?? v.sku ?? "",
-    stock: v.StockQuantity ?? v.stock ?? 0,
-    price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
-  }));
-  db.returns = (returns || []).map((r) => ({
-    id: r.ReturnID ?? r.id,
-    order_id: r.OrderID ?? r.order_id,
-    return_type: r.ReturnType ?? r.return_type ?? "Trả hàng",
-    reason: r.Reason ?? r.reason ?? "",
-    refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
-    status: r.Status ?? r.status ?? "Chờ xử lý",
-  }));
-  db.variantDiscounts = (variantDiscounts || []).map((v) => ({
-    id: v.VariantDiscountID ?? v.id,
-    variant_id: v.ProductVariantID ?? v.variant_id ?? v.product_variant_id,
-    product_id: v.ProductID ?? v.product_id,
-    color: v.ColorName ?? v.color ?? "",
-    color_hex: v.ColorHex ?? v.color_hex ?? "",
-    discount_type: v.DiscountType ?? v.discount_type ?? "Theo phần trăm",
-    value: v.DiscountValue ?? v.value ?? v.percent ?? v.DiscountPercent ?? 0,
-    percent: v.DiscountPercent ?? v.percent ?? 0,
-    max_discount: v.MaxDiscountAmount ?? v.max_discount ?? 0,
-    quantity: v.Quantity ?? v.quantity ?? 0,
-    used: v.UsedCount ?? v.used ?? 0,
-    start_date: v.StartDate ?? v.start_date ?? null,
-    end_date: v.EndDate ?? v.end_date ?? null,
-    reason: v.Reason ?? v.reason ?? "",
-    active: (v.IsActive ?? v.active) !== false,
-    description: v.Description ?? v.description ?? "",
-  }));
-  db.colors = (colors || []).map((c) => ({
-    id: c.ColorID ?? c.id,
-    name: c.ColorName ?? c.name,
-    hex: c.ColorHex ?? c.hex ?? "#000000",
-    sort_order: c.SortOrder ?? c.sort_order ?? 0,
-    active: (c.IsActive ?? c.active) !== false,
-  }));
-  db.sizes = (sizes || []).map((s) => ({
-    id: s.SizeID ?? s.id,
-    name: s.SizeName ?? s.name,
-    standard: s.SizeStandard ?? s.standard ?? "",
-    sort_order: s.SortOrder ?? s.sort_order ?? 0,
-    active: (s.IsActive ?? s.active) !== false,
-  }));
-  db.materials = (materials || []).map((m) => ({
-    id: m.MaterialID ?? m.id,
-    name: m.MaterialName ?? m.name,
-    active: (m.IsActive ?? m.active) !== false,
-  }));
-  db.soles = (soles || []).map((s) => ({
-    id: s.SoleID ?? s.id,
-    name: s.SoleName ?? s.name,
-    active: (s.IsActive ?? s.active) !== false,
-  }));
-  db.cushionings = (cushionings || []).map((c) => ({
-    id: c.CushioningID ?? c.id,
-    name: c.CushioningName ?? c.name,
-    active: (c.IsActive ?? c.active) !== false,
-  }));
-  // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
-  const reviews = await api("/reviews");
-  db.reviews = (reviews || []).map((r) => ({
-    rating: Number(r.Rating ?? r.rating ?? r.stars ?? r.Score ?? 0),
-    product_id: r.ProductID ?? r.product_id,
-    product_name: r.ProductName ?? r.product_name ?? "",
-  }));
-  isLoading.value = false;
+  try {
+    const [
+      orders,
+      products,
+      categories,
+      discounts,
+      customers,
+      accounts,
+      brands,
+      collections,
+      inventory,
+      returns,
+      variantDiscounts,
+      colors,
+      sizes,
+      materials,
+      soles,
+      cushionings,
+    ] = await Promise.all([
+      api("/orders"),
+      api("/products"),
+      api("/categories"),
+      api("/discounts"),
+      api("/customers"),
+      api("/accounts"),
+      api("/brands"),
+      api("/collections"),
+      api("/inventory"),
+      api("/returns"),
+      api("/variantDiscounts"),
+      api("/colors"),
+      api("/sizes"),
+      api("/materials"),
+      api("/soles"),
+      api("/cushionings"),
+    ]);
+    db.orders = (orders || []).map(mapOrder);
+    db.products = (products || []).map((p) => ({
+      id: p.ProductID ?? p.id,
+      name: p.ProductName ?? p.name,
+      price: p.BasePrice ?? p.price ?? 0,
+      sale_price: p.SalePrice ?? p.sale_price ?? 0,
+      category_id: p.CategoryID ?? p.category_id,
+      category: p.CategoryName ?? p.category ?? "",
+      brand_id: p.BrandID ?? p.brand_id,
+      brand: p.BrandName ?? p.brand ?? "",
+      collection_id: p.CollectionID ?? p.collection_id,
+      material_id: p.MaterialID ?? p.material_id ?? null,
+      sole_id: p.SoleID ?? p.sole_id ?? null,
+      cushioning_id: p.CushioningID ?? p.cushioning_id ?? null,
+      image_url: p.ImageURL ?? p.image_url ?? "",
+      description: p.Description ?? p.description ?? "",
+      parent_sku: p.ParentSKU ?? p.parent_sku ?? "",
+      is_featured: p.IsFeatured ?? p.is_featured ?? false,
+      active: (p.IsActive ?? p.active) !== false,
+      colors: p.colors || [],
+      sizes: p.sizes || [],
+      variants: p.variants || [],
+    }));
+    db.categories = (categories || []).map((c) => ({
+      id: c.CategoryID ?? c.id,
+      name: c.CategoryName ?? c.name,
+      sport: c.Sport ?? c.sport ?? "",
+      active: (c.IsActive ?? c.active) !== false,
+    }));
+    db.discounts = (discounts || []).map((d) => ({
+      id: d.CouponID ?? d.id,
+      code: d.CouponCode ?? d.code,
+      name: d.CouponName ?? d.name ?? "",
+      discount_type: d.DiscountType ?? d.discount_type ?? "Phần trăm",
+      value: d.DiscountValue ?? d.value ?? d.DiscountPercent ?? d.percent ?? 0,
+      percent: d.DiscountPercent ?? d.percent ?? 0,
+      min_order: d.MinOrderAmount ?? d.min_order ?? 0,
+      max_discount: d.MaxDiscountAmount ?? d.max_discount ?? 0,
+      quantity: d.UsageLimit ?? d.quantity ?? d.limit ?? 0,
+      limit: d.UsageLimit ?? d.limit,
+      used: d.UsedCount ?? d.used ?? 0,
+      start_date: d.StartDate ?? d.start_date ?? null,
+      expiry: d.ExpiryDate ?? d.expiry ?? null,
+      description: d.Description ?? d.description ?? "",
+      active: (d.IsActive ?? d.active) !== false,
+    }));
+    db.customers = (customers || []).map((c) => ({
+      id: c.UserID ?? c.id,
+      name: c.FullName ?? c.name,
+      phone: c.Phone ?? c.phone ?? "",
+      email: c.Email ?? c.email ?? "",
+      address: c.Address ?? c.address ?? "",
+      spent: c.TotalSpent ?? c.spent ?? 0,
+      order_count: c.OrderCount ?? c.order_count ?? 0,
+      created_at: c.CreatedAt ?? c.created_at ?? null,
+      source: c.Source ?? c.source ?? "",
+    }));
+    db.accounts = (accounts || []).map((a) => ({
+      id: a.UserID ?? a.id,
+      username:
+        a.Username ?? a.username ?? (a.Email ?? a.email ?? "").split("@")[0],
+      name: a.FullName ?? a.name ?? "",
+      email: a.Email ?? a.email ?? "",
+      role_id: a.RoleID ?? a.role_id ?? 1,
+      active: (a.IsActive ?? a.active) !== false,
+    }));
+    db.brands = (brands || []).map((b) => ({
+      id: b.BrandID ?? b.id,
+      name: b.BrandName ?? b.name,
+      logo_url: b.LogoURL ?? b.logo_url ?? "",
+      sort_order: b.SortOrder ?? b.sort_order ?? 0,
+      active: (b.IsActive ?? b.active) !== false,
+    }));
+    db.collections = (collections || []).map((c) => ({
+      id: c.CollectionID ?? c.id,
+      name: c.CollectionName ?? c.name,
+      brand_id: c.BrandID ?? c.brand_id,
+      slug: c.Slug ?? c.slug ?? "",
+      active: (c.IsActive ?? c.active) !== false,
+    }));
+    db.inventory = (inventory || []).map((v) => ({
+      id: v.ProductVariantID ?? v.id,
+      product_id: v.ProductID ?? v.product_id,
+      product_name: v.ProductName ?? v.product_name ?? "",
+      size: v.Size ?? v.size ?? "",
+      color: v.ColorName ?? v.color ?? "",
+      color_hex: v.ColorHex ?? v.color_hex ?? "",
+      sku: v.ChildSKU ?? v.sku ?? "",
+      stock: v.StockQuantity ?? v.stock ?? 0,
+      price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
+    }));
+    db.returns = (returns || []).map((r) => ({
+      id: r.ReturnID ?? r.id,
+      order_id: r.OrderID ?? r.order_id,
+      return_type: r.ReturnType ?? r.return_type ?? "Trả hàng",
+      reason: r.Reason ?? r.reason ?? "",
+      refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
+      status: r.Status ?? r.status ?? "Chờ xử lý",
+    }));
+    db.variantDiscounts = (variantDiscounts || []).map((v) => ({
+      id: v.VariantDiscountID ?? v.id,
+      variant_id: v.ProductVariantID ?? v.variant_id ?? v.product_variant_id,
+      product_id: v.ProductID ?? v.product_id,
+      color: v.ColorName ?? v.color ?? "",
+      color_hex: v.ColorHex ?? v.color_hex ?? "",
+      discount_type: v.DiscountType ?? v.discount_type ?? "Theo phần trăm",
+      value: v.DiscountValue ?? v.value ?? v.percent ?? v.DiscountPercent ?? 0,
+      percent: v.DiscountPercent ?? v.percent ?? 0,
+      max_discount: v.MaxDiscountAmount ?? v.max_discount ?? 0,
+      quantity: v.Quantity ?? v.quantity ?? 0,
+      used: v.UsedCount ?? v.used ?? 0,
+      start_date: v.StartDate ?? v.start_date ?? null,
+      end_date: v.EndDate ?? v.end_date ?? null,
+      reason: v.Reason ?? v.reason ?? "",
+      active: (v.IsActive ?? v.active) !== false,
+      description: v.Description ?? v.description ?? "",
+    }));
+    db.colors = (colors || []).map((c) => ({
+      id: c.ColorID ?? c.id,
+      name: c.ColorName ?? c.name,
+      hex: c.ColorHex ?? c.hex ?? "#000000",
+      sort_order: c.SortOrder ?? c.sort_order ?? 0,
+      active: (c.IsActive ?? c.active) !== false,
+    }));
+    db.sizes = (sizes || []).map((s) => ({
+      id: s.SizeID ?? s.id,
+      name: s.SizeName ?? s.name,
+      standard: s.SizeStandard ?? s.standard ?? "",
+      sort_order: s.SortOrder ?? s.sort_order ?? 0,
+      active: (s.IsActive ?? s.active) !== false,
+    }));
+    db.materials = (materials || []).map((m) => ({
+      id: m.MaterialID ?? m.id,
+      name: m.MaterialName ?? m.name,
+      active: (m.IsActive ?? m.active) !== false,
+    }));
+    db.soles = (soles || []).map((s) => ({
+      id: s.SoleID ?? s.id,
+      name: s.SoleName ?? s.name,
+      active: (s.IsActive ?? s.active) !== false,
+    }));
+    db.cushionings = (cushionings || []).map((c) => ({
+      id: c.CushioningID ?? c.id,
+      name: c.CushioningName ?? c.name,
+      active: (c.IsActive ?? c.active) !== false,
+    }));
+    // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
+    const reviews = await api("/reviews");
+    db.reviews = (reviews || []).map((r) => ({
+      rating: Number(r.Rating ?? r.rating ?? r.stars ?? r.Score ?? 0),
+      product_id: r.ProductID ?? r.product_id,
+      product_name: r.ProductName ?? r.product_name ?? "",
+    }));
+  } catch (err) {
+    console.error("[fetchAllData] Error mapping admin data:", err);
+  } finally {
+    isLoading.value = false;
+  }
 }

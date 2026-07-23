@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { requestPasswordReset } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
+import BrandLogo from '../components/BrandLogo.vue'
 
 const email = ref('')
 const loading = ref(false)
@@ -22,7 +23,10 @@ const submit = async () => {
 <template>
   <div class="auth-page">
     <div class="fp-card sg-card">
-      <router-link to="/" class="auth-logo"><span class="logo-mark"><i class="bi bi-lightning-charge-fill"></i></span> ShoeGroup</router-link>
+      <router-link to="/" class="auth-logo">
+        <BrandLogo :size="32" :radius="6" />
+        <span class="auth-logo-text"><span class="logo-shoe">SHOE</span><span class="logo-group">GROUP</span></span>
+      </router-link>
 
       <div v-if="!sent">
         <div class="fp-ic"><i class="bi bi-key"></i></div>
@@ -48,8 +52,9 @@ const submit = async () => {
 <style scoped>
 .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--sg-grad-hero); }
 .fp-card { max-width: 460px; width: 100%; padding: 44px; text-align: center; border-radius: 26px; }
-.auth-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--sg-ink); text-decoration: none; }
-.logo-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--sg-grad-primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+.auth-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--sg-ink); text-decoration: none; font-family: 'Inter', sans-serif; letter-spacing: 0.12em; }
+.auth-logo-text .logo-shoe { color: #0A0A0A; }
+.auth-logo-text .logo-group { color: #D4001A; }
 .fp-ic { width: 66px; height: 66px; margin: 26px auto 0; border-radius: 50%; background: var(--sg-soft); color: var(--sg-blue); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
 .auth-title { font-weight: 900; font-size: 1.7rem; margin-top: 18px; }
 .auth-sub { color: var(--sg-muted); margin-bottom: 18px; }
@@ -63,3 +68,4 @@ const submit = async () => {
 .fp-back { display: inline-block; margin-top: 22px; font-weight: 700; color: var(--sg-blue); text-decoration: none; font-size: .9rem; }
 .fp-back:hover { text-decoration: underline; }
 </style>
+

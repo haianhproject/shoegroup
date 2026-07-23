@@ -4,13 +4,6 @@ import BrandLogo from './BrandLogo.vue'
 
 <template>
   <footer class="sg-footer">
-    <!-- Wave divider -->
-    <div class="footer-wave">
-      <svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M0 40 Q360 0 720 30 Q1080 60 1440 20 L1440 60 L0 60 Z" fill="#0e1e3d"/>
-      </svg>
-    </div>
-
     <div class="footer-body">
       <div class="container-fluid px-4">
         <div class="row gy-5">
@@ -42,30 +35,30 @@ import BrandLogo from './BrandLogo.vue'
           <div class="col-6 col-lg-2">
             <h6 class="footer-heading">Về ShoeGroup</h6>
             <ul class="footer-links">
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Giới thiệu</router-link></li>
-              <li><router-link to="/products"><i class="bi bi-chevron-right"></i>Cửa hàng</router-link></li>
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Tin tức</router-link></li>
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Tuyển dụng</router-link></li>
+              <li><router-link to="/">Giới thiệu</router-link></li>
+              <li><router-link to="/products">Cửa hàng</router-link></li>
+              <li><router-link to="/">Tin tức</router-link></li>
+              <li><router-link to="/">Tuyển dụng</router-link></li>
             </ul>
           </div>
 
           <div class="col-6 col-lg-2">
             <h6 class="footer-heading">Chính sách</h6>
             <ul class="footer-links">
-              <li><router-link to="/returns"><i class="bi bi-chevron-right"></i>Đổi trả hàng</router-link></li>
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Bảo mật</router-link></li>
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Giao & nhận hàng</router-link></li>
-              <li><router-link to="/"><i class="bi bi-chevron-right"></i>Điều khoản sử dụng</router-link></li>
+              <li><router-link to="/returns">Đổi trả hàng</router-link></li>
+              <li><router-link to="/">Bảo mật</router-link></li>
+              <li><router-link to="/">Giao &amp; nhận hàng</router-link></li>
+              <li><router-link to="/">Điều khoản sử dụng</router-link></li>
             </ul>
           </div>
 
           <div class="col-lg-3">
             <h6 class="footer-heading">Liên hệ</h6>
             <ul class="footer-contact">
-              <li><i class="bi bi-geo-alt-fill"></i><span>Số 1 Lê Duẩn, Hoàn Kiếm, Hà Nội</span></li>
-              <li><i class="bi bi-telephone-fill"></i><a href="tel:0375990871">0375.990.871</a></li>
-              <li><i class="bi bi-envelope-fill"></i><a href="mailto:support@shoegroup.vn">support@shoegroup.vn</a></li>
-              <li><i class="bi bi-clock-fill"></i><span>Hỗ trợ 9:00 – 21:00 mỗi ngày</span></li>
+              <li><i class="bi bi-geo-alt"></i><span>Số 1 Lê Duẩn, Hoàn Kiếm, Hà Nội</span></li>
+              <li><i class="bi bi-telephone"></i><a href="tel:0375990871">0375.990.871</a></li>
+              <li><i class="bi bi-envelope"></i><a href="mailto:support@shoegroup.vn">support@shoegroup.vn</a></li>
+              <li><i class="bi bi-clock"></i><span>Hỗ trợ 9:00 – 21:00 mỗi ngày</span></li>
             </ul>
           </div>
         </div>
@@ -86,24 +79,14 @@ import BrandLogo from './BrandLogo.vue'
 <style scoped>
 /* ====== Footer shell ====== */
 .sg-footer {
-  background: #0e1e3d;
-  color: rgba(255, 255, 255, 0.72);
+  background: #0A0A0A;
+  color: rgba(255, 255, 255, 0.6);
   margin-top: auto;
   position: relative;
 }
 
-.footer-wave {
-  line-height: 0;
-  overflow: hidden;
-}
-.footer-wave svg {
-  width: 100%;
-  height: 60px;
-  display: block;
-}
-
 .footer-body {
-  padding: 52px 0 0;
+  padding: 60px 0 0;
 }
 
 /* ====== Logo ====== */
@@ -112,23 +95,24 @@ import BrandLogo from './BrandLogo.vue'
   align-items: center;
   gap: 11px;
   text-decoration: none;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .footer-logo-text {
+  font-family: 'Inter', sans-serif;
   font-size: 1.5rem;
   font-weight: 900;
-  letter-spacing: -.025em;
+  letter-spacing: 0.05em;
   line-height: 1;
 }
 .logo-shoe  { color: #fff; }
-.logo-group { color: var(--sg-navy-light, #7dacd4); }
+.logo-group { color: #D4001A; }
 
 .footer-desc {
-  font-size: .9rem;
-  line-height: 1.75;
+  font-size: 0.88rem;
+  line-height: 1.7;
   max-width: 310px;
-  margin-top: 8px;
-  color: rgba(255,255,255,.62);
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 /* ====== Trust badges ====== */
@@ -136,146 +120,134 @@ import BrandLogo from './BrandLogo.vue'
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 18px 0;
+  margin: 20px 0;
 }
 .f-badge {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: .85rem;
-  font-weight: 600;
-  color: rgba(255,255,255,.80);
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
 }
 .f-badge i {
-  width: 30px; height: 30px;
-  background: rgba(125, 172, 212, .15);
-  border: 1px solid rgba(125, 172, 212, .25);
-  border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  color: #7dacd4;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
+  width: 20px;
+  text-align: center;
 }
 
 /* ====== Social links ====== */
 .footer-social {
   display: flex;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 8px;
+  margin-top: 16px;
 }
 .footer-social a {
-  width: 40px; height: 40px;
-  border-radius: 11px;
-  background: rgba(255,255,255,.07);
-  border: 1px solid rgba(255,255,255,.12);
-  color: rgba(255,255,255,.75);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1rem;
-  transition: all .22s;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  transition: color 0.2s ease, background 0.2s ease;
   text-decoration: none;
 }
 .footer-social a:hover {
-  background: var(--sg-navy-mid, #3b6fb5);
-  border-color: transparent;
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  transform: translateY(-3px);
-  box-shadow: 0 6px 18px rgba(59,111,181,.4);
 }
 
 /* ====== Headings ====== */
 .footer-heading {
   color: #fff;
-  font-weight: 800;
-  font-size: .95rem;
-  letter-spacing: .03em;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  margin-bottom: 18px;
-  position: relative;
-  padding-bottom: 10px;
-}
-.footer-heading::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0;
-  width: 30px; height: 2.5px;
-  border-radius: 99px;
-  background: #7dacd4;
+  margin-bottom: 20px;
 }
 
 /* ====== Links ====== */
 .footer-links {
   list-style: none;
-  padding: 0; margin: 0;
-  display: flex; flex-direction: column; gap: 10px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .footer-links li a {
-  color: rgba(255,255,255,.65);
+  color: rgba(255, 255, 255, 0.5);
   text-decoration: none;
-  font-size: .9rem;
-  font-weight: 500;
-  transition: all .2s;
-  display: flex; align-items: center; gap: 6px;
-}
-.footer-links li a i {
-  font-size: .65rem;
-  color: #7dacd4;
-  transition: transform .2s;
+  font-size: 0.88rem;
+  font-weight: 400;
+  transition: color 0.2s ease;
 }
 .footer-links li a:hover {
   color: #fff;
-  padding-left: 4px;
 }
-.footer-links li a:hover i { transform: translateX(3px); }
 
 /* ====== Contact list ====== */
 .footer-contact {
   list-style: none;
-  padding: 0; margin: 0;
-  display: flex; flex-direction: column; gap: 12px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .footer-contact li {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  font-size: .88rem;
+  font-size: 0.86rem;
   line-height: 1.5;
-  color: rgba(255,255,255,.70);
+  color: rgba(255, 255, 255, 0.5);
 }
 .footer-contact li i {
-  color: #7dacd4;
-  font-size: .95rem;
-  margin-top: 1px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.88rem;
+  margin-top: 2px;
   flex-shrink: 0;
 }
 .footer-contact li a {
-  color: rgba(255,255,255,.70);
+  color: rgba(255, 255, 255, 0.5);
   text-decoration: none;
-  transition: color .2s;
+  transition: color 0.2s ease;
 }
-.footer-contact li a:hover { color: #fff; }
+.footer-contact li a:hover {
+  color: #fff;
+}
 
 /* ====== Bottom bar ====== */
 .footer-bottom {
-  border-top: 1px solid rgba(255,255,255,.08);
-  margin-top: 44px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 48px;
   padding: 20px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: .83rem;
+  font-size: 0.8rem;
   gap: 12px;
   flex-wrap: wrap;
+  color: rgba(255, 255, 255, 0.3);
 }
 .footer-bottom-right {
-  display: flex; align-items: center; gap: 6px;
-  color: rgba(255,255,255,.45);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.3);
 }
 .footer-brand-tag {
-  background: rgba(125,172,212,.15);
-  border: 1px solid rgba(125,172,212,.2);
-  color: #7dacd4;
-  padding: .2rem .7rem;
-  border-radius: 999px;
-  font-size: .78rem;
-  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  font-size: 0.8rem;
 }
 </style>
+

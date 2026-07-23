@@ -8,11 +8,14 @@ const router = createRouter({
     // --- ROUTE KHACH HANG ---
     { path: "/", name: "home", component: () => import("../views/HomeDisplay.vue") },
     { path: "/products", name: "products", component: () => import("../views/ProductsView.vue") },
+    { path: "/about", name: "about", component: () => import("../views/AboutView.vue") },
+    { path: "/contact", name: "contact", component: () => import("../views/ContactView.vue") },
     { path: "/product/:id", name: "ProductDetail", component: () => import("../views/ProductDetail.vue") },
     { path: "/login", name: "login", component: () => import("../views/LoginView.vue") },
     { path: "/register", name: "register", component: () => import("../views/RegisterView.vue") },
     { path: "/cart", name: "UserCart", component: () => import("../views/UserCart.vue") },
     { path: "/checkout", name: "checkout", component: () => import("../views/CheckoutView.vue"), meta: { requiresAuth: true } },
+    { path: "/order-success", name: "order-success", component: () => import("../views/OrderSuccessView.vue"), meta: { requiresAuth: true } },
     { path: "/forgot-password", name: "forgot-password", component: () => import("../views/ForgotPasswordView.vue") },
     { path: "/reset-password", name: "reset-password", component: () => import("../views/ResetPasswordView.vue") },
     { path: "/account", name: "account", component: () => import("../views/AccountView.vue"), meta: { requiresAuth: true } },
@@ -54,6 +57,22 @@ router.beforeEach((to) => {
     return { path: "/login", query: { redirect: path } };
   }
   return true;
+});
+
+/* Tu dong tai lai khi trinh duyet khong tai duoc chunk (loi Vite hay gap khi dev):
+   "Failed to fetch dynamically imported module" -> tranh man hinh trang. */
+router.onError((error, to) => {
+  const msg = (error && error.message) || "";
+  const isChunkErr = /dynamically imported module|Importing a module script failed|Failed to fetch/i.test(msg);
+  if (!isChunkErr) return;
+  const key = "sg_chunk_reload_at";
+  const now = Date.now();
+  const last = Number(sessionStorage.getItem(key) || 0);
+  if (now - last > 10000) {
+    sessionStorage.setItem(key, String(now));
+    if (to && to.fullPath) window.location.assign(to.fullPath);
+    else window.location.reload();
+  }
 });
 
 export default router;

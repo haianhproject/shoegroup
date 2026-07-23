@@ -32,54 +32,87 @@ const attrsOf = (item) => {
 
 <template>
   <div class="cart-page">
-    <div class="container-fluid px-4 py-4">
-      <div class="sg-title-bar mb-2"></div>
-      <h1 class="cart-title">Giỏ hàng của bạn</h1>
-      <p class="text-secondary">{{ cartCount }} sản phẩm trong giỏ</p>
+    <div class="container-fluid px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
+      <h1 class="cart-title">GIỎ HÀNG CỦA BẠN</h1>
+      <p class="text-secondary cart-count-text">{{ cartCount }} SẢN PHẨM</p>
 
-      <div v-if="cartCount === 0" class="empty sg-card">
-        <i class="bi bi-bag-x"></i>
+      <div class="sg-title-bar mb-5"></div>
+
+      <div v-if="cartCount === 0" class="empty-state">
+        <i class="bi bi-bag"></i>
         <h5>Giỏ hàng đang trống</h5>
-        <p class="text-secondary">Hãy khám phá các mẫu giày thể thao mới nhất của chúng tôi.</p>
-        <router-link to="/products" class="btn-sg"><i class="bi bi-bag me-2"></i>Tiếp tục mua sắm</router-link>
+        <p class="text-secondary mb-4">Hãy khám phá các mẫu giày thể thao mới nhất của chúng tôi.</p>
+        <router-link to="/products" class="btn-sg">TIẾP TỤC MUA SẮM</router-link>
       </div>
 
-      <div v-else class="row g-4 mt-1">
+      <div v-else class="row g-5">
         <div class="col-lg-8">
-          <div class="cart-item sg-card" v-for="item in cartItems" :key="item.id_product_detail">
-            <router-link :to="`/product/${item.id_product}`" class="ci-img">
-              <img :src="item.product?.image_url" :alt="item.product?.product_name">
-            </router-link>
-            <div class="ci-body">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <router-link :to="`/product/${item.id_product}`" class="ci-name">{{ item.product?.product_name }}</router-link>
-                <button class="ci-remove" @click="removeFromCart(item.id_product_detail)"><i class="bi bi-trash3"></i></button>
-              </div>
-              <div class="ci-attrs">
-                <span v-for="a in attrsOf(item)" :key="a.label" class="sg-chip sg-chip-blue">{{ a.label }}: {{ a.value }}</span>
-              </div>
-              <div class="ci-foot">
-                <div class="qty-box">
-                  <button @click="decreaseQuantity(item.id_product_detail)"><i class="bi bi-dash"></i></button>
-                  <span>{{ item.quantity }}</span>
-                  <button @click="increaseQuantity(item.id_product_detail)"><i class="bi bi-plus"></i></button>
+          <div class="cart-list">
+            <div class="cart-item" v-for="item in cartItems" :key="item.id_product_detail">
+              <router-link :to="`/product/${item.id_product}`" class="ci-img">
+                <img :src="item.product?.image_url" :alt="item.product?.product_name">
+              </router-link>
+              
+              <div class="ci-body">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                  <router-link :to="`/product/${item.id_product}`" class="ci-name">
+                    {{ item.product?.product_name }}
+                  </router-link>
+                  <button class="ci-remove" @click="removeFromCart(item.id_product_detail)" title="Xóa">
+                    <i class="bi bi-trash"></i>
+                  </button>
                 </div>
-                <div class="ci-price">{{ formatCurrency(item.subtotal) }}</div>
+                
+                <div class="ci-attrs">
+                  <span v-for="a in attrsOf(item)" :key="a.label" class="ci-attr-item">
+                    {{ a.label }}: {{ a.value }}
+                  </span>
+                </div>
+                
+                <div class="ci-foot mt-4">
+                  <div class="qty-box">
+                    <button @click="decreaseQuantity(item.id_product_detail)"><i class="bi bi-dash"></i></button>
+                    <span>{{ item.quantity }}</span>
+                    <button @click="increaseQuantity(item.id_product_detail)"><i class="bi bi-plus"></i></button>
+                  </div>
+                  <div class="ci-price">{{ formatCurrency(item.subtotal) }}</div>
+                </div>
               </div>
             </div>
           </div>
-          <button class="btn-clear-cart" @click="clearCart"><i class="bi bi-x-circle me-1"></i>Xóa toàn bộ giỏ hàng</button>
+          
+          <button class="btn-clear-cart" @click="clearCart">
+            XÓA TOÀN BỘ GIỎ HÀNG
+          </button>
         </div>
 
         <div class="col-lg-4">
-          <div class="summary sg-card">
-            <h6 class="fw-bold mb-3">Tóm tắt đơn hàng</h6>
-            <div class="sum-row"><span>Tạm tính</span><strong>{{ formatCurrency(cartSubtotal) }}</strong></div>
-            <div class="sum-row"><span>Phí giao hàng (dự kiến)</span><strong>{{ formatCurrency(cartShippingFee) }}</strong></div>
-            <hr>
-            <div class="sum-row total"><span>Tổng cộng</span><strong>{{ formatCurrency(cartTotal) }}</strong></div>
-            <button class="btn-sg w-100 mt-3" @click="goCheckout"><i class="bi bi-credit-card me-2"></i>Tiến hành thanh toán</button>
-            <router-link to="/products" class="btn-sg-outline w-100 mt-2 text-center d-block text-decoration-none">Tiếp tục mua sắm</router-link>
+          <div class="summary-box">
+            <h6 class="summary-title">TÓM TẮT ĐƠN HÀNG</h6>
+            
+            <div class="sum-row mt-4">
+              <span>Tạm tính</span>
+              <span>{{ formatCurrency(cartSubtotal) }}</span>
+            </div>
+            
+            <div class="sum-row">
+              <span>Phí giao hàng (dự kiến)</span>
+              <span>{{ formatCurrency(cartShippingFee) }}</span>
+            </div>
+            
+            <hr class="summary-divider">
+            
+            <div class="sum-row total">
+              <span>TỔNG CỘNG</span>
+              <strong>{{ formatCurrency(cartTotal) }}</strong>
+            </div>
+            
+            <button class="btn-sg-warm w-100 mt-4" @click="goCheckout">
+              TIẾN HÀNH THANH TOÁN
+            </button>
+            <router-link to="/products" class="btn-sg-outline w-100 mt-3 text-center d-block">
+              TIẾP TỤC MUA SẮM
+            </router-link>
           </div>
         </div>
       </div>
@@ -88,31 +121,229 @@ const attrsOf = (item) => {
 </template>
 
 <style scoped>
-.cart-page { background: var(--sg-canvas); min-height: 100vh; }
-.cart-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
-.empty { text-align: center; padding: 60px 20px; margin-top: 20px; }
-.empty i { font-size: 2rem; color: var(--sg-muted); }
-.empty h5 { font-weight: 800; margin-top: 12px; }
-.cart-item { display: flex; gap: 16px; padding: 16px; margin-bottom: 14px; }
-.ci-img { width: 110px; height: 110px; border-radius: 14px; overflow: hidden; background: var(--sg-canvas); flex-shrink: 0; }
-.ci-img img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; }
-.ci-body { flex: 1; min-width: 0; }
-.ci-name { font-weight: 800; color: var(--sg-ink); text-decoration: none; font-size: 1.05rem; }
-.ci-name:hover { color: var(--sg-blue); }
-.ci-remove { border: 0; background: var(--sg-canvas); color: #ef4444; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
-.ci-remove:hover { background: #fee2e2; }
-.ci-attrs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.ci-attrs .sg-chip { font-size: .72rem; }
-.ci-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
-.qty-box { display: flex; align-items: center; border: 1.5px solid var(--sg-line); border-radius: 999px; overflow: hidden; }
-.qty-box button { width: 38px; height: 40px; border: 0; background: #fff; }
-.qty-box button:hover { background: var(--sg-canvas); }
-.qty-box span { width: 38px; text-align: center; font-weight: 800; }
-.ci-price { font-weight: 900; font-size: 1.15rem; color: var(--sg-blue-700); }
-.btn-clear-cart { border: 0; background: transparent; color: var(--sg-muted); font-weight: 600; font-size: .88rem; margin-top: 6px; }
-.btn-clear-cart:hover { color: #ef4444; }
-.summary { padding: 22px; position: sticky; top: 90px; }
-.sum-row { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--sg-ink-2); }
-.sum-row.total { font-size: 1.2rem; color: var(--sg-ink); }
-.sum-row.total strong { color: var(--sg-blue-700); }
+.cart-page {
+  background: #ffffff;
+  min-height: 100vh;
+}
+
+.cart-title {
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  color: #1a1a1a;
+  margin: 0 0 4px;
+}
+
+.cart-count-text {
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+}
+.empty-state i {
+  font-size: 2.5rem;
+  color: #ccc;
+  display: block;
+  margin-bottom: 16px;
+}
+.empty-state h5 {
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+/* Cart Item */
+.cart-list {
+  border-top: 1px solid #e5e5e5;
+}
+.cart-item {
+  display: flex;
+  gap: 24px;
+  padding: 24px 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+.ci-img {
+  width: 140px;
+  height: 140px;
+  background: #f5f5f5;
+  flex-shrink: 0;
+  display: block;
+}
+.ci-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ci-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ci-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  text-decoration: none;
+  line-height: 1.3;
+}
+.ci-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ci-remove {
+  border: 0;
+  background: transparent;
+  color: #888;
+  font-size: 1.2rem;
+  padding: 4px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.ci-remove:hover {
+  color: #D4001A;
+}
+
+.ci-attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.ci-attr-item {
+  font-size: 0.85rem;
+  color: #555;
+  border-right: 1px solid #ddd;
+  padding-right: 12px;
+}
+.ci-attr-item:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.ci-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+/* Quantity Box */
+.qty-box {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  background: #fff;
+}
+.qty-box button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.qty-box button:hover {
+  background: #f5f5f5;
+}
+.qty-box span {
+  width: 40px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1a1a1a;
+  border-left: 1px solid #e5e5e5;
+  border-right: 1px solid #e5e5e5;
+  line-height: 32px;
+}
+
+.ci-price {
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: #1a1a1a;
+}
+
+.btn-clear-cart {
+  border: 0;
+  background: transparent;
+  color: #555;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  margin-top: 24px;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.btn-clear-cart:hover {
+  color: #1a1a1a;
+}
+
+/* Summary Box */
+.summary-box {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 32px;
+  position: sticky;
+  top: 100px;
+}
+.summary-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  color: #1a1a1a;
+  margin: 0;
+}
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #555;
+  font-size: 0.95rem;
+}
+.summary-divider {
+  border-top: 1px solid #e5e5e5;
+  margin: 20px 0;
+}
+.sum-row.total {
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+.sum-row.total strong {
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .cart-item {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .ci-img {
+    width: 100%;
+    height: 240px;
+  }
+  .summary-box {
+    padding: 20px;
+    margin-top: 32px;
+  }
+}
 </style>

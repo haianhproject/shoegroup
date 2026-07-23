@@ -174,8 +174,8 @@ onMounted(fetchAllData);
         style="height: 72px"
       >
         <div class="d-flex align-items-center gap-2">
-          <BrandLogo :size="36" :radius="11" />
-          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5">SHOE<span style="color:#38bdf8">GROUP</span></h3>
+          <BrandLogo :size="36" :radius="4" />
+          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span style="color:#D4001A">GROUP</span></h3>
         </div>
       </div>
 
@@ -660,7 +660,7 @@ onMounted(fetchAllData);
 
 <style scoped>
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css");
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap");
 
 .font-sans {
   font-family:
@@ -727,13 +727,13 @@ onMounted(fetchAllData);
   color: #fff !important;
 }
 .active-nav {
-  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%) !important;
+  background: linear-gradient(135deg, #111111 0%, #dc2626 100%) !important;
   color: #ffffff !important;
   font-weight: 700 !important;
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35);
 }
 .active-nav:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%) !important;
+  background: linear-gradient(135deg, #111111 0%, #dc2626 100%) !important;
   color: #ffffff !important;
 }
 
@@ -788,7 +788,7 @@ onMounted(fetchAllData);
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #2563eb;
+  background: #dc2626;
   margin-top: 4px;
 }
 .timeline-line {
@@ -826,20 +826,20 @@ onMounted(fetchAllData);
   border-left: 4px solid #6b7280;
 }
 .toast-success {
-  border-left-color: #16a34a;
-  color: #166534;
+  border-left-color: #0A0A0A;
+  color: #0A0A0A;
 }
 .toast-error {
-  border-left-color: #dc2626;
-  color: #991b1b;
+  border-left-color: #D4001A;
+  color: #D4001A;
 }
 .toast-warning {
-  border-left-color: #d97706;
-  color: #92400e;
+  border-left-color: #000000;
+  color: #000000;
 }
 .toast-info {
-  border-left-color: #2563eb;
-  color: #1e40af;
+  border-left-color: #333333;
+  color: #333333;
 }
 .fade-in-scale {
   animation: fadeInScale 0.25s ease;
@@ -855,3 +855,4 @@ onMounted(fetchAllData);
   }
 }
 </style>
+
