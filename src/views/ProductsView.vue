@@ -18,6 +18,8 @@ const materials = ref([])
 const sports = ref([])
 const isLoading = ref(true)
 
+const isCentered = computed(() => route.query.center === 'true')
+
 // Filter state
 const search = ref('')
 const selCategory = ref(null)
@@ -25,7 +27,6 @@ const selSports = ref([])
 const selColors = ref([])
 const selSizes = ref([])
 const selMaterials = ref([])
-const priceMax = ref(6000000)
 const sortBy = ref('featured')
 const showFiltersMobile = ref(false)
 
@@ -58,12 +59,7 @@ const fetchAll = async () => {
     materials.value = (await rm.json()).map((m) => ({ id_material: m.id, material_name: m.name }))
     sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
   } catch (e) {
-    products.value = mockProducts.map((p) => ({ ...p, category_name: mockCats.find((c) => c.id_category === p.id_category)?.category_name, color_name: 'Đen' }))
-    categories.value = mockCats
-    colors.value = mockColors
-    sizes.value = mockSizes
-    materials.value = mockMaterials
-    sports.value = mockSports
+    console.error("Lỗi khi lấy dữ liệu bộ lọc từ DB:", e)
   } finally {
     isLoading.value = false
   }
@@ -83,7 +79,7 @@ const toggle = (arr, val) => {
 
 const clearFilters = () => {
   selCategory.value = null; selSports.value = []; selColors.value = []
-  selSizes.value = []; selMaterials.value = []; priceMax.value = 6000000; search.value = ''
+  selSizes.value = []; selMaterials.value = []; search.value = ''
   router.replace({ path: '/products' })
 }
 
@@ -96,7 +92,6 @@ const filtered = computed(() => {
   if (selColors.value.length) list = list.filter((p) => (p.f_colors || []).some((c) => selColors.value.includes(c)))
   if (selSizes.value.length) list = list.filter((p) => (p.f_sizes || []).some((s) => selSizes.value.includes(String(s))))
   if (selMaterials.value.length) list = list.filter((p) => selMaterials.value.includes(p.material_id))
-  list = list.filter((p) => (p.price || 0) <= priceMax.value)
   if (sortBy.value === 'price-asc') list.sort((a, b) => a.price - b.price)
   else if (sortBy.value === 'price-desc') list.sort((a, b) => b.price - a.price)
   else if (sortBy.value === 'name') list.sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''))
@@ -106,18 +101,27 @@ const filtered = computed(() => {
 const activeCategoryName = computed(() => categories.value.find((c) => c.id_category === selCategory.value)?.category_name)
 const fmtPrice = (v) => new Intl.NumberFormat('vi-VN').format(v) + 'đ'
 
+// Khi doi bo loc, dua trang ve dau danh sach de khong bi "nhay" xuong cuoi trang
+watch(
+  [selCategory, selSports, selColors, selSizes, selMaterials, sortBy],
+  () => {
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  },
+  { deep: true },
+)
+
 onMounted(fetchAll)
 </script>
 
 <template>
-  <div class="products-page">
-    <div class="container-fluid px-4 py-4">
+  <div class="products-page" :class="{ 'd-flex align-items-center justify-content-center min-vh-100': isCentered }">
+    <div class="container-fluid px-4 py-4" :style="isCentered ? 'max-width: 1200px; width: 100%;' : ''">
       <!-- Header -->
       <div class="page-head">
         <div>
           <div class="sg-title-bar mb-2"></div>
-          <h1 class="page-title">{{ activeCategoryName || 'Tất cả sản phẩm' }}</h1>
-          <p class="text-secondary mb-0">{{ filtered.length }} sản phẩm phù hợp</p>
+          <h1 class="page-title">{{ activeCategoryName || 'TẤT CẢ SẢN PHẨM' }}</h1>
+          <p class="text-secondary mb-0">{{ filtered.length }} sản phẩm</p>
         </div>
         <div class="d-flex gap-2 align-items-center">
           <button class="btn-sg-outline d-lg-none" @click="showFiltersMobile = !showFiltersMobile"><i class="bi bi-funnel me-1"></i>Lọc</button>
@@ -141,16 +145,16 @@ onMounted(fetchAll)
 
             <!-- Type-ahead search -->
             <div class="filter-group">
-              <label class="filter-label">Tìm theo tên</label>
+              <label class="filter-label">TÌM KIẾM</label>
               <div class="search-inline">
                 <i class="bi bi-search"></i>
-                <input v-model="search" type="search" placeholder="Nhập từng ký tự…">
+                <input v-model="search" type="search" placeholder="Tìm sản phẩm…">
               </div>
             </div>
 
             <!-- Sport / category -->
             <div class="filter-group">
-              <label class="filter-label">Thể loại thể thao</label>
+              <label class="filter-label">THỂ LOẠI</label>
               <div class="chip-wrap">
                 <button v-for="s in sports" :key="s" class="filter-chip" :class="{ active: selSports.includes(s) }" @click="toggle(selSports, s)">{{ s }}</button>
               </div>
@@ -158,7 +162,7 @@ onMounted(fetchAll)
 
             <!-- Colors -->
             <div class="filter-group">
-              <label class="filter-label">Màu sắc</label>
+              <label class="filter-label">MÀU SẮC</label>
               <div class="color-wrap">
                 <button v-for="c in colors" :key="c.id_color" class="color-dot" :class="{ active: selColors.includes(c.color_label) }" :style="{ background: c.hex || '#ccc' }" :title="c.color_label" @click="toggle(selColors, c.color_label)">
                   <i v-if="selColors.includes(c.color_label)" class="bi bi-check-lg"></i>
@@ -168,7 +172,7 @@ onMounted(fetchAll)
 
             <!-- Sizes -->
             <div class="filter-group">
-              <label class="filter-label">Kích cỡ (Size)</label>
+              <label class="filter-label">KÍCH CỠ</label>
               <div class="size-wrap">
                 <button v-for="s in sizes" :key="s.id_size" class="size-box" :class="{ active: selSizes.includes(s.size_name) }" @click="toggle(selSizes, s.size_name)">{{ s.size_name }}</button>
               </div>
@@ -176,7 +180,7 @@ onMounted(fetchAll)
 
             <!-- Materials -->
             <div class="filter-group">
-              <label class="filter-label">Chất liệu</label>
+              <label class="filter-label">CHẤT LIỆU</label>
               <div class="d-flex flex-column gap-2">
                 <label v-for="m in materials" :key="m.id_material" class="check-row">
                   <input type="checkbox" :value="m.id_material" :checked="selMaterials.includes(m.id_material)" @change="toggle(selMaterials, m.id_material)">
@@ -184,18 +188,12 @@ onMounted(fetchAll)
                 </label>
               </div>
             </div>
-
-            <!-- Price -->
-            <div class="filter-group">
-              <label class="filter-label">Giá tối đa: <strong class="text-sg-blue">{{ fmtPrice(priceMax) }}</strong></label>
-              <input type="range" min="500000" max="6000000" step="100000" v-model.number="priceMax" class="price-range">
-            </div>
           </div>
         </aside>
 
         <!-- PRODUCT GRID -->
         <div class="col-lg-9">
-          <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+          <div v-if="isLoading" class="text-center py-5"><div class="spinner-border" style="color: #222;"></div></div>
           <div v-else-if="filtered.length === 0" class="empty-state sg-card">
             <i class="bi bi-search"></i>
             <h5>Không tìm thấy sản phẩm</h5>
@@ -219,31 +217,33 @@ onMounted(fetchAll)
 .page-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; margin: 0; }
 .sort-sel { padding: .5rem 1rem; font-weight: 600; min-width: 160px; }
 
-.filter-panel { padding: 20px; }
+.filter-panel {
+  background: #fff; border: 1px solid #e5e5e5; border-radius: 0px; padding: 20px;
+  position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;
+}
 .filter-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--sg-line); margin-bottom: 16px; }
-.btn-clear { border: 0; background: transparent; color: var(--sg-orange); font-weight: 700; font-size: .85rem; }
+.btn-clear { border: 0; background: transparent; color: var(--sg-red); font-weight: 700; font-size: .85rem; }
 .btn-clear:hover { text-decoration: underline; }
 .filter-group { padding: 14px 0; border-bottom: 1px dashed var(--sg-line); }
 .filter-group:last-child { border-bottom: 0; }
 .filter-label { font-weight: 700; font-size: .85rem; color: var(--sg-ink-2); margin-bottom: 10px; display: block; }
-.search-inline { display: flex; align-items: center; gap: 8px; background: var(--sg-canvas); border: 1.5px solid var(--sg-line); border-radius: 10px; padding: 6px 12px; }
+.search-inline { display: flex; align-items: center; gap: 8px; background: var(--sg-canvas); border: 1px solid var(--sg-line); border-radius: 0px; padding: 6px 12px; }
 .search-inline i { color: var(--sg-muted); }
 .search-inline input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
-.filter-chip { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
-.filter-chip:hover { border-color: var(--sg-blue); color: var(--sg-blue); }
-.filter-chip.active { background: var(--sg-ink); color: #fff; border-color: var(--sg-ink); }
+.filter-chip { border: 1px solid var(--sg-line); background: #fff; border-radius: 0px; padding: .3rem .8rem; font-size: .8rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
+.filter-chip:hover { border-color: #0A0A0A; color: #0A0A0A; }
+.filter-chip.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
 .color-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
-.color-dot { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px var(--sg-line); color: #fff; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; }
-.color-dot:hover { transform: scale(1.12); }
-.color-dot.active { box-shadow: 0 0 0 3px var(--sg-blue); }
+.color-dot { width: 34px; height: 34px; border-radius: 0px; border: 1px solid #ccc; color: transparent; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; }
+.color-dot:hover { transform: scale(1.12); border-color: #0A0A0A; }
+.color-dot.active { box-shadow: 0 0 0 2px #0A0A0A; border-color: #0A0A0A; color: #fff; }
 .size-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
-.size-box { width: 46px; height: 40px; border: 1.5px solid var(--sg-line); background: #fff; border-radius: 10px; font-weight: 700; transition: .2s; }
-.size-box:hover { border-color: var(--sg-blue); }
-.size-box.active { background: var(--sg-grad-primary); color: #fff; border-color: transparent; }
+.size-box { width: 46px; height: 40px; border: 1px solid #ccc; background: #fff; border-radius: 0px; font-weight: 700; transition: .2s; display: flex; align-items: center; justify-content: center; color: #0A0A0A; }
+.size-box:hover { border-color: #0A0A0A; }
+.size-box.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; }
-.check-row input { width: 17px; height: 17px; accent-color: var(--sg-blue); }
-.price-range { width: 100%; accent-color: var(--sg-blue); }
+.check-row input { width: 17px; height: 17px; accent-color: #0A0A0A; }
 
 .empty-state { text-align: center; padding: 60px 20px; }
 .empty-state i { font-size: 3rem; color: var(--sg-muted); }

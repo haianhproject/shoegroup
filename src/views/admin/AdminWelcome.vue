@@ -34,7 +34,7 @@ function enterPanel() {
 
 <style scoped>
 @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap');
 
 .font-sans { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .welcome-overlay {
@@ -66,3 +66,4 @@ function enterPanel() {
 .fade-in-scale { animation: fadeInScale 0.4s ease; }
 @keyframes fadeInScale { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
 </style>
+

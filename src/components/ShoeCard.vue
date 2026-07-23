@@ -42,7 +42,7 @@ const handleAddToCart = () => {
       </router-link>
       <div class="shoe-meta">
         <span v-if="product.material_name" class="sg-chip sg-chip-lime"><i class="bi bi-layers"></i> {{ product.material_name }}</span>
-        <span v-if="product.sport" class="sg-chip sg-chip-blue"><i class="bi bi-lightning"></i> {{ product.sport }}</span>
+        <span v-if="product.sport" class="sg-chip sg-chip-blue">{{ product.sport }}</span>
       </div>
       <div class="shoe-foot">
         <div class="shoe-price">{{ formatCurrency(product.price || product.BasePrice) }}</div>
@@ -55,22 +55,21 @@ const handleAddToCart = () => {
 </template>
 
 <style scoped>
-.shoe-card { display: flex; flex-direction: column; height: 100%; background: #fff; border: 1px solid var(--sg-line); border-radius: 20px; overflow: hidden; transition: transform .3s cubic-bezier(.25,.8,.25,1), box-shadow .3s; }
-.shoe-card:hover { transform: translateY(-8px); box-shadow: var(--sg-shadow-lg); border-color: transparent; }
-.shoe-media { position: relative; display: block; aspect-ratio: 4/3; background: linear-gradient(160deg,#eef2ff 0%,#f5f7fb 100%); overflow: hidden; }
-.shoe-media img { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; transition: transform .5s ease; }
-.shoe-card:hover .shoe-media img { transform: scale(1.09) rotate(-3deg); }
-.shoe-tag { position: absolute; top: 12px; left: 12px; z-index: 2; background: rgba(15,23,42,.85); color: #fff; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .28rem .7rem; border-radius: 999px; }
-.shoe-shine { position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(120deg, transparent, rgba(255,255,255,.55), transparent); transform: skewX(-20deg); transition: left .6s ease; }
-.shoe-card:hover .shoe-shine { left: 120%; }
+.shoe-card { display: flex; flex-direction: column; height: 100%; background: #fff; border: 1px solid var(--sg-line); border-radius: 0px; overflow: hidden; transition: border-color .3s ease; }
+.shoe-card:hover { border-color: #000; }
+.shoe-media { position: relative; display: block; aspect-ratio: 4/3; background: #f9f9f9; overflow: hidden; border-bottom: 1px solid var(--sg-line); }
+.shoe-media img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.shoe-card:hover .shoe-media img { transform: scale(1.04); }
+.shoe-tag { position: absolute; top: 12px; left: 12px; z-index: 2; background: #000; color: #fff; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .28rem .7rem; border-radius: 0px; }
+.shoe-shine { display: none; }
 .shoe-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 18px; flex: 1; }
 .shoe-brand { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sg-muted); opacity: .7; margin-bottom: -4px; }
-.shoe-name { font-weight: 800; color: var(--sg-ink); text-decoration: none; font-size: 1rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; transition: color .2s; }
-.shoe-name:hover { color: var(--sg-blue); }
+.shoe-name { font-weight: 800; color: #000; text-decoration: none; font-size: 1rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; transition: color .2s; }
+.shoe-name:hover { color: #555; }
 .shoe-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.shoe-meta .sg-chip { font-size: .68rem; padding: .16rem .55rem; }
+.shoe-meta .sg-chip { font-size: .68rem; padding: .16rem .55rem; border-radius: 0px; background: #f9f9f9; color: #000; border: 1px solid var(--sg-line); }
 .shoe-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; }
-.shoe-price { font-weight: 900; font-size: 1.2rem; color: var(--sg-ink); }
-.shoe-add { width: 44px; height: 44px; border-radius: 14px; border: 0; background: var(--sg-grad-primary); color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 18px rgba(37,99,235,.32); transition: transform .2s, box-shadow .2s; }
-.shoe-add:hover { transform: translateY(-3px) rotate(90deg); box-shadow: 0 14px 26px rgba(37,99,235,.45); }
+.shoe-price { font-weight: 900; font-size: 1.2rem; color: #000; }
+.shoe-add { width: 44px; height: 44px; border-radius: 0px; border: 1px solid #000; background: #000; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all .3s ease; }
+.shoe-add:hover { background: #fff; color: #000; }
 </style>
