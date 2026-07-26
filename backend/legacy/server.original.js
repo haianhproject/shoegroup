@@ -3,56 +3,23 @@ const cors = require("cors");
 const sql = require("mssql");
 const nodemailer = require("nodemailer");
 
-/* ===== [TOI UU] Lop cau hinh + bao mat (them moi, khong xoa code cu) ===== */
-const config = require("./src/security/env");
-const jwtHelper = require("./src/security/jwt");
-const passwordHelper = require("./src/security/password");
-const {
-  attachUser,
-  policyGuard,
-  createRateLimiter,
-  securityHeaders,
-  corsOptions,
-  notFoundHandler,
-  errorHandler,
-} = require("./src/security/guard");
-const createOptimizedRoutes = require("./src/routes/optimized.routes");
-
 const app = express();
-app.disable("x-powered-by");
-const PORT = config.port; // [TOI UU] doc tu bien moi truong PORT
+const PORT = 5000;
 
-app.use(cors(corsOptions)); // [TOI UU] chi cho phep origin trong CORS_ORIGINS
-app.use(securityHeaders); // [TOI UU] header bao mat (thay helmet)
-app.use(express.json({ limit: config.bodyLimit })); // [TOI UU] 50mb -> BODY_LIMIT (mac dinh 5mb)
-app.use(
-  createRateLimiter({
-    windowMs: config.rateLimit.windowMs,
-    max: config.rateLimit.maxApi,
-    key: "api",
-  }),
-);
-const loginLimiter = createRateLimiter({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxLogin,
-  key: "login",
-  message: "Ban dang nhap sai qua nhieu lan. Vui long thu lai sau 15 phut.",
-});
-app.use(attachUser); // [TOI UU] doc JWT tu header Authorization
-app.use(policyGuard); // [TOI UU] phan quyen tap trung cho toan bo /api/*
+app.use(cors());
+app.use(express.json({ limit: "50mb" }));
 app.post('/api/log-error', (req, res) => { console.log('[BROWSER ERROR]', req.body); res.sendStatus(200); });
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-/* [TOI UU] Khong hard-code mat khau DB nua - doc tu .env (co gia tri mac dinh
-   giong cu de may dev cua ban van chay ngay khong can sua gi). */
 const dbConfig = {
-  user: config.db.user,
-  password: config.db.password,
-  server: config.db.server,
-  database: config.db.database,
-  options: config.db.options,
-  pool: config.db.pool,
-  requestTimeout: config.db.requestTimeout,
+  user: "sa",
+  password: "123", // Doi thanh mat khau SQL cua ban neu can
+  server: "127.0.0.1",
+  database: "ShoegroupDB",
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+  },
 };
 
 const pool = new sql.ConnectionPool(dbConfig);
@@ -69,145 +36,76 @@ poolConnect
 //   https://myaccount.google.com/apppasswords
 // Sau do dien EMAIL_USER = email cua ban, EMAIL_PASS = app password 16 ky tu.
 // Nen dat qua bien moi truong khi deploy. Cai thu vien: npm install nodemailer
-/* [TOI UU][BAO MAT] App password Gmail da bi go khoi ma nguon.
-   Hay dat EMAIL_USER / EMAIL_PASS trong file .env va THU HOI app password cu. */
-const FRONTEND_URL = config.frontendUrl;
-const EMAIL_USER = config.mail.user;
-const EMAIL_PASS = config.mail.pass;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const EMAIL_USER = process.env.EMAIL_USER || "anhbhth05764@gmail.com";
+const EMAIL_PASS = process.env.EMAIL_PASS || "labw adqs zelc mcen";
 const mailTransporter = nodemailer.createTransport({
   service: "gmail",
   auth: { user: EMAIL_USER, pass: EMAIL_PASS },
 });
 // Kiem tra dang nhap SMTP NGAY khi khoi dong -> in ket qua ra terminal.
 // Neu thay "[EMAIL] LOI" thi email/app-password sai (hoac chua bat 2FA).
-if (!EMAIL_USER || !EMAIL_PASS) {
-  console.warn(
-    "[EMAIL] Chua cau hinh EMAIL_USER/EMAIL_PASS trong .env -> tinh nang gui mail se tam tat.",
-  );
-}
 mailTransporter.verify((err) => {
   if (err) console.error("[EMAIL] LOI cau hinh gui mail:", err.message);
   else console.log("[EMAIL] San sang gui mail qua:", EMAIL_USER);
 });
 
 // ================= API XAC THUC =================
-/* =========================================================================
- * [TOI UU][BAO MAT] Dang nhap
- *  - Khong so sanh mat khau tho trong SQL nua.
- *  - Ho tro NGUOC: tai khoan cu dang luu mat khau tho van dang nhap duoc,
- *    va se TU DONG duoc bam lai (scrypt) ngay sau lan dang nhap do.
- *  - Tra ve them `token` (JWT) de frontend gui kem moi request.
- * ========================================================================= */
-app.post("/api/login", loginLimiter, async (req, res) => {
+app.post("/api/login", async (req, res) => {
   try {
-    // [TOI UU] Kiem tra du lieu TRUOC khi cho ket noi DB -> tra ve 400 dung chuan
-    const { email, password } = req.body || {};
-    if (!email || !password)
-      return res
-        .status(400)
-        .json({ success: false, message: "Thieu email hoac mat khau" });
     await poolConnect;
-
-    const r = await pool
+    const { email, password } = req.body;
+    let r = await pool
       .request()
-      .input("e", sql.VarChar, String(email).trim().toLowerCase())
+      .input("e", sql.VarChar, email)
+      .input("p", sql.VarChar, password)
       .query(
-        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, RoleID as role_id, PasswordHash as password_hash FROM Users WHERE LOWER(Email)=@e AND IsActive=1",
+        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, RoleID as role_id FROM Users WHERE Email=@e AND PasswordHash=@p AND IsActive=1",
       );
 
-    const row = r.recordset[0];
-    const check = row
-      ? await passwordHelper.verify(password, row.password_hash)
-      : { ok: false, needsUpgrade: false };
-
-    if (!row || !check.ok) {
-      return res
+    if (r.recordset.length > 0) {
+      const user = r.recordset[0];
+      user.role = Number(user.role_id) === 1 ? "Admin" : "Customer";
+      res.json({ success: true, user });
+    } else {
+      res
         .status(401)
         .json({ success: false, message: "Sai email hoac mat khau" });
     }
-
-    // Tu dong nang cap mat khau tho -> scrypt (chay am tham, khong anh huong nguoi dung)
-    if (check.needsUpgrade) {
-      try {
-        const newHash = await passwordHelper.hash(password);
-        await pool
-          .request()
-          .input("id", sql.Int, row.id_user)
-          .input("h", sql.VarChar, newHash)
-          .query(
-            "UPDATE Users SET PasswordHash=@h, LastPasswordChangedAt=ISNULL(LastPasswordChangedAt, GETDATE()) WHERE UserID=@id",
-          );
-        try {
-          await pool
-            .request()
-            .input("id", sql.Int, row.id_user)
-            .query("UPDATE Users SET PasswordAlgo='scrypt' WHERE UserID=@id");
-        } catch (_) {
-          /* cot PasswordAlgo chua co -> bo qua */
-        }
-        console.log("[SECURITY] Da bam lai mat khau cho UserID", row.id_user);
-      } catch (upErr) {
-        console.warn("[SECURITY] Khong nang cap duoc mat khau:", upErr.message);
-      }
-    }
-
-    delete row.password_hash;
-    row.role = Number(row.role_id) === 1 ? "Admin" : "Customer";
-    const token = jwtHelper.issueForUser(row);
-    // Giu nguyen dinh dang cu (success + user) va BO SUNG token
-    res.json({ success: true, user: { ...row, token }, token });
   } catch (e) {
-    console.error("[LOGIN ERROR]", e.message);
-    res.status(500).json({ success: false, message: "Loi dang nhap, thu lai sau" });
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
-/* [TOI UU][BAO MAT] Dang ky: bam mat khau bang scrypt truoc khi luu. */
 app.post("/api/register", async (req, res) => {
   try {
-    const { fullName, email, password } = req.body || {};
-    if (!fullName || !email || !password)
-      return res
-        .status(400)
-        .json({ success: false, message: "Vui long nhap day du thong tin." });
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email)))
-      return res.status(400).json({ success: false, message: "Email khong hop le." });
-    const strength = passwordHelper.checkStrength(password);
-    if (!strength.ok)
-      return res.status(400).json({ success: false, message: strength.message });
-
     await poolConnect;
-    const mail = String(email).trim().toLowerCase();
-    const check = await pool
+    const { fullName, email, password } = req.body;
+    let check = await pool
       .request()
-      .input("e", sql.VarChar, mail)
-      .query("SELECT UserID FROM Users WHERE LOWER(Email)=@e");
+      .input("e", sql.VarChar, email)
+      .query("SELECT UserID FROM Users WHERE Email=@e");
     if (check.recordset.length > 0)
       return res
         .status(400)
         .json({ success: false, message: "Email nay da duoc su dung." });
 
-    const hashed = await passwordHelper.hash(password);
-    const r = await pool
+    let r = await pool
       .request()
-      .input("f", sql.NVarChar, String(fullName).trim())
-      .input("e", sql.VarChar, mail)
-      .input("p", sql.VarChar, hashed)
+      .input("f", sql.NVarChar, fullName)
+      .input("e", sql.VarChar, email)
+      .input("p", sql.VarChar, password)
       .query(
         "INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.RoleID as role_id VALUES (2, @f, @e, @p, 1)",
       );
 
-    const user = { ...r.recordset[0], role: "Customer" };
-    const token = jwtHelper.issueForUser(user);
     res.json({
       success: true,
       message: "Dang ky thanh cong",
-      user: { ...user, token },
-      token,
+      user: { ...r.recordset[0], role: "Customer" },
     });
   } catch (e) {
-    console.error("[REGISTER ERROR]", e.message);
-    res.status(500).json({ success: false, message: "Khong dang ky duoc, thu lai sau" });
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
@@ -1855,15 +1753,10 @@ app.post("/api/auth/reset-password", async (req, res) => {
         success: false,
         message: "Token khong hop le hoac da het han.",
       });
-    const strength = passwordHelper.checkStrength(newPassword);
-    if (!strength.ok)
-      return res.status(400).json({ success: false, message: strength.message });
-    // [TOI UU][BAO MAT] luu mat khau DA BAM, khong luu van ban tho
-    const hashedNewPassword = await passwordHelper.hash(newPassword);
     await pool
       .request()
       .input("t", sql.VarChar, token)
-      .input("p", sql.VarChar, hashedNewPassword).query(`
+      .input("p", sql.VarChar, newPassword).query(`
         UPDATE Users
         SET PasswordHash = @p, PasswordResetToken = NULL,
             PasswordResetTokenExpiry = NULL, LastPasswordChangedAt = GETDATE()
@@ -1875,33 +1768,9 @@ app.post("/api/auth/reset-password", async (req, res) => {
   }
 });
 
-/* ===== [TOI UU] Cac API moi (phan trang, dashboard, health) - route cu giu nguyen ===== */
-app.use(createOptimizedRoutes({ pool, poolConnect, sql }));
-
-/* ===== [TOI UU] 404 + xu ly loi tap trung (khong lo thong tin he thong) ===== */
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-process.on("unhandledRejection", (err) =>
-  console.error("[unhandledRejection]", err && err.message),
-);
-
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server dang chay tai http://localhost:${PORT}`);
-  console.log(`   - Che do phan quyen : ${config.authMode.toUpperCase()}`);
-  console.log(`   - CORS cho phep     : ${config.corsOrigins.join(", ")}`);
-  console.log(`   - Kiem tra suc khoe : http://localhost:${PORT}/api/health`);
 });
-
-/* Tat may chu "muot" khi nhan Ctrl+C / khi deploy lai */
-const shutdown = (signal) => {
-  console.log(`\n[${signal}] Dang dong may chu...`);
-  server.close(() => {
-    pool.close().finally(() => process.exit(0));
-  });
-  setTimeout(() => process.exit(1), 8000).unref();
-};
-["SIGINT", "SIGTERM"].forEach((s) => process.on(s, () => shutdown(s)));
 
 
 

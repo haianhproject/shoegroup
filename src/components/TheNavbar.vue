@@ -8,6 +8,7 @@ import {
 import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from './BrandLogo.vue'
+import { API_BASE_URL } from "../services/apiClient";
 
 const router = useRouter()
 const route = useRoute()
@@ -30,7 +31,7 @@ const fetchNotifications = async () => {
     const notifs = []
     
     // Fetch coupons (vouchers)
-    const resCoupons = await fetch('http://localhost:5000/api/discounts')
+    const resCoupons = await fetch(`${API_BASE_URL}/discounts`)
     if (resCoupons.ok) {
       const coupons = await resCoupons.json()
       coupons.forEach(c => {
@@ -53,7 +54,7 @@ const fetchNotifications = async () => {
 
     // Fetch notifications if authenticated
     if (isAuthenticated.value && currentUser.value?.id) {
-      const resNotifs = await fetch(`http://localhost:5000/api/customers/${currentUser.value.id}/notifications`)
+      const resNotifs = await fetch(`${API_BASE_URL}/customers/${currentUser.value.id}/notifications`)
       if (resNotifs.ok) {
         const dbNotifs = await resNotifs.json()
         dbNotifs.forEach(n => {

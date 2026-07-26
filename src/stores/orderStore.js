@@ -228,7 +228,8 @@ export const setServerId = (localId, serverId) => {
   if (o) { o.serverId = serverId; saveOrders(); }
 };
 
-const API_BASE = "http://localhost:5000/api";
+import { API_BASE_URL } from "../services/apiClient";
+const API_BASE = API_BASE_URL;
 
 /* Ánh xạ trạng thái tiếng Việt (server/Admin) -> KEY nội bộ */
 const SERVER_STATUS_TO_KEY = {

@@ -6,6 +6,7 @@ import {
   products as mockProducts, categories as mockCats,
   colors as mockColors, sizes as mockSizes, materials as mockMaterials, sports as mockSports,
 } from '../data/mockData'
+import { API_BASE_URL } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -30,7 +31,7 @@ const selMaterials = ref([])
 const sortBy = ref('featured')
 const showFiltersMobile = ref(false)
 
-const API = 'http://localhost:5000/api'
+const API = API_BASE_URL
 
 const fetchAll = async () => {
   try {

@@ -6,6 +6,7 @@ import { createOrder, setServerId } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import { shippingMethods, distanceFromHanoi } from '../data/mockData'
+import { API_BASE_URL } from "../services/apiClient";
 
 const router = useRouter()
 
@@ -123,7 +124,7 @@ const placeOrder = async () => {
   })
   if (!r.ok) { placing.value = false; notify({ type: 'error', message: r.message }); return }
   try {
-    const res = await fetch('http://localhost:5000/api/orders', {
+    const res = await fetch(`${API_BASE_URL}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

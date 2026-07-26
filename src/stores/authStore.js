@@ -1,4 +1,6 @@
 import { computed, reactive } from "vue";
+/* [TOI UU] Lay dia chi API tu .env + luu token JWT */
+import { API_BASE_URL, setToken, clearToken } from "../services/apiClient";
 
 /* =====================================================================
    authStore - có cơ chế bảo mật cookie / phiên theo trình duyệt
@@ -76,6 +78,11 @@ const loadCurrentUser = () => {
 };
 
 const saveCurrentUser = (user) => {
+  // [TOI UU] Dong bo token JWT voi phien dang nhap
+  try {
+    if (user && user.token) setToken(user.token);
+    if (!user) clearToken();
+  } catch (e) { /* bo qua */ }
   if (typeof localStorage === "undefined") return;
   if (!user) {
     localStorage.removeItem(STORAGE_KEY);
@@ -99,7 +106,7 @@ export const getCurrentUser = () => authState.currentUser;
 
 export const login = async ({ email, password }) => {
   try {
-    const res = await fetch("http://localhost:5000/api/login", {
+    const res = await fetch(`${API_BASE_URL}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -118,7 +125,7 @@ export const login = async ({ email, password }) => {
 
 export const register = async ({ fullName, email, password }) => {
   try {
-    const res = await fetch("http://localhost:5000/api/register", {
+    const res = await fetch(`${API_BASE_URL}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fullName, email, password }),
@@ -142,7 +149,7 @@ export const logout = () => {
 
 export const updateProfile = async (data) => {
   try {
-    const res = await fetch(`http://localhost:5000/api/accounts/${data.id}`, {
+    const res = await fetch(`${API_BASE_URL}/accounts/${data.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -169,7 +176,7 @@ export const updateProfile = async (data) => {
 /* Yêu cầu đặt lại mật khẩu (gửi email) */
 export const requestPasswordReset = async (email) => {
   try {
-    const res = await fetch("http://localhost:5000/api/auth/forgot-password", {
+    const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -184,7 +191,7 @@ export const requestPasswordReset = async (email) => {
 /* Đặt lại mật khẩu bằng token nhận từ email */
 export const resetPassword = async ({ token, newPassword }) => {
   try {
-    const res = await fetch("http://localhost:5000/api/auth/reset-password", {
+    const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, newPassword }),

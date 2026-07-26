@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { orderState, formatCurrency } from '../stores/orderStore'
 import ShoeCard from '../components/ShoeCard.vue'
 import { products as mockProducts } from '../data/mockData'
+import { API_BASE_URL } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +16,7 @@ const isLoadingSuggested = ref(true)
 
 const fetchSuggested = async () => {
   try {
-    const res = await fetch('http://localhost:5000/api/products')
+    const res = await fetch(`${API_BASE_URL}/products`)
     const data = await res.json()
     suggested.value = data
       .filter((p) => p.active)

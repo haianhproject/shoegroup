@@ -2,9 +2,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { db, openForm, getRoleBadgeClass, roleName, deleteItem } from '../adminStore'
+import { API_BASE_URL } from "../../../services/apiClient";
 
 // Cung base URL voi store (backend Express chay o cong 5000)
-const API = 'http://localhost:5000/api'
+const API = API_BASE_URL
 
 const search = ref('')
 const roleMsg = ref('')

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ShoeCard from '../components/ShoeCard.vue'
 import { maybeOpenPromo } from '../stores/uiStore'
 import { products as mockProducts, categories as mockCats } from '../data/mockData'
+import { API_BASE_URL } from "../services/apiClient";
 
 const products = ref([])
 const categories = ref([])
@@ -36,8 +37,8 @@ const stopAuto = () => { if (timer) { clearInterval(timer); timer = null } }
 const fetchData = async () => {
   try {
     const [resProd, resCat] = await Promise.all([
-      fetch('http://localhost:5000/api/products'),
-      fetch('http://localhost:5000/api/categories'),
+      fetch(`${API_BASE_URL}/products`),
+      fetch(`${API_BASE_URL}/categories`),
     ])
     const dataProd = await resProd.json()
     const dataCat = await resCat.json()

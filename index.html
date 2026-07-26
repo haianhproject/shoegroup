@@ -1,23 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ShoeGroup - giay the thao chinh hang, giao hang toan quoc." />
+    <link rel="icon" href="/logogiay.png" />
     <title>ShoeGroup</title>
-    <script>
-      window.addEventListener('error', function(e) {
-        fetch('http://localhost:5000/api/log-error', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: e.message, source: e.filename, lineno: e.lineno, error: e.error ? e.error.stack : '' })
-        }).catch(function(){});
-      });
-      window.addEventListener('unhandledrejection', function(e) {
-        fetch('http://localhost:5000/api/log-error', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: e.reason ? e.reason.toString() : 'Promise Rejection', error: e.reason && e.reason.stack ? e.reason.stack : '' })
-        }).catch(function(){});
-      });
-    </script>
   </head>
   <body>
     <div id="root"></div>
