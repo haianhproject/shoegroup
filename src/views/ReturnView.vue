@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ordersByCurrentUser, loadOrders, formatCurrency, requestReturn } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { postOffices as mockPO } from '../data/mockData'
+import { API_BASE_URL } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -11,7 +12,7 @@ const order = ref(null)
 const postOffices = ref([])
 const isLoading = ref(true)
 const submitted = ref(false)
-const API = 'http://localhost:5000/api'
+const API = API_BASE_URL
 
 const form = reactive({
   method: 'SHIPPER',       // SHIPPER = shipper tự lấy | POST_OFFICE = gửi tại bưu cục

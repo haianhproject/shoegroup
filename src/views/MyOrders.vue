@@ -6,6 +6,7 @@ import {
   loadOrders, confirmReceived, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency,
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
+import { API_BASE_URL } from "../services/apiClient";
 
 const router = useRouter()
 const search = ref('')
@@ -62,7 +63,7 @@ const submitCancel = async () => {
   notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
   if (cancelModal.serverId) {
     try {
-      await fetch(`http://localhost:5000/api/orders/${cancelModal.serverId}/status`, {
+      await fetch(`${API_BASE_URL}/orders/${cancelModal.serverId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Đã hủy', reason }),

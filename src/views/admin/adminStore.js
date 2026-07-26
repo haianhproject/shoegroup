@@ -16,7 +16,8 @@
 import { ref, reactive, computed } from "vue";
 import { currentUser, logout } from "@/stores/authStore";
 
-export const API = "http://localhost:5000/api";
+import { API_BASE_URL } from "../../services/apiClient";
+export const API = API_BASE_URL;
 export const LOW_STOCK_THRESHOLD = 10;
 
 /* ---------------- STATE ---------------- */

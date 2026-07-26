@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
+import { API_BASE_URL } from "../services/apiClient";
 
 const route = useRoute()
 const product = ref(null)
@@ -15,7 +16,7 @@ const selSize = ref(null)
 const selColor = ref(null)
 const activeImage = ref('')
 const qty = ref(1)
-const API = 'http://localhost:5000/api'
+const API = API_BASE_URL
 
 const fetchData = async () => {
   const id = Number(route.params.id)

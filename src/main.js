@@ -1,3 +1,15 @@
+/* [TOI UU] Tu dong gan JWT vao moi request API + doc dia chi may chu tu .env */
+import { installHttpInterceptor } from './services/httpInterceptor'
+import { API_BASE_URL } from './services/apiClient'
+
+installHttpInterceptor({
+  onUnauthorized: () => {
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login'
+    }
+  },
+})
+
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
@@ -18,7 +30,7 @@ const app = createApp(App)
 app.use(router)
 app.config.errorHandler = (err, vm, info) => {
   console.error('[VUE ERROR]', err, info);
-  fetch('http://localhost:5000/api/log-error', {
+  fetch(`${API_BASE_URL}/log-error`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: err.message, stack: err.stack, info })

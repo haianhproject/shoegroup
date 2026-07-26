@@ -1,18 +1,30 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "shoegroup-backend",
+  "version": "2.0.0",
+  "description": "Backend ShoeGroup - ban da toi uu bao mat & hieu nang (tuong thich hoan toan voi code cu)",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js",
+    "test": "node --test test/"
   },
-  "keywords": [],
+  "keywords": [
+    "shoegroup",
+    "express",
+    "mssql"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "mssql": "^12.5.5",
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^6.10.1"
+  },
+  "optionalDependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2"
   }
 }
