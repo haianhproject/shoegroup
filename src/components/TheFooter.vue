@@ -10,7 +10,9 @@ import BrandLogo from './BrandLogo.vue'
           <!-- Brand column -->
           <div class="col-lg-4">
             <router-link to="/" class="footer-logo">
-              <BrandLogo :size="44" :radius="13" />
+              <span style="display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <img src="/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; display: block; max-height: 50px;" />
+              </span>
               <span class="footer-logo-text">
                 <span class="logo-shoe">shoe</span><span class="logo-group">group</span>
               </span>
@@ -103,6 +105,7 @@ import BrandLogo from './BrandLogo.vue'
   font-weight: 900;
   letter-spacing: 0.05em;
   line-height: 1;
+  text-transform: uppercase;
 }
 .logo-shoe  { color: #fff; }
 .logo-group { color: #D4001A; }

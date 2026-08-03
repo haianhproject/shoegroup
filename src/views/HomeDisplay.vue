@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ShoeCard from '../components/ShoeCard.vue'
-import { maybeOpenPromo } from '../stores/uiStore'
 import { products as mockProducts, categories as mockCats } from '../data/mockData'
 import { API_BASE_URL } from "../services/apiClient";
 
@@ -66,8 +65,6 @@ onMounted(() => {
   window.scrollTo(0, 0)
   fetchData()
   startAuto()
-  // Hiện popup ưu đãi (tôn trọng lựa chọn "ẩn trong 24h" của khách).
-  setTimeout(() => maybeOpenPromo(), 700)
 })
 onUnmounted(stopAuto)
 </script>
