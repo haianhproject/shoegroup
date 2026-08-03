@@ -329,20 +329,14 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .sg-logo-icon {
-  width: 42px;
-  height: 42px;
-  overflow: hidden;
-  border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 .sg-logo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scale(1.35);
+  width: auto;
+  height: auto;
   display: block;
   transition: opacity 0.2s ease;
 }
@@ -354,7 +348,7 @@ onUnmounted(() => {
   letter-spacing: 0.02em;
   line-height: 1;
   margin-left: 6px;
-  text-transform: lowercase;
+  text-transform: uppercase;
 }
 .sg-logo-text .logo-shoe { color: #1a1a1a; }
 .sg-logo-text .logo-group { color: #D4001A; }

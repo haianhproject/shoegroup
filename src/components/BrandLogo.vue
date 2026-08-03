@@ -6,13 +6,9 @@ defineProps({
 </script>
 
 <template>
-  <div
-    class="brand-mark-img"
-    :style="{ width: size + 'px', height: size + 'px', borderRadius: radius + 'px', overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }"
-    aria-label="ShoeGroup"
-  >
-    <img src="/logogiay.png" alt="ShoeGroup" style="width: 100%; height: 100%; object-fit: cover; transform: scale(1.35);" />
-  </div>
+  <span style="display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;" aria-label="ShoeGroup">
+    <img src="/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; max-height: 50px; display: block;" />
+  </span>
 </template>
 
 <style scoped>
