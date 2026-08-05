@@ -1456,6 +1456,8 @@ export const posVariants = computed(() => {
     const p = db.products.find((x) => String(x.id) === String(v.product_id));
     if (p && p.active === false) return;
     const base = p ? Number(p.sale_price || p.price) || 0 : 0;
+    const inCart = activePosOrder.value.cart.find((c) => String(c.key) === String(v.id));
+    const cartQty = inCart ? inCart.quantity : 0;
     list.push({
       id: v.id,
       variant_id: v.id,
@@ -1465,7 +1467,7 @@ export const posVariants = computed(() => {
       color_hex: v.color_hex,
       size: v.size,
       sku: v.sku,
-      stock: Number(v.stock) || 0,
+      stock: Math.max(0, (Number(v.stock) || 0) - cartQty),
       image: v.image_url || (p ? p.image_url : ""),
       price: base + (Number(v.price_adjustment) || 0),
     });
@@ -1474,8 +1476,11 @@ export const posVariants = computed(() => {
   db.products.forEach((p) => {
     if (p.active === false) return;
     if (covered.has(String(p.id))) return;
+    const pIdStr = "p-" + p.id;
+    const inCart = activePosOrder.value.cart.find((c) => String(c.key) === pIdStr);
+    const cartQty = inCart ? inCart.quantity : 0;
     list.push({
-      id: "p-" + p.id,
+      id: pIdStr,
       variant_id: null,
       product_id: p.id,
       product_name: p.name,
@@ -1485,7 +1490,7 @@ export const posVariants = computed(() => {
       sku: p.sku || "",
       // Sản phẩm chưa có biến thể trong kho: KHÔNG bịa tồn kho ảo (trước đây để 999)
       // -> tránh bán được hàng không tồn tại và sai số lượng.
-      stock: Number(p.stock ?? p.total_stock ?? 0) || 0,
+      stock: Math.max(0, (Number(p.stock ?? p.total_stock ?? 0) || 0) - cartQty),
       no_variant: true,
       image: p.image_url || "",
       price: Number(p.sale_price || p.price) || 0,

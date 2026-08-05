@@ -367,7 +367,7 @@ app.get("/api/orders", async (req, res) => {
              ISNULL(o.CustomerPhone, u.Phone) as customer_phone,
              ISNULL(o.ShippingAddress, ISNULL(u.Address, N'Chua cap nhat dia chi')) as customer_address,
              o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
-             o.PaymentMethod as paymentMethod,
+             o.PaymentMethod as payment_method,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
              ISNULL(o.HandledBy, '') as handled_by,
              -- FIX KENH BAN: backend tu quyet dinh Online/Offline.

@@ -290,7 +290,7 @@ const mapServerOrder = (s) => {
     discount: s.discount ?? 0,
     total: s.total ?? 0,
     shippingMethod: "",
-    paymentMethod: s.paymentMethod || "COD",
+    paymentMethod: s.payment_method || "COD",
     note: s.note || "",
   };
 };
