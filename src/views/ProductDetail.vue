@@ -101,7 +101,15 @@ const isOutOfStock = computed(() => {
 })
 
 const handleAdd = () => {
-  if (isOutOfStock.value) { notify({ type: 'error', title: 'Hết hàng', message: 'Sản phẩm này hiện đã hết hàng.' }); return }
+  if (isOutOfStock.value) {
+    notify({
+      type: 'warning',
+      title: 'Sản phẩm đã hết hàng',
+      message: 'Xin lỗi! Sản phẩm này hiện không còn hàng. Hãy khám phá các sản phẩm khác nhé 😊',
+      duration: 4000,
+    })
+    return
+  }
   if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
   if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
   const r = addToCart({
@@ -175,9 +183,16 @@ onMounted(fetchData)
           </div>
           <p v-else class="text-muted small">Sản phẩm chưa cấu hình biến thể.</p>
 
-          <!-- Qty + add -->
-          <div v-if="isOutOfStock" class="buy-row">
-            <button class="btn-sg btn-sg-oos flex-grow-1" disabled><i class="bi bi-x-circle me-2"></i>HẾT HÀNG</button>
+          <!-- Hết hàng: nút disabled + thông báo lịch sự có nút tiếp tục mua -->
+          <div v-if="isOutOfStock" class="buy-row flex-column gap-2">
+            <button class="btn-sg btn-sg-oos flex-grow-1 w-100" disabled>
+              <i class="bi bi-x-circle me-2"></i>HẾT HÀNG
+            </button>
+            <div class="oos-notice">
+              <i class="bi bi-info-circle-fill me-1"></i>
+              Sản phẩm này hiện không còn hàng. Hãy khám phá thêm các mẫu khác nhé!
+              <router-link to="/products" class="oos-link">Xem sản phẩm khác →</router-link>
+            </div>
           </div>
           <div v-else class="buy-row">
             <div class="qty-box">
@@ -187,7 +202,6 @@ onMounted(fetchData)
             </div>
             <button class="btn-sg flex-grow-1" @click="handleAdd"><i class="bi bi-bag-plus me-2"></i>Thêm vào giỏ hàng</button>
           </div>
-          <p v-if="isOutOfStock" class="oos-notice"><i class="bi bi-exclamation-triangle-fill me-1"></i>Sản phẩm hiện đã hết hàng. Vui lòng quay lại sau.</p>
 
           <div class="trust-row">
             <span><i class="bi bi-shield-check"></i> Chính hãng</span>
@@ -239,5 +253,10 @@ onMounted(fetchData)
 .trust-row span { font-size: .85rem; color: var(--sg-ink-2); font-weight: 600; }
 .trust-row i { color: #16a34a; margin-right: 5px; }
 @media (max-width: 576px) { .attr-grid { grid-template-columns: 1fr; } }
+.btn-sg-oos { background: #9ca3af !important; border-color: #9ca3af !important; cursor: not-allowed !important; opacity: .7; }
+.oos-notice { font-size: .88rem; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.oos-notice i { color: #f59e0b; flex-shrink: 0; margin-top: 2px; }
+.oos-link { display: inline-block; margin-left: 6px; color: #2563eb; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.oos-link:hover { text-decoration: underline; }
 </style>
 

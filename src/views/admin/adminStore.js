@@ -178,7 +178,7 @@ export const pendingReturnsCount = computed(
 );
 export const lowStockCount = computed(
   () =>
-    db.inventory.filter((v) => Number(v.stock) <= LOW_STOCK_THRESHOLD).length,
+    db.inventory.filter((v) => Number(v.stock) === 0).length,
 );
 /* Đơn chưa hoàn thành = chưa giao thành công và chưa hủy */
 export const incompleteOrdersCount = computed(
@@ -413,7 +413,7 @@ export const inventoryByColor = computed(() => {
 // Sản phẩm sắp hết hàng
 export const lowStockList = computed(() =>
   db.inventory
-    .filter((v) => Number(v.stock) <= LOW_STOCK_THRESHOLD)
+    .filter((v) => Number(v.stock) === 0)
     .sort((a, b) => Number(a.stock) - Number(b.stock)),
 );
 // Khách hàng nổi bật
@@ -1824,6 +1824,14 @@ async function finalizePosOrder() {
   } catch (e) {
     created = null;
   }
+  // Cập nhật db.inventory local ngay sau khi thanh toán thành công
+  // để trang sản phẩm và kho hiển thị đúng số lượng mà không cần reload
+  o.cart.forEach((c) => {
+    const inv = db.inventory.find((v) => String(v.id) === String(c.key));
+    if (inv) {
+      inv.stock = Math.max(0, (Number(inv.stock) || 0) - (Number(c.quantity) || 0));
+    }
+  });
   // Lưu khách vãng lai (không có tài khoản) vào danh sách khách hàng
   if (!o.customer_id && (o.customer_name || o.customer_phone)) {
     try {

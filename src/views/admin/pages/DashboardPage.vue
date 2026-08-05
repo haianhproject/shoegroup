@@ -221,17 +221,17 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
           </div>
         </div>
         <div class="col-12 col-lg-7">
-          <p class="text-secondary small fw-medium mb-2">Sản phẩm sắp hết hàng <span class="badge rounded-pill bg-danger" v-text="outOfStockProductsCount"></span></p>
+          <p class="text-secondary small fw-medium mb-2">Sản phẩm hết hàng <span class="badge rounded-pill bg-danger" v-text="lowStockCount"></span></p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
             <table class="table table-sm align-middle mb-0 small">
               <thead><tr class="text-secondary"><th>Sản phẩm</th><th>Màu</th><th class="text-end">Tồn</th></tr></thead>
               <tbody>
-                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-secondary text-center py-2">Kho đang ổn định.</td></tr>
+                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-secondary text-center py-2">Không có sản phẩm nào hết hàng.</td></tr>
                 <tr v-for="v in lowStockList" :key="v.id">
                   <td class="text-truncate" style="max-width:140px;" v-text="v.product_name"></td>
                   <td class="small text-secondary" v-text="v.color"></td>
                   <td class="small text-secondary" v-text="v.size"></td>
-                  <td class="text-end"><span class="badge rounded-pill bg-warning text-dark" v-text="v.stock"></span></td>
+                  <td class="text-end"><span class="badge rounded-pill bg-danger" v-text="'Hết hàng'"></span></td>
                 </tr>
               </tbody>
             </table>

@@ -46,6 +46,7 @@ const fetchData = async () => {
       id_category: p.category_id, category_name: p.category, sport: p.sport,
       material_name: p.material_name, image_url: p.image_url,
       brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || 1,
+      variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
     categories.value = dataCat
       .filter((c) => c.active && c.name.toLowerCase() !== 'giày nam' && c.name.toLowerCase() !== 'tất cả')
