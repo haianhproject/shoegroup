@@ -1560,6 +1560,10 @@ export const posVariants = computed(() => {
 export function addToCart(v, qty) {
   const order = activePosOrder.value;
   const n = Math.max(1, Number(qty) || 1);
+  if (n > v.stock) {
+    notify(`Kho không đủ (chỉ còn ${v.stock})`, "error");
+    return;
+  }
   const key = String(v.id);
   const existing = order.cart.find((c) => String(c.key) === key);
   if (existing) existing.quantity += n;
@@ -1575,10 +1579,30 @@ export function addToCart(v, qty) {
       sku: v.sku,
       price: v.price,
       quantity: n,
+      image: v.image
     });
 }
 export function removeCartItem(i) {
   activePosOrder.value.cart.splice(i, 1);
+}
+export function validateCartItemQty(c) {
+  const inv = db.inventory.find((v) => String(v.id) === String(c.key));
+  if (inv) {
+    if (c.quantity > inv.stock) {
+      notify(`Kho không đủ (chỉ còn ${inv.stock})`, "error");
+      c.quantity = inv.stock;
+    }
+  } else {
+    const p = db.products.find((p) => "p-" + p.id === String(c.key));
+    if (p) {
+      const pStock = Number(p.stock ?? p.total_stock ?? 0) || 0;
+      if (c.quantity > pStock) {
+        notify(`Kho không đủ (chỉ còn ${pStock})`, "error");
+        c.quantity = pStock;
+      }
+    }
+  }
+  if (c.quantity < 1) c.quantity = 1;
 }
 export const posSubtotal = computed(() =>
   activePosOrder.value.cart.reduce(

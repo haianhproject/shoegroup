@@ -532,6 +532,8 @@ app.get("/api/products", async (req, res) => {
 // Tao/cap nhat bien the (ProductVariants) theo (ProductID + ChildSKU) -> khong xoa du lieu cu
 async function upsertVariants(productId, variants) {
   if (!Array.isArray(variants)) return;
+  const keptVariantIds = [];
+
   for (let v of variants) {
     const sku = v.sku ?? v.ChildSKU ?? null;
     const color = v.color ?? v.ColorName ?? "";
@@ -575,19 +577,21 @@ async function upsertVariants(productId, variants) {
         );
     }
     if (found.recordset.length > 0) {
+      const vid = found.recordset[0].ProductVariantID;
+      keptVariantIds.push(vid);
       await pool
         .request()
-        .input("id", sql.Int, found.recordset[0].ProductVariantID)
+        .input("id", sql.Int, vid)
         .input("st", sql.Int, stock)
         .input("cn", sql.NVarChar, color)
         .input("ch", sql.VarChar, hex)
         .input("sz", sql.NVarChar, size)
         .input("sku", sql.VarChar, sku)
         .query(
-          "UPDATE ProductVariants SET StockQuantity=@st, ColorName=@cn, ColorHex=@ch, Size=@sz, ChildSKU=@sku WHERE ProductVariantID=@id",
+          "UPDATE ProductVariants SET StockQuantity=@st, ColorName=@cn, ColorHex=@ch, Size=@sz, ChildSKU=@sku, IsActive=1 WHERE ProductVariantID=@id",
         );
     } else {
-      await pool
+      const insertRes = await pool
         .request()
         .input("pid", sql.Int, productId)
         .input("sz", sql.NVarChar, size)
@@ -597,9 +601,27 @@ async function upsertVariants(productId, variants) {
         .input("st", sql.Int, stock)
         .query(
           `INSERT INTO ProductVariants (ProductID, Size, ColorName, ColorHex, ChildSKU, StockQuantity, PriceAdjustment, IsActive)
+           OUTPUT inserted.ProductVariantID
            VALUES (@pid, @sz, @cn, @ch, ISNULL(@sku, CONCAT('SKU-', @pid, '-', @cn, '-', @sz)), @st, 0, 1)`,
         );
+      if (insertRes.recordset && insertRes.recordset.length > 0) {
+        keptVariantIds.push(insertRes.recordset[0].ProductVariantID);
+      }
     }
+  }
+
+  // Deactivate deleted variants (the ones not sent by frontend)
+  if (keptVariantIds.length > 0) {
+    const ids = keptVariantIds.join(",");
+    await pool
+      .request()
+      .input("pid", sql.Int, productId)
+      .query(`UPDATE ProductVariants SET StockQuantity = 0, IsActive = 0 WHERE ProductID = @pid AND ProductVariantID NOT IN (${ids})`);
+  } else {
+    await pool
+      .request()
+      .input("pid", sql.Int, productId)
+      .query(`UPDATE ProductVariants SET StockQuantity = 0, IsActive = 0 WHERE ProductID = @pid`);
   }
 }
 

@@ -108,7 +108,7 @@ const handleAdd = () => {
     product: product.value,
     quantity: qty.value,
     size: { size_name: selSize.value },
-    color: { color_label: selColor.value.color_label, color_name: selColor.value.color_name, color_hex: selColor.value.hex },
+    color: { color_label: selColor.value.color_label, color_name: selColor.value.color_name, color_hex: selColor.value.hex, image: selColor.value.image },
   })
   if (!r.ok) { notify({ type: 'error', message: r.message }); return }
   showMiniCart()

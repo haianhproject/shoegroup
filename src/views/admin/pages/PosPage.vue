@@ -8,7 +8,7 @@ import {
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
   posCustomerSearch, posCustomerResults, pickPosCustomer, savePosCustomer,
-  checkoutPos, formatPrice,
+  checkoutPos, formatPrice, validateCartItemQty,
 } from '../adminStore'
 
 const qtyInputs = ref({})
@@ -132,12 +132,12 @@ function addWithQty(v) {
           <div v-if="activePosOrder.cart.length === 0" class="text-center text-secondary small py-3 border rounded-3 mb-3">Chưa có sản phẩm trong đơn</div>
           <div v-else class="mb-3" style="max-height:200px;overflow:auto;">
             <div v-for="(c, i) in activePosOrder.cart" :key="i" class="d-flex align-items-center gap-2 py-2 border-bottom">
-              <span class="rounded-circle border d-inline-block" :style="{ width:'14px', height:'14px', background: c.color_hex || '#d1d5db' }"></span>
+              <img :src="c.image || 'https://via.placeholder.com/40'" class="rounded-2 border" style="width:40px;height:40px;object-fit:cover;" @error="$event.target.src='https://via.placeholder.com/40'">
               <div class="flex-grow-1">
                 <p class="small fw-medium mb-0 text-dark text-truncate" v-text="c.name"></p>
                 <p class="text-secondary mb-0" style="font-size:0.72rem;" v-text="[c.color, c.size].filter(Boolean).join(' · ') + ' · ' + formatPrice(c.price)"></p>
               </div>
-              <input type="number" min="1" v-model.number="c.quantity" class="form-control form-control-sm text-center rounded-3" style="width:56px;">
+              <input type="number" min="1" @change="validateCartItemQty(c)" v-model.number="c.quantity" class="form-control form-control-sm text-center rounded-3" style="width:56px;">
               <button @click="removeCartItem(i)" class="btn btn-sm btn-link text-danger p-0"><i class="bi bi-trash"></i></button>
             </div>
           </div>

@@ -74,7 +74,7 @@ export const addToCart = (payload) => {
   const productId = product.id_product || product.id || product.ProductID;
   const productName = product.product_name || product.name || product.ProductName;
   const productPrice = product.price || product.BasePrice || 0;
-  const productImage = product.image_url || product.ImageURL || product.image;
+  const productImage = color.image || product.image_url || product.ImageURL || product.image;
 
   const sizeName = size.size_name || size.SizeName || "42";
   const colorName = color.color_label || color.color_name || color.ColorName || "Ti\u00eau chu\u1ea9n";
