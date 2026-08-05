@@ -42,10 +42,11 @@ const fetchData = async () => {
     const dataProd = await resProd.json()
     const dataCat = await resCat.json()
     products.value = dataProd.filter((p) => p.active).map((p) => ({
-      id_product: p.id, product_name: p.name, price: p.price,
+      id_product: p.id, product_name: p.name, price: p.price, sale_price: p.sale_price,
       id_category: p.category_id, category_name: p.category, sport: p.sport,
       material_name: p.material_name, image_url: p.image_url,
       brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || 1,
+      variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
     categories.value = dataCat
       .filter((c) => c.active && c.name.toLowerCase() !== 'giày nam' && c.name.toLowerCase() !== 'tất cả')

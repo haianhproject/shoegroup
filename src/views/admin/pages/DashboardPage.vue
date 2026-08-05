@@ -6,17 +6,16 @@ import {
   rangeOptions, dateRange, setRange, customRange, rangeLabel, exportReport,
   statAccounts, statProducts, statOrders, statRevenue, formatPrice, formatDate,
   trendMode, setTrendMode, buildTrendData, isLoading, ordersInRange,
-  avgOrderValue, recentOrdersByDate, buildOrderStatusData, buildPaymentMethodData,
-  buildTopProductsData, lowStockList, topCustomerByOrders,
+  avgOrderValue, recentOrdersByDate, buildOrderStatusData, paymentRevenueSummary,
+  topProductsList, lowStockList, lowStockCount, topCustomerByOrders,
   topCustomerBySpending, ratingStats
 } from '../adminStore'
 
 /* ---------- refs biểu đồ ---------- */
 const trendCanvas = ref(null)
 const statusCanvas = ref(null)
-const payCanvas = ref(null)
-const topCanvas = ref(null)
-let trendChart = null, statusChart = null, payChart = null, topChart = null
+
+let trendChart = null, statusChart = null
 
 const starRows = computed(() => {
   const d = ratingStats.value.dist
@@ -49,37 +48,13 @@ function renderStatus() {
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } } }
   })
 }
-function renderPay() {
-  if (!payCanvas.value) return
-  const { labels, data } = buildPaymentMethodData()
-  if (payChart) payChart.destroy()
-  payChart = new Chart(payCanvas.value, {
-    type: 'bar',
-    data: { labels, datasets: [{ label: 'Số đơn', data, backgroundColor: '#10b981', borderRadius: 6, maxBarThickness: 54 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-  })
-}
-function renderTop() {
-  if (!topCanvas.value) return
-  const { labels, product, brand } = buildTopProductsData()
-  if (topChart) topChart.destroy()
-  topChart = new Chart(topCanvas.value, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Sản phẩm', data: product, backgroundColor: '#6366f1', borderRadius: 5, maxBarThickness: 22 },
-        { label: 'Brand', data: brand, backgroundColor: '#f59e0b', borderRadius: 5, maxBarThickness: 22 }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-  })
-}
-function renderAll() { renderTrend(); renderStatus(); renderPay(); renderTop() }
+/* Da bo renderTop(): bang Top san pham dung huy hieu thu hang thay cho bieu do.
+   (Ham cu tham chieu topCanvas / topChart / buildTopProductsData khong ton tai -> loi runtime.) */
+function renderAll() { renderTrend(); renderStatus(); }
 
 watch([dateRange, trendMode, isLoading, () => ordersInRange.value.length], () => nextTick(renderAll))
 onMounted(() => nextTick(renderAll))
-onBeforeUnmount(() => { [trendChart, statusChart, payChart, topChart].forEach(c => { if (c) c.destroy() }) })
+onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destroy() }) })
 </script>
 
 <template>
@@ -181,11 +156,44 @@ onBeforeUnmount(() => { [trendChart, statusChart, payChart, topChart].forEach(c 
         </div>
       </div>
       <div class="col-12 col-xl-5">
-        <div class="bg-white p-4 rounded-4 shadow-sm h-100">
+        <div class="bg-white p-4 rounded-4 shadow-sm h-100 d-flex flex-column">
           <h5 class="fw-bold mb-1 text-dark">Thanh Toán</h5>
-          <p class="text-secondary small mb-4">Phương thức &amp; trạng thái</p>
-          <p class="text-secondary small fw-medium mb-2">Phương thức thanh toán</p>
-          <div style="height: 240px;"><canvas ref="payCanvas"></canvas></div>
+          <p class="text-secondary small mb-4">Phân bổ doanh thu theo kênh &amp; phương thức</p>
+          
+          <!-- Tổng Doanh Thu Header -->
+          <div class="bg-light-gray rounded-3 p-3 mb-4 text-center border">
+            <p class="text-secondary small fw-medium mb-1">Tổng Doanh Thu Lọc</p>
+            <h4 class="fw-bolder text-success mb-0" v-text="formatPrice(paymentRevenueSummary.total)"></h4>
+          </div>
+
+          <!-- Bảng chia 4 cột -->
+          <div class="row g-3 flex-grow-1">
+            <!-- Thanh toán tại quầy -->
+            <div class="col-6 border-end border-light">
+              <h6 class="fw-bold text-dark mb-3 text-center border-bottom pb-2">Tại Quầy</h6>
+              <div class="mb-3">
+                <p class="text-secondary small mb-1">Tiền mặt</p>
+                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.posCash)"></h6>
+              </div>
+              <div>
+                <p class="text-secondary small mb-1">Chuyển khoản</p>
+                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.posTransfer)"></h6>
+              </div>
+            </div>
+            
+            <!-- Thanh toán qua web -->
+            <div class="col-6">
+              <h6 class="fw-bold text-dark mb-3 text-center border-bottom pb-2">Qua Web</h6>
+              <div class="mb-3">
+                <p class="text-secondary small mb-1">Tiền mặt (COD)</p>
+                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.webCod)"></h6>
+              </div>
+              <div>
+                <p class="text-secondary small mb-1">Chuyển khoản</p>
+                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.webTransfer)"></h6>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -196,20 +204,34 @@ onBeforeUnmount(() => { [trendChart, statusChart, payChart, topChart].forEach(c 
       <p class="text-secondary small mb-4">Hiệu suất bán hàng và tình trạng tồn kho</p>
       <div class="row g-4">
         <div class="col-12 col-lg-5">
-          <p class="text-secondary small fw-medium mb-2">Top sản phẩm &amp; brand bán chạy</p>
-          <div style="height: 300px;"><canvas ref="topCanvas"></canvas></div>
+          <p class="text-secondary small fw-medium mb-2">Top sản phẩm bán chạy</p>
+          <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
+            <table class="table table-sm align-middle mb-0 small">
+              <thead><tr class="text-secondary"><th>Top</th><th>Sản phẩm</th><th>Brand</th><th class="text-end">Lượt bán</th></tr></thead>
+              <tbody>
+                <tr v-if="!topProductsList || topProductsList.length === 0"><td colspan="4" class="text-secondary text-center py-2">Chưa có dữ liệu</td></tr>
+                <tr v-for="(p, i) in topProductsList" :key="p.name">
+                  <td><span class="badge rounded-pill" :class="i === 0 ? 'bg-warning text-dark' : i === 1 ? 'bg-secondary' : i === 2 ? 'bg-danger' : 'bg-light text-dark border'" v-text="'Top ' + (i + 1)"></span></td>
+                  <td class="text-truncate fw-medium" style="max-width:140px;" v-text="p.name"></td>
+                  <td class="text-secondary" v-text="p.brand"></td>
+                  <td class="text-end fw-bold text-dark" v-text="p.quantity"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="col-12 col-lg-7">
-          <p class="text-secondary small fw-medium mb-2">Sản phẩm sắp hết hàng <span class="badge rounded-pill bg-danger" v-text="lowStockList.length"></span></p>
+          <p class="text-secondary small fw-medium mb-2">Sản phẩm hết hàng <span class="badge rounded-pill bg-danger" v-text="lowStockCount"></span></p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
             <table class="table table-sm align-middle mb-0 small">
               <thead><tr class="text-secondary"><th>Sản phẩm</th><th>Màu</th><th class="text-end">Tồn</th></tr></thead>
               <tbody>
-                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-secondary text-center py-2">Kho đang ổn định.</td></tr>
+                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-secondary text-center py-2">Không có sản phẩm nào hết hàng.</td></tr>
                 <tr v-for="v in lowStockList" :key="v.id">
                   <td class="text-truncate" style="max-width:140px;" v-text="v.product_name"></td>
                   <td class="small text-secondary" v-text="v.color"></td>
-                  <td class="text-end"><span class="badge rounded-pill bg-warning text-dark" v-text="v.stock"></span></td>
+                  <td class="small text-secondary" v-text="v.size"></td>
+                  <td class="text-end"><span class="badge rounded-pill bg-danger" v-text="'Hết hàng'"></span></td>
                 </tr>
               </tbody>
             </table>
@@ -218,50 +240,5 @@ onBeforeUnmount(() => { [trendChart, statusChart, payChart, topChart].forEach(c 
       </div>
     </div>
 
-    <!-- ===== Khách hàng + Đánh giá ===== -->
-    <div class="row g-4">
-      <div class="col-12 col-lg-6">
-        <div class="bg-white p-4 rounded-4 shadow-sm h-100">
-          <h5 class="fw-bold mb-1 text-dark">Khách Hàng</h5>
-          <p class="text-secondary small mb-4">Thói quen mua hàng và khách nổi bật</p>
-          <div class="d-flex align-items-center justify-content-between bg-light-gray rounded-3 p-3 mb-3">
-            <div class="d-flex align-items-center gap-3">
-              <div class="stat-icon bg-primary text-white"><i class="bi bi-bag-heart-fill"></i></div>
-              <div><p class="text-secondary small mb-0">Mua nhiều nhất</p><h6 class="fw-bold mb-0 text-dark" v-text="topCustomerByOrders ? topCustomerByOrders.name : '—'"></h6></div>
-            </div>
-            <span class="badge rounded-pill bg-primary" v-text="(topCustomerByOrders ? topCustomerByOrders.count : 0) + ' đơn'"></span>
-          </div>
-          <div class="d-flex align-items-center justify-content-between bg-light-gray rounded-3 p-3">
-            <div class="d-flex align-items-center gap-3">
-              <div class="stat-icon bg-success text-white"><i class="bi bi-gem"></i></div>
-              <div><p class="text-secondary small mb-0">Chi tiêu nhiều nhất</p><h6 class="fw-bold mb-0 text-dark" v-text="topCustomerBySpending ? topCustomerBySpending.name : '—'"></h6></div>
-            </div>
-            <span class="badge rounded-pill bg-success" v-text="formatPrice(topCustomerBySpending ? topCustomerBySpending.spent : 0)"></span>
-          </div>
-        </div>
-      </div>
-      <div class="col-12 col-lg-6">
-        <div class="bg-white p-4 rounded-4 shadow-sm h-100">
-          <h5 class="fw-bold mb-1 text-dark">Đánh Giá Sản Phẩm</h5>
-          <p class="text-secondary small mb-4">Mức độ hài lòng và phân bố số sao</p>
-          <div v-if="ratingStats.count === 0" class="text-center text-secondary py-4"><i class="bi bi-star fs-3 d-block mb-2"></i>Chưa có đánh giá nào.</div>
-          <div v-else class="row g-3 align-items-center">
-            <div class="col-5 text-center border-end">
-              <h1 class="fw-bolder text-dark mb-0 display-5" v-text="ratingStats.avg"></h1>
-              <div class="text-warning mb-1"><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-half"></i></div>
-              <p class="text-secondary small mb-1">Rating trung bình</p>
-              <p class="small mb-0"><span class="text-secondary">Tốt nhất:</span> <span class="fw-bold text-dark" v-text="ratingStats.best || '—'"></span></p>
-            </div>
-            <div class="col-7">
-              <div v-for="row in starRows" :key="row.star" class="d-flex align-items-center gap-2 mb-1">
-                <span class="small text-secondary" style="width:24px;" v-text="row.star + '★'"></span>
-                <div class="progress flex-grow-1" style="height:8px;"><div class="progress-bar bg-warning" :style="{ width: row.pct + '%' }"></div></div>
-                <span class="small text-secondary" style="width:24px;" v-text="row.count"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>

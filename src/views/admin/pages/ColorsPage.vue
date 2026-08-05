@@ -1,6 +1,6 @@
 <!-- Trang: Quản Lý Màu Sắc -->
 <script setup>
-import { openForm, filteredColors, deleteItem } from '../adminStore'
+import { openForm, filteredColors, deleteItem, restoreItem } from '../adminStore'
 </script>
 
 <template>
@@ -17,7 +17,11 @@ import { openForm, filteredColors, deleteItem } from '../adminStore'
           <td class="fw-medium" v-text="c.name"></td>
           <td><span class="d-inline-flex align-items-center gap-2"><span class="color-swatch border" :style="{ backgroundColor: c.hex }"></span><span class="small text-secondary text-uppercase" v-text="c.hex"></span></span></td>
           <td><span class="badge rounded-pill" :class="c.active ? 'badge-active' : 'bg-secondary-subtle text-secondary'" v-text="c.active ? 'ACTIVE' : 'ẨN'"></span></td>
-          <td class="text-end pe-4"><button @click="openForm('colors', c)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button><button @click="deleteItem('colors', c.id, c.name)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button></td>
+          <td class="text-end pe-4">
+            <button v-if="c.active === false" @click="restoreItem('colors', c)" class="btn btn-sm btn-light border border-success text-success rounded-3 me-1" title="Khôi phục"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button @click="openForm('colors', c)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button>
+            <button @click="deleteItem('colors', c.id, c.name)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button>
+          </td>
         </tr>
         <tr v-if="!filteredColors.length"><td colspan="5" class="text-center text-secondary py-4">Chưa có màu nào.</td></tr>
       </tbody>

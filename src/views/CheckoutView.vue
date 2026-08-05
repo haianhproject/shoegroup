@@ -2,11 +2,11 @@
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { cartItems, cartCount, cartSubtotal, formatCurrency, clearCart } from '../stores/cartStore'
-import { createOrder, setServerId } from '../stores/orderStore'
+import { createOrder, setServerId, orderState, saveOrders } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import { shippingMethods, distanceFromHanoi } from '../data/mockData'
-import { API_BASE_URL } from "../services/apiClient";
+import { api } from "../services/apiClient";
 
 const router = useRouter()
 
@@ -99,6 +99,28 @@ const discountAmount = computed(() => {
 const etaText = computed(() => shippingMethods.find((s) => s.code === shippingCode.value)?.eta || '')
 const total = computed(() => Math.max(0, cartSubtotal.value + shippingFee.value - discountAmount.value))
 
+const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0 })
+
+const confirmPaid = async () => {
+  if (payModal.serverId) {
+    try {
+      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+    } catch(e) {}
+  }
+  const order = orderState.orders.find(x => x.id === payModal.orderId)
+  if (order) {
+    order.payment_status = 'Chờ thanh toán'
+    saveOrders()
+  }
+  payModal.open = false
+  router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
+}
+
+const payLater = () => {
+  payModal.open = false
+  router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
+}
+
 const placeOrder = async () => {
   if (!form.fullName || !form.phone || !form.address || !form.province) {
     notify({ type: 'error', title: 'Thiếu thông tin', message: 'Vui lòng điền đầy đủ thông tin giao hàng.' })
@@ -123,38 +145,48 @@ const placeOrder = async () => {
     note: form.note,
   })
   if (!r.ok) { placing.value = false; notify({ type: 'error', message: r.message }); return }
+  
+  let createdServerId = null;
   try {
-    const res = await fetch(`${API_BASE_URL}/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: currentUser.value?.id ?? currentUser.value?.id_user ?? currentUser.value?.UserID ?? null,
-        totalAmount: total.value,
-        customerName: form.fullName,
-        customerPhone: form.phone,
-        shippingAddress: `${form.address}, ${form.province}`.trim(),
-        shippingFee: shippingFee.value,
-        discountAmount: discountAmount.value,
-        paymentMethod: pay.name,
-        paymentStatus: 'Chưa thanh toán',
-        status: 'Chờ xác nhận',
-        note: form.note || '',
-        items: cartItems.value.map((it) => ({
-          product_id: Number(it.id_product ?? it.product?.id_product ?? it.product_id) || null,
-          variant_id: Number.isInteger(it.variant_id) ? it.variant_id : null,
-          quantity: it.quantity ?? 1,
-          price: it.unitPrice ?? it.price ?? 0,
-          size: it.size?.size_name ?? it.size ?? '',
-          color: it.color?.color_label ?? it.color?.color_name ?? it.color ?? '',
-          name: it.product?.product_name ?? it.product_name ?? it.name ?? '',
-        })),
-      }),
-    })
-    const data = await res.json().catch(() => ({}))
-    const serverId = data.orderId ?? data.OrderID
-    if (serverId) setServerId(r.order.id, serverId)
-  } catch (e) { }
+    const payload = {
+      userId: currentUser.value?.id ?? currentUser.value?.id_user ?? currentUser.value?.UserID ?? null,
+      totalAmount: total.value,
+      customerName: form.fullName,
+      customerPhone: form.phone,
+      shippingAddress: `${form.address}, ${form.province}`.trim(),
+      shippingFee: shippingFee.value,
+      discountAmount: discountAmount.value,
+      paymentMethod: pay.name,
+      paymentStatus: 'Chưa thanh toán',
+      status: 'Chờ xác nhận',
+      note: form.note || '',
+      items: cartItems.value.map((it) => ({
+        product_id: Number(it.id_product ?? it.product?.id_product ?? it.product_id) || null,
+        variant_id: Number.isInteger(it.variant_id) ? it.variant_id : null,
+        quantity: it.quantity ?? 1,
+        price: it.unitPrice ?? it.price ?? 0,
+        size: it.size?.size_name ?? it.size ?? '',
+        color: it.color?.color_label ?? it.color?.color_name ?? it.color ?? '',
+        name: it.product?.product_name ?? it.product_name ?? it.name ?? '',
+      })),
+    };
+    const data = await api.post('/orders', payload);
+    createdServerId = data?.orderId ?? data?.OrderID;
+    if (createdServerId) setServerId(r.order.id, createdServerId);
+  } catch (e) {
+    // backend offline
+  }
   placing.value = false
+  
+  if (paymentCode.value === 'BANK' || paymentCode.value === 'MOMO') {
+    payModal.orderId = r.order.id
+    payModal.serverId = createdServerId
+    payModal.total = total.value
+    payModal.open = true
+    clearCart()
+    return
+  }
+
   await router.push({ path: '/order-success', query: { orderId: r.order.id } })
   clearCart()
 }
@@ -337,7 +369,23 @@ const placeOrder = async () => {
         </div>
       </div>
     </div>
-
+    
+    <!-- Payment QR Modal -->
+    <transition name="suc">
+      <div v-if="payModal.open" class="modal-overlay" @click.self="payLater">
+        <div class="sg-card modal-box text-center">
+          <h5 class="fw-bold mb-2">Thanh toán đơn hàng</h5>
+          <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" />
+          <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
+          <p class="text-secondary small mb-4">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng hoặc MoMo. Giao dịch sẽ tự động được ghi nhận, hoặc bạn có thể xác nhận thủ công bên dưới.</p>
+          <div class="d-flex flex-column gap-2">
+            <button class="btn-sg-warm w-100" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
+            <button class="btn-sg-outline w-100" @click="payLater">ĐỂ SAU (CÒN 12H)</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -660,4 +708,19 @@ const placeOrder = async () => {
   font-weight: 600;
 }
 
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(10,20,45,0.55); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.modal-box {
+  max-width: 400px; width: 100%; padding: 28px; border-radius: 22px;
+  background: #fff;
+}
+.qr-img {
+  width: 200px; height: 200px; object-fit: contain;
+}
+.suc-enter-active, .suc-leave-active { transition: opacity 0.3s; }
+.suc-enter-from, .suc-leave-to { opacity: 0; }
 </style>

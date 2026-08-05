@@ -8,6 +8,7 @@ import {
   filteredProducts,
   formatPrice,
   deleteItem,
+  restoreItem,
   deleteProduct,
   isProductSoftDeleted,
   onProductImageFile,
@@ -162,16 +163,17 @@ import {
               </td>
               <td class="text-end pe-4">
                 <button
-                  @click="openProductDetail(p)"
-                  class="btn btn-sm btn-light border rounded-3 me-1"
-                  title="Xem chi tiết"
-                >
-                  <i class="bi bi-eye"></i></button
-                ><button
                   @click="openProductForm(p)"
                   class="btn btn-sm btn-light border rounded-3 me-1"
                 >
                   <i class="bi bi-pencil"></i></button
+                ><button
+                  v-if="isProductSoftDeleted(p)"
+                  @click="restoreItem('products', p)"
+                  class="btn btn-sm btn-light border border-success text-success rounded-3 me-1"
+                  title="Khôi phục sản phẩm"
+                >
+                  <i class="bi bi-arrow-counterclockwise"></i></button
                 ><button
                   @click="deleteProduct(p)"
                   class="btn btn-sm btn-light border rounded-3"
@@ -277,36 +279,6 @@ import {
                   :key="m.id"
                   :value="m.id"
                   v-text="m.name"
-                ></option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label small fw-medium">Đế giày</label
-              ><select
-                v-model="productForm.sole_id"
-                class="form-select rounded-3"
-              >
-                <option value="">-- Chọn --</option>
-                <option
-                  v-for="s in db.soles"
-                  :key="s.id"
-                  :value="s.id"
-                  v-text="s.name"
-                ></option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label small fw-medium">Đệm giày</label
-              ><select
-                v-model="productForm.cushioning_id"
-                class="form-select rounded-3"
-              >
-                <option value="">-- Chọn --</option>
-                <option
-                  v-for="cs in db.cushionings"
-                  :key="cs.id"
-                  :value="cs.id"
-                  v-text="cs.name"
                 ></option>
               </select>
             </div>

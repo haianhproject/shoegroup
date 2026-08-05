@@ -3,7 +3,7 @@
 import {
   filteredDiscountsList, discountSearch, discountStatusFilter, discountStatuses,
   discountTypes, discountModal, openDiscountForm, closeDiscountForm, saveDiscount,
-  getDiscountStatus, formatDiscountValue, formatDate, formatPrice, deleteItem,
+  getDiscountStatus, formatDiscountValue, formatDate, formatPrice, deleteItem, restoreItem,
 } from '../adminStore'
 </script>
 
@@ -58,6 +58,7 @@ import {
               <td class="text-center small" v-text="Number(d.quantity) > 0 ? d.quantity : '∞'"></td>
               <td><span class="badge rounded-pill" :class="getDiscountStatus(d).cls" v-text="getDiscountStatus(d).label"></span></td>
               <td class="text-end">
+                <button v-if="d.active === false" @click="restoreItem('discounts', d)" class="btn btn-sm btn-light border border-success text-success rounded-3 me-1" title="Khôi phục"><i class="bi bi-arrow-counterclockwise"></i></button>
                 <button @click="openDiscountForm(d)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button>
                 <button @click="deleteItem('discounts', d.id, d.code)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button>
               </td>

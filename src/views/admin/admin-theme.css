@@ -35,7 +35,7 @@
 .pos-product { cursor: pointer; transition: all 0.15s ease; border-radius: 4px; }
 .pos-product:hover { border-color: #0A0A0A !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
 
-.fade-in { animation: fadeIn 0.35s ease forwards; opacity: 0; }
+.fade-in { /* animation: fadeIn 0.35s ease forwards; opacity: 0; */ }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ---------------- Modal dùng chung (popup luôn căn giữa màn hình) ----------------
@@ -47,7 +47,7 @@
 
 .custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1080; padding: 1rem; }
 .custom-modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 560px; box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; }
-.fade-in-scale { animation: fadeInScale 0.22s ease forwards; opacity: 0; }
+.fade-in-scale { /* animation: fadeInScale 0.22s ease forwards; opacity: 0; */ }
 @keyframes fadeInScale { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 
 /* ------ Đồng bộ tông màu nút quản trị với giao diện khách hàng (Đen/Đỏ) ------ */

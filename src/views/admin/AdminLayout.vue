@@ -18,8 +18,19 @@ import {
   handleLogout,
   pendingOrdersCount,
   unpaidCount,
+  incompleteOrdersCount,
   pendingReturnsCount,
+  paymentOrders,
   lowStockCount,
+  outOfStockProductsCount,
+  activeProductCount,
+  categoryCount,
+  brandCount,
+  materialCount,
+  colorCount,
+  sizeCount,
+  discountCount,
+  customerCount,
   formatPrice,
   formatDate,
   cancelModal,
@@ -36,6 +47,7 @@ import {
   getStatusBadgeClass,
   toasts,
   toastIcon,
+  dismissToast,
 } from "./adminStore";
 
 const route = useRoute();
@@ -61,7 +73,7 @@ const sections = [
         to: "/admin/panel/payments",
         icon: "bi-credit-card-2-front-fill",
         label: "Xác Nhận Thanh Toán",
-        badge: () => unpaidCount.value,
+        badge: () => incompleteOrdersCount.value,
         badgeClass: "bg-warning text-dark",
       },
       {
@@ -85,24 +97,32 @@ const sections = [
         to: "/admin/panel/products",
         icon: "bi-box-seam-fill",
         label: "Sản Phẩm",
+        badge: () => activeProductCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/categories",
         icon: "bi-diagram-3-fill",
         label: "Danh Mục Bộ Môn",
+        badge: () => categoryCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/brands",
         icon: "bi-award-fill",
         label: "Thương Hiệu",
+        badge: () => brandCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/materials",
         icon: "bi-layers-fill",
         label: "Chất Liệu",
+        badge: () => materialCount.value,
+        badgeClass: "bg-secondary",
       },
-      { to: "/admin/panel/colors", icon: "bi-palette-fill", label: "Màu Sắc" },
-      { to: "/admin/panel/sizes", icon: "bi-rulers", label: "Kích Thước" },
+      { to: "/admin/panel/colors", icon: "bi-palette-fill", label: "Màu Sắc", badge: () => colorCount.value, badgeClass: "bg-secondary" },
+      { to: "/admin/panel/sizes", icon: "bi-rulers", label: "Kích Thước", badge: () => sizeCount.value, badgeClass: "bg-secondary" },
     ],
   },
   {
@@ -112,16 +132,15 @@ const sections = [
         to: "/admin/panel/discounts",
         icon: "bi-ticket-perforated-fill",
         label: "Mã Khuyến Mãi",
+        badge: () => discountCount.value,
+        badgeClass: "bg-secondary",
       },
-      // {
-      //   to: "/admin/panel/variant-discounts",
-      //   icon: "bi-palette-fill",
-      //   label: "Giảm Giá Biến Thể Màu",
-      // },
       {
         to: "/admin/panel/customers",
         icon: "bi-people-fill",
         label: "Khách Hàng (CRM)",
+        badge: () => customerCount.value,
+        badgeClass: "bg-secondary",
       },
     ],
   },
@@ -250,29 +269,13 @@ onMounted(fetchAllData);
           ></h2>
         </div>
         <div class="d-flex align-items-center gap-3">
-          <button
-            class="btn btn-light border-0 rounded-circle position-relative d-flex align-items-center justify-content-center text-dark bg-light-gray"
-            style="width: 40px; height: 40px"
-            @click="go('/admin/panel/payments')"
-            title="Đơn chờ xử lý"
-          >
-            <i class="bi bi-bell fs-5"></i>
-            <span
-              v-if="pendingOrdersCount > 0"
-              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-              style="font-size: 0.6rem"
-              v-text="pendingOrdersCount"
-            ></span>
-          </button>
           <div
             class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border"
             style="width: 40px; height: 40px"
-            v-text="getDisplayName.charAt(0).toUpperCase()"
-          ></div>
+          >A</div>
           <span
             class="fw-bold text-dark d-none d-sm-block"
-            v-text="'Xin chào, ' + getDisplayName"
-          ></span>
+          >Xin chào, Admin</span>
         </div>
       </header>
 
@@ -640,18 +643,28 @@ onMounted(fetchAllData);
       </div>
     </div>
 
-    <!-- Toasts -->
-    <div class="toast-container">
-      <div
-        v-for="t in toasts"
-        :key="t.id"
-        class="app-toast fade-in-scale"
-        :class="'toast-' + t.type"
-      >
-        <i class="bi me-2 fs-6" :class="toastIcon(t.type)"></i>
-        <span v-text="t.message"></span>
+    <!-- Toasts: teleport ra <body> để không bị modal / overflow của khung admin che mất -->
+    <Teleport to="body">
+      <div class="toast-container">
+        <div
+          v-for="t in toasts"
+          :key="t.id"
+          class="app-toast fade-in-scale"
+          :class="'toast-' + t.type"
+        >
+          <i class="bi me-2 fs-6" :class="toastIcon(t.type)"></i>
+          <span class="flex-grow-1" v-text="t.message"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-link text-secondary p-0 ms-2 lh-1"
+            @click="dismissToast(t.id)"
+            aria-label="Đóng thông báo"
+          >
+            <i class="bi bi-x-lg" style="font-size:0.8rem;"></i>
+          </button>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -808,7 +821,8 @@ onMounted(fetchAllData);
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 1090;
+  z-index: 2000;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -823,7 +837,9 @@ onMounted(fetchAllData);
   display: flex;
   align-items: center;
   min-width: 260px;
+  max-width: 380px;
   border-left: 4px solid #6b7280;
+  pointer-events: auto;
 }
 .toast-success {
   border-left-color: #0A0A0A;

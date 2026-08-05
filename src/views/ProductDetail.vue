@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+import { cartState, addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import { API_BASE_URL } from "../services/apiClient";
 
@@ -26,10 +26,10 @@ const fetchData = async () => {
     const raw = dp.find((p) => p.id === id)
     if (raw) {
       product.value = {
-        id_product: raw.id, product_name: raw.name, price: raw.price,
+        id_product: raw.id, product_name: raw.name, price: raw.price, sale_price: raw.sale_price,
         category_name: raw.category, sport: raw.sport, description: raw.description,
-        material_name: raw.material_name, sole_name: raw.sole_name,
-        cushioning_name: raw.cushioning_name, brand_name: raw.brand,
+        material_name: raw.material_name,
+        brand_name: raw.brand,
         collection_name: raw.collection_name, image_url: raw.image_url,
       }
       variants.value = Array.isArray(raw.variants) ? raw.variants : []
@@ -89,21 +89,79 @@ const attributes = computed(() => {
     { icon: 'bi-grid', label: 'Danh mục', value: p.category_name },
     { icon: 'bi-activity', label: 'Bộ môn', value: p.sport },
     { icon: 'bi-layers', label: 'Chất liệu', value: p.material_name },
-    { icon: 'bi-record-circle', label: 'Đế giày', value: p.sole_name },
-    { icon: 'bi-cloud', label: 'Công nghệ đệm', value: p.cushioning_name },
     { icon: 'bi-collection', label: 'Bộ sưu tập', value: p.collection_name },
   ].filter((a) => a.value)
 })
 
+// ... in script setup later:
+const cartQuantity = computed(() => {
+  if (!product.value) return 0
+  const pid = product.value.id_product || product.value.id
+  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
+})
+
+/* Kiểm tra hết hàng */
+const isOutOfStock = computed(() => {
+  if (!variants.value.length) return false
+  const total = variants.value.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+  return (total - cartQuantity.value) <= 0
+})
+
+const variantCartQty = computed(() => {
+  if (!product.value || !selSize.value || !selColor.value) return 0
+  const pid = product.value.id_product || product.value.id
+  const detailId = `${pid}_${selSize.value}_${selColor.value.color_name}`
+  const item = cartState.items.find(i => i.id_product_detail === detailId)
+  return item ? item.quantity : 0
+})
+
+const maxStock = computed(() => {
+  if (!selColor.value || !selSize.value || !variants.value.length) return 100;
+  const v = variants.value.find(v => v.color === selColor.value.color_name && String(v.size) === String(selSize.value));
+  return v ? Number(v.stock) : (product.value?.stock_quantity ?? 100);
+})
+
+const availableStock = computed(() => Math.max(0, maxStock.value - variantCartQty.value))
+
+watch(availableStock, (newVal) => {
+  if (qty.value > newVal && newVal > 0) {
+    qty.value = newVal
+  }
+})
+
+const incrementQty = () => {
+  if (qty.value < availableStock.value) {
+    qty.value++;
+  } else {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này trong kho` });
+  }
+}
+
 const handleAdd = () => {
+  if (isOutOfStock.value) {
+    notify({
+      type: 'warning',
+      title: 'Sản phẩm đã hết hàng',
+      message: 'Xin lỗi! Sản phẩm này hiện không còn hàng. Hãy khám phá các sản phẩm khác nhé 😊',
+      duration: 4000,
+    })
+    return
+  }
   if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
   if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
-  const r = addToCart({
+  if (qty.value > availableStock.value) {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này` })
+    return
+  }
+
+  const payload = {
     product: product.value,
     quantity: qty.value,
     size: { size_name: selSize.value },
-    color: { color_label: selColor.value.color_label, color_name: selColor.value.color_name, color_hex: selColor.value.hex },
-  })
+    color: selColor.value,
+    stockQuantity: maxStock.value
+  }
+  const r = addToCart(payload)
   if (!r.ok) { notify({ type: 'error', message: r.message }); return }
   showMiniCart()
   notify({ type: 'success', title: 'Đã thêm vào giỏ', message: product.value.product_name })
@@ -135,7 +193,10 @@ onMounted(fetchData)
         <div class="col-lg-6">
           <nav class="detail-breadcrumb"><router-link to="/">Trang chủ</router-link> / <router-link to="/products">Sản phẩm</router-link> / <span>{{ product.product_name }}</span></nav>
           <h1 class="detail-name">{{ product.product_name }}</h1>
-          <div class="detail-price">{{ formatCurrency(product.price) }}</div>
+          <div class="detail-price d-flex flex-column">
+            <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price)" class="text-danger text-decoration-line-through small" style="font-size: 1.1rem; font-weight: normal;">{{ formatCurrency(product.price) }}</span>
+            <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : product.price) }}</span>
+          </div>
 
           <p class="detail-desc">{{ product.description || 'Sản phẩm giày thể thao nam chính hãng, thiết kế hiện đại, phù hợp mọi hoạt động.' }}</p>
 
@@ -163,15 +224,28 @@ onMounted(fetchData)
             <div class="size-wrap">
               <button v-for="s in availableSizes" :key="s.size_name" class="size-box" :class="{ active: selSize === s.size_name }" @click="selSize = s.size_name">{{ s.size_name }}</button>
             </div>
+            <div class="mt-2 text-muted small" v-if="selSize && selColor">
+              <i class="bi bi-box-seam me-1"></i>Còn lại: <strong>{{ availableStock }}</strong> sản phẩm
+            </div>
           </div>
           <p v-else class="text-muted small">Sản phẩm chưa cấu hình biến thể.</p>
 
-          <!-- Qty + add -->
-          <div class="buy-row">
+          <!-- Hết hàng: nút disabled + thông báo lịch sự có nút tiếp tục mua -->
+          <div v-if="isOutOfStock" class="buy-row flex-column gap-2">
+            <button class="btn-sg btn-sg-oos flex-grow-1 w-100" disabled>
+              <i class="bi bi-x-circle me-2"></i>HẾT HÀNG
+            </button>
+            <div class="oos-notice">
+              <i class="bi bi-info-circle-fill me-1"></i>
+              Sản phẩm này hiện không còn hàng. Hãy khám phá thêm các mẫu khác nhé!
+              <router-link to="/products" class="oos-link">Xem sản phẩm khác →</router-link>
+            </div>
+          </div>
+          <div v-else class="buy-row">
             <div class="qty-box">
               <button @click="qty > 1 && qty--"><i class="bi bi-dash"></i></button>
               <span>{{ qty }}</span>
-              <button @click="qty++"><i class="bi bi-plus"></i></button>
+              <button @click="incrementQty"><i class="bi bi-plus"></i></button>
             </div>
             <button class="btn-sg flex-grow-1" @click="handleAdd"><i class="bi bi-bag-plus me-2"></i>Thêm vào giỏ hàng</button>
           </div>
@@ -226,5 +300,10 @@ onMounted(fetchData)
 .trust-row span { font-size: .85rem; color: var(--sg-ink-2); font-weight: 600; }
 .trust-row i { color: #16a34a; margin-right: 5px; }
 @media (max-width: 576px) { .attr-grid { grid-template-columns: 1fr; } }
+.btn-sg-oos { background: #9ca3af !important; border-color: #9ca3af !important; cursor: not-allowed !important; opacity: .7; }
+.oos-notice { font-size: .88rem; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.oos-notice i { color: #f59e0b; flex-shrink: 0; margin-top: 2px; }
+.oos-link { display: inline-block; margin-left: 6px; color: #2563eb; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.oos-link:hover { text-decoration: underline; }
 </style>
 
