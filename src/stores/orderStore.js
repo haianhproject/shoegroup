@@ -219,6 +219,7 @@ export const cancelOrder = (orderId, reason) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "CANCELLED";
+  o.payment_status = "Hoàn tiền";
   o.cancelReason = reason || "Khách hàng hủy đơn.";
   saveOrders();
 };

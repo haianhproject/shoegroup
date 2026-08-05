@@ -658,10 +658,21 @@ export function getOrderActions(o) {
         class: "btn-info text-white",
       });
   }
+  
+  acts.push({
+    key: "cancel",
+    text: "Hủy đơn",
+    class: "btn-outline-danger mt-2",
+    isCancel: true
+  });
   return acts;
 }
 export async function runOrderAction(o, act) {
   if (!o || !act || act.locked) return;
+  if (act.isCancel) {
+    openCancelModal(o);
+    return;
+  }
   if (act.markPaid) {
     const isCOD = getPaymentMethodPill(o.payment_method).code === "COD";
     o.payment_status = "Đã thanh toán";
@@ -719,6 +730,7 @@ export async function submitCancelOrder() {
   const ord = cancelModal.order;
   if (!ord || !cancelModal.reason) return;
   ord.status = "Đã hủy";
+  ord.payment_status = "Hoàn tiền";
   ord.cancel_reason = cancelModal.reason;
   ord._history = ord._history || [];
   ord._history.push({
