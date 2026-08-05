@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
-import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+import { useRouter } from 'vue-router'
+import { addToCart, formatCurrency, showMiniCart, cartState } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 
 const props = defineProps({
@@ -12,15 +13,22 @@ const baseName = computed(() => props.product.product_name || props.product.name
 const sportName = computed(() => props.product.sport || '')
 const displayName = computed(() => (sportName.value ? `${sportName.value} - ${baseName.value}` : baseName.value))
 
+const router = useRouter()
 const productLink = computed(() => `/product/${props.product.id_product || props.product.id}`)
 
-/* Kiểm tra hết hàng: ưu tiên total_stock, fallback sang variants */
+const cartQuantity = computed(() => {
+  const pid = props.product.id_product || props.product.id
+  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
+})
+
+/* Kiểm tra hết hàng: tổng tồn kho - số lượng đã có trong giỏ */
 const isOutOfStock = computed(() => {
-  const ts = props.product.total_stock
-  if (ts !== null && ts !== undefined) return Number(ts) <= 0
-  const variants = props.product.variants || []
-  if (!variants.length) return false
-  return variants.reduce((s, v) => s + (Number(v.stock) || 0), 0) <= 0
+  let ts = props.product.total_stock
+  if (ts === null || ts === undefined) {
+    const variants = props.product.variants || []
+    ts = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+  }
+  return (Number(ts) - cartQuantity.value) <= 0
 })
 
 const handleAddToCart = () => {
@@ -33,6 +41,7 @@ const handleAddToCart = () => {
     })
     return
   }
+
   const result = addToCart({
     product: props.product,
     quantity: 1,
@@ -41,8 +50,9 @@ const handleAddToCart = () => {
       color_label: props.product.color_name || props.product.color || 'Tiêu chuẩn',
       color_name: props.product.color_name || props.product.color || 'Tiêu chuẩn',
     },
+    stockQuantity: props.product.total_stock ?? props.product.stock ?? 100
   })
-  if (!result.ok) { notify({ type: 'error', message: result.message }); return }
+  if (!result.ok) { notify({ type: 'warning', message: result.message }); return }
   showMiniCart()
   notify({ type: 'success', title: 'Đã thêm vào giỏ', message: props.product.product_name || props.product.name, duration: 2200 })
 }

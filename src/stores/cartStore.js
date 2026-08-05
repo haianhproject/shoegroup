@@ -95,13 +95,22 @@ export const addToCart = (payload) => {
 
   const detailId = `${productId}_${sizeName}_${colorName}`;
   const existingItem = cartState.items.find((i) => i.id_product_detail === detailId);
+  const stockQuantity = Number(payload.stockQuantity ?? product.stock_quantity ?? product.total_stock ?? 100);
 
   if (existingItem) {
+    existingItem.stockQuantity = stockQuantity; // Cập nhật tồn kho mới nhất
+    if (existingItem.quantity + quantity > existingItem.stockQuantity) {
+      return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${existingItem.stockQuantity})` };
+    }
     existingItem.quantity += quantity;
     existingItem.unitPrice = productPrice;
     existingItem.product.price = productPrice;
     existingItem.product.image_url = productImage;
     return { ok: true, message: "\u0110\u00e3 c\u1eadp nh\u1eadt s\u1ed1 l\u01b0\u1ee3ng." };
+  }
+
+  if (quantity > stockQuantity) {
+    return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${stockQuantity})` };
   }
 
   cartState.items.unshift({
@@ -119,7 +128,7 @@ export const addToCart = (payload) => {
     attributes,
     quantity,
     unitPrice: productPrice,
-    stockQuantity: product.stock_quantity || 100,
+    stockQuantity,
   });
 
   return { ok: true, message: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng." };
@@ -128,6 +137,9 @@ export const addToCart = (payload) => {
 export const increaseQuantity = (detailId) => {
   const item = cartState.items.find((i) => i.id_product_detail === detailId);
   if (!item) return { ok: false, message: "L\u1ed7i" };
+  if (item.quantity + 1 > item.stockQuantity) {
+    return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${item.stockQuantity})` };
+  }
   item.quantity += 1;
   return { ok: true, message: "Th\u00e0nh c\u00f4ng" };
 };

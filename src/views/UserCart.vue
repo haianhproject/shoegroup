@@ -28,6 +28,18 @@ const attrsOf = (item) => {
     { label: 'Bộ môn', value: a.sport },
   ].filter((x) => x.value)
 }
+
+const handleIncrease = (id) => {
+  const r = increaseQuantity(id)
+  if (!r.ok) notify({ type: 'warning', message: r.message })
+}
+
+const handleDecrease = (id) => {
+  const r = decreaseQuantity(id)
+  if (!r.ok && r.message !== 'Số lượng tối thiểu là 1') {
+    notify({ type: 'warning', message: r.message })
+  }
+}
 </script>
 
 <template>
@@ -71,9 +83,9 @@ const attrsOf = (item) => {
                 
                 <div class="ci-foot mt-4">
                   <div class="qty-box">
-                    <button @click="decreaseQuantity(item.id_product_detail)"><i class="bi bi-dash"></i></button>
+                    <button @click="handleDecrease(item.id_product_detail)"><i class="bi bi-dash"></i></button>
                     <span>{{ item.quantity }}</span>
-                    <button @click="increaseQuantity(item.id_product_detail)"><i class="bi bi-plus"></i></button>
+                    <button @click="handleIncrease(item.id_product_detail)"><i class="bi bi-plus"></i></button>
                   </div>
                   <div class="ci-price">{{ formatCurrency(item.subtotal) }}</div>
                 </div>

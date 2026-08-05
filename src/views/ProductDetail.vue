@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+import { cartState, addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import { API_BASE_URL } from "../services/apiClient";
 
@@ -93,12 +93,49 @@ const attributes = computed(() => {
   ].filter((a) => a.value)
 })
 
+// ... in script setup later:
+const cartQuantity = computed(() => {
+  if (!product.value) return 0
+  const pid = product.value.id_product || product.value.id
+  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
+})
+
 /* Kiểm tra hết hàng */
 const isOutOfStock = computed(() => {
   if (!variants.value.length) return false
   const total = variants.value.reduce((s, v) => s + (Number(v.stock) || 0), 0)
-  return total <= 0
+  return (total - cartQuantity.value) <= 0
 })
+
+const variantCartQty = computed(() => {
+  if (!product.value || !selSize.value || !selColor.value) return 0
+  const pid = product.value.id_product || product.value.id
+  const detailId = `${pid}_${selSize.value}_${selColor.value.color_name}`
+  const item = cartState.items.find(i => i.id_product_detail === detailId)
+  return item ? item.quantity : 0
+})
+
+const maxStock = computed(() => {
+  if (!selColor.value || !selSize.value || !variants.value.length) return 100;
+  const v = variants.value.find(v => v.color === selColor.value.color_name && String(v.size) === String(selSize.value));
+  return v ? Number(v.stock) : (product.value?.stock_quantity ?? 100);
+})
+
+const availableStock = computed(() => Math.max(0, maxStock.value - variantCartQty.value))
+
+watch(availableStock, (newVal) => {
+  if (qty.value > newVal && newVal > 0) {
+    qty.value = newVal
+  }
+})
+
+const incrementQty = () => {
+  if (qty.value < availableStock.value) {
+    qty.value++;
+  } else {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này trong kho` });
+  }
+}
 
 const handleAdd = () => {
   if (isOutOfStock.value) {
@@ -112,12 +149,19 @@ const handleAdd = () => {
   }
   if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
   if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
-  const r = addToCart({
+  if (qty.value > availableStock.value) {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này` })
+    return
+  }
+
+  const payload = {
     product: product.value,
     quantity: qty.value,
     size: { size_name: selSize.value },
-    color: { color_label: selColor.value.color_label, color_name: selColor.value.color_name, color_hex: selColor.value.hex, image: selColor.value.image },
-  })
+    color: selColor.value,
+    stockQuantity: maxStock.value
+  }
+  const r = addToCart(payload)
   if (!r.ok) { notify({ type: 'error', message: r.message }); return }
   showMiniCart()
   notify({ type: 'success', title: 'Đã thêm vào giỏ', message: product.value.product_name })
@@ -180,6 +224,9 @@ onMounted(fetchData)
             <div class="size-wrap">
               <button v-for="s in availableSizes" :key="s.size_name" class="size-box" :class="{ active: selSize === s.size_name }" @click="selSize = s.size_name">{{ s.size_name }}</button>
             </div>
+            <div class="mt-2 text-muted small" v-if="selSize && selColor">
+              <i class="bi bi-box-seam me-1"></i>Còn lại: <strong>{{ availableStock }}</strong> sản phẩm
+            </div>
           </div>
           <p v-else class="text-muted small">Sản phẩm chưa cấu hình biến thể.</p>
 
@@ -198,7 +245,7 @@ onMounted(fetchData)
             <div class="qty-box">
               <button @click="qty > 1 && qty--"><i class="bi bi-dash"></i></button>
               <span>{{ qty }}</span>
-              <button @click="qty++"><i class="bi bi-plus"></i></button>
+              <button @click="incrementQty"><i class="bi bi-plus"></i></button>
             </div>
             <button class="btn-sg flex-grow-1" @click="handleAdd"><i class="bi bi-bag-plus me-2"></i>Thêm vào giỏ hàng</button>
           </div>
