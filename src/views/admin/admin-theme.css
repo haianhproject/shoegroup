@@ -1,0 +1,49 @@
+/*
+ * admin-theme.css
+ * ------------------------------------------------------------------
+ * Các class giao diện DÙNG CHUNG cho mọi trang trong khu quản trị.
+ * File này được import 1 lần (không scoped) trong AdminLayout.vue nên
+ * tất cả các page con đều dùng được mà không phải khai báo lại.
+ *
+ * Lưu ý: các class của Bootstrap 5 (row, col, table, btn, badge...)
+ * vẫn cần Bootstrap được nạp ở cấp ứng dụng như dự án gốc.
+ * ------------------------------------------------------------------
+ */
+@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+.font-sans { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.bg-light-gray { background-color: #f3f4f6 !important; }
+.tracking-wide { letter-spacing: 0.04em; }
+
+.dashboard-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.08) !important; }
+.order-card { transition: box-shadow 0.2s ease; }
+.order-card:hover { box-shadow: 0 10px 24px rgba(0,0,0,0.07) !important; }
+.stat-icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.badge-active { background-color: #dcfce7 !important; color: #166534 !important; }
+
+.btn-white { background-color: #ffffff; }
+.btn-white:hover { background-color: #f3f4f6; }
+
+.color-swatch { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 999px; padding: 4px 10px; font-size: 0.82rem; font-weight: 500; }
+.color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); vertical-align: middle; }
+.swatch-remove { cursor: pointer; color: #9ca3af; transition: color 0.15s ease; }
+.swatch-remove:hover { color: #dc2626; }
+
+.pos-product { cursor: pointer; transition: all 0.15s ease; }
+.pos-product:hover { border-color: #000 !important; box-shadow: 0 6px 16px rgba(0,0,0,0.08); transform: translateY(-2px); }
+
+.fade-in { animation: fadeIn 0.35s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---------------- Modal dùng chung (popup luôn căn giữa màn hình) ----------------
+ * Định nghĩa ở cấp GLOBAL để mọi page con (giảm giá, mã giảm giá...) đều
+ * hiển thị form Thêm/Sửa dạng popup nổi giữa màn hình, không bị đẩy xuống
+ * dưới cùng của trang khi danh sách dài.
+ * -------------------------------------------------------------------------------- */
+.custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1080; padding: 1rem; }
+.custom-modal-box { background: #fff; border-radius: 18px; width: 100%; max-width: 560px; box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; }
+.fade-in-scale { animation: fadeInScale 0.22s ease; }
+@keyframes fadeInScale { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
