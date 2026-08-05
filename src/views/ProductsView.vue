@@ -44,7 +44,7 @@ const fetchAll = async () => {
     const catSportMap = {}
     dc.forEach((c) => { catSportMap[c.id] = c.sport })
     products.value = dp.filter((p) => p.active).map((p) => ({
-      id_product: p.id, product_name: p.name, price: p.price,
+      id_product: p.id, product_name: p.name, price: p.price, sale_price: p.sale_price,
       id_category: p.category_id, category_name: p.category,
       sport: catSportMap[p.category_id] || '',
       material_id: p.material_id,

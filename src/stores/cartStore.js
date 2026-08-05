@@ -73,7 +73,9 @@ export const addToCart = (payload) => {
 
   const productId = product.id_product || product.id || product.ProductID;
   const productName = product.product_name || product.name || product.ProductName;
-  const productPrice = product.price || product.BasePrice || 0;
+  const basePrice = product.price || product.BasePrice || 0;
+  const salePrice = Number(product.sale_price || product.SalePrice || 0);
+  const productPrice = salePrice > 0 ? salePrice : basePrice;
   const productImage = color.image || product.image_url || product.ImageURL || product.image;
 
   const sizeName = size.size_name || size.SizeName || "42";

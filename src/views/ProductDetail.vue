@@ -26,7 +26,7 @@ const fetchData = async () => {
     const raw = dp.find((p) => p.id === id)
     if (raw) {
       product.value = {
-        id_product: raw.id, product_name: raw.name, price: raw.price,
+        id_product: raw.id, product_name: raw.name, price: raw.price, sale_price: raw.sale_price,
         category_name: raw.category, sport: raw.sport, description: raw.description,
         material_name: raw.material_name,
         brand_name: raw.brand,
@@ -141,7 +141,10 @@ onMounted(fetchData)
         <div class="col-lg-6">
           <nav class="detail-breadcrumb"><router-link to="/">Trang chủ</router-link> / <router-link to="/products">Sản phẩm</router-link> / <span>{{ product.product_name }}</span></nav>
           <h1 class="detail-name">{{ product.product_name }}</h1>
-          <div class="detail-price">{{ formatCurrency(product.price) }}</div>
+          <div class="detail-price d-flex flex-column">
+            <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price)" class="text-danger text-decoration-line-through small" style="font-size: 1.1rem; font-weight: normal;">{{ formatCurrency(product.price) }}</span>
+            <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : product.price) }}</span>
+          </div>
 
           <p class="detail-desc">{{ product.description || 'Sản phẩm giày thể thao nam chính hãng, thiết kế hiện đại, phù hợp mọi hoạt động.' }}</p>
 

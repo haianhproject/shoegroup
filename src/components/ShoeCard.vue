@@ -54,7 +54,10 @@ const handleAddToCart = () => {
         <span v-if="product.sport" class="sg-chip sg-chip-blue">{{ product.sport }}</span>
       </div>
       <div class="shoe-foot">
-        <div class="shoe-price">{{ formatCurrency(product.price || product.BasePrice) }}</div>
+        <div class="shoe-price d-flex flex-column">
+          <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price || product.BasePrice)" class="text-danger text-decoration-line-through small" style="font-size:0.8rem; font-weight:normal;">{{ formatCurrency(product.price || product.BasePrice) }}</span>
+          <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : (product.price || product.BasePrice)) }}</span>
+        </div>
         <button v-if="isOutOfStock" class="shoe-add shoe-add-oos" disabled aria-label="Hết hàng" title="Sản phẩm đã hết hàng">
           <i class="bi bi-x-lg"></i>
         </button>

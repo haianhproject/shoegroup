@@ -1507,7 +1507,7 @@ export const posVariants = computed(() => {
     covered.add(String(v.product_id));
     const p = db.products.find((x) => String(x.id) === String(v.product_id));
     if (p && p.active === false) return;
-    const base = p ? Number(p.sale_price || p.price) || 0 : 0;
+    const base = p ? (Number(p.sale_price) > 0 ? Number(p.sale_price) : (Number(p.price) || 0)) : 0;
     const inCart = activePosOrder.value.cart.find((c) => String(c.key) === String(v.id));
     const cartQty = inCart ? inCart.quantity : 0;
     list.push({
@@ -1545,7 +1545,7 @@ export const posVariants = computed(() => {
       stock: Math.max(0, (Number(p.stock ?? p.total_stock ?? 0) || 0) - cartQty),
       no_variant: true,
       image: p.image_url || "",
-      price: Number(p.sale_price || p.price) || 0,
+      price: Number(p.sale_price) > 0 ? Number(p.sale_price) : (Number(p.price) || 0),
     });
   });
   return list.filter(
@@ -3253,6 +3253,7 @@ export async function fetchAllData() {
       sku: v.ChildSKU ?? v.sku ?? "",
       stock: Number(v.StockQuantity ?? v.stock ?? 0) || 0,
       price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
+      image_url: v.image_url ?? v.ImageURL ?? "",
     }));
     /* DU PHONG: neu API /inventory gap su co thi dung bien the kem theo
        trong /products de dung lai danh sach kho. Nho vay trang San Pham
@@ -3271,6 +3272,7 @@ export async function fetchAllData() {
             sku: v.sku ?? v.ChildSKU ?? "",
             stock: Number(v.stock ?? v.StockQuantity ?? 0) || 0,
             price_adjustment: 0,
+            image_url: p.image_url ?? p.ImageURL ?? "",
           });
         });
       });
