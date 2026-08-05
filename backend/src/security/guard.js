@@ -43,9 +43,10 @@ const POLICIES = [
   ["GET", /^\/api\/postoffices/, "PUBLIC"],
   ["GET", /^\/api\/shippingmethods/, "PUBLIC"],
   ["POST", /^\/api\/shipping\/quote$/, "PUBLIC"],
+  ["POST", /^\/api\/orders$/, "PUBLIC"],
+  ["PUT", /^\/api\/orders\/\d+\/payment$/, "PUBLIC"],
 
   // ===== Khach hang da dang nhap =====
-  ["POST", /^\/api\/orders$/, "CUSTOMER"], // dat hang (POS cua admin cung dung route nay)
   ["PUT", /^\/api\/orders\/\d+\/status$/, "CUSTOMER"], // khach tu huy don cua minh
   ["PUT", /^\/api\/orders\/\d+\/receive$/, "CUSTOMER"],
   ["POST", /^\/api\/returns$/, "CUSTOMER"],
@@ -61,7 +62,6 @@ const POLICIES = [
   ["*", /^\/api\/chart-data/, "ADMIN"],
   ["*", /^\/api\/revenue-by-product/, "ADMIN"],
   ["*", /^\/api\/inventory/, "ADMIN"],
-  ["*", /^\/api\/orders\/\d+\/payment$/, "ADMIN"],
   ["*", /^\/api\/returns\/\d+\/status$/, "ADMIN"],
   // Moi thao tac ghi tren du lieu danh muc / san pham deu la Admin
   ["POST", /^\/api\//, "ADMIN"],

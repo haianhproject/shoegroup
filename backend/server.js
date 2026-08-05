@@ -437,6 +437,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
 
 // Cập nhật trạng thái thanh toán từ khu quản trị.
 app.put("/api/orders/:id/payment", async (req, res) => {
+  console.log("PUT /payment => ID:", req.params.id, "BODY:", req.body);
   try {
     await poolConnect;
     await pool

@@ -43,7 +43,7 @@ const readOrdersFromStorage = () => {
   }
 };
 
-const saveOrders = () => {
+export const saveOrders = () => {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(orderState.orders));
 };
@@ -154,6 +154,7 @@ export const createOrder = ({
     }),
     subtotal, shippingFee, discount, total,
     shippingMethod, paymentMethod, note: note || "",
+    payment_status: "Chưa thanh toán",
   };
 
   orderState.orders.unshift(order);
@@ -240,6 +241,7 @@ const SERVER_STATUS_TO_KEY = {
   "Đang giao": "SHIPPING",
   "Đã giao hàng thành công": "DELIVERED",
   "Đã giao": "DELIVERED",
+  "Đã nhận hàng": "RECEIVED",
   "Đã hủy": "CANCELLED",
 };
 
@@ -297,21 +299,32 @@ const mapServerOrder = (s) => {
 
 /* Đồng bộ trạng thái từ server (Admin cập nhật) về đơn của khách */
 export const syncFromServer = async () => {
-  const withServer = orderState.orders.filter((o) => o.serverId);
+  const user = getCurrentUser();
+  if (!user) return; // Only sync if logged in
+
+  const uid = user.id_user || user.id || user.UserID;
   let list = [];
   try {
-    const res = await fetch(`${API_BASE}/orders`);
-    list = await res.json();
+    const { api } = await import("../services/apiClient");
+    list = await api.get(`/customers/${uid}/orders`);
   } catch {
     return;
   }
   if (!Array.isArray(list)) return;
+
+  const withServer = orderState.orders.filter((o) => o.serverId);
   const byId = {};
   list.forEach((s) => { byId[s.id] = s; });
   let changed = false;
+
+  // 1. Update existing orders
+  let toRemove = [];
   withServer.forEach((o) => {
     const s = byId[o.serverId];
-    if (!s) return;
+    if (!s) {
+      toRemove.push(o.id);
+      return;
+    }
     const key = SERVER_STATUS_TO_KEY[s.status];
     if (!key || CLIENT_TERMINAL.includes(o.status)) return;
     if (o.status !== key) {
@@ -323,19 +336,29 @@ export const syncFromServer = async () => {
       if (key === "CANCELLED") o.cancelReason = s.cancel_reason || o.cancelReason || "Đơn bị hủy.";
       changed = true;
     }
+    if (o.payment_status !== s.payment_status) {
+      o.payment_status = s.payment_status;
+      changed = true;
+    }
+    if (s.payment_method && typeof o.paymentMethod === 'object' && o.paymentMethod.name !== s.payment_method) {
+      o.paymentMethod.name = s.payment_method;
+      changed = true;
+    } else if (s.payment_method && typeof o.paymentMethod === 'string' && o.paymentMethod !== s.payment_method) {
+      o.paymentMethod = s.payment_method;
+      changed = true;
+    }
   });
 
-  // Nap them don tu SQL cho user hien tai ma local CHUA co (khac phuc "mat don hang")
-  const user = getCurrentUser();
-  if (user) {
-    const uid = user.id_user || user.id || user.UserID;
-    const known = new Set(orderState.orders.map((o) => o.serverId).filter(Boolean));
-    list.forEach((s) => {
-      if (uid == null || s.user_id == null) return;
-      if (String(s.user_id) !== String(uid)) return;
-      if (known.has(s.id)) return;
-      try { orderState.orders.push(mapServerOrder(s)); changed = true; } catch (e) { /* bo qua dong loi */ }
-    });
+  // 2. Fetch remote orders missing locally
+  const known = new Set(orderState.orders.map((o) => o.serverId).filter(Boolean));
+  list.forEach((s) => {
+    if (known.has(s.id)) return;
+    try { orderState.orders.push(mapServerOrder(s)); changed = true; } catch (e) {}
+  });
+
+  if (toRemove.length > 0) {
+    orderState.orders = orderState.orders.filter(o => !toRemove.includes(o.id));
+    changed = true;
   }
 
   if (changed) saveOrders();

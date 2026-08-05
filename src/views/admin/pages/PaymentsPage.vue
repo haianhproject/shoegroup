@@ -20,7 +20,7 @@ import {
       <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div>
           <h5 class="fw-bold mb-1 text-dark">Quản lý xác nhận thanh toán</h5>
-          <p class="text-secondary small mb-0">Online: khách mua trên mạng &nbsp;|&nbsp; Offline: khách lẻ mua tại quầy</p>
+          <p class="text-secondary small mb-0">Online: khách mua trên mạng &nbsp;|&nbsp; Tại quầy: khách lẻ mua tại quầy</p>
           <p class="text-secondary mb-0" style="font-size:0.75rem;"><i class="bi bi-info-circle me-1"></i>Trạng thái thanh toán đĐơn chuyển khoản: khách phải chuyển khoản TRƯỚC rồi mới xác nhận & hoàn thành đơn. Đơn COD: xác nhận → giao → thu tiền → hoàn thành đơn.</p>
         </div>
         <span class="badge rounded-pill bg-dark text-white px-3 py-2" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
@@ -35,7 +35,7 @@ import {
               <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Online') + ')'"></span>
             </button>
             <button @click="paymentChannel = 'Offline'" class="btn btn-sm rounded-pill px-3 fw-medium border" :class="paymentChannel === 'Offline' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">
-              <i class="bi bi-shop-window me-1"></i> Offline
+              <i class="bi bi-shop-window me-1"></i> Tại quầy
               <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Offline') + ')'"></span>
             </button>
           </div>
@@ -122,7 +122,7 @@ import {
             <div class="row g-3 small">
               <div class="col-md-6"><span class="text-secondary d-block">Mã vận đơn</span><span class="fw-medium text-dark" v-text="getTrackingCode(orderDetail.order)"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block">Mã lấy hàng (shipper)</span><span class="fw-medium text-dark" v-text="getShipperCode(orderDetail.order)"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block">Kênh bán</span><span class="fw-medium text-dark" v-text="getOrderChannel(orderDetail.order)"></span></div>
+              <div class="col-md-6"><span class="text-secondary d-block">Kênh bán</span><span class="fw-medium text-dark" v-text="getOrderChannel(orderDetail.order) === 'Offline' ? 'Tại quầy' : 'Online'"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block">Ngày tạo</span><span class="fw-medium text-dark" v-text="formatDate(orderDetail.order.date)"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block">Nhân viên xử lý</span><span class="fw-medium text-dark" v-text="orderDetail.order.handled_by || 'Admin'"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block">Khách hàng</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_name || 'Khách lẻ'"></span></div>
@@ -172,7 +172,7 @@ import {
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="text-secondary small">Kênh bán</span>
-              <span class="badge rounded-pill bg-dark text-white" v-text="getOrderChannel(orderDetail.order)"></span>
+              <span class="badge rounded-pill bg-dark text-white" v-text="getOrderChannel(orderDetail.order) === 'Offline' ? 'Tại quầy' : 'Online'"></span>
             </div>
             <hr class="my-3">
             <button @click="printInvoice(orderDetail.order)" class="btn btn-dark rounded-3 w-100 fw-medium"><i class="bi bi-printer me-1"></i> In hóa đơn</button>

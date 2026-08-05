@@ -184,7 +184,7 @@ export const lowStockCount = computed(
 export const incompleteOrdersCount = computed(
   () =>
     db.orders.filter(
-      (o) => o.status !== "Đã giao hàng thành công" && o.status !== "Đã hủy",
+      (o) => o.status !== "Đã giao hàng thành công" && o.status !== "Đã nhận hàng" && o.status !== "Đã hủy",
     ).length,
 );
 /* Số sản phẩm hết hàng (tổng tồn kho = 0) */
@@ -503,6 +503,7 @@ export const orderStatuses = [
   "Đã xác nhận",
   "Đang vận chuyển",
   "Đã giao hàng thành công",
+  "Đã nhận hàng",
   "Đã hủy",
 ];
 export const orderStatusFilter = ref("Tất cả");
@@ -578,13 +579,23 @@ export async function processOrderFlow(ord) {
 // - Chuyển khoản: khách phải chuyển khoản TRƯỚC (ở trang khách hàng) mới được xác nhận & hoàn thành đơn.
 // - COD: xác nhận → giao → THU TIỀN (gần cuối) → hoàn thành đơn.
 export function getOrderActions(o) {
-  if (!o || o.status === "Đã hủy" || o.status === "Đã giao hàng thành công")
+  if (!o || o.status === "Đã hủy" || o.status === "Đã giao hàng thành công" || o.status === "Đã nhận hàng")
     return [];
   const method = getPaymentMethodPill(o.payment_method).code;
   const paid = (o.payment_status || "") === "Đã thanh toán";
   const acts = [];
   if (method === "BANK_TRANSFER") {
-    if (!paid)
+    if (!paid) {
+      if (o.payment_status === "Chờ thanh toán") {
+        return [
+          {
+            key: "bank_paid",
+            text: "Xác nhận đã nhận tiền",
+            markPaid: true,
+            class: "btn-primary text-white",
+          }
+        ];
+      }
       return [
         {
           key: "wait_bank",
@@ -592,7 +603,14 @@ export function getOrderActions(o) {
           locked: true,
           class: "btn-light text-secondary border",
         },
+        {
+          key: "bank_paid",
+          text: "Đã nhận tiền (Thủ công)",
+          markPaid: true,
+          class: "btn-outline-primary ms-2",
+        }
       ];
+    }
     if (o.status === "Chờ xác nhận")
       acts.push({
         key: "confirm",
@@ -603,9 +621,9 @@ export function getOrderActions(o) {
     else
       acts.push({
         key: "complete",
-        text: "Hoàn thành đơn",
+        text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
-        class: "btn-success text-white",
+        class: "btn-info text-white",
       });
     return acts;
   }
@@ -635,9 +653,9 @@ export function getOrderActions(o) {
     else
       acts.push({
         key: "complete",
-        text: "Hoàn thành đơn",
+        text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
-        class: "btn-success text-white",
+        class: "btn-info text-white",
       });
   }
   return acts;
@@ -645,19 +663,20 @@ export function getOrderActions(o) {
 export async function runOrderAction(o, act) {
   if (!o || !act || act.locked) return;
   if (act.markPaid) {
+    const isCOD = getPaymentMethodPill(o.payment_method).code === "COD";
     o.payment_status = "Đã thanh toán";
     o._history = o._history || [];
     o._history.push({
       status: "Thanh toán thành công",
       date: new Date().toISOString(),
-      note: "Thu tiền COD",
+      note: isCOD ? "Thu tiền COD" : "Xác nhận chuyển khoản",
     });
     await api("/orders/" + o.id + "/payment", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ payment_status: "Đã thanh toán" }),
     });
-    notify("Đơn #" + o.id + ": đã thu tiền COD", "success");
+    notify("Đơn #" + o.id + (isCOD ? ": đã thu tiền COD" : ": đã xác nhận chuyển khoản"), "success");
     return;
   }
   if (act.next) {
@@ -735,7 +754,9 @@ export const paymentOrders = computed(() =>
   db.orders.filter(
     (o) =>
       (o.payment_status || "Chưa thanh toán") !== "Đã thanh toán" &&
-      o.status !== "Đã hủy",
+      o.status !== "Đã hủy" &&
+      o.payment_method === "BANK_TRANSFER" &&
+      getOrderChannel(o) === "Online"
   ),
 );
 export async function confirmPayment(ord) {
@@ -861,16 +882,16 @@ export function getPaymentMethodPill(pm) {
 // Suy ra trạng thái thanh toán TỰ ĐỘNG (admin KHÔNG cần bấm xác nhận)
 // - Chuyển khoản / ví điện tử: coi như đã thanh toán ngay khi tạo đơn (khách quét link).
 // - Tiền mặt tại quầy (POS): đã thanh toán ngay.
-// - COD: chỉ tính là đã thanh toán khi đơn "Đã giao hàng thành công" (khách nhận & bấm xác nhận).
 export function effectivePaymentStatus(o) {
   if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
   if (o.status === "Đã hủy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
   if (pill.code === "CASH") return "Đã thanh toán";
-  if (pill.code === "BANK_TRANSFER")
-    return (o.payment_status || "") === "Đã thanh toán"
-      ? "Đã thanh toán"
-      : "Chờ chuyển khoản";
+  if (pill.code === "BANK_TRANSFER") {
+    if ((o.payment_status || "") === "Đã thanh toán") return "Đã thanh toán";
+    if ((o.payment_status || "") === "Chờ thanh toán") return "Khách báo đã chuyển";
+    return "Chờ chuyển khoản";
+  }
   if (pill.code === "COD")
     return o.status === "Đã giao hàng thành công" ||
       (o.payment_status || "") === "Đã thanh toán"
@@ -884,6 +905,8 @@ export function getPaymentStatusPill(o) {
     return { label: "Đã thanh toán", cls: "bg-success text-white fw-medium" };
   if (st === "Hoàn tiền")
     return { label: "Hoàn tiền", cls: "bg-info-subtle text-info-emphasis" };
+  if (st === "Khách báo đã chuyển")
+    return { label: "Khách báo đã chuyển", cls: "bg-primary-subtle text-primary-emphasis fw-medium" };
   if (st === "Chờ chuyển khoản")
     return {
       label: "Chờ chuyển khoản",
@@ -905,9 +928,13 @@ export function getPaymentStatusPill(o) {
 // Pill trạng thái đơn (rút gọn theo hình mẫu)
 export function getOrderStatusPill(o) {
   const map = {
-    "Đã giao hàng thành công": {
+    "Đã nhận hàng": {
       label: "Hoàn thành",
       cls: "bg-success text-white fw-medium",
+    },
+    "Đã giao hàng thành công": {
+      label: "Đã giao hàng",
+      cls: "bg-info text-white fw-medium",
     },
     "Đang vận chuyển": {
       label: "Đang giao",
@@ -977,6 +1004,7 @@ export function buildOrderHistory(o) {
     "Đã xác nhận",
     "Đang vận chuyển",
     "Đã giao hàng thành công",
+    "Đã nhận hàng",
   ];
   const rank = order.indexOf(o.status);
   const isBank =
@@ -999,10 +1027,16 @@ export function buildOrderHistory(o) {
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
+      label: "Đã giao hàng",
+      icon: "bi-box-seam",
       done: rank >= 3,
       date: findDate(["Đã giao hàng thành công"]),
+    });
+    steps.push({
+      label: "Hoàn thành đơn",
+      icon: "bi-bag-check",
+      done: rank >= 4,
+      date: findDate(["Đã nhận hàng"]),
     });
   } else {
     // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
@@ -1027,10 +1061,16 @@ export function buildOrderHistory(o) {
         : null,
     });
     steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
+      label: "Đã giao hàng",
+      icon: "bi-box-seam",
       done: rank >= 3,
       date: findDate(["Đã giao hàng thành công"]),
+    });
+    steps.push({
+      label: "Hoàn thành đơn",
+      icon: "bi-bag-check",
+      done: rank >= 4,
+      date: findDate(["Đã nhận hàng"]),
     });
   }
   return steps;
@@ -1722,7 +1762,7 @@ async function finalizePosOrder() {
     customer_phone: o.customer_phone || "",
     payment_method: o.payment_method,
     payment_status: "Đã thanh toán",
-    status: "Đã giao hàng thành công",
+    status: "Đã nhận hàng",
     handled_by: getDisplayName.value || "Quầy",
     order_note: o.customer_note || "",
     coupon_code: o.coupon_code || null,
@@ -1764,7 +1804,7 @@ async function finalizePosOrder() {
     id: newId,
     date: nowIso,
     total: posGrandTotal.value,
-    status: "Đã giao hàng thành công",
+    status: "Đã nhận hàng",
     customer_name: payload.customer_name,
     customer_phone: payload.customer_phone,
     customer_address: "",
@@ -1785,7 +1825,7 @@ async function finalizePosOrder() {
     })),
     isExpanded: false,
     _history: [
-      { status: "Đã giao hàng thành công", date: nowIso, note: "Bán tại quầy" },
+      { status: "Đã nhận hàng", date: nowIso, note: "Bán tại quầy" },
     ],
   });
   notify("Tạo đơn thành công: " + formatPrice(posGrandTotal.value), "success");

@@ -125,7 +125,7 @@ function addWithQty(v) {
           <div class="row g-2 mb-3">
             <div class="col-4"><div class="bg-light-gray rounded-3 p-2"><div class="text-secondary text-uppercase" style="font-size:0.62rem;">Khách hàng</div><div class="small fw-medium text-truncate" v-text="activePosOrder.customer_name || 'Khách lẻ'"></div></div></div>
             <div class="col-4"><div class="bg-light-gray rounded-3 p-2"><div class="text-secondary text-uppercase" style="font-size:0.62rem;">SĐT</div><div class="small fw-medium text-truncate" v-text="activePosOrder.customer_phone || '—'"></div></div></div>
-            <div class="col-4"><div class="bg-light-gray rounded-3 p-2"><div class="text-secondary text-uppercase" style="font-size:0.62rem;">Loại đơn</div><div class="small fw-medium">OFFLINE</div></div></div>
+            <div class="col-4"><div class="bg-light-gray rounded-3 p-2"><div class="text-secondary text-uppercase" style="font-size:0.62rem;">Loại đơn</div><div class="small fw-medium">TẠI QUẦY</div></div></div>
           </div>
 
           <div class="text-secondary text-uppercase mb-2" style="font-size:0.68rem;">Sản phẩm trong đơn</div>
