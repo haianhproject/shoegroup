@@ -28,8 +28,8 @@ const fetchData = async () => {
       product.value = {
         id_product: raw.id, product_name: raw.name, price: raw.price,
         category_name: raw.category, sport: raw.sport, description: raw.description,
-        material_name: raw.material_name, sole_name: raw.sole_name,
-        cushioning_name: raw.cushioning_name, brand_name: raw.brand,
+        material_name: raw.material_name,
+        brand_name: raw.brand,
         collection_name: raw.collection_name, image_url: raw.image_url,
       }
       variants.value = Array.isArray(raw.variants) ? raw.variants : []
@@ -89,13 +89,19 @@ const attributes = computed(() => {
     { icon: 'bi-grid', label: 'Danh mục', value: p.category_name },
     { icon: 'bi-activity', label: 'Bộ môn', value: p.sport },
     { icon: 'bi-layers', label: 'Chất liệu', value: p.material_name },
-    { icon: 'bi-record-circle', label: 'Đế giày', value: p.sole_name },
-    { icon: 'bi-cloud', label: 'Công nghệ đệm', value: p.cushioning_name },
     { icon: 'bi-collection', label: 'Bộ sưu tập', value: p.collection_name },
   ].filter((a) => a.value)
 })
 
+/* Kiểm tra hết hàng */
+const isOutOfStock = computed(() => {
+  if (!variants.value.length) return false
+  const total = variants.value.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+  return total <= 0
+})
+
 const handleAdd = () => {
+  if (isOutOfStock.value) { notify({ type: 'error', title: 'Hết hàng', message: 'Sản phẩm này hiện đã hết hàng.' }); return }
   if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
   if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
   const r = addToCart({
@@ -167,7 +173,10 @@ onMounted(fetchData)
           <p v-else class="text-muted small">Sản phẩm chưa cấu hình biến thể.</p>
 
           <!-- Qty + add -->
-          <div class="buy-row">
+          <div v-if="isOutOfStock" class="buy-row">
+            <button class="btn-sg btn-sg-oos flex-grow-1" disabled><i class="bi bi-x-circle me-2"></i>HẾT HÀNG</button>
+          </div>
+          <div v-else class="buy-row">
             <div class="qty-box">
               <button @click="qty > 1 && qty--"><i class="bi bi-dash"></i></button>
               <span>{{ qty }}</span>
@@ -175,6 +184,7 @@ onMounted(fetchData)
             </div>
             <button class="btn-sg flex-grow-1" @click="handleAdd"><i class="bi bi-bag-plus me-2"></i>Thêm vào giỏ hàng</button>
           </div>
+          <p v-if="isOutOfStock" class="oos-notice"><i class="bi bi-exclamation-triangle-fill me-1"></i>Sản phẩm hiện đã hết hàng. Vui lòng quay lại sau.</p>
 
           <div class="trust-row">
             <span><i class="bi bi-shield-check"></i> Chính hãng</span>

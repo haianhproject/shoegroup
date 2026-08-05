@@ -1,6 +1,6 @@
 <!-- Trang: Quản Lý Kích Thước -->
 <script setup>
-import { openForm, filteredSizes, deleteItem } from '../adminStore'
+import { openForm, filteredSizes, deleteItem, restoreItem } from '../adminStore'
 </script>
 
 <template>
@@ -17,7 +17,11 @@ import { openForm, filteredSizes, deleteItem } from '../adminStore'
           <td class="fw-medium" v-text="s.name"></td>
           <td class="small text-secondary" v-text="s.standard || '—'"></td>
           <td><span class="badge rounded-pill" :class="s.active ? 'badge-active' : 'bg-secondary-subtle text-secondary'" v-text="s.active ? 'ACTIVE' : 'ẨN'"></span></td>
-          <td class="text-end pe-4"><button @click="openForm('sizes', s)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button><button @click="deleteItem('sizes', s.id, s.name)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button></td>
+          <td class="text-end pe-4">
+            <button v-if="s.active === false" @click="restoreItem('sizes', s)" class="btn btn-sm btn-light border border-success text-success rounded-3 me-1" title="Khôi phục"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button @click="openForm('sizes', s)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button>
+            <button @click="deleteItem('sizes', s.id, s.name)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button>
+          </td>
         </tr>
         <tr v-if="!filteredSizes.length"><td colspan="5" class="text-center text-secondary py-4">Chưa có size nào.</td></tr>
       </tbody>

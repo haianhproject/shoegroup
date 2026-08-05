@@ -40,7 +40,10 @@ const loginLimiter = createRateLimiter({
 });
 app.use(attachUser); // [TOI UU] doc JWT tu header Authorization
 app.use(policyGuard); // [TOI UU] phan quyen tap trung cho toan bo /api/*
-app.post('/api/log-error', (req, res) => { console.log('[BROWSER ERROR]', req.body); res.sendStatus(200); });
+app.post("/api/log-error", (req, res) => {
+  console.log("[BROWSER ERROR]", req.body);
+  res.sendStatus(200);
+});
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 /* [TOI UU] Khong hard-code mat khau DB nua - doc tu .env (co gia tri mac dinh
@@ -158,7 +161,9 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     res.json({ success: true, user: { ...row, token }, token });
   } catch (e) {
     console.error("[LOGIN ERROR]", e.message);
-    res.status(500).json({ success: false, message: "Loi dang nhap, thu lai sau" });
+    res
+      .status(500)
+      .json({ success: false, message: "Loi dang nhap, thu lai sau" });
   }
 });
 
@@ -171,10 +176,14 @@ app.post("/api/register", async (req, res) => {
         .status(400)
         .json({ success: false, message: "Vui long nhap day du thong tin." });
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email)))
-      return res.status(400).json({ success: false, message: "Email khong hop le." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email khong hop le." });
     const strength = passwordHelper.checkStrength(password);
     if (!strength.ok)
-      return res.status(400).json({ success: false, message: strength.message });
+      return res
+        .status(400)
+        .json({ success: false, message: strength.message });
 
     await poolConnect;
     const mail = String(email).trim().toLowerCase();
@@ -207,7 +216,9 @@ app.post("/api/register", async (req, res) => {
     });
   } catch (e) {
     console.error("[REGISTER ERROR]", e.message);
-    res.status(500).json({ success: false, message: "Khong dang ky duoc, thu lai sau" });
+    res
+      .status(500)
+      .json({ success: false, message: "Khong dang ky duoc, thu lai sau" });
   }
 });
 
@@ -286,7 +297,45 @@ app.post("/api/orders", async (req, res) => {
           `);
       }
 
-      // B3: Cap nhat luot dung Ma giam gia (neu co)
+      // B3: TRU TON KHO (FIX) - truoc day ban tai quay khong he tru StockQuantity
+      // nen ton kho khong bao gio ve 0 va trang Thong ke khong the bao "het hang".
+      for (let item of items) {
+        const qty = Number(item.quantity ?? 1) || 1;
+        const variantId =
+          item.productVariantId ??
+          item.product_variant_id ??
+          item.variant_id ??
+          null;
+        const productId = item.productId ?? item.product_id ?? null;
+        const stockReq = new sql.Request(transaction);
+        if (variantId) {
+          await stockReq
+            .input("vid", sql.Int, variantId)
+            .input("q", sql.Int, qty)
+            .query(
+              `UPDATE ProductVariants
+               SET StockQuantity = CASE WHEN ISNULL(StockQuantity, 0) - @q < 0 THEN 0
+                                        ELSE ISNULL(StockQuantity, 0) - @q END
+               WHERE ProductVariantID = @vid`,
+            );
+        } else if (productId && (item.size || item.color)) {
+          await stockReq
+            .input("pid", sql.Int, productId)
+            .input("sz", sql.NVarChar, item.size ?? "")
+            .input("clr", sql.NVarChar, item.color ?? "")
+            .input("q", sql.Int, qty)
+            .query(
+              `UPDATE ProductVariants
+               SET StockQuantity = CASE WHEN ISNULL(StockQuantity, 0) - @q < 0 THEN 0
+                                        ELSE ISNULL(StockQuantity, 0) - @q END
+               WHERE ProductID = @pid
+                 AND (@sz = N'' OR ISNULL(Size, N'') = @sz)
+                 AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`,
+            );
+        }
+      }
+
+      // B4: Cap nhat luot dung Ma giam gia (neu co)
       if (couponCode) {
         const couponReq = new sql.Request(transaction);
         await couponReq
@@ -321,11 +370,25 @@ app.get("/api/orders", async (req, res) => {
              o.PaymentMethod as paymentMethod,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
              ISNULL(o.HandledBy, '') as handled_by,
+             -- FIX KENH BAN: backend tu quyet dinh Online/Offline.
+             -- Frontend KHONG duoc doan nua.
+             CASE
+               WHEN o.HandledBy IS NULL OR LTRIM(RTRIM(o.HandledBy)) = ''
+                    OR UPPER(LTRIM(RTRIM(o.HandledBy))) IN ('ONLINE', 'WEB', 'WEBSITE')
+                 THEN 'Online'
+               ELSE 'Offline'
+             END as channel,
              ISNULL(o.TrackingNumber, '') as tracking_code,
              o.OrderNote as note,
              CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) as date,
+             -- FIX: bo sung moc thoi gian chuan ISO-8601 de frontend sap xep duoc.
+             -- Truoc day chi co chuoi 'dd/mm/yyyy hh:mm:ss' -> new Date() tra ve Invalid Date
+             -- nen don hang tai quay vua hoan thanh khong nhay len dau danh sach.
+             CONVERT(varchar(33), o.OrderDate, 126) as created_at,
+             CONVERT(varchar(33), o.OrderDate, 126) as order_date_iso,
              ISNULL(o.Status, N'Chờ xác nhận') as status, ISNULL(o.CancelReason, '') as cancel_reason
-      FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID ORDER BY o.OrderID DESC
+      FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID
+      ORDER BY o.OrderDate DESC, o.OrderID DESC
     `);
 
     let details = [];
@@ -397,7 +460,6 @@ app.get("/api/products", async (req, res) => {
               p.CategoryID as category_id, c.CategoryName as category,
               p.BrandID as brand_id, b.BrandName as brand,
               p.CollectionID as collection_id, p.MaterialID as material_id,
-              p.SoleID as sole_id, p.CushioningID as cushioning_id,
               p.ImageURL as image_url, p.IsActive as active,
               p.Description as description, p.ImageGallery as image_gallery,
               p.ParentSKU as parent_sku, p.IsFeatured as is_featured
@@ -407,10 +469,16 @@ app.get("/api/products", async (req, res) => {
        ORDER BY p.ProductID DESC`,
     );
     const products = r.recordset;
+    // FIX: ep kieu StockQuantity ve INT va bo qua bien the da tat (IsActive = 0)
+    // Truoc day tra ve NULL -> frontend doc thanh 0 nen san pham nao cung "het hang".
     const vr = await pool.request().query(
       `SELECT ProductVariantID as id, ProductID as product_id, Size as size,
-              ColorName as color, ColorHex as hex, ChildSKU as sku, StockQuantity as stock
-       FROM ProductVariants ORDER BY ProductVariantID`,
+              ColorName as color, ColorHex as hex, ChildSKU as sku,
+              CAST(ISNULL(StockQuantity, 0) AS INT) as stock,
+              CAST(ISNULL(IsActive, 1) AS BIT) as active
+       FROM ProductVariants
+       WHERE ISNULL(IsActive, 1) = 1
+       ORDER BY ProductVariantID`,
     );
     const ir = await pool.request().query(
       `SELECT ProductID as product_id, ColorName as color, ImageURL as image, IsPrimary as is_primary
@@ -425,6 +493,18 @@ app.get("/api/products", async (req, res) => {
       const vs = vr.recordset.filter((v) => v.product_id === p.id);
       p.variants = vs;
       p.sizes = [...new Set(vs.map((v) => v.size).filter(Boolean))];
+      // FIX: tra ve tong ton kho de trang POS / Thong ke khong con hien so luong = 0
+      p.total_stock = vs.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      p.stock = p.total_stock;
+      p.variant_count = vs.length;
+      p.in_stock = p.total_stock > 0;
+      // Ton kho theo tung size (de bang "San pham sap het hang" biet size nao dang het)
+      p.stock_by_size = p.sizes.map((sz) => ({
+        size: sz,
+        stock: vs
+          .filter((v) => v.size === sz)
+          .reduce((sum, v) => sum + (Number(v.stock) || 0), 0),
+      }));
       const colorMap = {};
       for (const v of vs) {
         if (!v.color) continue;
@@ -458,14 +538,39 @@ async function upsertVariants(productId, variants) {
     const size = v.size ?? v.Size ?? "";
     let stock = Number(v.stock ?? v.StockQuantity ?? 0);
     if (isNaN(stock) || stock < 0) stock = 0;
+    // FIX: bo qua ban ghi rac (khong co ca mau lan size) de khong tao bien the trong voi ton = 0
+    if (!color && !size) continue;
     let found = { recordset: [] };
-    if (sku) {
+    const variantId = v.id ?? v.ProductVariantID ?? null;
+    if (variantId) {
+      found = await pool
+        .request()
+        .input("id", sql.Int, variantId)
+        .query(
+          "SELECT ProductVariantID FROM ProductVariants WHERE ProductVariantID=@id",
+        );
+    } else if (sku) {
       found = await pool
         .request()
         .input("pid", sql.Int, productId)
         .input("sku", sql.VarChar, sku)
         .query(
           "SELECT ProductVariantID FROM ProductVariants WHERE ProductID=@pid AND ChildSKU=@sku",
+        );
+    }
+    // FIX QUAN TRONG: frontend khong gui ChildSKU nen truoc day moi lan luu lai tao
+    // them mot dong bien the MOI (trung mau + size) -> danh sach day bien the rac,
+    // ban cu bi ghi de ton kho = 0. Gio doi chieu them theo (ProductID + Mau + Size).
+    if (found.recordset.length === 0) {
+      found = await pool
+        .request()
+        .input("pid", sql.Int, productId)
+        .input("cn", sql.NVarChar, color)
+        .input("sz", sql.NVarChar, size)
+        .query(
+          `SELECT TOP 1 ProductVariantID FROM ProductVariants
+           WHERE ProductID=@pid AND ISNULL(ColorName, N'')=@cn AND ISNULL(Size, N'')=@sz
+           ORDER BY ProductVariantID`,
         );
     }
     if (found.recordset.length > 0) {
@@ -476,8 +581,9 @@ async function upsertVariants(productId, variants) {
         .input("cn", sql.NVarChar, color)
         .input("ch", sql.VarChar, hex)
         .input("sz", sql.NVarChar, size)
+        .input("sku", sql.VarChar, sku)
         .query(
-          "UPDATE ProductVariants SET StockQuantity=@st, ColorName=@cn, ColorHex=@ch, Size=@sz WHERE ProductVariantID=@id",
+          "UPDATE ProductVariants SET StockQuantity=@st, ColorName=@cn, ColorHex=@ch, Size=@sz, ChildSKU=@sku WHERE ProductVariantID=@id",
         );
     } else {
       await pool
@@ -489,7 +595,8 @@ async function upsertVariants(productId, variants) {
         .input("sku", sql.VarChar, sku)
         .input("st", sql.Int, stock)
         .query(
-          "INSERT INTO ProductVariants (ProductID, Size, ColorName, ColorHex, ChildSKU, StockQuantity, PriceAdjustment, IsActive) VALUES (@pid, @sz, @cn, @ch, @sku, @st, 0, 1)",
+          `INSERT INTO ProductVariants (ProductID, Size, ColorName, ColorHex, ChildSKU, StockQuantity, PriceAdjustment, IsActive)
+           VALUES (@pid, @sz, @cn, @ch, ISNULL(@sku, CONCAT('SKU-', @pid, '-', @cn, '-', @sz)), @st, 0, 1)`,
         );
     }
   }
@@ -531,8 +638,6 @@ function bindProduct(request, b) {
     .input("br", sql.Int, b.brand_id || null)
     .input("col", sql.Int, b.collection_id || null)
     .input("mid", sql.Int, b.material_id || null)
-    .input("sole", sql.Int, b.sole_id || null)
-    .input("cush", sql.Int, b.cushioning_id || null)
     .input("img", sql.VarChar(sql.MAX), b.image_url || "")
     .input("desc", sql.NVarChar(sql.MAX), b.description || "")
     .input("psku", sql.VarChar, b.parent_sku || "")
@@ -545,9 +650,9 @@ app.post("/api/products", async (req, res) => {
     await poolConnect;
     const b = req.body || {};
     let r = await bindProduct(pool.request(), b).query(`
-      INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, SoleID, CushioningID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
+      INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
       OUTPUT INSERTED.ProductID
-      VALUES (@n, @p, @sp, @c, @br, @col, @mid, @sole, @cush, @img, @desc, @psku, @feat, @a)
+      VALUES (@n, @p, @sp, @c, @br, @col, @mid, @img, @desc, @psku, @feat, @a)
     `);
     const newId = r.recordset[0].ProductID;
     await upsertVariants(newId, b.variants);
@@ -565,7 +670,7 @@ app.put("/api/products/:id", async (req, res) => {
     await bindProduct(pool.request().input("id", sql.Int, req.params.id), b)
       .query(`
       UPDATE Products SET ProductName=@n, BasePrice=@p, SalePrice=@sp, CategoryID=@c, BrandID=@br, CollectionID=@col,
-        MaterialID=@mid, SoleID=@sole, CushioningID=@cush, ImageURL=@img, Description=@desc,
+        MaterialID=@mid, ImageURL=@img, Description=@desc,
         ParentSKU=@psku, IsFeatured=@feat, IsActive=@a WHERE ProductID=@id
     `);
     await upsertVariants(Number(req.params.id), b.variants);
@@ -924,118 +1029,6 @@ app.delete("/api/materials/:id", async (req, res) => {
   }
 });
 
-// ================= API DE GIAY (Soles) =================
-app.get("/api/soles", async (req, res) => {
-  try {
-    await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT SoleID as id, SoleName as name, IsActive as active FROM Soles ORDER BY SoleID",
-      );
-    res.json(r.recordset);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.post("/api/soles", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
-      .query("INSERT INTO Soles (SoleName, IsActive) VALUES (@n, @a)");
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.put("/api/soles/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
-      .query("UPDATE Soles SET SoleName=@n, IsActive=@a WHERE SoleID=@id");
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.delete("/api/soles/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .query("UPDATE Soles SET IsActive = 0 WHERE SoleID=@id");
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ================= API DEM GIAY (Cushionings) =================
-app.get("/api/cushionings", async (req, res) => {
-  try {
-    await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT CushioningID as id, CushioningName as name, IsActive as active FROM Cushionings ORDER BY CushioningID",
-      );
-    res.json(r.recordset);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.post("/api/cushionings", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
-      .query(
-        "INSERT INTO Cushionings (CushioningName, IsActive) VALUES (@n, @a)",
-      );
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.put("/api/cushionings/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
-      .query(
-        "UPDATE Cushionings SET CushioningName=@n, IsActive=@a WHERE CushioningID=@id",
-      );
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.delete("/api/cushionings/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .query("UPDATE Cushionings SET IsActive = 0 WHERE CushioningID=@id");
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ================= API TRA HANG (Returns) =================
 app.get("/api/returns", async (req, res) => {
   try {
@@ -1286,10 +1279,22 @@ app.get("/api/inventory", async (req, res) => {
     await poolConnect;
     let r = await pool.request().query(`
       SELECT v.ProductVariantID as id, v.ProductID as product_id,
-             p.ProductName as product_name, v.Size as size,
-             v.ColorName as color, v.ColorHex as color_hex,
-             v.ChildSKU as sku, v.StockQuantity as stock,
-             v.PriceAdjustment as price_adjustment
+             p.ProductName as product_name, ISNULL(v.Size, N'') as size,
+             ISNULL(v.ColorName, N'') as color, ISNULL(v.ColorHex, '') as color_hex,
+             ISNULL(v.ChildSKU, '') as sku,
+             CAST(ISNULL(v.StockQuantity, 0) AS INT) as stock,
+             ISNULL(v.PriceAdjustment, 0) as price_adjustment,
+             -- LOI GOC DA SUA: cau lenh cu doc v.ImageURL nhung bang
+             -- ProductVariants KHONG HE CO cot ImageURL. SQL Server bao loi
+             -- 207 Invalid column name -> API tra ve 500 -> frontend nhan null
+             -- -> db.inventory = [] -> MOI O TON KHO HIEN SO 0 VA KHONG SUA DUOC.
+             -- Lay anh theo mau tu ProductImages, khong co thi lay anh san pham.
+             ISNULL((
+               SELECT TOP 1 pi.ImageURL FROM ProductImages pi
+               WHERE pi.ProductID = v.ProductID
+                 AND pi.ColorName = v.ColorName
+               ORDER BY pi.IsPrimary DESC, pi.SortOrder
+             ), ISNULL(p.ImageURL, '')) as image_url
       FROM ProductVariants v LEFT JOIN Products p ON v.ProductID = p.ProductID
       WHERE ISNULL(v.IsActive, 1) = 1
       ORDER BY p.ProductName, v.ColorName, v.Size
@@ -1312,6 +1317,51 @@ app.put("/api/inventory/:id", async (req, res) => {
         "UPDATE ProductVariants SET StockQuantity=@s WHERE ProductVariantID=@id",
       );
     res.json({ success: true, stock });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ================= CANH BAO TON KHO (FIX) =================
+// Truoc day khong co API nao bao "het hang", nen trang Thong ke im lang khi ton ve 0.
+// GET /api/inventory/alerts?threshold=10
+app.get("/api/inventory/alerts", async (req, res) => {
+  try {
+    await poolConnect;
+    let threshold = Number(req.query.threshold);
+    if (isNaN(threshold) || threshold < 0) threshold = 10;
+
+    const r = await pool.request().input("th", sql.Int, threshold).query(`
+      SELECT v.ProductVariantID as id, v.ProductID as product_id,
+             p.ProductName as product_name, p.ImageURL as image_url,
+             b.BrandName as brand,
+             ISNULL(v.Size, N'') as size,
+             ISNULL(v.ColorName, N'') as color, ISNULL(v.ColorHex, '') as color_hex,
+             v.ChildSKU as sku,
+             CAST(ISNULL(v.StockQuantity, 0) AS INT) as stock
+      FROM ProductVariants v
+      LEFT JOIN Products p ON v.ProductID = p.ProductID
+      LEFT JOIN Brands b ON p.BrandID = b.BrandID
+      WHERE ISNULL(v.IsActive, 1) = 1
+        AND ISNULL(p.IsActive, 1) = 1
+        AND ISNULL(v.StockQuantity, 0) <= @th
+      ORDER BY CAST(ISNULL(v.StockQuantity, 0) AS INT) ASC, p.ProductName, v.ColorName, v.Size
+    `);
+
+    const rows = r.recordset;
+    const outOfStock = rows.filter((v) => Number(v.stock) <= 0);
+    const lowStock = rows.filter((v) => Number(v.stock) > 0);
+
+    res.json({
+      threshold,
+      out_of_stock_count: outOfStock.length,
+      low_stock_count: lowStock.length,
+      out_of_stock_product_count: new Set(outOfStock.map((v) => v.product_id))
+        .size,
+      out_of_stock: outOfStock,
+      low_stock: lowStock,
+      items: rows,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1564,7 +1614,7 @@ app.get("/api/customers/:id/notifications", async (req, res) => {
         `SELECT NotificationID as id, Title as title, Message as message, Type as type, RelatedID as related_id, IsRead as is_read, CreatedAt as created_at
          FROM Notifications 
          WHERE UserID = @id 
-         ORDER BY CreatedAt DESC`
+         ORDER BY CreatedAt DESC`,
       );
     res.json(rNotifs.recordset);
   } catch (e) {
@@ -1793,7 +1843,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     // Gui email that bang nodemailer (co nut dan toi trang doi mat khau)
     try {
       await mailTransporter.sendMail({
-        from: '"ShoeGroup" <' + EMAIL_USER + '>',
+        from: '"ShoeGroup" <' + EMAIL_USER + ">",
         to: email,
         subject: "Đặt lại mật khẩu ShoeGroup",
         text:
@@ -1857,7 +1907,9 @@ app.post("/api/auth/reset-password", async (req, res) => {
       });
     const strength = passwordHelper.checkStrength(newPassword);
     if (!strength.ok)
-      return res.status(400).json({ success: false, message: strength.message });
+      return res
+        .status(400)
+        .json({ success: false, message: strength.message });
     // [TOI UU][BAO MAT] luu mat khau DA BAM, khong luu van ban tho
     const hashedNewPassword = await passwordHelper.hash(newPassword);
     await pool
@@ -1902,7 +1954,3 @@ const shutdown = (signal) => {
   setTimeout(() => process.exit(1), 8000).unref();
 };
 ["SIGINT", "SIGTERM"].forEach((s) => process.on(s, () => shutdown(s)));
-
-
-
-

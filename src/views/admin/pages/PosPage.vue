@@ -2,8 +2,8 @@
 <script setup>
 import { ref } from 'vue'
 import {
-  posOrders, posActiveIndex, activePosOrder, createPosOrder, selectPosOrder, removePosOrder,
-  posOrderSearch, filteredPosOrders, posPayModal, confirmPosPaid, cancelPosPay,
+  activePosOrder, resetPosOrder,
+  posPayModal, confirmPosPaid, cancelPosPay,
   posSearch, posVariants, addToCart, removeCartItem,
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
@@ -12,6 +12,7 @@ import {
 } from '../adminStore'
 
 const qtyInputs = ref({})
+const savingCustomer = ref(false)
 function addWithQty(v) {
   const n = Number(qtyInputs.value[v.id]) || 1
   addToCart(v, n)
@@ -28,38 +29,54 @@ function addWithQty(v) {
         <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-person-circle me-2"></i>Khách hàng</h6>
-            <button @click="savePosCustomer()" class="btn btn-sm btn-light border rounded-3">Lưu thông tin</button>
+            
           </div>
           <div class="d-flex gap-2 mb-3">
             <button @click="activePosOrder.customer_type = 'Có tài khoản'" class="btn btn-sm rounded-pill px-3 border" :class="activePosOrder.customer_type === 'Có tài khoản' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">Có tài khoản</button>
             <button @click="activePosOrder.customer_type = 'Khách lẻ'" class="btn btn-sm rounded-pill px-3 border" :class="activePosOrder.customer_type === 'Khách lẻ' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">Khách lẻ</button>
           </div>
 
-          <!-- Khách lẻ -->
+          <!-- Khách lẻ: nút "Lưu thông tin" nằm NGAY BÊN DƯỚI trong khung khách lẻ -->
           <div v-if="activePosOrder.customer_type === 'Khách lẻ'" class="row g-3">
             <div class="col-md-6"><label class="form-label small fw-medium text-uppercase text-secondary">Tên khách</label><input v-model="activePosOrder.customer_name" type="text" class="form-control rounded-3" placeholder="Họ tên khách hàng"></div>
             <div class="col-md-6"><label class="form-label small fw-medium text-uppercase text-secondary">Số điện thoại</label><input v-model="activePosOrder.customer_phone" type="text" class="form-control rounded-3" placeholder="0901 234 567"></div>
             <div class="col-12"><label class="form-label small fw-medium text-uppercase text-secondary">Ghi chú</label><textarea v-model="activePosOrder.customer_note" rows="2" class="form-control rounded-3" placeholder="Ghi chú đơn hàng..."></textarea></div>
+            <div class="col-12 d-flex justify-content-end align-items-center gap-2 pt-1 border-top">
+              <span class="text-secondary small me-auto">Lưu khách này vào trang Khách hàng (CRM)</span>
+              <button @click="savePosCustomer()" :disabled="savingCustomer" class="btn btn-sm btn-dark rounded-pill px-3">
+                <i class="bi bi-save me-1"></i>Lưu thông tin
+              </button>
+            </div>
           </div>
 
-          <!-- Có tài khoản -->
+          <!-- Có tài khoản: chỉ hiện danh sách KHI ĐÃ TÌM KIẾM -->
           <div v-else>
             <label class="form-label small fw-medium text-uppercase text-secondary">Tìm khách hàng</label>
             <div class="position-relative mb-2">
               <i class="bi bi-search position-absolute text-secondary" style="left:12px;top:50%;transform:translateY(-50%);"></i>
-              <input v-model="posCustomerSearch" type="text" class="form-control rounded-3 ps-4" placeholder="Tên, SĐT...">
+              <input v-model="posCustomerSearch" type="text" class="form-control rounded-3 ps-4" placeholder="Nhập tên hoặc SĐT để tìm...">
             </div>
-            <div class="border rounded-3" style="max-height:220px;overflow:auto;">
-              <div v-if="posCustomerResults.length === 0" class="text-center text-secondary small py-3">Không có khách phù hợp.</div>
-              <button v-for="c in posCustomerResults" :key="c.id" @click="pickPosCustomer(c)" class="btn w-100 text-start d-flex align-items-center gap-2 border-0 border-bottom rounded-0 py-2" :class="String(activePosOrder.customer_id) === String(c.id) ? 'bg-light-gray' : 'bg-white'">
-                <span class="rounded-circle bg-light-gray d-inline-flex align-items-center justify-content-center" style="width:34px;height:34px;"><i class="bi bi-person text-secondary"></i></span>
-                <span class="flex-grow-1">
-                  <span class="d-block small fw-medium text-dark" v-text="c.name"></span>
-                  <span class="d-block text-secondary" style="font-size:0.72rem;" v-text="c.phone || '—'"></span>
-                </span>
-                <i v-if="String(activePosOrder.customer_id) === String(c.id)" class="bi bi-check-circle-fill text-dark"></i>
-              </button>
-            </div>
+            <!-- Chưa gõ gì: ẩn hoàn toàn danh sách khách hàng -->
+            <p v-if="!posCustomerSearch.trim()" class="text-secondary small fst-italic mb-0">
+              Nhập từ khóa để hiển thị danh sách khách hàng có tên gần giống.
+            </p>
+            <template v-else>
+              <!-- Khung cuộn cao vừa đủ 3 khách hàng gần nhất -->
+              <div class="border rounded-3" style="max-height:159px;overflow-y:auto;">
+                <div v-if="posCustomerResults.length === 0" class="text-center text-secondary small py-3">Không có khách phù hợp.</div>
+                <button v-for="c in posCustomerResults" :key="c.id" @click="pickPosCustomer(c)" class="btn w-100 text-start d-flex align-items-center gap-2 border-0 border-bottom rounded-0 py-2" style="height:53px;" :class="String(activePosOrder.customer_id) === String(c.id) ? 'bg-light-gray' : 'bg-white'">
+                  <span class="rounded-circle bg-light-gray d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width:34px;height:34px;"><i class="bi bi-person text-secondary"></i></span>
+                  <span class="flex-grow-1 overflow-hidden">
+                    <span class="d-block small fw-medium text-dark text-truncate" v-text="c.name"></span>
+                    <span class="d-block text-secondary text-truncate" style="font-size:0.72rem;" v-text="c.phone || '—'"></span>
+                  </span>
+                  <i v-if="String(activePosOrder.customer_id) === String(c.id)" class="bi bi-check-circle-fill text-dark"></i>
+                </button>
+              </div>
+              <p v-if="posCustomerResults.length > 3" class="text-secondary mb-0 mt-1" style="font-size:0.72rem;">
+                Cuộn để xem thêm (<span v-text="posCustomerResults.length"></span> kết quả)
+              </p>
+            </template>
           </div>
         </div>
 
@@ -94,31 +111,16 @@ function addWithQty(v) {
 
       <!-- CỘT PHẢI -->
       <div class="col-lg-5">
-        <!-- Đơn chờ -->
-        <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-hourglass-split me-2"></i>Đơn chờ <span class="text-secondary" v-text="'(' + posOrders.length + ')'"></span></h6>
-            <button @click="createPosOrder()" class="btn btn-sm btn-dark rounded-3 fw-bold"><i class="bi bi-plus-lg me-1"></i>Tạo đơn</button>
-          </div>
-          <div class="position-relative mb-2">
-            <i class="bi bi-search position-absolute text-secondary" style="left:12px;top:50%;transform:translateY(-50%);font-size:0.85rem;"></i>
-            <input v-model="posOrderSearch" type="text" class="form-control form-control-sm rounded-3 ps-4" placeholder="Tìm đơn chờ theo mã số...">
-          </div>
-          <div class="d-flex flex-wrap gap-2 mb-1" style="max-height:170px;overflow:auto;">
-            <div v-for="row in filteredPosOrders" :key="row.o.code" @click="selectPosOrder(row.i)" class="d-inline-flex align-items-center gap-2 rounded-pill px-3 py-1 border" style="cursor:pointer;" :class="row.i === posActiveIndex ? 'bg-dark text-white border-dark fw-bold' : 'bg-white text-secondary'">
-              <i class="bi" :class="row.i === posActiveIndex ? 'bi-check-circle-fill' : 'bi-hourglass'"></i>
-              <span class="small fw-medium" v-text="'#' + row.o.code + ' · ' + (row.o.customer_name || 'Khách lẻ')"></span>
-              <i class="bi bi-x-circle" @click.stop="removePosOrder(row.i)"></i>
-            </div>
-            <div v-if="filteredPosOrders.length === 0" class="text-secondary small py-1">Không tìm thấy đơn chờ nào.</div>
-          </div>
-        </div>
-
         <!-- Đơn hiện tại -->
         <div class="bg-white rounded-4 shadow-sm p-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-receipt me-2"></i>Đơn hiện tại</h6>
-            <span class="badge rounded-pill bg-light text-secondary border" v-text="'#' + activePosOrder.code"></span>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge rounded-pill bg-light text-secondary border" v-text="'#' + activePosOrder.code"></span>
+              <button @click="resetPosOrder()" class="btn btn-sm btn-white border rounded-pill px-3" title="Làm mới đơn">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </div>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-4"><div class="bg-light-gray rounded-3 p-2"><div class="text-secondary text-uppercase" style="font-size:0.62rem;">Khách hàng</div><div class="small fw-medium text-truncate" v-text="activePosOrder.customer_name || 'Khách lẻ'"></div></div></div>

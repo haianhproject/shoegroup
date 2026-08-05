@@ -5,6 +5,7 @@ import {
   categoriesBySport,
   getProductCount,
   deleteItem,
+  restoreItem,
 } from "../adminStore";
 </script>
 
@@ -65,6 +66,14 @@ import {
                 ></span>
               </td>
               <td class="text-end pe-4">
+                <button
+                  v-if="c.active === false"
+                  @click="restoreItem('categories', c)"
+                  class="btn btn-sm btn-light border border-success text-success rounded-3 me-1"
+                  title="Khôi phục"
+                >
+                  <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
                 <button
                   @click="openForm('categories', c)"
                   class="btn btn-sm btn-light border rounded-3 me-1"

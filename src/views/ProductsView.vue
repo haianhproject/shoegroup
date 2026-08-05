@@ -50,8 +50,7 @@ const fetchAll = async () => {
       material_id: p.material_id,
       f_sizes: (p.sizes || []).map((s) => String(s)),
       f_colors: (p.colors || []).map((c) => c.name),
-      sole_name: p.sole_name, cushioning_name: p.cushioning_name,
-      image_url: p.image_url,
+            image_url: p.image_url,
       brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || p.brand_id || 1,
     }))
     categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))

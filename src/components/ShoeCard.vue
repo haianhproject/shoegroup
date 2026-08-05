@@ -12,7 +12,16 @@ const baseName = computed(() => props.product.product_name || props.product.name
 const sportName = computed(() => props.product.sport || '')
 const displayName = computed(() => (sportName.value ? `${sportName.value} - ${baseName.value}` : baseName.value))
 
+/* Kiểm tra hết hàng: tổng stock = 0 hoặc không có biến thể */
+const isOutOfStock = computed(() => {
+  const variants = props.product.variants || []
+  if (!variants.length) return false // chưa cấu hình biến thể thì không khóa
+  const total = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+  return total <= 0
+})
+
 const handleAddToCart = () => {
+  if (isOutOfStock.value) { notify({ type: 'error', title: 'Hết hàng', message: 'Sản phẩm này hiện đã hết hàng.' }); return }
   const result = addToCart({
     product: props.product,
     quantity: 1,
@@ -46,10 +55,14 @@ const handleAddToCart = () => {
       </div>
       <div class="shoe-foot">
         <div class="shoe-price">{{ formatCurrency(product.price || product.BasePrice) }}</div>
-        <button class="shoe-add" @click="handleAddToCart" aria-label="Thêm vào giỏ">
+        <button v-if="isOutOfStock" class="shoe-add shoe-add-oos" disabled aria-label="Hết hàng" title="Sản phẩm đã hết hàng">
+          <i class="bi bi-x-lg"></i>
+        </button>
+        <button v-else class="shoe-add" @click="handleAddToCart" aria-label="Thêm vào giỏ">
           <i class="bi bi-plus-lg"></i>
         </button>
       </div>
+      <span v-if="isOutOfStock" class="shoe-oos-tag">Hết hàng</span>
     </div>
   </div>
 </template>
@@ -72,4 +85,7 @@ const handleAddToCart = () => {
 .shoe-price { font-weight: 900; font-size: 1.2rem; color: #000; }
 .shoe-add { width: 44px; height: 44px; border-radius: 0px; border: 1px solid #000; background: #000; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all .3s ease; }
 .shoe-add:hover { background: #fff; color: #000; }
+.shoe-add-oos { background: #999 !important; border-color: #999 !important; cursor: not-allowed !important; opacity: .6; }
+.shoe-add-oos:hover { background: #999 !important; color: #fff !important; }
+.shoe-oos-tag { display: block; text-align: center; background: #ef4444; color: #fff; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .3rem .6rem; margin-top: 8px; }
 </style>
