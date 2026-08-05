@@ -23,12 +23,18 @@ const cartQuantity = computed(() => {
 
 /* Kiểm tra hết hàng: tổng tồn kho - số lượng đã có trong giỏ */
 const isOutOfStock = computed(() => {
-  let ts = props.product.total_stock
-  if (ts === null || ts === undefined) {
+  let ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
+  if (ts === null || ts === undefined || ts === '' || ts === 'null') {
     const variants = props.product.variants || []
-    ts = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    if (variants.length > 0) {
+      ts = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    } else {
+      ts = 0
+    }
   }
-  return (Number(ts) - cartQuantity.value) <= 0
+  const parsedTs = Number(ts)
+  if (isNaN(parsedTs)) return true
+  return (parsedTs - cartQuantity.value) <= 0
 })
 
 const handleAddToCart = () => {
@@ -42,6 +48,17 @@ const handleAddToCart = () => {
     return
   }
 
+  let finalStock = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
+  if (finalStock === null || finalStock === undefined || finalStock === '' || finalStock === 'null') {
+    const variants = props.product.variants || []
+    if (variants.length > 0) {
+      finalStock = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    } else {
+      finalStock = 100
+    }
+  }
+  const stockToUse = isNaN(Number(finalStock)) ? 100 : Number(finalStock)
+
   const result = addToCart({
     product: props.product,
     quantity: 1,
@@ -50,7 +67,7 @@ const handleAddToCart = () => {
       color_label: props.product.color_name || props.product.color || 'Tiêu chuẩn',
       color_name: props.product.color_name || props.product.color || 'Tiêu chuẩn',
     },
-    stockQuantity: props.product.total_stock ?? props.product.stock ?? 100
+    stockQuantity: stockToUse
   })
   if (!result.ok) { notify({ type: 'warning', message: result.message }); return }
   showMiniCart()
@@ -117,4 +134,20 @@ const handleAddToCart = () => {
 .shoe-add:hover { background: #fff; color: #000; }
 .shoe-add-oos { background: #6b7280 !important; border-color: #6b7280 !important; }
 .shoe-add-oos:hover { background: #4b5563 !important; color: #fff !important; border-color: #4b5563 !important; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .shoe-body { padding: 12px 12px 14px; gap: 8px; }
+  .shoe-name { font-size: 0.95rem; min-height: 2.4em; }
+  .shoe-price { font-size: 1.1rem; }
+  .shoe-add { width: 40px; height: 40px; font-size: 1rem; }
+}
+@media (max-width: 576px) {
+  .shoe-body { padding: 10px 10px 12px; gap: 6px; }
+  .shoe-brand { font-size: 0.68rem; }
+  .shoe-name { font-size: 0.85rem; min-height: 2.4em; }
+  .shoe-price { font-size: 1rem; }
+  .shoe-meta .sg-chip { font-size: 0.6rem; padding: 0.12rem 0.4rem; }
+  .shoe-add { width: 34px; height: 34px; font-size: 0.9rem; }
+}
 </style>
