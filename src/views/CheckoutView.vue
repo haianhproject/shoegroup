@@ -29,6 +29,43 @@ const payments = [
   { code: 'MOMO', name: 'Ví MoMo', icon: 'bi-wallet2', desc: 'Thanh toán nhanh qua ứng dụng MoMo.' },
 ]
 
+/* ---- Validate helpers ---- */
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
+const isValidPhone = (phone) => /^(0[3|5|7|8|9])[0-9]{8}$/.test(String(phone || '').replace(/\s/g, ''))
+
+const formErrors = reactive({ fullName: '', phone: '', email: '', province: '', address: '' })
+
+function validateForm() {
+  let ok = true
+  formErrors.fullName = form.fullName.trim() ? '' : 'Vui lòng nhập họ tên.'
+  if (formErrors.fullName) ok = false
+
+  if (!form.phone.trim()) {
+    formErrors.phone = 'Vui lòng nhập số điện thoại.'
+    ok = false
+  } else if (!isValidPhone(form.phone)) {
+    formErrors.phone = 'Số điện thoại không hợp lệ (10 số, bắt đầu 03/05/07/08/09).'
+    ok = false
+  } else {
+    formErrors.phone = ''
+  }
+
+  if (form.email.trim() && !isValidEmail(form.email)) {
+    formErrors.email = 'Email không đúng định dạng.'
+    ok = false
+  } else {
+    formErrors.email = ''
+  }
+
+  formErrors.province = form.province.trim() ? '' : 'Vui lòng chọn tỉnh/thành phố.'
+  if (formErrors.province) ok = false
+
+  formErrors.address = form.address.trim() ? '' : 'Vui lòng nhập địa chỉ chi tiết.'
+  if (formErrors.address) ok = false
+
+  return ok
+}
+
 /* ---- Address verification + distance (Express) ---- */
 const addressVerified = computed(() => {
   const a = (form.address || '').trim()
@@ -62,38 +99,84 @@ const shippingFee = computed(() => {
   return m.basePrice
 })
 
+/* ---- Coupon from DB ---- */
 const couponCode = ref('')
 const appliedCoupon = ref(null)
 const couponError = ref('')
+const dbCoupons = ref([])
+const couponsLoading = ref(false)
 
-const VALID_COUPONS = [
-  { code: 'WELCOME30', type: 'percent', value: 30, desc: 'Giảm 30%', minOrder: 500000 },
-  { code: 'FREESHIP', type: 'freeship', value: 0, desc: 'Miễn phí vận chuyển', minOrder: 300000 },
-  { code: 'SUMMER20', type: 'percent', value: 20, desc: 'Giảm 20%', minOrder: 400000 },
-  { code: 'FLASH50K', type: 'fixed', value: 50000, desc: 'Giảm 50.000đ', minOrder: 800000 },
-  { code: 'GIAMGIA10', type: 'percent', value: 10, desc: 'Giảm 10%', minOrder: 0 },
-]
+async function loadCoupons() {
+  couponsLoading.value = true
+  try {
+    const list = await api.get('/discounts')
+    if (Array.isArray(list)) {
+      const now = new Date()
+      dbCoupons.value = list.filter(d => {
+        if (!d.active) return false
+        if (d.expiry && new Date(d.expiry) < now) return false
+        return true
+      })
+    }
+  } catch (e) {
+    // Nếu không lấy được từ server, bỏ qua
+  } finally {
+    couponsLoading.value = false
+  }
+}
+loadCoupons()
 
 const applyCoupon = () => {
   couponError.value = ''
-  const c = VALID_COUPONS.find(x => x.code === couponCode.value.trim().toUpperCase())
-  if (!c) { couponError.value = 'Mã giảm giá không hợp lệ'; appliedCoupon.value = null; return }
-  if (cartSubtotal.value < c.minOrder) { couponError.value = `Đơn tối thiểu ${c.minOrder.toLocaleString('vi-VN')}đ để dùng mã này`; appliedCoupon.value = null; return }
-  
-  if (appliedCoupon.value?.code === c.code) return; // Prevent spam
+  const code = couponCode.value.trim().toUpperCase()
+  if (!code) { couponError.value = 'Vui lòng nhập mã giảm giá.'; return }
+
+  // Tìm mã trong danh sách từ DB
+  const c = dbCoupons.value.find(x => (x.code || '').toUpperCase() === code)
+  if (!c) { couponError.value = 'Mã giảm giá không hợp lệ hoặc đã hết hạn.'; appliedCoupon.value = null; return }
+
+  // Kiểm tra giới hạn lượt dùng
+  const limit = Number(c.limit || c.quantity || 0)
+  const used = Number(c.used || 0)
+  if (limit > 0 && used >= limit) {
+    couponError.value = 'Mã giảm giá này đã hết lượt sử dụng.'
+    appliedCoupon.value = null
+    return
+  }
+
+  // Kiểm tra đơn tối thiểu
+  const minOrder = Number(c.min_order || 0)
+  if (minOrder > 0 && cartSubtotal.value < minOrder) {
+    couponError.value = `Đơn tối thiểu ${minOrder.toLocaleString('vi-VN')}đ để dùng mã này.`
+    appliedCoupon.value = null
+    return
+  }
+
+  if (appliedCoupon.value?.code === c.code) return // Chống spam
 
   appliedCoupon.value = c
   couponCode.value = c.code
-  notify({ type: 'success', title: 'Áp dụng thành công!', message: c.desc })
+  const desc = c.name || (c.discount_type === 'Cố định' ? `Giảm ${Number(c.value).toLocaleString('vi-VN')}đ` : `Giảm ${c.value}%`)
+  notify({ type: 'success', title: 'Áp dụng thành công!', message: desc })
 }
 const removeCoupon = () => { appliedCoupon.value = null; couponCode.value = ''; couponError.value = '' }
 
 const discountAmount = computed(() => {
   if (!appliedCoupon.value) return 0
-  if (appliedCoupon.value.type === 'percent') return Math.round(cartSubtotal.value * appliedCoupon.value.value / 100)
-  if (appliedCoupon.value.type === 'fixed') return appliedCoupon.value.value
-  if (appliedCoupon.value.type === 'freeship') return shippingFee.value
-  return 0
+  const c = appliedCoupon.value
+  const sub = cartSubtotal.value
+  let amt = 0
+  if (c.discount_type === 'Cố định' || c.type === 'fixed') {
+    amt = Number(c.value) || 0
+  } else if (c.discount_type === 'Phần trăm' || c.type === 'percent') {
+    amt = Math.round(sub * (Number(c.value) || 0) / 100)
+  } else if (c.type === 'freeship') {
+    return shippingFee.value
+  }
+  // Giới hạn giảm tối đa
+  const maxDisc = Number(c.max_discount || 0)
+  if (maxDisc > 0 && amt > maxDisc) amt = maxDisc
+  return Math.min(amt, sub)
 })
 
 const etaText = computed(() => shippingMethods.find((s) => s.code === shippingCode.value)?.eta || '')
@@ -122,8 +205,8 @@ const payLater = () => {
 }
 
 const placeOrder = async () => {
-  if (!form.fullName || !form.phone || !form.address || !form.province) {
-    notify({ type: 'error', title: 'Thiếu thông tin', message: 'Vui lòng điền đầy đủ thông tin giao hàng.' })
+  if (!validateForm()) {
+    notify({ type: 'error', title: 'Thông tin chưa hợp lệ', message: 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ.' })
     return
   }
   if (shippingCode.value === 'EXPRESS' && !addressVerified.value) {
@@ -160,9 +243,10 @@ const placeOrder = async () => {
       paymentStatus: 'Chưa thanh toán',
       status: 'Chờ xác nhận',
       note: form.note || '',
+      couponCode: appliedCoupon.value?.code || null,
       items: cartItems.value.map((it) => ({
         product_id: Number(it.id_product ?? it.product?.id_product ?? it.product_id) || null,
-        variant_id: Number.isInteger(it.variant_id) ? it.variant_id : null,
+        variant_id: it.variant_id != null ? Number(it.variant_id) : null,
         quantity: it.quantity ?? 1,
         price: it.unitPrice ?? it.price ?? 0,
         size: it.size?.size_name ?? it.size ?? '',
@@ -214,24 +298,29 @@ const placeOrder = async () => {
             </h6>
             <div class="row g-4 mt-2">
               <div class="col-md-6">
-                <label class="co-label">HỌ TÊN</label>
-                <input v-model="form.fullName" class="sg-input w-100">
+                <label class="co-label">HỌ TÊN <span class="text-danger">*</span></label>
+                <input v-model="form.fullName" class="sg-input w-100" :class="formErrors.fullName ? 'input-error' : ''" @blur="validateForm">
+                <div v-if="formErrors.fullName" class="field-error">{{ formErrors.fullName }}</div>
               </div>
               <div class="col-md-6">
-                <label class="co-label">SỐ ĐIỆN THOẠI</label>
-                <input v-model="form.phone" class="sg-input w-100">
+                <label class="co-label">SỐ ĐIỆN THOẠI <span class="text-danger">*</span></label>
+                <input v-model="form.phone" class="sg-input w-100" :class="formErrors.phone ? 'input-error' : ''" @blur="validateForm" placeholder="VD: 0901234567">
+                <div v-if="formErrors.phone" class="field-error">{{ formErrors.phone }}</div>
               </div>
               <div class="col-md-6">
                 <label class="co-label">EMAIL</label>
-                <input v-model="form.email" class="sg-input w-100">
+                <input v-model="form.email" type="email" class="sg-input w-100" :class="formErrors.email ? 'input-error' : ''" @blur="validateForm" placeholder="you@example.com">
+                <div v-if="formErrors.email" class="field-error">{{ formErrors.email }}</div>
               </div>
               <div class="col-md-6">
-                <label class="co-label">TỈNH / THÀNH PHỐ</label>
-                <input v-model="form.province" class="sg-input w-100" placeholder="VD: Hà Nội">
+                <label class="co-label">TỈNH / THÀNH PHỐ <span class="text-danger">*</span></label>
+                <input v-model="form.province" class="sg-input w-100" :class="formErrors.province ? 'input-error' : ''" @blur="validateForm" placeholder="VD: Hà Nội">
+                <div v-if="formErrors.province" class="field-error">{{ formErrors.province }}</div>
               </div>
               <div class="col-12">
-                <label class="co-label">ĐỊA CHỈ CHI TIẾT</label>
-                <input v-model="form.address" class="sg-input w-100" placeholder="Số nhà, ngõ, đường, phường/xã…">
+                <label class="co-label">ĐỊA CHỈ CHI TIẾT <span class="text-danger">*</span></label>
+                <input v-model="form.address" class="sg-input w-100" :class="formErrors.address ? 'input-error' : ''" @blur="validateForm" placeholder="Số nhà, ngõ, đường, phường/xã…">
+                <div v-if="formErrors.address" class="field-error">{{ formErrors.address }}</div>
                 <div class="addr-status mt-2" :class="addressVerified ? 'text-success' : 'text-warning'">
                   <i class="bi" :class="addressVerified ? 'bi-check-circle' : 'bi-exclamation-circle'"></i>
                   {{ addressVerified ? 'Địa chỉ hợp lệ.' : 'Cần số nhà và tỉnh/TP để xác minh.' }}
@@ -317,19 +406,20 @@ const placeOrder = async () => {
               <div v-if="appliedCoupon" class="coupon-applied mt-2">
                 <div class="ca-info">
                   <span class="ca-code">{{ appliedCoupon.code }}</span>
-                  <span class="ca-desc">{{ appliedCoupon.desc }}</span>
+                  <span class="ca-desc">{{ appliedCoupon.name || (appliedCoupon.discount_type === 'Cố định' ? 'Giảm ' + Number(appliedCoupon.value).toLocaleString('vi-VN') + 'đ' : 'Giảm ' + appliedCoupon.value + '%') }}</span>
                 </div>
                 <button class="ca-remove" @click="removeCoupon"><i class="bi bi-x"></i></button>
               </div>
               <div v-else class="coupon-input-row mt-2">
                 <input v-model="couponCode" class="sg-input flex-grow-1" placeholder="Nhập mã..." @keyup.enter="applyCoupon" style="text-transform:uppercase">
-                <button class="btn-sg-outline" @click="applyCoupon">ÁP DỤNG</button>
+                <button class="btn-sg-outline" @click="applyCoupon" :disabled="couponsLoading">{{ couponsLoading ? '...' : 'ÁP DỤNG' }}</button>
               </div>
               <div v-if="couponError" class="text-danger mt-2" style="font-size: 0.8rem;">{{ couponError }}</div>
               
-              <div class="coupon-hints mt-3">
+              <!-- Gợi ý mã từ DB -->
+              <div v-if="dbCoupons.length > 0" class="coupon-hints mt-3">
                 <div class="ch-list">
-                  <button v-for="c in VALID_COUPONS" :key="c.code" class="ch-btn" :class="{ sel: appliedCoupon?.code === c.code }" @click="couponCode = c.code; applyCoupon()">
+                  <button v-for="c in dbCoupons" :key="c.id" class="ch-btn" :class="{ sel: appliedCoupon?.code === c.code }" @click="couponCode = c.code; applyCoupon()">
                     {{ c.code }}
                   </button>
                 </div>
@@ -400,6 +490,18 @@ const placeOrder = async () => {
   letter-spacing: 0.12em;
   color: #1a1a1a;
   margin: 0 0 4px;
+}
+
+/* Validate styles */
+.input-error {
+  border-color: #D4001A !important;
+  background: #fff8f8;
+}
+.field-error {
+  color: #D4001A;
+  font-size: 0.78rem;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
 .empty-state {

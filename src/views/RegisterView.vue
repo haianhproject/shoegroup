@@ -10,12 +10,20 @@ const form = reactive({ fullName: '', email: '', password: '', confirm: '' })
 const showPwd = ref(false)
 const loading = ref(false)
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
+
 const submit = async () => {
-  if (!form.fullName || !form.email || !form.password) { notify({ type: 'error', message: 'Vui lòng điền đầy đủ thông tin.' }); return }
+  const name = form.fullName.trim()
+  const email = form.email.trim()
+  if (!name) { notify({ type: 'error', message: 'Vui lòng nhập họ và tên.' }); return }
+  if (name.length < 2) { notify({ type: 'error', message: 'Họ tên phải có ít nhất 2 ký tự.' }); return }
+  if (!email) { notify({ type: 'error', message: 'Vui lòng nhập email.' }); return }
+  if (!isValidEmail(email)) { notify({ type: 'error', message: 'Email không đúng định dạng (VD: you@example.com).' }); return }
+  if (!form.password) { notify({ type: 'error', message: 'Vui lòng nhập mật khẩu.' }); return }
   if (form.password.length < 6) { notify({ type: 'error', message: 'Mật khẩu tối thiểu 6 ký tự.' }); return }
   if (form.password !== form.confirm) { notify({ type: 'error', message: 'Mật khẩu xác nhận không khớp.' }); return }
   loading.value = true
-  const r = await register({ fullName: form.fullName, email: form.email, password: form.password })
+  const r = await register({ fullName: name, email: email, password: form.password })
   loading.value = false
   if (!r.ok) { notify({ type: 'error', title: 'Đăng ký thất bại', message: r.message }); return }
   notify({ type: 'success', title: 'Tạo tài khoản thành công!', message: 'Chào mừng đến với ShoeGroup.' })

@@ -148,11 +148,6 @@ const sections = [
     title: "Vận Hành & Bảo Mật",
     items: [
       {
-        to: "/admin/panel/staff-report",
-        icon: "bi-clipboard-data-fill",
-        label: "Báo Cáo Nhân Viên",
-      },
-      {
         to: "/admin/panel/accounts",
         icon: "bi-shield-lock-fill",
         label: "Quản Lý Tài Khoản",
