@@ -457,7 +457,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
       .input("s", sql.NVarChar, newStatus)
       .input("r", sql.NVarChar, reason)
       .query(
-        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN N'Hoàn tiền' ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
+        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END) ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
       );
     res.json({ success: true });
   } catch (e) {
@@ -683,6 +683,12 @@ async function upsertProductImages(productId, colors) {
 }
 
 function bindProduct(request, b) {
+  let imgUrl = b.image_url || "";
+  if (!imgUrl && Array.isArray(b.colors) && b.colors.length > 0) {
+    const firstColor = b.colors.find(c => c.image || c.ImageURL);
+    if (firstColor) imgUrl = firstColor.image || firstColor.ImageURL;
+  }
+
   return request
     .input("n", sql.NVarChar, b.name)
     .input("p", sql.Decimal(18, 0), b.price || 0)
@@ -691,7 +697,7 @@ function bindProduct(request, b) {
     .input("br", sql.Int, b.brand_id || null)
     .input("col", sql.Int, b.collection_id || null)
     .input("mid", sql.Int, b.material_id || null)
-    .input("img", sql.VarChar(sql.MAX), b.image_url || "")
+    .input("img", sql.VarChar(sql.MAX), imgUrl)
     .input("desc", sql.NVarChar(sql.MAX), b.description || "")
     .input("psku", sql.VarChar, b.parent_sku || "")
     .input("feat", sql.Bit, !!b.is_featured)
@@ -1876,7 +1882,7 @@ async function runAutoCancelJob() {
         "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.",
       ).query(`
         UPDATE Orders
-        SET Status = N'Đã hủy', CancelReason = @reason
+        SET Status = N'Đã hủy', CancelReason = @reason, PaymentStatus = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END
         WHERE AutoCancelDeadline IS NOT NULL
           AND AutoCancelDeadline < GETDATE()
           AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
