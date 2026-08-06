@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { cartItems, cartCount, cartSubtotal, formatCurrency, clearCart } from '../stores/cartStore'
 import { createOrder, setServerId, orderState, saveOrders } from '../stores/orderStore'
@@ -18,6 +18,30 @@ const form = reactive({
   address: currentUser.value?.address || '',
   note: '',
 })
+
+const ADDR_KEY = 'shoegroup_addresses_v1'
+const savedAddresses = ref([])
+
+onMounted(() => {
+  try {
+    savedAddresses.value = JSON.parse(localStorage.getItem(ADDR_KEY) || '[]')
+  } catch (e) {
+    savedAddresses.value = []
+  }
+  if (savedAddresses.value.length > 0 && !form.fullName && !form.phone) {
+    const def = savedAddresses.value.find(a => a.isDefault) || savedAddresses.value[0]
+    selectAddress(def)
+  }
+})
+
+function selectAddress(a) {
+  if (!a) return
+  form.fullName = a.recipient || ''
+  form.phone = a.phone || ''
+  form.province = a.province || ''
+  form.address = a.line || ''
+  validateForm()
+}
 
 const shippingCode = ref('STANDARD')
 const paymentCode = ref('COD')
@@ -282,6 +306,15 @@ const placeOrder = async () => {
             <h6 class="co-h">
               <span class="co-num">1</span> THÔNG TIN GIAO HÀNG
             </h6>
+            <div v-if="savedAddresses.length > 0" class="mt-3">
+              <label class="co-label text-primary"><i class="bi bi-journal-bookmark-fill me-1"></i>CHỌN TỪ SỔ ĐỊA CHỈ</label>
+              <select class="sg-input w-100 bg-light" @change="e => selectAddress(savedAddresses[e.target.value])">
+                <option value="" disabled selected>-- Chọn địa chỉ đã lưu --</option>
+                <option v-for="(a, i) in savedAddresses" :key="a.id" :value="i">
+                  {{ a.recipient }} - {{ a.phone }} ({{ a.province }})
+                </option>
+              </select>
+            </div>
             <div class="row g-4 mt-2">
               <div class="col-md-6">
                 <label class="co-label">HỌ TÊN <span class="text-danger">*</span></label>
