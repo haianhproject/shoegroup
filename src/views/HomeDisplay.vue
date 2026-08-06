@@ -46,7 +46,7 @@ const fetchData = async () => {
       id_category: p.category_id, category_name: p.category, sport: p.sport,
       material_name: p.material_name, image_url: p.image_url,
       brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || 1,
-      variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
+      variants: p.variants || [], colors: p.colors || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
     categories.value = dataCat
       .filter((c) => c.active && c.name.toLowerCase() !== 'giày nam' && c.name.toLowerCase() !== 'tất cả')
@@ -165,16 +165,7 @@ onUnmounted(stopAuto)
       </div>
     </section>
 
-    <!-- CTA BANNER -->
-    <section class="container-fluid px-4 pb-5">
-      <div class="cta-banner">
-        <div class="cta-content">
-          <h3>Đăng ký thành viên — nhận ngay <span class="text-danger">giảm 30%</span></h3>
-          <p>Cùng hàng ngàn ưu đãi độc quyền cho thành viên mới của ShoeGroup.</p>
-          <router-link to="/register" class="btn-sg-warm"><i class="bi bi-person-plus me-2"></i>Đăng ký ngay</router-link>
-        </div>
-      </div>
-    </section>
+
   </div>
 </template>
 

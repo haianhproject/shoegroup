@@ -39,7 +39,7 @@ function addWithQty(v) {
           <!-- Khách lẻ: nút "Lưu thông tin" nằm NGAY BÊN DƯỚI trong khung khách lẻ -->
           <div v-if="activePosOrder.customer_type === 'Khách lẻ'" class="row g-3">
             <div class="col-md-6"><label class="form-label small fw-medium text-uppercase text-secondary">Tên khách</label><input v-model="activePosOrder.customer_name" type="text" class="form-control rounded-3" placeholder="Họ tên khách hàng"></div>
-            <div class="col-md-6"><label class="form-label small fw-medium text-uppercase text-secondary">Số điện thoại</label><input v-model="activePosOrder.customer_phone" type="text" class="form-control rounded-3" placeholder="0901 234 567"></div>
+            <div class="col-md-6"><label class="form-label small fw-medium text-uppercase text-secondary">Số điện thoại</label><input v-model="activePosOrder.customer_phone" type="tel" class="form-control rounded-3" placeholder="VD: 0901234567" maxlength="11"></div>
             <div class="col-12"><label class="form-label small fw-medium text-uppercase text-secondary">Ghi chú</label><textarea v-model="activePosOrder.customer_note" rows="2" class="form-control rounded-3" placeholder="Ghi chú đơn hàng..."></textarea></div>
             <div class="col-12 d-flex justify-content-end align-items-center gap-2 pt-1 border-top">
               <span class="text-secondary small me-auto">Lưu khách này vào trang Khách hàng (CRM)</span>

@@ -1754,9 +1754,14 @@ export async function savePosCustomer() {
     return;
   }
   const nm = (o.customer_name || "").trim();
-  const ph = (o.customer_phone || "").trim();
+  const ph = (o.customer_phone || "").replace(/\s/g, "").trim();
   if (!nm && !ph) {
     notify("Nhập tên hoặc SĐT khách để lưu", "error");
+    return;
+  }
+  // Validate SĐT VN nếu có nhập
+  if (ph && !/^(0[3|5|7|8|9])[0-9]{8}$/.test(ph)) {
+    notify("Số điện thoại không hợp lệ (10 số, bắt đầu 03/05/07/08/09)", "error");
     return;
   }
   const res = await ensureWalkInCustomer(nm, ph);
@@ -1768,7 +1773,11 @@ export async function savePosCustomer() {
     );
     return;
   }
-  notify("Đã lưu khách vào danh sách khách hàng", "success");
+  if (res.existed) {
+    notify("Khách đã tồn tại trong danh sách", "info");
+  } else {
+    notify("Đã lưu khách vào danh sách khách hàng", "success");
+  }
 }
 export function checkoutPos() {
   const o = activePosOrder.value;

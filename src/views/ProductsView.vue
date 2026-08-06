@@ -52,7 +52,7 @@ const fetchAll = async () => {
       f_colors: (p.colors || []).map((c) => c.name),
       image_url: p.image_url,
       brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || p.brand_id || 1,
-      variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
+      variants: p.variants || [], colors: p.colors || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
     categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
     colors.value = (await rcol.json()).map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))

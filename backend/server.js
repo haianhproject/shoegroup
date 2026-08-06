@@ -421,13 +421,43 @@ app.get("/api/orders", async (req, res) => {
 app.put("/api/orders/:id/status", async (req, res) => {
   try {
     await poolConnect;
+    const orderId = req.params.id;
+    const newStatus = req.body.status;
+    const reason = req.body.reason || "";
+    
+    const isCancel = newStatus === "Đã hủy" || newStatus === "Da huy" || newStatus === "CANCELLED";
+
+    if (isCancel) {
+      // Kiem tra trang thai hien tai
+      const currOrder = await pool.request().input("id", sql.Int, orderId).query(`SELECT Status FROM Orders WHERE OrderID = @id`);
+      if (currOrder.recordset.length > 0) {
+        const currStatus = currOrder.recordset[0].Status;
+        if (currStatus !== "Đã hủy" && currStatus !== "Da huy" && currStatus !== "CANCELLED") {
+          // Hoan lai kho
+          const details = await pool.request().input("id", sql.Int, orderId).query(`SELECT ProductID, ProductVariantID, Quantity, Size, Color FROM OrderDetails WHERE OrderID = @id`);
+          for (let row of details.recordset) {
+            if (row.ProductVariantID) {
+              await pool.request().input("vid", sql.Int, row.ProductVariantID).input("q", sql.Int, row.Quantity).query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductVariantID = @vid`);
+            } else if (row.ProductID && (row.Size || row.Color)) {
+              await pool.request()
+                .input("pid", sql.Int, row.ProductID)
+                .input("sz", sql.NVarChar, row.Size || "")
+                .input("clr", sql.NVarChar, row.Color || "")
+                .input("q", sql.Int, row.Quantity)
+                .query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductID = @pid AND (@sz = N'' OR ISNULL(Size, N'') = @sz) AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`);
+            }
+          }
+        }
+      }
+    }
+
     await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("s", sql.NVarChar, req.body.status)
-      .input("r", sql.NVarChar, req.body.reason || "")
+      .input("id", sql.Int, orderId)
+      .input("s", sql.NVarChar, newStatus)
+      .input("r", sql.NVarChar, reason)
       .query(
-        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN N'Hoàn tiền' ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
+        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END) ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
       );
     res.json({ success: true });
   } catch (e) {
@@ -653,6 +683,12 @@ async function upsertProductImages(productId, colors) {
 }
 
 function bindProduct(request, b) {
+  let imgUrl = b.image_url || "";
+  if (!imgUrl && Array.isArray(b.colors) && b.colors.length > 0) {
+    const firstColor = b.colors.find(c => c.image || c.ImageURL);
+    if (firstColor) imgUrl = firstColor.image || firstColor.ImageURL;
+  }
+
   return request
     .input("n", sql.NVarChar, b.name)
     .input("p", sql.Decimal(18, 0), b.price || 0)
@@ -661,7 +697,7 @@ function bindProduct(request, b) {
     .input("br", sql.Int, b.brand_id || null)
     .input("col", sql.Int, b.collection_id || null)
     .input("mid", sql.Int, b.material_id || null)
-    .input("img", sql.VarChar(sql.MAX), b.image_url || "")
+    .input("img", sql.VarChar(sql.MAX), imgUrl)
     .input("desc", sql.NVarChar(sql.MAX), b.description || "")
     .input("psku", sql.VarChar, b.parent_sku || "")
     .input("feat", sql.Bit, !!b.is_featured)
@@ -1812,15 +1848,41 @@ app.put("/api/orders/:id/receive", async (req, res) => {
 async function runAutoCancelJob() {
   try {
     await poolConnect;
+    
+    // Tìm các đơn sẽ bị hủy
+    const expiredOrders = await pool.request().query(`
+      SELECT OrderID FROM Orders 
+      WHERE AutoCancelDeadline IS NOT NULL 
+        AND AutoCancelDeadline < GETDATE() 
+        AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+    `);
+    
+    // Hoàn lại kho cho các đơn này
+    for (let row of expiredOrders.recordset) {
+      const details = await pool.request().input("id", sql.Int, row.OrderID).query(`SELECT ProductID, ProductVariantID, Quantity, Size, Color FROM OrderDetails WHERE OrderID = @id`);
+      for (let det of details.recordset) {
+        if (det.ProductVariantID) {
+          await pool.request().input("vid", sql.Int, det.ProductVariantID).input("q", sql.Int, det.Quantity).query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductVariantID = @vid`);
+        } else if (det.ProductID && (det.Size || det.Color)) {
+          await pool.request()
+            .input("pid", sql.Int, det.ProductID)
+            .input("sz", sql.NVarChar, det.Size || "")
+            .input("clr", sql.NVarChar, det.Color || "")
+            .input("q", sql.Int, det.Quantity)
+            .query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductID = @pid AND (@sz = N'' OR ISNULL(Size, N'') = @sz) AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`);
+        }
+      }
+    }
+
     await pool
       .request()
       .input(
         "reason",
         sql.NVarChar,
-        "Shop chua chuan bi hang cho khach. Xin loi quy khach, vui long dat lai don hang.",
+        "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.",
       ).query(`
         UPDATE Orders
-        SET Status = N'Đã hủy', CancelReason = @reason
+        SET Status = N'Đã hủy', CancelReason = @reason, PaymentStatus = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END
         WHERE AutoCancelDeadline IS NOT NULL
           AND AutoCancelDeadline < GETDATE()
           AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')

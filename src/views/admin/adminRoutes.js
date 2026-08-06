@@ -120,12 +120,6 @@ const adminRoutes = [
         meta: { title: "Khách Hàng (CRM)" },
       },
       {
-        path: "staff-report",
-        name: "admin-staff-report",
-        component: () => import("./pages/StaffReportPage.vue"),
-        meta: { title: "Báo Cáo Nhân Viên" },
-      },
-      {
         path: "accounts",
         name: "admin-accounts",
         component: () => import("./pages/AccountsPage.vue"),

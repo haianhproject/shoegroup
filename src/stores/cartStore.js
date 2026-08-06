@@ -67,6 +67,7 @@ export const addToCart = (payload) => {
     quantity = 1,
     size = { size_name: "42" },
     color = { color_label: "Ti\u00eau chu\u1ea9n" },
+    variantId = null,
   } = payload;
 
   if (!product) return { ok: false, message: "S\u1ea3n ph\u1ea9m kh\u00f4ng h\u1ee3p l\u1ec7." };
@@ -116,6 +117,7 @@ export const addToCart = (payload) => {
   cartState.items.unshift({
     id_product_detail: detailId,
     id_product: productId,
+    variant_id: variantId ?? null,
     product: {
       id_product: productId,
       product_name: productName,

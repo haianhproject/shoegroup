@@ -226,7 +226,7 @@ onUnmounted(() => {
                 <div v-else class="mc-body">
                   <div v-for="item in miniCartItems" :key="item.id_product_detail" class="mc-item">
                     <router-link :to="`/product/${item.id_product}`" class="mc-img" @click="hideMiniCart">
-                      <img :src="item.product?.image_url" :alt="item.product?.product_name">
+                      <img :src="item.color?.image || item.product?.image_url" :alt="item.product?.product_name">
                     </router-link>
                     <div class="mc-info">
                       <router-link :to="`/product/${item.id_product}`" class="mc-name" @click="hideMiniCart">

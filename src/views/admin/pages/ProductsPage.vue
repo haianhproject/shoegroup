@@ -494,35 +494,7 @@ import {
       </div>
 
       <div class="col-lg-5">
-        <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
-          <h6 class="fw-bold mb-3 text-dark">Ảnh Sản Phẩm</h6>
-          <div
-            class="border rounded-3 d-flex align-items-center justify-content-center mb-3 bg-light-gray"
-            style="height: 200px; overflow: hidden"
-          >
-            <img
-              v-if="productForm.image_url"
-              :src="productForm.image_url"
-              style="max-height: 100%; max-width: 100%; object-fit: contain"
-            /><span v-else class="text-secondary small text-center"
-              ><i class="bi bi-image fs-1 d-block opacity-50"></i>Chưa có
-              ảnh</span
-            >
-          </div>
-          <input
-            v-model="productForm.image_url"
-            type="text"
-            class="form-control form-control-sm rounded-3 mb-2"
-            placeholder="Dán URL ảnh..."
-          />
-          <label class="btn btn-sm btn-outline-dark rounded-3 w-100"
-            ><i class="bi bi-upload me-1"></i> Chọn ảnh trên thiết bị<input
-              type="file"
-              accept="image/*"
-              class="d-none"
-              @change="onProductImageFile"
-          /></label>
-        </div>
+
         <div class="bg-white rounded-4 shadow-sm p-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="fw-bold mb-0 text-dark">Trạng Thái</h6>

@@ -62,7 +62,7 @@ const handleDecrease = (id) => {
           <div class="cart-list">
             <div class="cart-item" v-for="item in cartItems" :key="item.id_product_detail">
               <router-link :to="`/product/${item.id_product}`" class="ci-img">
-                <img :src="item.product?.image_url" :alt="item.product?.product_name">
+                <img :src="item.color?.image || item.product?.image_url" :alt="item.product?.product_name">
               </router-link>
               
               <div class="ci-body">
