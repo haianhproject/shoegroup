@@ -55,11 +55,12 @@ const fetchData = async () => {
   }
 }
 
-/* Danh sách ảnh: ảnh chính + ảnh các biến thể màu (không trùng) */
+/* Danh sách ảnh: ảnh các biến thể màu (nếu không có thì mới dùng ảnh chính) */
 const galleryImages = computed(() => {
   const imgs = []
-  if (product.value?.image_url) imgs.push(product.value.image_url)
   for (const c of colorList.value) if (c.image && !imgs.includes(c.image)) imgs.push(c.image)
+  // Nếu không có ảnh biến thể nào, mới dùng ảnh bìa sản phẩm
+  if (imgs.length === 0 && product.value?.image_url) imgs.push(product.value.image_url)
   return imgs
 })
 

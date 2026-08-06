@@ -5,7 +5,7 @@ import { cartItems, cartCount, cartSubtotal, formatCurrency, clearCart } from '.
 import { createOrder, setServerId, orderState, saveOrders } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
-import { shippingMethods, distanceFromHanoi } from '../data/mockData'
+import { shippingMethods } from '../data/mockData'
 import { api } from "../services/apiClient";
 
 const router = useRouter()
@@ -26,7 +26,6 @@ const placing = ref(false)
 const payments = [
   { code: 'COD', name: 'Thanh toán khi nhận hàng (COD)', icon: 'bi-cash-coin', desc: 'Trả tiền mặt khi shipper giao đến.' },
   { code: 'BANK', name: 'Chuyển khoản ngân hàng', icon: 'bi-bank', desc: 'VietQR / Internet Banking, xác nhận tự động.' },
-  { code: 'MOMO', name: 'Ví MoMo', icon: 'bi-wallet2', desc: 'Thanh toán nhanh qua ứng dụng MoMo.' },
 ]
 
 /* ---- Validate helpers ---- */
@@ -66,22 +65,13 @@ function validateForm() {
   return ok
 }
 
-/* ---- Address verification + distance (Express) ---- */
+/* ---- Address verification ---- */
 const addressVerified = computed(() => {
   const a = (form.address || '').trim()
   const hasNumber = /\d+/.test(a)
   const longEnough = a.length >= 12
   const hasProvince = form.province.trim().length >= 2
   return hasNumber && longEnough && hasProvince
-})
-
-const detectedDistance = computed(() => {
-  const key = (form.province || '').trim().toLowerCase()
-  if (!key) return null
-  for (const k in distanceFromHanoi) {
-    if (key.includes(k)) return distanceFromHanoi[k]
-  }
-  return 150
 })
 
 const mapUrl = computed(() => {
@@ -92,10 +82,6 @@ const mapUrl = computed(() => {
 const shippingFee = computed(() => {
   const m = shippingMethods.find((s) => s.code === shippingCode.value)
   if (!m) return 0
-  if (m.code === 'EXPRESS') {
-    const km = detectedDistance.value ?? 0
-    return m.basePrice + km * m.pricePerKm
-  }
   return m.basePrice
 })
 
@@ -223,7 +209,7 @@ const placeOrder = async () => {
     shippingFee: shippingFee.value,
     discount: discountAmount.value,
     total: total.value,
-    shippingMethod: { code: m.code, name: m.name, eta: etaText.value, distanceKm: shippingCode.value === 'EXPRESS' ? detectedDistance.value : null },
+    shippingMethod: { code: m.code, name: m.name, eta: etaText.value, distanceKm: 0 },
     paymentMethod: { code: pay.code, name: pay.name },
     note: form.note,
   })
@@ -350,15 +336,11 @@ const placeOrder = async () => {
                   <div class="ship-desc">{{ m.desc }}</div>
                   <div class="ship-eta">
                     Dự kiến: {{ m.eta }}
-                    <template v-if="m.code === 'EXPRESS' && detectedDistance"> · ~{{ detectedDistance }}km</template>
                   </div>
                 </div>
-                <div class="ship-fee">{{ formatCurrency(m.code === 'EXPRESS' ? (m.basePrice + (detectedDistance || 0) * m.pricePerKm) : m.basePrice) }}</div>
+                <div class="ship-fee">{{ formatCurrency(m.basePrice) }}</div>
                 <div class="ship-check"></div>
               </label>
-            </div>
-            <div v-if="shippingCode === 'EXPRESS'" class="express-note">
-              Giao hỏa tốc tính phí theo khoảng cách từ kho Hà Nội: {{ formatCurrency(shippingMethods[1].basePrice) }} + {{ formatCurrency(shippingMethods[1].pricePerKm) }}/km.
             </div>
           </div>
 

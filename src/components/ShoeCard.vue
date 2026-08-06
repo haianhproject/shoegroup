@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { addToCart, formatCurrency, showMiniCart, cartState } from "../stores/cartStore"
@@ -82,11 +82,12 @@ const selectedVariantId = computed(() => {
   return v?.id ?? null
 })
 
+const hasVariants = computed(() => (props.product.variants || []).length > 0)
 const previewImage = computed(() => selectedColor.value?.image || props.product.image_url || "")
 
 function openVariantModal() {
   if (isOutOfStock.value) {
-    notify({ type: "warning", title: "San pham het hang", message: "Xin loi! San pham nay hien khong con hang.", duration: 4000 })
+    notify({ type: "warning", title: "Sản phẩm hết hàng", message: "Xin lỗi! Sản phẩm này hiện không còn hàng.", duration: 4000 })
     return
   }
   selectedColor.value = colorList.value.length > 0 ? colorList.value[0] : null
@@ -101,12 +102,12 @@ function confirmAddToCart() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
-    if (!selectedSize.value) { notify({ type: "warning", message: "Vui long chon kich thuoc." }); return }
-    if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Bien the nay da het hang." }); return }
+    if (!selectedSize.value) { notify({ type: "warning", message: "Vui lòng chọn kích thước." }); return }
+    if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Biến thể này đã hết hàng." }); return }
   }
   const colorObj = selectedColor.value
     ? { color_label: selectedColor.value.name, color_name: selectedColor.value.name, color_hex: selectedColor.value.hex || "", image: selectedColor.value.image || "" }
-    : { color_label: "Tieu chuan", color_name: "Tieu chuan" }
+    : { color_label: "Tiêu chuẩn", color_name: "Tieu chuan" }
   const sizeObj = { size_name: selectedSize.value || props.product.default_size || "" }
   let stockQty = selectedVariantStock.value
   if (stockQty === 0 && !hasVariants) {
@@ -122,7 +123,7 @@ function confirmAddToCart() {
   if (!result.ok) { notify({ type: "warning", message: result.message }); return }
   showVariantModal.value = false
   showMiniCart()
-  notify({ type: "success", title: "Da them vao gio", message: props.product.product_name || props.product.name, duration: 2200 })
+  notify({ type: "success", title: "Đã thêm vào giỏ", message: props.product.product_name || props.product.name, duration: 2200 })
 }
 </script>
 
@@ -132,7 +133,7 @@ function confirmAddToCart() {
       <span v-if="product.category_name || product.category" class="shoe-tag">{{ product.category_name || product.category }}</span>
       <img :src="product.image_url" :alt="product.product_name || product.name">
       <div v-if="isOutOfStock" class="shoe-oos-overlay">
-        <span class="shoe-oos-badge"><i class="bi bi-x-circle me-1"></i>Het hang</span>
+        <span class="shoe-oos-badge"><i class="bi bi-x-circle me-1"></i>Hết hàng</span>
       </div>
       <span class="shoe-shine"></span>
     </router-link>
@@ -148,10 +149,10 @@ function confirmAddToCart() {
           <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price || product.BasePrice)" class="text-danger text-decoration-line-through small" style="font-size:0.8rem; font-weight:normal;">{{ formatCurrency(product.price || product.BasePrice) }}</span>
           <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : (product.price || product.BasePrice)) }}</span>
         </div>
-        <router-link v-if="isOutOfStock" :to="productLink" class="shoe-add shoe-add-oos" title="Xem chi tiet">
+        <router-link v-if="isOutOfStock" :to="productLink" class="shoe-add shoe-add-oos" title="Xem chi tiết">
           <i class="bi bi-eye"></i>
         </router-link>
-        <button v-else class="shoe-add" @click.prevent="openVariantModal" aria-label="Them vao gio">
+        <button v-else class="shoe-add" @click.prevent="openVariantModal" aria-label="Thêm vào giỏ">
           <i class="bi bi-plus-lg"></i>
         </button>
       </div>
@@ -163,7 +164,7 @@ function confirmAddToCart() {
       <div v-if="showVariantModal" class="vm-overlay" @click.self="showVariantModal = false">
         <div class="vm-box">
           <div class="vm-head">
-            <span class="vm-title">Chon phan loai hang</span>
+            <span class="vm-title">Chọn phân loại hàng</span>
             <button class="vm-close" @click="showVariantModal = false"><i class="bi bi-x-lg"></i></button>
           </div>
           <div class="vm-preview">
@@ -171,13 +172,13 @@ function confirmAddToCart() {
             <div class="vm-pinfo">
               <div class="vm-pname">{{ baseName }}</div>
               <div class="vm-pprice">{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : (product.price || product.BasePrice)) }}</div>
-              <div v-if="selectedColor" class="vm-pattr">Mau: <strong>{{ selectedColor.name }}</strong></div>
+              <div v-if="selectedColor" class="vm-pattr">Màu: <strong>{{ selectedColor.name }}</strong></div>
               <div v-if="selectedSize" class="vm-pattr">Size: <strong>{{ selectedSize }}</strong></div>
             </div>
           </div>
           <div class="vm-body">
             <div v-if="colorList.length > 0" class="vm-section">
-              <div class="vm-label">Mau sac</div>
+              <div class="vm-label">Màu sắc</div>
               <div class="vm-color-list">
                 <button v-for="c in colorList" :key="c.name" class="vm-color-btn" :class="{ active: selectedColor?.name === c.name }" @click="selectedColor = c" :title="c.name">
                   <img v-if="c.image" :src="c.image" :alt="c.name" class="vm-color-img">
@@ -188,7 +189,7 @@ function confirmAddToCart() {
               </div>
             </div>
             <div v-if="sizeList.length > 0" class="vm-section">
-              <div class="vm-label">Kich thuoc</div>
+              <div class="vm-label">Kích thước</div>
               <div class="vm-size-list">
                 <button v-for="sz in sizeList" :key="sz" class="vm-size-btn"
                   :class="{ active: selectedSize === sz, oos: isVariantOos(selectedColor?.name, sz) }"
@@ -199,17 +200,17 @@ function confirmAddToCart() {
               </div>
             </div>
             <div class="vm-section">
-              <div class="vm-label">So luong</div>
+              <div class="vm-label">Số lượng</div>
               <div class="vm-qty-row">
-                <button class="vm-qty-btn" @click="selectedQty = Math.max(1, selectedQty - 1)"><i class="bi bi-dash"></i></button>
+                <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.max(1, selectedQty - 1)"><i class="bi bi-dash"></i></button>
                 <span class="vm-qty-val">{{ selectedQty }}</span>
-                <button class="vm-qty-btn" @click="selectedQty = Math.min(selectedVariantStock || 99, selectedQty + 1)"><i class="bi bi-plus"></i></button>
-                <span v-if="selectedVariantStock > 0" class="vm-stock-hint">Con {{ selectedVariantStock }}</span>
+                <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.min(selectedVariantStock || 99, selectedQty + 1)"><i class="bi bi-plus"></i></button>
+                <span v-if="selectedVariantStock > 0" class="vm-stock-hint">Còn {{ selectedVariantStock }}</span>
               </div>
             </div>
           </div>
           <div class="vm-footer">
-            <button class="vm-btn-add" @click="confirmAddToCart"><i class="bi bi-bag-plus me-2"></i>THEM VAO GIO HANG</button>
+            <button class="vm-btn-add" @click="confirmAddToCart"><i class="bi bi-bag-plus me-2"></i>THÊM VÀO GIỎ HÀNG</button>
           </div>
         </div>
       </div>

@@ -70,7 +70,7 @@ export const collections = [
   { id_collection: 3, collection_name: "Urban Street" },
 ];
 
-/* Phương thức vận chuyển: [0]=Thường, [1]=Hỏa tốc (index 1 = EXPRESS) */
+/* Phương thức vận chuyển: [0]=Thường */
 export const shippingMethods = [
   {
     code: "STANDARD",
@@ -79,14 +79,6 @@ export const shippingMethods = [
     pricePerKm: 0,
     eta: "2 - 3 ngày",
     desc: "Giá cố định, áp dụng toàn quốc.",
-  },
-  {
-    code: "EXPRESS",
-    name: "Giao hỏa tốc",
-    basePrice: 40000,
-    pricePerKm: 5000,
-    eta: "~24 giờ",
-    desc: "Tính phí theo khoảng cách từ kho Hà Nội.",
   },
 ];
 
