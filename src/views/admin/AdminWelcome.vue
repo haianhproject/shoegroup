@@ -28,7 +28,7 @@ function enterPanel() {
         Chào mừng <span class="fw-bold text-white" v-text="getDisplayName"></span> quay trở lại.<br>
         Nhấn xác nhận để truy cập hệ thống quản trị.
       </p>
-      <button @click="enterPanel" class="btn btn-project btn-lg rounded-4 fw-bold px-5 py-3 shadow-hover">
+      <button @click="enterPanel" class="btn btn-project btn-lg rounded-1 fw-bold px-5 py-3 shadow-hover">
         <i class="bi bi-shield-check me-2"></i> Xác nhận &amp; Vào quản lý
       </button>
     </div>

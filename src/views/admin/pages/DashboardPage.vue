@@ -61,50 +61,50 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
   <div class="fade-in">
     <!-- ===== Thanh phạm vi + xuất báo cáo ===== -->
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-      <div class="btn-group shadow-sm rounded-3 overflow-hidden bg-white">
+      <div class="btn-group shadow-sm rounded-2 overflow-hidden bg-white">
         <button v-for="r in rangeOptions" :key="r.key" @click="setRange(r.key)" class="btn btn-sm px-3 fw-medium border-0" :class="dateRange === r.key ? 'btn-dark text-white' : 'btn-white text-secondary'" v-text="r.label"></button>
       </div>
       <div class="d-flex align-items-center gap-2">
-        <span class="badge rounded-pill bg-light text-dark border fw-medium"><i class="bi bi-calendar3 me-1"></i><span v-text="rangeLabel"></span></span>
-        <button @click="exportReport" class="btn btn-dark btn-sm rounded-3 fw-bold shadow-sm px-3 d-flex align-items-center"><i class="bi bi-download me-2"></i> Xuất Báo Cáo</button>
+        <span class="badge rounded-1 bg-light text-dark border fw-medium"><i class="bi bi-calendar3 me-1"></i><span v-text="rangeLabel"></span></span>
+        <button @click="exportReport" class="btn btn-dark btn-sm rounded-2 fw-bold shadow-sm px-3 d-flex align-items-center"><i class="bi bi-download me-2"></i> Xuất Báo Cáo</button>
       </div>
     </div>
 
-    <div v-if="dateRange === 'custom'" class="d-flex flex-wrap align-items-end gap-2 mb-4 p-3 bg-white rounded-4 shadow-sm">
-      <div><label class="form-label small text-secondary mb-1">Từ ngày</label><input type="date" v-model="customRange.from" class="form-control form-control-sm rounded-3"></div>
-      <div><label class="form-label small text-secondary mb-1">Đến ngày</label><input type="date" v-model="customRange.to" class="form-control form-control-sm rounded-3"></div>
+    <div v-if="dateRange === 'custom'" class="d-flex flex-wrap align-items-end gap-2 mb-4 p-3 bg-white rounded-1 shadow-sm">
+      <div><label class="form-label small text-secondary mb-1">Từ ngày</label><input type="date" v-model="customRange.from" class="form-control form-control-sm rounded-2"></div>
+      <div><label class="form-label small text-secondary mb-1">Đến ngày</label><input type="date" v-model="customRange.to" class="form-control form-control-sm rounded-2"></div>
     </div>
 
     <!-- ===== 4 thẻ thống kê ===== -->
     <div class="row g-4 mb-4">
       <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded-4 shadow-sm h-100">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
           <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-people-fill"></i></div>
           <p class="text-secondary small mb-1 fw-medium">Tổng Tài Khoản</p><h3 class="fw-bolder mb-0 text-dark" v-text="statAccounts"></h3>
         </div>
       </div>
       <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded-4 shadow-sm h-100">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
           <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-box-seam-fill"></i></div>
           <p class="text-secondary small mb-1 fw-medium">Tổng Sản Phẩm</p><h3 class="fw-bolder mb-0 text-dark" v-text="statProducts"></h3>
         </div>
       </div>
       <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded-4 shadow-sm h-100">
-          <div class="stat-icon bg-primary text-white mb-3"><i class="bi bi-cart-check-fill"></i></div>
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
+          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-cart-check-fill"></i></div>
           <p class="text-secondary small mb-1 fw-medium">Tổng Đơn Hàng</p><h3 class="fw-bolder mb-0 text-dark" v-text="statOrders"></h3>
         </div>
       </div>
       <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded-4 shadow-sm h-100">
-          <div class="stat-icon bg-success text-white mb-3"><i class="bi bi-cash-stack"></i></div>
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
+          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-cash-stack"></i></div>
           <p class="text-secondary small mb-1 fw-medium">Tổng Doanh Thu</p><h3 class="fw-bolder mb-0 text-dark" v-text="formatPrice(statRevenue)"></h3>
         </div>
       </div>
     </div>
 
     <!-- ===== Trend đơn hàng ===== -->
-    <div class="bg-white p-4 rounded-4 shadow-sm mb-4">
+    <div class="bg-white p-4 rounded-1 shadow-sm mb-4">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
           <h5 class="fw-bold mb-1 text-dark">Trend Đơn Hàng</h5>
@@ -115,7 +115,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
             <span><span class="legend-dot" style="background:#6366f1;"></span> Đơn hàng</span>
             <span><span class="legend-dot" style="background:#f59e0b;"></span> TB 3 kỳ trước</span>
           </div>
-          <div class="btn-group shadow-sm rounded-3 overflow-hidden">
+          <div class="btn-group shadow-sm rounded-2 overflow-hidden">
             <button @click="setTrendMode('day')" class="btn btn-sm px-3 border-0" :class="trendMode === 'day' ? 'btn-dark text-white' : 'btn-white text-secondary'">Ngày</button>
             <button @click="setTrendMode('month')" class="btn btn-sm px-3 border-0" :class="trendMode === 'month' ? 'btn-dark text-white' : 'btn-white text-secondary'">Tháng</button>
           </div>
@@ -127,7 +127,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
     <!-- ===== Đơn hàng + Thanh toán ===== -->
     <div class="row g-4 mb-4">
       <div class="col-12 col-xl-7">
-        <div class="bg-white p-4 rounded-4 shadow-sm h-100">
+        <div class="bg-white p-4 rounded-1 shadow-sm h-100">
           <h5 class="fw-bold mb-1 text-dark">Đơn Hàng</h5>
           <p class="text-secondary small mb-4">Trạng thái, số lượng và giá trị đơn</p>
           <div class="row g-3 align-items-center">
@@ -136,9 +136,9 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
               <div style="height: 220px;"><canvas ref="statusCanvas"></canvas></div>
             </div>
             <div class="col-12 col-md-6">
-              <div class="bg-light-gray rounded-3 p-3 mb-3">
+              <div class="bg-light-gray p-3 mb-3" style="border-radius:4px;">
                 <p class="text-secondary small mb-1">Giá trị trung bình / đơn</p>
-                <h4 class="fw-bolder text-primary mb-0" v-text="formatPrice(avgOrderValue)"></h4>
+                <h4 class="fw-bolder text-dark mb-0" v-text="formatPrice(avgOrderValue)"></h4>
               </div>
               <p class="text-secondary small fw-medium mb-2">Đơn gần nhất</p>
               <table class="table table-sm align-middle mb-0 small">
@@ -147,7 +147,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
                   <tr v-if="recentOrdersByDate.length === 0"><td colspan="2" class="text-secondary text-center py-2">Chưa có đơn</td></tr>
                   <tr v-for="r in recentOrdersByDate" :key="r.date">
                     <td v-text="r.date"></td>
-                    <td class="text-end"><span class="badge rounded-pill bg-light text-dark border" v-text="r.count"></span></td>
+                    <td class="text-end"><span class="badge bg-light text-dark border" style="border-radius:2px;" v-text="r.count"></span></td>
                   </tr>
                 </tbody>
               </table>
@@ -156,14 +156,14 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
         </div>
       </div>
       <div class="col-12 col-xl-5">
-        <div class="bg-white p-4 rounded-4 shadow-sm h-100 d-flex flex-column">
+        <div class="bg-white p-4 rounded-1 shadow-sm h-100 d-flex flex-column">
           <h5 class="fw-bold mb-1 text-dark">Thanh Toán</h5>
           <p class="text-secondary small mb-4">Phân bổ doanh thu theo kênh &amp; phương thức</p>
           
           <!-- Tổng Doanh Thu Header -->
-          <div class="bg-light-gray rounded-3 p-3 mb-4 text-center border">
+          <div class="bg-light-gray p-3 mb-4 text-center border" style="border-radius:4px;">
             <p class="text-secondary small fw-medium mb-1">Tổng Doanh Thu Lọc</p>
-            <h4 class="fw-bolder text-success mb-0" v-text="formatPrice(paymentRevenueSummary.total)"></h4>
+            <h4 class="fw-bolder text-dark mb-0" v-text="formatPrice(paymentRevenueSummary.total)"></h4>
           </div>
 
           <!-- Bảng chia 4 cột -->
@@ -185,7 +185,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
             <div class="col-6">
               <h6 class="fw-bold text-dark mb-3 text-center border-bottom pb-2">Qua Web</h6>
               <div class="mb-3">
-                <p class="text-secondary small mb-1">Tiền mặt (COD)</p>
+                <p class="text-secondary small mb-1">Thu hộ</p>
                 <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.webCod)"></h6>
               </div>
               <div>
@@ -199,7 +199,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
     </div>
 
     <!-- ===== Sản phẩm ===== -->
-    <div class="bg-white p-4 rounded-4 shadow-sm mb-4">
+    <div class="bg-white p-4 rounded-1 shadow-sm mb-4">
       <h5 class="fw-bold mb-1 text-dark">Sản Phẩm</h5>
       <p class="text-secondary small mb-4">Hiệu suất bán hàng và tình trạng tồn kho</p>
       <div class="row g-4">
@@ -211,7 +211,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
               <tbody>
                 <tr v-if="!topProductsList || topProductsList.length === 0"><td colspan="4" class="text-secondary text-center py-2">Chưa có dữ liệu</td></tr>
                 <tr v-for="(p, i) in topProductsList" :key="p.name">
-                  <td><span class="badge rounded-pill" :class="i === 0 ? 'bg-warning text-dark' : i === 1 ? 'bg-secondary' : i === 2 ? 'bg-danger' : 'bg-light text-dark border'" v-text="'Top ' + (i + 1)"></span></td>
+                  <td><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="i === 0 ? 'bg-dark text-white' : i === 1 ? 'bg-secondary text-white' : i === 2 ? 'bg-secondary-subtle text-dark' : 'bg-light text-dark border'" v-text="'Top ' + (i + 1)"></span></td>
                   <td class="text-truncate fw-medium" style="max-width:140px;" v-text="p.name"></td>
                   <td class="text-secondary" v-text="p.brand"></td>
                   <td class="text-end fw-bold text-dark" v-text="p.quantity"></td>
@@ -221,7 +221,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
           </div>
         </div>
         <div class="col-12 col-lg-7">
-          <p class="text-secondary small fw-medium mb-2">Sản phẩm hết hàng <span class="badge rounded-pill bg-danger" v-text="lowStockCount"></span></p>
+          <p class="text-secondary small fw-medium mb-2">Sản phẩm hết hàng <span class="badge bg-dark text-white" style="border-radius:2px;" v-text="lowStockCount"></span></p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
             <table class="table table-sm align-middle mb-0 small">
               <thead><tr class="text-secondary"><th>Sản phẩm</th><th>Màu</th><th class="text-end">Tồn</th></tr></thead>
@@ -231,7 +231,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
                   <td class="text-truncate" style="max-width:140px;" v-text="v.product_name"></td>
                   <td class="small text-secondary" v-text="v.color"></td>
                   <td class="small text-secondary" v-text="v.size"></td>
-                  <td class="text-end"><span class="badge rounded-pill bg-danger" v-text="'Hết hàng'"></span></td>
+                  <td class="text-end"><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="'bg-secondary-subtle text-dark'" v-text="'Hết hàng'"></span></td>
                 </tr>
               </tbody>
             </table>

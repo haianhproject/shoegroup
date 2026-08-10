@@ -16,7 +16,7 @@
 import { ref, reactive, computed } from "vue";
 import { currentUser, logout } from "@/stores/authStore";
 
-import { API_BASE_URL } from "../../services/apiClient";
+import { API_BASE_URL, getToken } from "../../services/apiClient";
 export const API = API_BASE_URL;
 export const LOW_STOCK_THRESHOLD = 10;
 
@@ -82,9 +82,20 @@ export function toastIcon(type) {
    thi db.inventory = [] va MOI O TON KHO HIEN SO 0 ma khong canh bao gi. */
 export const apiErrors = ref([]);
 
+function withAuthHeaders(headers = {}) {
+  const token = getToken();
+  return {
+    ...headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export async function api(path, options) {
   try {
-    const res = await fetch(API + path, options);
+    const res = await fetch(API + path, {
+      ...options,
+      headers: withAuthHeaders(options?.headers),
+    });
     if (!res.ok) {
       let detail = "";
       try {
@@ -110,7 +121,10 @@ export async function api(path, options) {
    trả về { ok, status, data } để UI báo đúng thành công / thất bại. */
 export async function apiWrite(path, options) {
   try {
-    const res = await fetch(API + path, options);
+    const res = await fetch(API + path, {
+      ...options,
+      headers: withAuthHeaders(options?.headers),
+    });
     let data = null;
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
@@ -520,20 +534,20 @@ export function countByStatus(s) {
 export function getStatusBadgeClass(status) {
   return (
     {
-      "Chờ xác nhận": "bg-warning text-dark fw-bold",
-      "Đã xác nhận": "bg-primary text-white fw-bold",
-      "Đang vận chuyển": "bg-info text-dark fw-bold",
-      "Đã giao hàng thành công": "bg-success text-white fw-bold",
-      "Đã hủy": "bg-danger text-white fw-bold",
-    }[status] || "bg-secondary text-white fw-bold"
+      "Chờ xác nhận": "bg-light text-secondary border",
+      "Đã xác nhận": "bg-secondary-subtle text-dark",
+      "Đang vận chuyển": "bg-secondary-subtle text-dark",
+      "Đã giao hàng thành công": "bg-dark text-white",
+      "Đã hủy": "bg-light text-danger border",
+    }[status] || "bg-light text-secondary border"
   );
 }
 export function getPaymentBadgeClass(status) {
   return (
     {
-      "Đã thanh toán": "bg-success text-white fw-bold",
-      "Hoàn tiền": "bg-secondary text-white fw-bold",
-    }[status] || "bg-warning text-dark fw-bold"
+      "Đã thanh toán": "bg-dark text-white",
+      "Hoàn tiền": "bg-secondary-subtle text-dark",
+    }[status] || "bg-light text-secondary border"
   );
 }
 const orderFlow = {
@@ -872,22 +886,20 @@ export function countOrdersByChannel(ch) {
 // Chuẩn hóa phương thức thanh toán -> nhãn pill (BANK_TRANSFER / COD / CASH / UNKNOWN)
 export function getPaymentMethodPill(pm) {
   const s = (pm || "").toLowerCase();
-  if (s.includes("cod") || s.includes("nhận hàng"))
-    return { code: "COD", cls: "bg-warning-subtle text-warning-emphasis" };
+  if (s.includes("cod") || s.includes("nhận hàng") || s.includes("thu hộ"))
+    return { code: "Thu hộ", cls: "bg-dark text-white" };
   if (
     s.includes("bank") ||
     s.includes("banking") ||
-    s.includes("atm") ||
-    s.includes("visa") ||
-    s.includes("master") ||
+    s.includes("ck") ||
     s.includes("chuyển khoản") ||
     s.includes("vnpay") ||
     s.includes("momo")
   )
-    return { code: "BANK_TRANSFER", cls: "bg-info-subtle text-info-emphasis" };
+    return { code: "Chuyển khoản", cls: "bg-secondary-subtle text-dark" };
   if (s.includes("tiền mặt") || s === "cash")
-    return { code: "CASH", cls: "bg-success-subtle text-success-emphasis" };
-  return { code: "UNKNOWN", cls: "bg-secondary-subtle text-secondary" };
+    return { code: "Tiền mặt", cls: "bg-light text-dark border" };
+  return { code: "Không rõ", cls: "bg-light text-secondary border" };
 }
 
 // Pill trạng thái thanh toán
@@ -898,43 +910,43 @@ export function effectivePaymentStatus(o) {
   if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
   if (o.status === "Đã hủy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
-  if (pill.code === "CASH") return "Đã thanh toán";
-  if (pill.code === "BANK_TRANSFER") {
+  if (pill.code === "Tiền mặt") return "Đã thanh toán";
+  if (pill.code === "Chuyển khoản") {
     if ((o.payment_status || "") === "Đã thanh toán") return "Đã thanh toán";
     if ((o.payment_status || "") === "Chờ thanh toán") return "Khách báo đã chuyển";
     return "Chờ chuyển khoản";
   }
-  if (pill.code === "COD")
+  if (pill.code === "Thu hộ")
     return o.status === "Đã giao hàng thành công" ||
       (o.payment_status || "") === "Đã thanh toán"
       ? "Đã thanh toán"
-      : "Chờ thu khi giao (COD)";
+      : "Chờ thu hộ";
   return o.payment_status || "Chưa thanh toán";
 }
 export function getPaymentStatusPill(o) {
   const st = effectivePaymentStatus(o);
   if (st === "Đã thanh toán")
-    return { label: "Đã thanh toán", cls: "bg-success text-white fw-medium" };
+    return { label: "Đã thanh toán", cls: "bg-dark text-white" };
   if (st === "Hoàn tiền")
-    return { label: "Hoàn tiền", cls: "bg-info-subtle text-info-emphasis" };
+    return { label: "Hoàn tiền", cls: "bg-secondary-subtle text-dark" };
   if (st === "Khách báo đã chuyển")
-    return { label: "Khách báo đã chuyển", cls: "bg-primary-subtle text-primary-emphasis fw-medium" };
+    return { label: "Khách báo đã chuyển", cls: "bg-dark text-white" };
   if (st === "Chờ chuyển khoản")
     return {
       label: "Chờ chuyển khoản",
-      cls: "bg-warning-subtle text-warning-emphasis",
+      cls: "bg-light text-secondary border",
     };
-  if (st === "Chờ thu khi giao (COD)")
+  if (st === "Chờ thu hộ")
     return {
-      label: "Chờ thu (COD)",
-      cls: "bg-warning-subtle text-warning-emphasis",
+      label: "Chờ thu hộ",
+      cls: "bg-light text-secondary border",
     };
   if (st === "Chưa thanh toán")
     return {
       label: "Chưa thanh toán",
-      cls: "bg-danger-subtle text-danger-emphasis",
+      cls: "bg-secondary-subtle text-dark",
     };
-  return { label: "Không xác định", cls: "bg-secondary-subtle text-secondary" };
+  return { label: "Không xác định", cls: "bg-light text-secondary border" };
 }
 
 // Pill trạng thái đơn (rút gọn theo hình mẫu)
@@ -942,30 +954,30 @@ export function getOrderStatusPill(o) {
   const map = {
     "Đã nhận hàng": {
       label: "Hoàn thành",
-      cls: "bg-success text-white fw-medium",
+      cls: "bg-dark text-white",
     },
     "Đã giao hàng thành công": {
       label: "Đã giao hàng",
-      cls: "bg-info text-white fw-medium",
+      cls: "bg-dark text-white",
     },
     "Đang vận chuyển": {
       label: "Đang giao",
-      cls: "bg-primary-subtle text-primary-emphasis",
+      cls: "bg-secondary-subtle text-dark",
     },
     "Đã xác nhận": {
       label: "Đã xác nhận",
-      cls: "bg-info-subtle text-info-emphasis",
+      cls: "bg-secondary-subtle text-dark",
     },
     "Chờ xác nhận": {
       label: "Chờ xác nhận",
-      cls: "bg-warning text-dark fw-medium",
+      cls: "bg-light text-secondary border",
     },
-    "Đã hủy": { label: "Đã hủy", cls: "bg-danger text-white fw-medium" },
+    "Đã hủy": { label: "Đã hủy", cls: "bg-light text-danger border" },
   };
   return (
     map[o.status] || {
       label: o.status || "—",
-      cls: "bg-secondary-subtle text-secondary",
+      cls: "bg-light text-secondary border",
     }
   );
 }
@@ -2404,10 +2416,10 @@ export const discountStatusFilter = ref("Tất cả");
 
 export function getDiscountStatus(d) {
   if (!d.active)
-    return { label: "Tạm dừng", cls: "bg-secondary-subtle text-secondary" };
+    return { label: "Tạm dừng", cls: "bg-light text-secondary border" };
   if (isExpired(d.expiry))
-    return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
-  return { label: "Đang chạy", cls: "badge-active" };
+    return { label: "Hết hạn", cls: "bg-light text-danger border" };
+  return { label: "Đang chạy", cls: "bg-dark text-white" };
 }
 export function formatDiscountValue(d) {
   return d.discount_type === "Cố định"
@@ -2690,11 +2702,11 @@ export const filteredCustomers = computed(() => {
 export function getRank(spent) {
   const v = Number(spent) || 0;
   if (v >= 20000000)
-    return { label: "Kim Cương", class: "bg-info-subtle text-info-emphasis" };
+    return { label: "Kim Cương", class: "bg-dark text-white" };
   if (v >= 10000000)
-    return { label: "Vàng", class: "bg-warning-subtle text-warning-emphasis" };
+    return { label: "Vàng", class: "bg-secondary-subtle text-dark" };
   if (v >= 3000000)
-    return { label: "Bạc", class: "bg-secondary-subtle text-secondary" };
+    return { label: "Bạc", class: "bg-light text-secondary border" };
   return { label: "Mới", class: "bg-light text-secondary border" };
 }
 export const customerModal = reactive({
