@@ -211,7 +211,7 @@ onMounted(fetchAllData);
           >
             <button
               @click="go(item.to)"
-              class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
+              class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
               :class="isActive ? 'active-nav text-white' : 'text-secondary'"
             >
               <span
@@ -220,7 +220,7 @@ onMounted(fetchAllData);
               ></span>
               <span
                 v-if="item.badge && item.badge() > 0"
-                class="badge rounded-pill shadow-sm"
+                class="badge rounded-1 shadow-sm"
                 :class="item.badgeClass"
                 v-text="item.badge()"
               ></span>
@@ -234,7 +234,8 @@ onMounted(fetchAllData);
       >
         <button
           @click="onLogout"
-          class="btn btn-danger rounded-3 w-100 fw-bold shadow-sm py-2 d-flex align-items-center justify-content-center"
+          class="btn btn-sm w-100 fw-medium py-2 d-flex align-items-center justify-content-center"
+          style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;"
         >
           <i class="bi bi-box-arrow-right me-2"></i> Đăng Xuất
         </button>
@@ -322,7 +323,8 @@ onMounted(fetchAllData);
               v-for="reason in cancelReasons"
               :key="reason"
               @click="cancelModal.reason = reason"
-              class="btn btn-sm rounded-pill border"
+              class="btn btn-sm border"
+              style="border-radius: 4px;"
               :class="
                 cancelModal.reason === reason
                   ? 'btn-dark text-white'
@@ -334,20 +336,20 @@ onMounted(fetchAllData);
           <textarea
             v-model="cancelModal.reason"
             rows="2"
-            class="form-control rounded-3"
+            class="form-control rounded-2"
             placeholder="Lý do khác..."
           ></textarea>
         </div>
         <div class="p-4 border-top d-flex justify-content-end gap-2">
           <button
             @click="cancelModal.open = false"
-            class="btn btn-light border rounded-3"
+            class="btn btn-light border rounded-2"
           >
             Đóng</button
           ><button
             @click="submitCancelOrder"
             :disabled="!cancelModal.reason"
-            class="btn btn-danger rounded-3 fw-bold"
+            class="btn btn-danger rounded-2 fw-bold"
           >
             Xác nhận hủy
           </button>
@@ -434,7 +436,7 @@ onMounted(fetchAllData);
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]"
               :disabled="f.disabled"
-              class="form-select rounded-3"
+              class="form-select rounded-2"
             >
               <option
                 v-for="opt in f.options"
@@ -457,7 +459,7 @@ onMounted(fetchAllData);
               v-else-if="f.type === 'textarea'"
               v-model="formModal.data[f.key]"
               rows="2"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
             ></textarea>
             <div v-else-if="f.type === 'image'">
               <div class="d-flex align-items-center gap-3 mb-2">
@@ -474,7 +476,7 @@ onMounted(fetchAllData);
                   "
                   @error="$event.target.src = 'https://via.placeholder.com/56'"
                 />
-                <label class="btn btn-sm btn-outline-dark rounded-3 mb-0"
+                <label class="btn btn-sm btn-outline-dark rounded-2 mb-0"
                   ><i class="bi bi-upload me-1"></i> Chọn ảnh trên máy<input
                     type="file"
                     accept="image/*"
@@ -485,7 +487,7 @@ onMounted(fetchAllData);
               <input
                 v-model="formModal.data[f.key]"
                 type="text"
-                class="form-control rounded-3"
+                class="form-control rounded-2"
                 placeholder="Hoặc dán URL ảnh..."
               />
             </div>
@@ -509,17 +511,17 @@ onMounted(fetchAllData);
               v-else
               v-model="formModal.data[f.key]"
               :type="f.type || 'text'"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
             />
           </div>
         </div>
         <div class="p-4 border-top d-flex justify-content-end gap-2">
           <button
             @click="formModal.open = false"
-            class="btn btn-light border rounded-3"
+            class="btn btn-light border rounded-2"
           >
             Hủy</button
-          ><button @click="saveForm" class="btn btn-dark rounded-3 fw-bold">
+          ><button @click="saveForm" class="btn btn-dark rounded-2 fw-bold">
             Lưu
           </button>
         </div>
@@ -583,7 +585,7 @@ onMounted(fetchAllData);
             <span class="fw-medium" v-text="'#' + o.id"></span
             ><span class="text-secondary" v-text="formatDate(o.date)"></span
             ><span
-              class="badge rounded-pill"
+              class="badge rounded-1"
               :class="getStatusBadgeClass(o.status)"
               v-text="o.status"
             ></span
@@ -611,7 +613,7 @@ onMounted(fetchAllData);
           ></p>
           <div
             v-if="confirmModal.danger"
-            class="alert alert-danger d-flex align-items-start gap-2 text-start small mt-3 mb-0 rounded-3"
+            class="alert alert-danger d-flex align-items-start gap-2 text-start small mt-3 mb-0 rounded-2"
           >
             <i class="bi bi-graph-down-arrow fs-6"></i>
             <span
@@ -625,12 +627,12 @@ onMounted(fetchAllData);
         <div class="p-4 pt-0 d-flex justify-content-center gap-2">
           <button
             @click="confirmModal.open = false"
-            class="btn btn-light border rounded-3 px-4"
+            class="btn btn-light border rounded-2 px-4"
           >
             Hủy</button
           ><button
             @click="executeConfirm"
-            class="btn rounded-3 fw-bold px-4"
+            class="btn rounded-2 fw-bold px-4"
             :class="confirmModal.danger ? 'btn-danger' : 'btn-dark'"
             v-text="confirmModal.confirmLabel || 'Xác nhận'"
           ></button>
@@ -689,10 +691,10 @@ onMounted(fetchAllData);
   background-color: #f3f4f6 !important;
 }
 .bg-sidebar {
-  background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%) !important;
+  background: #111111 !important;
 }
 .bg-sidebar-darker {
-  background-color: rgba(255, 255, 255, 0.04) !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
 .z-index-1050 {
@@ -727,22 +729,22 @@ onMounted(fetchAllData);
   background-color: transparent !important;
   text-align: left;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background-color 0.15s ease;
   font-size: 0.9rem;
+  border-radius: 4px !important;
 }
 .custom-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.07) !important;
   color: #fff !important;
 }
 .active-nav {
-  background: linear-gradient(135deg, #111111 0%, #dc2626 100%) !important;
-  color: #ffffff !important;
+  background: #ffffff !important;
+  color: #0A0A0A !important;
   font-weight: 700 !important;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35);
 }
 .active-nav:hover {
-  background: linear-gradient(135deg, #111111 0%, #dc2626 100%) !important;
-  color: #ffffff !important;
+  background: #f0f0f0 !important;
+  color: #0A0A0A !important;
 }
 
 .custom-scrollbar-light::-webkit-scrollbar,
@@ -775,22 +777,22 @@ onMounted(fetchAllData);
 }
 .custom-modal-box {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 6px;
   width: 100%;
   max-width: 560px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 .confirm-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: #fee2e2;
-  color: #dc2626;
+  width: 52px;
+  height: 52px;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #0A0A0A;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
 }
 .timeline-dot {
   width: 12px;
@@ -824,16 +826,16 @@ onMounted(fetchAllData);
 }
 .app-toast {
   background: #fff;
-  border-radius: 12px;
-  padding: 0.8rem 1.1rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   font-size: 0.88rem;
   font-weight: 500;
   display: flex;
   align-items: center;
   min-width: 260px;
   max-width: 380px;
-  border-left: 4px solid #6b7280;
+  border-left: 3px solid #0A0A0A;
   pointer-events: auto;
 }
 .toast-success {

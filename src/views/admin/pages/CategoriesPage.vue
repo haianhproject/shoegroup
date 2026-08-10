@@ -17,13 +17,13 @@ import {
       </p>
       <button
         @click="openForm('categories')"
-        class="btn btn-dark btn-sm rounded-3 fw-bold shadow-sm px-3"
+        class="btn btn-dark btn-sm rounded-2 fw-bold shadow-sm px-3"
       >
         <i class="bi bi-plus-lg me-1"></i> Thêm Danh Mục
       </button>
     </div>
 
-    <div class="bg-white rounded-4 shadow-sm overflow-hidden mb-4">
+    <div class="bg-white rounded-1 shadow-sm overflow-hidden mb-4">
       <div class="table-responsive">
         <table class="table align-middle mb-0">
           <thead>
@@ -44,7 +44,7 @@ import {
               <td class="text-center" v-text="getProductCount(c.id)"></td>
               <td>
                 <span
-                  class="badge rounded-pill"
+                  class="badge rounded-1"
                   :class="
                     c.active
                       ? 'badge-active'
@@ -57,20 +57,20 @@ import {
                 <button
                   v-if="c.active === false"
                   @click="restoreItem('categories', c)"
-                  class="btn btn-sm btn-light border border-success text-success rounded-3 me-1"
+                  class="btn btn-sm btn-light border border-success text-success rounded-2 me-1"
                   title="Khôi phục"
                 >
                   <i class="bi bi-arrow-counterclockwise"></i>
                 </button>
                 <button
                   @click="openForm('categories', c)"
-                  class="btn btn-sm btn-light border rounded-3 me-1"
+                  class="btn btn-sm btn-light border rounded-2 me-1"
                 >
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button
                   @click="deleteItem('categories', c.id, c.name)"
-                  class="btn btn-sm btn-light border rounded-3 text-danger"
+                  class="btn btn-sm btn-light border rounded-2 text-danger"
                 >
                   <i class="bi bi-trash"></i>
                 </button>
