@@ -9,6 +9,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import BrandLogo from "../../components/BrandLogo.vue";
 import {
   isNavOpen,
   isLoading,
@@ -17,8 +18,19 @@ import {
   handleLogout,
   pendingOrdersCount,
   unpaidCount,
+  incompleteOrdersCount,
   pendingReturnsCount,
+  paymentOrders,
   lowStockCount,
+  outOfStockProductsCount,
+  activeProductCount,
+  categoryCount,
+  brandCount,
+  materialCount,
+  colorCount,
+  sizeCount,
+  discountCount,
+  customerCount,
   formatPrice,
   formatDate,
   cancelModal,
@@ -35,6 +47,7 @@ import {
   getStatusBadgeClass,
   toasts,
   toastIcon,
+  dismissToast,
 } from "./adminStore";
 
 const route = useRoute();
@@ -60,7 +73,7 @@ const sections = [
         to: "/admin/panel/payments",
         icon: "bi-credit-card-2-front-fill",
         label: "Xác Nhận Thanh Toán",
-        badge: () => unpaidCount.value,
+        badge: () => incompleteOrdersCount.value,
         badgeClass: "bg-warning text-dark",
       },
       {
@@ -84,24 +97,32 @@ const sections = [
         to: "/admin/panel/products",
         icon: "bi-box-seam-fill",
         label: "Sản Phẩm",
+        badge: () => activeProductCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/categories",
         icon: "bi-diagram-3-fill",
         label: "Danh Mục Bộ Môn",
+        badge: () => categoryCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/brands",
         icon: "bi-award-fill",
         label: "Thương Hiệu",
+        badge: () => brandCount.value,
+        badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/materials",
         icon: "bi-layers-fill",
         label: "Chất Liệu",
+        badge: () => materialCount.value,
+        badgeClass: "bg-secondary",
       },
-      { to: "/admin/panel/colors", icon: "bi-palette-fill", label: "Màu Sắc" },
-      { to: "/admin/panel/sizes", icon: "bi-rulers", label: "Kích Thước" },
+      { to: "/admin/panel/colors", icon: "bi-palette-fill", label: "Màu Sắc", badge: () => colorCount.value, badgeClass: "bg-secondary" },
+      { to: "/admin/panel/sizes", icon: "bi-rulers", label: "Kích Thước", badge: () => sizeCount.value, badgeClass: "bg-secondary" },
     ],
   },
   {
@@ -111,27 +132,21 @@ const sections = [
         to: "/admin/panel/discounts",
         icon: "bi-ticket-perforated-fill",
         label: "Mã Khuyến Mãi",
+        badge: () => discountCount.value,
+        badgeClass: "bg-secondary",
       },
-      // {
-      //   to: "/admin/panel/variant-discounts",
-      //   icon: "bi-palette-fill",
-      //   label: "Giảm Giá Biến Thể Màu",
-      // },
       {
         to: "/admin/panel/customers",
         icon: "bi-people-fill",
         label: "Khách Hàng (CRM)",
+        badge: () => customerCount.value,
+        badgeClass: "bg-secondary",
       },
     ],
   },
   {
     title: "Vận Hành & Bảo Mật",
     items: [
-      {
-        to: "/admin/panel/staff-report",
-        icon: "bi-clipboard-data-fill",
-        label: "Báo Cáo Nhân Viên",
-      },
       {
         to: "/admin/panel/accounts",
         icon: "bi-shield-lock-fill",
@@ -172,9 +187,10 @@ onMounted(fetchAllData);
         class="p-4 d-flex align-items-center justify-content-center border-bottom border-secondary border-opacity-25"
         style="height: 72px"
       >
-        <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-4">
-          <i class="bi bi-box-fill me-2 fs-5"></i>SHOEGROUP
-        </h3>
+        <div class="d-flex align-items-center gap-2">
+          <BrandLogo :size="36" :radius="4" />
+          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span style="color:#D4001A">GROUP</span></h3>
+        </div>
       </div>
 
       <div
@@ -195,7 +211,7 @@ onMounted(fetchAllData);
           >
             <button
               @click="go(item.to)"
-              class="list-group-item border-0 mb-1 rounded-3 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
+              class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
               :class="isActive ? 'active-nav text-white' : 'text-secondary'"
             >
               <span
@@ -204,7 +220,7 @@ onMounted(fetchAllData);
               ></span>
               <span
                 v-if="item.badge && item.badge() > 0"
-                class="badge rounded-pill shadow-sm"
+                class="badge rounded-1 shadow-sm"
                 :class="item.badgeClass"
                 v-text="item.badge()"
               ></span>
@@ -218,7 +234,8 @@ onMounted(fetchAllData);
       >
         <button
           @click="onLogout"
-          class="btn btn-danger rounded-3 w-100 fw-bold shadow-sm py-2 d-flex align-items-center justify-content-center"
+          class="btn btn-sm w-100 fw-medium py-2 d-flex align-items-center justify-content-center"
+          style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;"
         >
           <i class="bi bi-box-arrow-right me-2"></i> Đăng Xuất
         </button>
@@ -248,29 +265,13 @@ onMounted(fetchAllData);
           ></h2>
         </div>
         <div class="d-flex align-items-center gap-3">
-          <button
-            class="btn btn-light border-0 rounded-circle position-relative d-flex align-items-center justify-content-center text-dark bg-light-gray"
-            style="width: 40px; height: 40px"
-            @click="go('/admin/panel/payments')"
-            title="Đơn chờ xử lý"
-          >
-            <i class="bi bi-bell fs-5"></i>
-            <span
-              v-if="pendingOrdersCount > 0"
-              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-              style="font-size: 0.6rem"
-              v-text="pendingOrdersCount"
-            ></span>
-          </button>
           <div
             class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border"
             style="width: 40px; height: 40px"
-            v-text="getDisplayName.charAt(0).toUpperCase()"
-          ></div>
+          >A</div>
           <span
             class="fw-bold text-dark d-none d-sm-block"
-            v-text="'Xin chào, ' + getDisplayName"
-          ></span>
+          >Xin chào, Admin</span>
         </div>
       </header>
 
@@ -322,7 +323,8 @@ onMounted(fetchAllData);
               v-for="reason in cancelReasons"
               :key="reason"
               @click="cancelModal.reason = reason"
-              class="btn btn-sm rounded-pill border"
+              class="btn btn-sm border"
+              style="border-radius: 4px;"
               :class="
                 cancelModal.reason === reason
                   ? 'btn-dark text-white'
@@ -334,20 +336,20 @@ onMounted(fetchAllData);
           <textarea
             v-model="cancelModal.reason"
             rows="2"
-            class="form-control rounded-3"
+            class="form-control rounded-2"
             placeholder="Lý do khác..."
           ></textarea>
         </div>
         <div class="p-4 border-top d-flex justify-content-end gap-2">
           <button
             @click="cancelModal.open = false"
-            class="btn btn-light border rounded-3"
+            class="btn btn-light border rounded-2"
           >
             Đóng</button
           ><button
             @click="submitCancelOrder"
             :disabled="!cancelModal.reason"
-            class="btn btn-danger rounded-3 fw-bold"
+            class="btn btn-danger rounded-2 fw-bold"
           >
             Xác nhận hủy
           </button>
@@ -434,7 +436,7 @@ onMounted(fetchAllData);
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]"
               :disabled="f.disabled"
-              class="form-select rounded-3"
+              class="form-select rounded-2"
             >
               <option
                 v-for="opt in f.options"
@@ -457,7 +459,7 @@ onMounted(fetchAllData);
               v-else-if="f.type === 'textarea'"
               v-model="formModal.data[f.key]"
               rows="2"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
             ></textarea>
             <div v-else-if="f.type === 'image'">
               <div class="d-flex align-items-center gap-3 mb-2">
@@ -474,7 +476,7 @@ onMounted(fetchAllData);
                   "
                   @error="$event.target.src = 'https://via.placeholder.com/56'"
                 />
-                <label class="btn btn-sm btn-outline-dark rounded-3 mb-0"
+                <label class="btn btn-sm btn-outline-dark rounded-2 mb-0"
                   ><i class="bi bi-upload me-1"></i> Chọn ảnh trên máy<input
                     type="file"
                     accept="image/*"
@@ -485,7 +487,7 @@ onMounted(fetchAllData);
               <input
                 v-model="formModal.data[f.key]"
                 type="text"
-                class="form-control rounded-3"
+                class="form-control rounded-2"
                 placeholder="Hoặc dán URL ảnh..."
               />
             </div>
@@ -509,17 +511,17 @@ onMounted(fetchAllData);
               v-else
               v-model="formModal.data[f.key]"
               :type="f.type || 'text'"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
             />
           </div>
         </div>
         <div class="p-4 border-top d-flex justify-content-end gap-2">
           <button
             @click="formModal.open = false"
-            class="btn btn-light border rounded-3"
+            class="btn btn-light border rounded-2"
           >
             Hủy</button
-          ><button @click="saveForm" class="btn btn-dark rounded-3 fw-bold">
+          ><button @click="saveForm" class="btn btn-dark rounded-2 fw-bold">
             Lưu
           </button>
         </div>
@@ -583,7 +585,7 @@ onMounted(fetchAllData);
             <span class="fw-medium" v-text="'#' + o.id"></span
             ><span class="text-secondary" v-text="formatDate(o.date)"></span
             ><span
-              class="badge rounded-pill"
+              class="badge rounded-1"
               :class="getStatusBadgeClass(o.status)"
               v-text="o.status"
             ></span
@@ -611,7 +613,7 @@ onMounted(fetchAllData);
           ></p>
           <div
             v-if="confirmModal.danger"
-            class="alert alert-danger d-flex align-items-start gap-2 text-start small mt-3 mb-0 rounded-3"
+            class="alert alert-danger d-flex align-items-start gap-2 text-start small mt-3 mb-0 rounded-2"
           >
             <i class="bi bi-graph-down-arrow fs-6"></i>
             <span
@@ -625,12 +627,12 @@ onMounted(fetchAllData);
         <div class="p-4 pt-0 d-flex justify-content-center gap-2">
           <button
             @click="confirmModal.open = false"
-            class="btn btn-light border rounded-3 px-4"
+            class="btn btn-light border rounded-2 px-4"
           >
             Hủy</button
           ><button
             @click="executeConfirm"
-            class="btn rounded-3 fw-bold px-4"
+            class="btn rounded-2 fw-bold px-4"
             :class="confirmModal.danger ? 'btn-danger' : 'btn-dark'"
             v-text="confirmModal.confirmLabel || 'Xác nhận'"
           ></button>
@@ -638,18 +640,28 @@ onMounted(fetchAllData);
       </div>
     </div>
 
-    <!-- Toasts -->
-    <div class="toast-container">
-      <div
-        v-for="t in toasts"
-        :key="t.id"
-        class="app-toast fade-in-scale"
-        :class="'toast-' + t.type"
-      >
-        <i class="bi me-2 fs-6" :class="toastIcon(t.type)"></i>
-        <span v-text="t.message"></span>
+    <!-- Toasts: teleport ra <body> để không bị modal / overflow của khung admin che mất -->
+    <Teleport to="body">
+      <div class="toast-container">
+        <div
+          v-for="t in toasts"
+          :key="t.id"
+          class="app-toast fade-in-scale"
+          :class="'toast-' + t.type"
+        >
+          <i class="bi me-2 fs-6" :class="toastIcon(t.type)"></i>
+          <span class="flex-grow-1" v-text="t.message"></span>
+          <button
+            type="button"
+            class="btn btn-sm btn-link text-secondary p-0 ms-2 lh-1"
+            @click="dismissToast(t.id)"
+            aria-label="Đóng thông báo"
+          >
+            <i class="bi bi-x-lg" style="font-size:0.8rem;"></i>
+          </button>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -658,7 +670,7 @@ onMounted(fetchAllData);
 
 <style scoped>
 @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css");
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap");
 
 .font-sans {
   font-family:
@@ -679,10 +691,10 @@ onMounted(fetchAllData);
   background-color: #f3f4f6 !important;
 }
 .bg-sidebar {
-  background-color: #000000 !important;
+  background: #111111 !important;
 }
 .bg-sidebar-darker {
-  background-color: #111111 !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
 .z-index-1050 {
@@ -717,21 +729,22 @@ onMounted(fetchAllData);
   background-color: transparent !important;
   text-align: left;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background-color 0.15s ease;
   font-size: 0.9rem;
+  border-radius: 4px !important;
 }
 .custom-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.07) !important;
   color: #fff !important;
 }
 .active-nav {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  font-weight: 600 !important;
+  background: #ffffff !important;
+  color: #0A0A0A !important;
+  font-weight: 700 !important;
 }
 .active-nav:hover {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background: #f0f0f0 !important;
+  color: #0A0A0A !important;
 }
 
 .custom-scrollbar-light::-webkit-scrollbar,
@@ -764,28 +777,28 @@ onMounted(fetchAllData);
 }
 .custom-modal-box {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 6px;
   width: 100%;
   max-width: 560px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 .confirm-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: #fee2e2;
-  color: #dc2626;
+  width: 52px;
+  height: 52px;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #0A0A0A;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
 }
 .timeline-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #000;
+  background: #dc2626;
   margin-top: 4px;
 }
 .timeline-line {
@@ -805,38 +818,41 @@ onMounted(fetchAllData);
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 1090;
+  z-index: 2000;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
 .app-toast {
   background: #fff;
-  border-radius: 12px;
-  padding: 0.8rem 1.1rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   font-size: 0.88rem;
   font-weight: 500;
   display: flex;
   align-items: center;
   min-width: 260px;
-  border-left: 4px solid #6b7280;
+  max-width: 380px;
+  border-left: 3px solid #0A0A0A;
+  pointer-events: auto;
 }
 .toast-success {
-  border-left-color: #16a34a;
-  color: #166534;
+  border-left-color: #0A0A0A;
+  color: #0A0A0A;
 }
 .toast-error {
-  border-left-color: #dc2626;
-  color: #991b1b;
+  border-left-color: #D4001A;
+  color: #D4001A;
 }
 .toast-warning {
-  border-left-color: #d97706;
-  color: #92400e;
+  border-left-color: #000000;
+  color: #000000;
 }
 .toast-info {
-  border-left-color: #2563eb;
-  color: #1e40af;
+  border-left-color: #333333;
+  color: #333333;
 }
 .fade-in-scale {
   animation: fadeInScale 0.25s ease;
@@ -852,3 +868,4 @@ onMounted(fetchAllData);
   }
 }
 </style>
+

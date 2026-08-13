@@ -2,9 +2,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { db, openForm, getRoleBadgeClass, roleName, deleteItem } from '../adminStore'
+import { API_BASE_URL } from "../../../services/apiClient";
 
 // Cung base URL voi store (backend Express chay o cong 5000)
-const API = 'http://localhost:5000/api'
+const API = API_BASE_URL
 
 const search = ref('')
 const roleMsg = ref('')
@@ -70,26 +71,26 @@ async function changeRole(a, value) {
 <template>
   <div class="fade-in">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-      <div class="input-group bg-white rounded-3 shadow-sm" style="max-width:320px;">
+      <div class="input-group bg-white rounded-2 shadow-sm" style="max-width:320px;">
         <span class="input-group-text bg-white border-0"><i class="bi bi-search text-secondary"></i></span>
         <input v-model="search" type="text" class="form-control border-0" placeholder="Tim tai khoan...">
       </div>
-      <button @click="openForm('accounts')" class="btn btn-dark btn-sm rounded-3 fw-bold shadow-sm px-3">
+      <button @click="openForm('accounts')" class="btn btn-dark btn-sm rounded-2 fw-bold shadow-sm px-3">
         <i class="bi bi-person-plus me-1"></i> Them Tai Khoan
       </button>
     </div>
 
-    <div v-if="roleMsg" class="alert py-2 px-3 rounded-3 small mb-3"
-         :class="roleMsgOk ? 'bg-info-subtle text-info-emphasis' : 'bg-danger-subtle text-danger'"
+    <div v-if="roleMsg" class="alert py-2 px-3 rounded-2 small mb-3"
+         :class="roleMsgOk ? 'bg-light text-dark' : 'bg-danger-subtle text-danger'"
          v-text="roleMsg"></div>
 
     <div v-for="sec in sections" :key="sec.key" class="mb-4">
       <div class="d-flex align-items-center gap-2 mb-2">
         <i :class="'bi ' + sec.icon + ' text-secondary'"></i>
         <h6 class="fw-bold mb-0 text-dark" v-text="sec.title"></h6>
-        <span class="badge rounded-pill bg-light-gray text-dark" v-text="sec.rows.length"></span>
+        <span class="badge rounded-1 bg-light-gray text-dark" v-text="sec.rows.length"></span>
       </div>
-      <div class="bg-white rounded-4 shadow-sm overflow-hidden">
+      <div class="bg-white rounded-1 shadow-sm overflow-hidden">
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
@@ -113,11 +114,11 @@ async function changeRole(a, value) {
                   </div>
                 </td>
                 <td class="small" v-text="a.email"></td>
-                <td><span class="badge rounded-pill" :class="getRoleBadgeClass(a.role_id)" v-text="roleName(a.role_id)"></span></td>
-                <td><span class="badge rounded-pill" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-secondary'" v-text="a.active !== false ? 'Hoat dong' : 'Khoa'"></span></td>
+                <td><span class="badge rounded-1" :class="getRoleBadgeClass(a.role_id)" v-text="roleName(a.role_id)"></span></td>
+                <td><span class="badge rounded-1" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-secondary'" v-text="a.active !== false ? 'Hoat dong' : 'Khoa'"></span></td>
                 <td class="text-end pe-4">
-                  <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-3 me-1"><i class="bi bi-pencil"></i></button>
-                  <button @click="deleteItem('accounts', a.id, a.username)" class="btn btn-sm btn-light border rounded-3 text-danger"><i class="bi bi-trash"></i></button>
+                  <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-2 me-1"><i class="bi bi-pencil"></i></button>
+                  <button @click="deleteItem('accounts', a.id, a.username)" class="btn btn-sm btn-light border rounded-2 text-danger"><i class="bi bi-trash"></i></button>
                 </td>
               </tr>
               <tr v-if="!sec.rows.length">

@@ -8,6 +8,7 @@ import {
   filteredProducts,
   formatPrice,
   deleteItem,
+  restoreItem,
   deleteProduct,
   isProductSoftDeleted,
   onProductImageFile,
@@ -49,7 +50,7 @@ import {
       class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4"
     >
       <div
-        class="input-group bg-white rounded-3 shadow-sm"
+        class="input-group bg-white rounded-2 shadow-sm"
         style="max-width: 320px"
       >
         <span class="input-group-text bg-white border-0"
@@ -64,7 +65,7 @@ import {
       <div class="d-flex gap-2">
         <select
           v-model="filterCategory"
-          class="form-select form-select-sm rounded-3 shadow-sm"
+          class="form-select form-select-sm rounded-2 shadow-sm"
           style="width: auto"
         >
           <option value="">Tất cả danh mục</option>
@@ -77,13 +78,13 @@ import {
         </select>
         <button
           @click="openProductForm()"
-          class="btn btn-dark btn-sm rounded-3 fw-bold shadow-sm px-3"
+          class="btn btn-dark btn-sm rounded-2 fw-bold shadow-sm px-3"
         >
           <i class="bi bi-plus-lg me-1"></i> Thêm Sản Phẩm
         </button>
       </div>
     </div>
-    <div class="bg-white rounded-4 shadow-sm p-0 overflow-hidden">
+    <div class="bg-white rounded-1 shadow-sm p-0 overflow-hidden">
       <div class="table-responsive">
         <table class="table align-middle mb-0">
           <thead>
@@ -106,7 +107,7 @@ import {
                 <div class="d-flex align-items-center gap-3">
                   <img
                     :src="p.image_url || 'https://via.placeholder.com/44'"
-                    class="rounded-3 border"
+                    class="rounded-2 border"
                     style="width: 44px; height: 44px; object-fit: cover"
                     @error="
                       $event.target.src = 'https://via.placeholder.com/44'
@@ -134,18 +135,18 @@ import {
               <td class="small" v-text="getMaterialName(p.material_id)"></td>
               <td class="text-center">
                 <span
-                  class="badge rounded-pill bg-secondary-subtle text-secondary"
+                  class="badge rounded-1 bg-secondary-subtle text-secondary"
                   v-text="productVariantCount(p.id)"
                 ></span>
               </td>
               <td class="text-center">
                 <span
-                  class="badge rounded-pill"
+                  class="badge rounded-1"
                   :class="
                     productStockTotal(p.id) <= 0
                       ? 'bg-danger-subtle text-danger'
                       : productStockTotal(p.id) <= LOW_STOCK_THRESHOLD
-                        ? 'bg-warning-subtle text-warning-emphasis'
+                        ? 'bg-light text-dark'
                         : 'bg-secondary-subtle text-secondary'
                   "
                   v-text="productStockTotal(p.id)"
@@ -153,7 +154,7 @@ import {
               </td>
               <td>
                 <span
-                  class="badge rounded-pill"
+                  class="badge rounded-1"
                   :class="
                     p.active ? 'badge-active' : 'bg-danger-subtle text-danger'
                   "
@@ -162,19 +163,20 @@ import {
               </td>
               <td class="text-end pe-4">
                 <button
-                  @click="openProductDetail(p)"
-                  class="btn btn-sm btn-light border rounded-3 me-1"
-                  title="Xem chi tiết"
-                >
-                  <i class="bi bi-eye"></i></button
-                ><button
                   @click="openProductForm(p)"
-                  class="btn btn-sm btn-light border rounded-3 me-1"
+                  class="btn btn-sm btn-light border rounded-2 me-1"
                 >
                   <i class="bi bi-pencil"></i></button
                 ><button
+                  v-if="isProductSoftDeleted(p)"
+                  @click="restoreItem('products', p)"
+                  class="btn btn-sm btn-light border border-success text-success rounded-2 me-1"
+                  title="Khôi phục sản phẩm"
+                >
+                  <i class="bi bi-arrow-counterclockwise"></i></button
+                ><button
                   @click="deleteProduct(p)"
-                  class="btn btn-sm btn-light border rounded-3"
+                  class="btn btn-sm btn-light border rounded-2"
                   :class="
                     isProductSoftDeleted(p)
                       ? 'text-danger fw-bold border-danger'
@@ -204,7 +206,7 @@ import {
   <!-- FORM THÊM/SỬA -->
   <div v-else class="fade-in">
     <div class="d-flex align-items-center gap-2 mb-4">
-      <button @click="closeProductForm" class="btn btn-light border rounded-3">
+      <button @click="closeProductForm" class="btn btn-light border rounded-2">
         <i class="bi bi-arrow-left"></i>
       </button>
       <h5
@@ -214,14 +216,14 @@ import {
     </div>
     <div class="row g-4">
       <div class="col-lg-7">
-        <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
+        <div class="bg-white rounded-1 shadow-sm p-4 mb-4">
           <h6 class="fw-bold mb-3 text-dark">Thông Tin Sản Phẩm</h6>
           <div class="mb-3">
             <label class="form-label small fw-medium">Tên sản phẩm</label
             ><input
               v-model="productForm.name"
               type="text"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
               placeholder="Ví dụ: Giày Sneaker Classic"
             />
           </div>
@@ -230,7 +232,7 @@ import {
             ><textarea
               v-model="productForm.description"
               rows="3"
-              class="form-control rounded-3"
+              class="form-control rounded-2"
               placeholder="Mô tả chi tiết sản phẩm..."
             ></textarea>
           </div>
@@ -239,7 +241,7 @@ import {
               <label class="form-label small fw-medium">Danh mục</label
               ><select
                 v-model="productForm.category_id"
-                class="form-select rounded-3"
+                class="form-select rounded-2"
               >
                 <option value="">-- Chọn --</option>
                 <option
@@ -254,7 +256,7 @@ import {
               <label class="form-label small fw-medium">Thương hiệu</label
               ><select
                 v-model="productForm.brand_id"
-                class="form-select rounded-3"
+                class="form-select rounded-2"
               >
                 <option value="">-- Chọn --</option>
                 <option
@@ -269,7 +271,7 @@ import {
               <label class="form-label small fw-medium">Chất liệu</label
               ><select
                 v-model="productForm.material_id"
-                class="form-select rounded-3"
+                class="form-select rounded-2"
               >
                 <option value="">-- Chọn --</option>
                 <option
@@ -281,41 +283,11 @@ import {
               </select>
             </div>
             <div class="col-md-6">
-              <label class="form-label small fw-medium">Đế giày</label
-              ><select
-                v-model="productForm.sole_id"
-                class="form-select rounded-3"
-              >
-                <option value="">-- Chọn --</option>
-                <option
-                  v-for="s in db.soles"
-                  :key="s.id"
-                  :value="s.id"
-                  v-text="s.name"
-                ></option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label small fw-medium">Đệm giày</label
-              ><select
-                v-model="productForm.cushioning_id"
-                class="form-select rounded-3"
-              >
-                <option value="">-- Chọn --</option>
-                <option
-                  v-for="cs in db.cushionings"
-                  :key="cs.id"
-                  :value="cs.id"
-                  v-text="cs.name"
-                ></option>
-              </select>
-            </div>
-            <div class="col-md-6">
               <label class="form-label small fw-medium">Giá bán (VNĐ)</label
               ><input
                 v-model.number="productForm.price"
                 type="number"
-                class="form-control rounded-3"
+                class="form-control rounded-2"
               />
             </div>
             <div class="col-md-6">
@@ -324,31 +296,31 @@ import {
               ><input
                 v-model.number="productForm.sale_price"
                 type="number"
-                class="form-control rounded-3"
+                class="form-control rounded-2"
               />
             </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-4 shadow-sm p-4">
+        <div class="bg-white rounded-1 shadow-sm p-4">
           <h6 class="fw-bold mb-3 text-dark">Màu Sắc &amp; Kích Cỡ</h6>
 
           <!-- TONG HOP: tach theo bien the -->
           <div class="d-flex flex-wrap gap-2 mb-3">
             <span
-              class="badge rounded-pill bg-dark-subtle text-dark border px-3 py-2"
+              class="badge rounded-1 bg-dark-subtle text-dark border px-3 py-2"
             >
               <i class="bi bi-palette me-1"></i>Số màu:
               <b v-text="productFormColorCount"></b>
             </span>
             <span
-              class="badge rounded-pill bg-primary-subtle text-primary-emphasis border px-3 py-2"
+              class="badge rounded-1 bg-light text-dark border px-3 py-2"
             >
               <i class="bi bi-diagram-3 me-1"></i>Số biến thể:
               <b v-text="productFormVariantCount"></b>
             </span>
             <span
-              class="badge rounded-pill bg-success-subtle text-success-emphasis border px-3 py-2"
+              class="badge rounded-1 bg-light text-dark border px-3 py-2"
             >
               <i class="bi bi-box-seam me-1"></i>Tổng sản phẩm (tồn kho):
               <b v-text="productFormStockTotal"></b>
@@ -366,7 +338,7 @@ import {
             <div
               v-for="(c, i) in productForm.colors"
               :key="i"
-              class="border rounded-3 p-3"
+              class="border rounded-2 p-3"
             >
               <div class="d-flex align-items-center gap-3">
                 <img
@@ -378,7 +350,7 @@ import {
                 <span class="color-dot" :style="{ background: c.hex }"></span>
                 <span class="small fw-medium" v-text="c.name"></span>
                 <span
-                  class="badge rounded-pill bg-light text-secondary border fw-normal"
+                  class="badge rounded-1 bg-light text-secondary border fw-normal"
                   v-text="
                     (c.variants ? c.variants.length : 0) +
                     ' size · ' +
@@ -388,7 +360,7 @@ import {
                 ></span>
                 <span
                   v-if="c.note"
-                  class="badge rounded-pill bg-light text-secondary border fw-normal"
+                  class="badge rounded-1 bg-light text-secondary border fw-normal"
                   v-text="c.note"
                 ></span>
                 <span v-else class="text-secondary small fst-italic"
@@ -412,7 +384,7 @@ import {
                     :key="s"
                     type="button"
                     @click="toggleColorSize(i, s)"
-                    class="btn btn-sm rounded-3"
+                    class="btn btn-sm rounded-2"
                     :class="colorHasSize(c, s) ? 'btn-dark' : 'btn-outline-secondary'"
                     v-text="s"
                   ></button>
@@ -451,13 +423,13 @@ import {
           </div>
 
           <!-- 1 KHUNG: them mau + anh -->
-          <div class="border rounded-3 p-3 mb-3 bg-light-gray">
+          <div class="border rounded-2 p-3 mb-3 bg-light-gray">
             <div class="row g-2 align-items-end">
               <div class="col-12 col-sm-3">
                 <label class="form-label small fw-medium mb-1">Màu</label>
                 <select
                   v-model="colorDraft"
-                  class="form-select form-select-sm rounded-3"
+                  class="form-select form-select-sm rounded-2"
                 >
                   <option value="">-- Chọn màu --</option>
                   <option
@@ -484,11 +456,11 @@ import {
                   <input
                     v-model="colorImageDraft"
                     type="text"
-                    class="form-control form-control-sm rounded-3"
+                    class="form-control form-control-sm rounded-2"
                     placeholder="URL ảnh..."
                   />
                   <label
-                    class="btn btn-sm btn-outline-dark rounded-3 mb-0"
+                    class="btn btn-sm btn-outline-dark rounded-2 mb-0"
                     title="Chọn ảnh trên máy"
                     ><i class="bi bi-upload"></i
                     ><input
@@ -506,12 +478,12 @@ import {
                 <input
                   v-model="colorNoteDraft"
                   type="text"
-                  class="form-control form-control-sm rounded-3"
+                  class="form-control form-control-sm rounded-2"
                   placeholder="VD: Đỏ đô, Trắng kem..."
                 />
               </div>
               <div class="col-12 col-sm-2 d-grid">
-                <button @click="addColor" class="btn btn-sm btn-dark rounded-3">
+                <button @click="addColor" class="btn btn-sm btn-dark rounded-2">
                   Thêm màu
                 </button>
               </div>
@@ -522,40 +494,12 @@ import {
       </div>
 
       <div class="col-lg-5">
-        <div class="bg-white rounded-4 shadow-sm p-4 mb-4">
-          <h6 class="fw-bold mb-3 text-dark">Ảnh Sản Phẩm</h6>
-          <div
-            class="border rounded-3 d-flex align-items-center justify-content-center mb-3 bg-light-gray"
-            style="height: 200px; overflow: hidden"
-          >
-            <img
-              v-if="productForm.image_url"
-              :src="productForm.image_url"
-              style="max-height: 100%; max-width: 100%; object-fit: contain"
-            /><span v-else class="text-secondary small text-center"
-              ><i class="bi bi-image fs-1 d-block opacity-50"></i>Chưa có
-              ảnh</span
-            >
-          </div>
-          <input
-            v-model="productForm.image_url"
-            type="text"
-            class="form-control form-control-sm rounded-3 mb-2"
-            placeholder="Dán URL ảnh..."
-          />
-          <label class="btn btn-sm btn-outline-dark rounded-3 w-100"
-            ><i class="bi bi-upload me-1"></i> Chọn ảnh trên thiết bị<input
-              type="file"
-              accept="image/*"
-              class="d-none"
-              @change="onProductImageFile"
-          /></label>
-        </div>
-        <div class="bg-white rounded-4 shadow-sm p-4">
+
+        <div class="bg-white rounded-1 shadow-sm p-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="fw-bold mb-0 text-dark">Trạng Thái</h6>
             <span
-              class="badge rounded-pill"
+              class="badge rounded-1"
               :class="
                 productForm.active
                   ? 'badge-active'
@@ -587,7 +531,7 @@ import {
         </div>
         <button
           @click="saveProduct"
-          class="btn btn-dark w-100 rounded-3 fw-bold py-2 mt-4 shadow-sm"
+          class="btn btn-dark w-100 rounded-2 fw-bold py-2 mt-4 shadow-sm"
         >
           <i class="bi bi-check2-circle me-2"></i> Lưu Sản Phẩm
         </button>
@@ -610,7 +554,7 @@ import {
                 productDetailModal.product.image_url ||
                 'https://via.placeholder.com/72'
               "
-              class="rounded-3 border"
+              class="rounded-2 border"
               style="width: 72px; height: 72px; object-fit: cover"
               @error="$event.target.src = 'https://via.placeholder.com/72'"
             />
@@ -629,7 +573,7 @@ import {
                 "
               ></p>
               <span
-                class="badge rounded-pill"
+                class="badge rounded-1"
                 :class="
                   productDetailModal.product.active
                     ? 'badge-active'
@@ -641,21 +585,21 @@ import {
               ></span>
               <span
                 v-if="productDetailModal.product.is_featured"
-                class="badge rounded-pill bg-warning-subtle text-warning-emphasis ms-1"
+                class="badge rounded-1 bg-light text-dark ms-1"
                 >Nổi bật</span
               >
             </div>
           </div>
           <button
             @click="closeProductDetail"
-            class="btn btn-light border rounded-3"
+            class="btn btn-light border rounded-2"
           >
             <i class="bi bi-x-lg"></i>
           </button>
         </div>
 
         <div class="d-flex gap-3 mb-3">
-          <div class="bg-light-gray rounded-3 p-2 px-3">
+          <div class="bg-light-gray rounded-2 p-2 px-3">
             <p class="text-secondary mb-0" style="font-size: 0.7rem">Giá bán</p>
             <p
               class="fw-bold mb-0"
@@ -664,7 +608,7 @@ import {
           </div>
           <div
             v-if="productDetailModal.product.sale_price"
-            class="bg-light-gray rounded-3 p-2 px-3"
+            class="bg-light-gray rounded-2 p-2 px-3"
           >
             <p class="text-secondary mb-0" style="font-size: 0.7rem">Giá KM</p>
             <p
@@ -672,7 +616,7 @@ import {
               v-text="formatPrice(productDetailModal.product.sale_price)"
             ></p>
           </div>
-          <div class="bg-light-gray rounded-3 p-2 px-3">
+          <div class="bg-light-gray rounded-2 p-2 px-3">
             <p class="text-secondary mb-0" style="font-size: 0.7rem">
               Tổng tồn kho
             </p>
@@ -713,7 +657,7 @@ import {
         </div>
 
         <h6 class="fw-bold mb-2 text-dark">Biến Thể &amp; Tồn Kho</h6>
-        <div class="table-responsive border rounded-3">
+        <div class="table-responsive border rounded-2">
           <table class="table table-sm mb-0 align-middle">
             <thead>
               <tr class="text-secondary small text-uppercase">
@@ -743,7 +687,7 @@ import {
                     Number(v.stock) <= 0
                       ? 'text-danger'
                       : Number(v.stock) <= LOW_STOCK_THRESHOLD
-                        ? 'text-warning-emphasis'
+                        ? 'text-dark'
                         : ''
                   "
                   v-text="v.stock"
@@ -762,7 +706,7 @@ import {
         <div class="d-flex justify-content-end gap-2 mt-3">
           <button
             @click="closeProductDetail"
-            class="btn btn-white border rounded-3"
+            class="btn btn-white border rounded-2"
           >
             Đóng
           </button>
@@ -771,7 +715,7 @@ import {
               openProductForm(productDetailModal.product);
               closeProductDetail();
             "
-            class="btn btn-dark rounded-3"
+            class="btn btn-dark rounded-2"
           >
             <i class="bi bi-pencil me-1"></i> Chỉnh sửa
           </button>
