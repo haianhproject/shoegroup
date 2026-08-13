@@ -1,165 +1,802 @@
 import { computed, reactive, watch } from "vue";
+import { currentUser } from "./authStore";
 
-// Bump storage key when the item shape changes so old, incompatible carts are dropped.
-const STORAGE_KEY = "shoegroup_cart_v3";
+// ============================================================
+// STORAGE
+// ============================================================
 
-const loadCartFromStorage = () => {
-  if (typeof localStorage === "undefined") return [];
+const STORAGE_KEY = "shoegroup_carts_v4";
+const GUEST_CART_KEY = "__guest__";
+
+// ============================================================
+// LẤY ID TÀI KHOẢN
+// ============================================================
+
+const getUserId = (user) => {
+  if (!user) return GUEST_CART_KEY;
+
+  const id =
+    user.id_account ??
+    user.account_id ??
+    user.id_user ??
+    user.user_id ??
+    user.id ??
+    user.ID ??
+    user.email ??
+    user.username;
+
+  if (id === undefined || id === null || String(id).trim() === "") {
+    return GUEST_CART_KEY;
+  }
+
+  return `user_${String(id).trim()}`;
+};
+
+// ============================================================
+// LOAD TẤT CẢ GIỎ
+// ============================================================
+
+const loadAllCarts = () => {
+  if (typeof localStorage === "undefined") {
+    return {};
+  }
+
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const data = JSON.parse(raw);
+
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data)
+    ) {
+      return {};
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Không thể đọc giỏ hàng:", error);
+    return {};
   }
 };
 
+// ============================================================
+// SAVE TẤT CẢ GIỎ
+// ============================================================
+
+const saveAllCarts = (carts) => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(carts),
+    );
+  } catch (error) {
+    console.error("Không thể lưu giỏ hàng:", error);
+  }
+};
+
+// ============================================================
+// LOAD GIỎ CỦA TÀI KHOẢN
+// ============================================================
+
+const loadCartForUser = (user) => {
+  const carts = loadAllCarts();
+  const userKey = getUserId(user);
+
+  if (!Array.isArray(carts[userKey])) {
+    return [];
+  }
+
+  return carts[userKey];
+};
+
+// ============================================================
+// SAVE GIỎ CỦA TÀI KHOẢN
+// ============================================================
+
+const saveCartForUser = (userKey, items) => {
+  const carts = loadAllCarts();
+
+  carts[userKey] = JSON.parse(
+    JSON.stringify(items || []),
+  );
+
+  saveAllCarts(carts);
+};
+
+// ============================================================
+// USER HIỆN TẠI
+// ============================================================
+
+let activeUserKey = getUserId(currentUser.value);
+
+// ============================================================
+// CART STATE
+// ============================================================
+
 export const cartState = reactive({
-  items: loadCartFromStorage(),
+  items: loadCartForUser(currentUser.value),
   isMiniCartOpen: false,
 });
+
+// ============================================================
+// THEO DÕI ĐỔI TÀI KHOẢN
+// ============================================================
+//
+// Ví dụ:
+//
+// Tài khoản A:
+// cart = [giày A]
+//
+// Logout
+//
+// Tài khoản B:
+// cart = [giày B]
+//
+// Hai tài khoản hoàn toàn riêng nhau.
+// ============================================================
+
+watch(
+  currentUser,
+  (newUser) => {
+    const newUserKey = getUserId(newUser);
+
+    if (newUserKey === activeUserKey) {
+      return;
+    }
+
+    // Lưu giỏ tài khoản cũ
+    saveCartForUser(
+      activeUserKey,
+      cartState.items,
+    );
+
+    // Chuyển sang tài khoản mới
+    activeUserKey = newUserKey;
+
+    const newCart = loadCartForUser(newUser);
+
+    cartState.items.splice(
+      0,
+      cartState.items.length,
+      ...newCart,
+    );
+
+    cartState.isMiniCartOpen = false;
+  },
+);
+
+// ============================================================
+// TỰ ĐỘNG LƯU GIỎ
+// ============================================================
 
 watch(
   () => cartState.items,
   (items) => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    }
+    saveCartForUser(
+      activeUserKey,
+      items,
+    );
   },
-  { deep: true },
+  {
+    deep: true,
+  },
 );
 
+// ============================================================
+// FORMAT TIỀN
+// ============================================================
+
 export const formatCurrency = (value) => {
-  return (
-    new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-      maximumFractionDigits: 0,
-    }).format(Number(value || 0))
-  );
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
 };
+
+// ============================================================
+// CART ITEMS
+// ============================================================
 
 export const cartItems = computed(() => {
   return cartState.items.map((item) => ({
     ...item,
-    subtotal: item.unitPrice * item.quantity,
+
+    subtotal:
+      Number(item.unitPrice || 0) *
+      Number(item.quantity || 0),
   }));
 });
 
-export const cartCount = computed(() =>
-  cartState.items.reduce((total, item) => total + item.quantity, 0),
-);
+// ============================================================
+// CART COUNT
+// ============================================================
 
-export const cartSubtotal = computed(() =>
-  cartItems.value.reduce((total, item) => total + item.subtotal, 0),
-);
+export const cartCount = computed(() => {
+  return cartState.items.reduce(
+    (total, item) =>
+      total + Number(item.quantity || 0),
+    0,
+  );
+});
 
-// Standard flat fee shown in the mini-cart; the real fee is computed at checkout.
-export const cartShippingFee = computed(() => (cartCount.value > 0 ? 30000 : 0));
+// ============================================================
+// SUBTOTAL
+// ============================================================
 
-export const cartTotal = computed(() => cartSubtotal.value + cartShippingFee.value);
+export const cartSubtotal = computed(() => {
+  return cartItems.value.reduce(
+    (total, item) =>
+      total + Number(item.subtotal || 0),
+    0,
+  );
+});
 
-/**
- * Add a product to the cart, storing the FULL set of shoe attributes so the
- * mini-cart, cart page and order detail can all display them consistently.
- */
+// ============================================================
+// SHIPPING
+// ============================================================
+
+export const cartShippingFee = computed(() => {
+  return cartCount.value > 0
+    ? 30000
+    : 0;
+});
+
+// ============================================================
+// TOTAL
+// ============================================================
+
+export const cartTotal = computed(() => {
+  return (
+    cartSubtotal.value +
+    cartShippingFee.value
+  );
+});
+
+// ============================================================
+// ADD TO CART
+// ============================================================
+
 export const addToCart = (payload) => {
   const {
     product,
     quantity = 1,
-    size = { size_name: "42" },
-    color = { color_label: "Ti\u00eau chu\u1ea9n" },
+    size = {},
+    color = {},
     variantId = null,
-  } = payload;
+    stockQuantity = null,
+  } = payload || {};
 
-  if (!product) return { ok: false, message: "S\u1ea3n ph\u1ea9m kh\u00f4ng h\u1ee3p l\u1ec7." };
+  // ----------------------------------------------------------
+  // KIỂM TRA PRODUCT
+  // ----------------------------------------------------------
 
-  const productId = product.id_product || product.id || product.ProductID;
-  const productName = product.product_name || product.name || product.ProductName;
-  const basePrice = product.price || product.BasePrice || 0;
-  const salePrice = Number(product.sale_price || product.SalePrice || 0);
-  const productPrice = salePrice > 0 ? salePrice : basePrice;
-  const productImage = color.image || product.image_url || product.ImageURL || product.image;
+  if (!product) {
+    return {
+      ok: false,
+      message: "Sản phẩm không hợp lệ.",
+    };
+  }
 
-  const sizeName = size.size_name || size.SizeName || "42";
-  const colorName = color.color_label || color.color_name || color.ColorName || "Ti\u00eau chu\u1ea9n";
-  const colorHex = color.color_hex || color.hex || "";
+  // ----------------------------------------------------------
+  // PRODUCT ID
+  // ----------------------------------------------------------
 
-  // Full attribute snapshot pulled from the product record (from the DB API).
+  const productId =
+    product.id_product ??
+    product.id ??
+    product.ProductID;
+
+  // ----------------------------------------------------------
+  // PRODUCT NAME
+  // ----------------------------------------------------------
+
+  const productName =
+    product.product_name ??
+    product.name ??
+    product.ProductName ??
+    "Sản phẩm";
+
+  // ----------------------------------------------------------
+  // PRICE
+  // ----------------------------------------------------------
+
+  const basePrice = Number(
+    product.price ??
+    product.BasePrice ??
+    0,
+  );
+
+  const salePrice = Number(
+    product.sale_price ??
+    product.SalePrice ??
+    0,
+  );
+
+  const productPrice =
+    salePrice > 0
+      ? salePrice
+      : basePrice;
+
+  // ----------------------------------------------------------
+  // IMAGE
+  // ----------------------------------------------------------
+
+  const productImage =
+    color.image ??
+    color.image_url ??
+    product.image_url ??
+    product.ImageURL ??
+    product.image ??
+    "";
+
+  // ----------------------------------------------------------
+  // SIZE
+  // ----------------------------------------------------------
+
+  const sizeName =
+    size.size_name ??
+    size.SizeName ??
+    size.name ??
+    size.size ??
+    "42";
+
+  // ----------------------------------------------------------
+  // COLOR
+  // ----------------------------------------------------------
+
+  const colorName =
+    color.color_label ??
+    color.color_name ??
+    color.ColorName ??
+    color.name ??
+    "Tiêu chuẩn";
+
+  const colorHex =
+    color.color_hex ??
+    color.hex ??
+    "";
+
+  // ----------------------------------------------------------
+  // VARIANT ID
+  // ----------------------------------------------------------
+
+  const normalizedVariantId =
+    variantId ??
+    payload.variant_id ??
+    product.variant_id ??
+    product.id_variant ??
+    null;
+
+  // ----------------------------------------------------------
+  // ATTRIBUTES
+  // ----------------------------------------------------------
+
   const attributes = {
-    material_name: product.material_name || product.MaterialName || "",
-    sole_name: product.sole_name || product.SoleName || "",
-    cushioning_name: product.cushioning_name || product.CushioningName || "",
-    brand_name: product.brand_name || product.BrandName || "",
-    category_name: product.category_name || product.category || "",
-    sport: product.sport || product.Sport || "",
-    collection_name: product.collection_name || product.CollectionName || "",
+    material_name:
+      product.material_name ??
+      product.MaterialName ??
+      "",
+
+    sole_name:
+      product.sole_name ??
+      product.SoleName ??
+      "",
+
+    cushioning_name:
+      product.cushioning_name ??
+      product.CushioningName ??
+      "",
+
+    brand_name:
+      product.brand_name ??
+      product.BrandName ??
+      "",
+
+    category_name:
+      product.category_name ??
+      product.category ??
+      "",
+
+    sport:
+      product.sport ??
+      product.Sport ??
+      "",
+
+    collection_name:
+      product.collection_name ??
+      product.CollectionName ??
+      "",
   };
 
-  const detailId = `${productId}_${sizeName}_${colorName}`;
-  const existingItem = cartState.items.find((i) => i.id_product_detail === detailId);
-  const stockQuantity = Number(payload.stockQuantity ?? product.stock_quantity ?? product.total_stock ?? 100);
+  // ==========================================================
+  // TỒN KHO
+  // ==========================================================
+  //
+  // QUAN TRỌNG:
+  //
+  // stockQuantity chỉ dùng để KIỂM TRA.
+  //
+  // Không trừ:
+  //
+  // product.stock_quantity
+  // product.total_stock
+  // variant.stock
+  //
+  // ==========================================================
+
+  let stock = Number(
+    stockQuantity ??
+      product.stock_quantity ??
+      product.total_stock ??
+      0,
+  );
+
+  if (!Number.isFinite(stock) || stock < 0) {
+    stock = 0;
+  }
+
+  // ==========================================================
+  // QUANTITY
+  // ==========================================================
+
+  const requestedQuantity =
+    Number(quantity);
+
+  if (
+    !Number.isFinite(
+      requestedQuantity,
+    ) ||
+    requestedQuantity < 1
+  ) {
+    return {
+      ok: false,
+      message: "Số lượng không hợp lệ.",
+    };
+  }
+
+  // ==========================================================
+  // ID CHI TIẾT GIỎ
+  // ==========================================================
+  //
+  // Có variant ID:
+  //
+  // 10_variant_101
+  // 10_variant_102
+  //
+  // => 2 biến thể khác nhau.
+  //
+  // Không có variant ID:
+  //
+  // product + size + color
+  //
+  // ==========================================================
+
+  const detailId =
+    normalizedVariantId !== null &&
+    normalizedVariantId !== undefined
+      ? `${productId}_variant_${normalizedVariantId}`
+      : `${productId}_${String(sizeName)}_${String(colorName)}`;
+
+  // ==========================================================
+  // TÌM ITEM ĐÃ CÓ
+  // ==========================================================
+
+  const existingItem =
+    cartState.items.find(
+      (item) =>
+        item.id_product_detail ===
+        detailId,
+    );
+
+  // ==========================================================
+  // ITEM ĐÃ CÓ
+  // ==========================================================
 
   if (existingItem) {
-    existingItem.stockQuantity = stockQuantity; // Cập nhật tồn kho mới nhất
-    if (existingItem.quantity + quantity > existingItem.stockQuantity) {
-      return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${existingItem.stockQuantity})` };
+    const currentQuantity =
+      Number(existingItem.quantity || 0);
+
+    const newQuantity =
+      currentQuantity +
+      requestedQuantity;
+
+    // Nếu API không gửi stock mới,
+    // dùng stock đã lưu trong cart.
+    const currentStock =
+      stock > 0
+        ? stock
+        : Number(
+            existingItem.stockQuantity || 0,
+          );
+
+    if (newQuantity > currentStock) {
+      return {
+        ok: false,
+        message:
+          `Biến thể này chỉ còn ${currentStock} sản phẩm trong kho.`,
+      };
     }
-    existingItem.quantity += quantity;
-    existingItem.unitPrice = productPrice;
-    existingItem.product.price = productPrice;
-    existingItem.product.image_url = productImage;
-    return { ok: true, message: "\u0110\u00e3 c\u1eadp nh\u1eadt s\u1ed1 l\u01b0\u1ee3ng." };
+
+    // CHỈ TĂNG SỐ LƯỢNG CART
+    existingItem.quantity =
+      newQuantity;
+
+    // Lưu snapshot tồn kho
+    existingItem.stockQuantity =
+      currentStock;
+
+    existingItem.unitPrice =
+      productPrice;
+
+    existingItem.product = {
+      ...existingItem.product,
+
+      product_name:
+        productName,
+
+      price:
+        productPrice,
+
+      image_url:
+        productImage,
+
+      ...attributes,
+    };
+
+    return {
+      ok: true,
+      message:
+        "Đã cập nhật số lượng.",
+    };
   }
 
-  if (quantity > stockQuantity) {
-    return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${stockQuantity})` };
+  // ==========================================================
+  // ITEM MỚI
+  // ==========================================================
+
+  if (requestedQuantity > stock) {
+    return {
+      ok: false,
+      message:
+        stock <= 0
+          ? `Size ${sizeName} - ${colorName} đã hết hàng.`
+          : `Biến thể này chỉ còn ${stock} sản phẩm trong kho.`,
+    };
   }
+
+  // ==========================================================
+  // THÊM CART ITEM
+  // ==========================================================
 
   cartState.items.unshift({
-    id_product_detail: detailId,
-    id_product: productId,
-    variant_id: variantId ?? null,
+    // ID duy nhất của dòng giỏ
+    id_product_detail:
+      detailId,
+
+    // Product
+    id_product:
+      productId,
+
+    // Variant thật
+    variant_id:
+      normalizedVariantId,
+
+    // Product snapshot
     product: {
-      id_product: productId,
-      product_name: productName,
-      price: productPrice,
-      image_url: productImage,
+      id_product:
+        productId,
+
+      product_name:
+        productName,
+
+      price:
+        productPrice,
+
+      image_url:
+        productImage,
+
       ...attributes,
     },
-    size: { size_name: sizeName },
-    color: { color_label: colorName, color_name: colorName, color_hex: colorHex },
+
+    // Size
+    size: {
+      size_name:
+        String(sizeName),
+    },
+
+    // Color
+    color: {
+      color_label:
+        colorName,
+
+      color_name:
+        colorName,
+
+      color_hex:
+        colorHex,
+    },
+
+    // Attributes
     attributes,
-    quantity,
-    unitPrice: productPrice,
-    stockQuantity,
+
+    // Quantity trong cart
+    quantity:
+      requestedQuantity,
+
+    // Giá tại thời điểm thêm
+    unitPrice:
+      productPrice,
+
+    // ========================================================
+    // CHỈ LƯU TỒN KHO SNAPSHOT
+    // KHÔNG PHẢI TỒN KHO DATABASE
+    // ========================================================
+
+    stockQuantity:
+      stock,
   });
 
-  return { ok: true, message: "\u0110\u00e3 th\u00eam v\u00e0o gi\u1ecf h\u00e0ng." };
+  return {
+    ok: true,
+    message:
+      "Đã thêm vào giỏ hàng.",
+  };
 };
 
-export const increaseQuantity = (detailId) => {
-  const item = cartState.items.find((i) => i.id_product_detail === detailId);
-  if (!item) return { ok: false, message: "L\u1ed7i" };
-  if (item.quantity + 1 > item.stockQuantity) {
-    return { ok: false, message: `Số lượng vượt quá tồn kho (còn ${item.stockQuantity})` };
+// ============================================================
+// INCREASE
+// ============================================================
+
+export const increaseQuantity = (
+  detailId,
+) => {
+  const item =
+    cartState.items.find(
+      (i) =>
+        i.id_product_detail ===
+        detailId,
+    );
+
+  if (!item) {
+    return {
+      ok: false,
+      message:
+        "Không tìm thấy sản phẩm trong giỏ.",
+    };
   }
-  item.quantity += 1;
-  return { ok: true, message: "Th\u00e0nh c\u00f4ng" };
+
+  const stock =
+    Number(
+      item.stockQuantity || 0,
+    );
+
+  const quantity =
+    Number(
+      item.quantity || 0,
+    );
+
+  if (quantity + 1 > stock) {
+    return {
+      ok: false,
+      message:
+        `Biến thể này chỉ còn ${stock} sản phẩm trong kho.`,
+    };
+  }
+
+  item.quantity =
+    quantity + 1;
+
+  return {
+    ok: true,
+    message:
+      "Đã tăng số lượng.",
+  };
 };
 
-export const decreaseQuantity = (detailId) => {
-  const item = cartState.items.find((i) => i.id_product_detail === detailId);
-  if (!item) return { ok: false, message: "L\u1ed7i" };
-  if (item.quantity <= 1) return { ok: false, message: "S\u1ed1 l\u01b0\u1ee3ng t\u1ed1i thi\u1ec3u l\u00e0 1" };
-  item.quantity -= 1;
-  return { ok: true, message: "Th\u00e0nh c\u00f4ng" };
+// ============================================================
+// DECREASE
+// ============================================================
+
+export const decreaseQuantity = (
+  detailId,
+) => {
+  const item =
+    cartState.items.find(
+      (i) =>
+        i.id_product_detail ===
+        detailId,
+    );
+
+  if (!item) {
+    return {
+      ok: false,
+      message:
+        "Không tìm thấy sản phẩm trong giỏ.",
+    };
+  }
+
+  const quantity =
+    Number(
+      item.quantity || 0,
+    );
+
+  if (quantity <= 1) {
+    return {
+      ok: false,
+      message:
+        "Số lượng tối thiểu là 1.",
+    };
+  }
+
+  item.quantity =
+    quantity - 1;
+
+  return {
+    ok: true,
+    message:
+      "Đã giảm số lượng.",
+  };
 };
 
-export const removeFromCart = (detailId) => {
-  const index = cartState.items.findIndex((i) => i.id_product_detail === detailId);
-  if (index !== -1) cartState.items.splice(index, 1);
+// ============================================================
+// REMOVE
+// ============================================================
+
+export const removeFromCart = (
+  detailId,
+) => {
+  const index =
+    cartState.items.findIndex(
+      (item) =>
+        item.id_product_detail ===
+        detailId,
+    );
+
+  if (index !== -1) {
+    cartState.items.splice(
+      index,
+      1,
+    );
+  }
 };
 
-export const clearCart = () => { cartState.items.splice(0); };
-export const showMiniCart = () => { cartState.isMiniCartOpen = true; };
-export const hideMiniCart = () => { cartState.isMiniCartOpen = false; };
-export const toggleMiniCart = () => { cartState.isMiniCartOpen = !cartState.isMiniCartOpen; };
+// ============================================================
+// CLEAR CART
+// ============================================================
+
+export const clearCart = () => {
+  cartState.items.splice(
+    0,
+    cartState.items.length,
+  );
+};
+
+// ============================================================
+// MINI CART
+// ============================================================
+
+export const showMiniCart = () => {
+  cartState.isMiniCartOpen =
+    true;
+};
+
+export const hideMiniCart = () => {
+  cartState.isMiniCartOpen =
+    false;
+};
+
+export const toggleMiniCart = () => {
+  cartState.isMiniCartOpen =
+    !cartState.isMiniCartOpen;
+};
