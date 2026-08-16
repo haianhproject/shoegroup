@@ -1,0 +1,26 @@
+# Phu thuoc
+node_modules/
+
+# Ban build
+dist/
+build/
+coverage/
+
+# Bien moi truong - TUYET DOI khong commit (chua mat khau DB, JWT_SECRET, mat khau mail)
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+!.env.example
+!backend/.env.example
+
+# Log & rac he thong
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Anh chup tu script test
+products.png
+admin.png

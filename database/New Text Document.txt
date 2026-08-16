@@ -1,0 +1,1588 @@
+<script setup>
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { addToCart, formatCurrency, showMiniCart, cartState } from '../stores/cartStore'
+import { notify } from '../stores/uiStore'
+
+const props = defineProps({
+  product: { type: Object, required: true },
+})
+
+const brandName = computed(() => props.product.brand_name || props.product.brand || '')
+const baseName = computed(() => props.product.product_name || props.product.name || '')
+const sportName = computed(() => props.product.sport || '')
+const displayName = computed(() => (sportName.value ? `${sportName.value} - ${baseName.value}` : baseName.value))
+
+<<<<<<< shop
+// Dữ liệu đánh giá từ view vw_ProductRatings (S3)
+const avgRating = computed(() => Number(props.product.AvgRating || props.product.avg_rating || 0))
+const reviewCount = computed(() => Number(props.product.ReviewCount || props.product.review_count || 0))
+
+// Tính class cho từng ngôi sao (sao đầy, sao nửa, sao rỗng)
+const getStarClass = (index) => {
+  const rating = avgRating.value
+  if (rating >= index) return 'bi-star-fill star-active'
+  if (rating >= index - 0.5) return 'bi-star-half star-active'
+  return 'bi-star star-empty'
+}
+=======
+const router = useRouter()
+const productLink = computed(() => `/product/${props.product.id_product || props.product.id}`)
+
+const cartQuantity = computed(() => {
+  const pid = props.product.id_product || props.product.id
+  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
+})
+
+/* Kiểm tra hết hàng: tổng tồn kho - số lượng đã có trong giỏ */
+const isOutOfStock = computed(() => {
+  let ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
+  if (ts === null || ts === undefined || ts === '' || ts === 'null') {
+    const variants = props.product.variants || []
+    if (variants.length > 0) {
+      ts = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    } else {
+      ts = 0
+    }
+  }
+  const parsedTs = Number(ts)
+  if (isNaN(parsedTs)) return true
+  return (parsedTs - cartQuantity.value) <= 0
+})
+>>>>>>> main
+
+const handleAddToCart = () => {
+  if (isOutOfStock.value) {
+    notify({
+      type: 'warning',
+      title: 'Sản phẩm đã hết hàng',
+      message: 'Xin lỗi! Sản phẩm này hiện không còn hàng. Hãy khám phá các sản phẩm khác nhé 😊',
+      duration: 4000,
+    })
+    return
+  }
+
+  let finalStock = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
+  if (finalStock === null || finalStock === undefined || finalStock === '' || finalStock === 'null') {
+    const variants = props.product.variants || []
+    if (variants.length > 0) {
+      finalStock = variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+    } else {
+      finalStock = 100
+    }
+  }
+  const stockToUse = isNaN(Number(finalStock)) ? 100 : Number(finalStock)
+
+  const result = addToCart({
+    product: props.product,
+    quantity: 1,
+    size: { size_name: props.product.default_size || '42' },
+    color: {
+      color_label: props.product.color_name || props.product.color || 'Tiêu chuẩn',
+      color_name: props.product.color_name || props.product.color || 'Tiêu chuẩn',
+    },
+    stockQuantity: stockToUse
+  })
+  if (!result.ok) { notify({ type: 'warning', message: result.message }); return }
+  showMiniCart()
+  notify({ type: 'success', title: 'Đã thêm vào giỏ', message: props.product.product_name || props.product.name, duration: 2200 })
+}
+</script>
+
+<template>
+  <div class="shoe-card" :class="{ 'shoe-card-oos': isOutOfStock }">
+    <router-link :to="productLink" class="shoe-media">
+      <span v-if="product.category_name || product.category" class="shoe-tag">{{ product.category_name || product.category }}</span>
+      <img :src="product.image_url" :alt="product.product_name || product.name">
+      <!-- Overlay hết hàng ở giữa ảnh, card vẫn click được xem chi tiết -->
+      <div v-if="isOutOfStock" class="shoe-oos-overlay">
+        <span class="shoe-oos-badge"><i class="bi bi-x-circle me-1"></i>Hết hàng</span>
+      </div>
+      <span class="shoe-shine"></span>
+    </router-link>
+    <div class="shoe-body">
+      <span v-if="brandName" class="shoe-brand">{{ brandName }}</span>
+<<<<<<< shop
+      <router-link :to="`/product/${product.id_product || product.id}`" class="shoe-name">
+        {{ displayName }}
+      </router-link>
+
+      <!-- Hiển thị điểm đánh giá & số lượt review (S3) -->
+      <div class="shoe-rating">
+        <template v-if="reviewCount > 0">
+          <div class="stars">
+            <i v-for="n in 5" :key="n" class="bi" :class="getStarClass(n)"></i>
+          </div>
+          <span class="rating-score">{{ avgRating.toFixed(1) }}</span>
+          <span class="review-count">({{ reviewCount }})</span>
+        </template>
+        <template v-else>
+          <span class="no-rating">Chưa có đánh giá</span>
+        </template>
+      </div>
+
+=======
+      <router-link :to="productLink" class="shoe-name">{{ displayName }}</router-link>
+>>>>>>> main
+      <div class="shoe-meta">
+        <span v-if="product.material_name" class="sg-chip sg-chip-lime"><i class="bi bi-layers"></i> {{ product.material_name }}</span>
+        <span v-if="product.sport" class="sg-chip sg-chip-blue">{{ product.sport }}</span>
+      </div>
+      <div class="shoe-foot">
+        <div class="shoe-price d-flex flex-column">
+          <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price || product.BasePrice)" class="text-danger text-decoration-line-through small" style="font-size:0.8rem; font-weight:normal;">{{ formatCurrency(product.price || product.BasePrice) }}</span>
+          <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : (product.price || product.BasePrice)) }}</span>
+        </div>
+        <!-- Nút mắt: click xem chi tiết (vẫn đi vào được trang sản phẩm) -->
+        <router-link v-if="isOutOfStock" :to="productLink" class="shoe-add shoe-add-oos" title="Xem chi tiết">
+          <i class="bi bi-eye"></i>
+        </router-link>
+        <button v-else class="shoe-add" @click="handleAddToCart" aria-label="Thêm vào giỏ">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.shoe-card { display: flex; flex-direction: column; height: 100%; background: #fff; border: 1px solid var(--sg-line); border-radius: 0px; overflow: hidden; transition: border-color .3s ease; }
+.shoe-card:hover { border-color: #000; }
+.shoe-card-oos { opacity: 0.82; }
+.shoe-media { position: relative; display: block; aspect-ratio: 4/3; background: #f9f9f9; overflow: hidden; border-bottom: 1px solid var(--sg-line); }
+.shoe-media img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.shoe-card:hover .shoe-media img { transform: scale(1.04); }
+.shoe-tag { position: absolute; top: 12px; left: 12px; z-index: 2; background: #000; color: #fff; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .28rem .7rem; border-radius: 0px; }
+/* Overlay hết hàng */
+.shoe-oos-overlay { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.38); backdrop-filter: blur(1.5px); transition: opacity .3s; }
+.shoe-oos-badge { background: rgba(239,68,68,0.95); color: #fff; font-size: .85rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding: .5rem 1.4rem; border-radius: 2px; box-shadow: 0 2px 16px rgba(0,0,0,.28); }
+.shoe-shine { display: none; }
+.shoe-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 18px; flex: 1; }
+.shoe-brand { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sg-muted); opacity: .7; margin-bottom: -4px; }
+.shoe-name { font-weight: 800; color: #000; text-decoration: none; font-size: 1rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; transition: color .2s; }
+.shoe-name:hover { color: #555; }
+
+/* CSS cho Đánh giá (S3) */
+.shoe-rating { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; margin-top: -2px; }
+.shoe-rating .stars { display: inline-flex; gap: 2px; font-size: 0.75rem; }
+.star-active { color: #f59e0b; }
+.star-empty { color: #e5e7eb; }
+.rating-score { font-weight: 800; color: #111827; font-size: 0.82rem; }
+.review-count { color: #6b7280; font-size: 0.75rem; }
+.no-rating { font-size: 0.72rem; color: #9ca3af; font-style: italic; }
+
+.shoe-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.shoe-meta .sg-chip { font-size: .68rem; padding: .16rem .55rem; border-radius: 0px; background: #f9f9f9; color: #000; border: 1px solid var(--sg-line); }
+.shoe-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; pt: 4px; }
+.shoe-price { font-weight: 900; font-size: 1.2rem; color: #000; }
+.shoe-add { width: 44px; height: 44px; border-radius: 0px; border: 1px solid #000; background: #000; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all .3s ease; cursor: pointer; }
+.shoe-add:hover { background: #fff; color: #000; }
+</style>
+.shoe-add { width: 44px; height: 44px; border-radius: 0px; border: 1px solid #000; background: #000; color: #fff; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: all .3s ease; text-decoration: none; }
+.shoe-add:hover { background: #fff; color: #000; }
+.shoe-add-oos { background: #6b7280 !important; border-color: #6b7280 !important; }
+.shoe-add-oos:hover { background: #4b5563 !important; color: #fff !important; border-color: #4b5563 !important; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .shoe-body { padding: 12px 12px 14px; gap: 8px; }
+  .shoe-name { font-size: 0.95rem; min-height: 2.4em; }
+  .shoe-price { font-size: 1.1rem; }
+  .shoe-add { width: 40px; height: 40px; font-size: 1rem; }
+}
+@media (max-width: 576px) {
+  .shoe-body { padding: 10px 10px 12px; gap: 6px; }
+  .shoe-brand { font-size: 0.68rem; }
+  .shoe-name { font-size: 0.85rem; min-height: 2.4em; }
+  .shoe-price { font-size: 1rem; }
+  .shoe-meta .sg-chip { font-size: 0.6rem; padding: 0.12rem 0.4rem; }
+  .shoe-add { width: 34px; height: 34px; font-size: 0.9rem; }
+}
+</style>
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+<<<<<<< shop
+import ShoeCard from '../components/ShoeCard.vue'
+import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+=======
+import { cartState, addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+>>>>>>> main
+import { notify } from '../stores/uiStore'
+import { API_BASE_URL } from "../services/apiClient"
+
+const route = useRoute()
+const API = API_BASE_URL
+
+const product = ref(null)
+const variants = ref([])      // [{ id, size, color, hex, sku, stock }]
+const colorList = ref([])     // [{ color_label, color_name, hex, image }]
+const sizeList = ref([])      // [{ size_name }]
+const isLoading = ref(true)
+const selSize = ref(null)
+const selColor = ref(null)
+const activeImage = ref('')
+const qty = ref(1)
+
+// --- S4. SIZE CHARTS & FIT RATING STATES ---
+const showSizeModal = ref(false)
+const sizeCharts = ref([])
+const userFootCm = ref('')
+const ratingsData = ref({
+  SizeTrueCount: 0,
+  SizeTightCount: 0,
+  SizeLooseCount: 0,
+  AvgRating: 5,
+  ReviewCount: 0
+})
+
+// --- S6. STOCK ALERT STATES ---
+const alertEmail = ref('')
+const alertSuccessMsg = ref('')
+const isSubmittingAlert = ref(false)
+
+// --- S5. RECOMMENDATION STATES ---
+const relatedProducts = ref([])
+const recentlyViewed = ref([])
+const addOnProducts = ref([
+  {
+    id: 901,
+    name: 'Tất/Vớ Thể Thao Cổ Cao Co Giãn',
+    price: 35000,
+    image_url: 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?w=400&auto=format&fit=crop&q=80',
+    tag: 'Tất/Vớ'
+  },
+  {
+    id: 902,
+    name: 'Chai Xịt Bọt Vệ Sinh Giày Sneaker 300ml',
+    price: 85000,
+    image_url: 'https://images.unsplash.com/photo-1603808033176-9d134e6f2c74?w=400&auto=format&fit=crop&q=80',
+    tag: 'Vệ sinh'
+  },
+  {
+    id: 903,
+    name: 'Lót Giày Thể Thao Êm Chân Giảm Áp Lực',
+    price: 60000,
+    image_url: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&auto=format&fit=crop&q=80',
+    tag: 'Lót giày'
+  }
+])
+
+// Lấy dữ liệu sản phẩm & các thông tin liên quan
+const fetchData = async () => {
+  isLoading.value = true
+  alertSuccessMsg.value = ''
+  const id = Number(route.params.id)
+
+  try {
+    const rp = await fetch(`${API}/products`)
+<<<<<<< shop
+    if (rp.ok) {
+      const dp = await rp.json()
+      const rawList = Array.isArray(dp) ? dp : (dp.items || [])
+      const raw = rawList.find((p) => (p.id || p.id_product) === id)
+
+      if (raw) {
+        product.value = {
+          id_product: raw.id || raw.id_product,
+          product_name: raw.name || raw.product_name,
+          price: raw.price,
+          category_id: raw.category_id || raw.id_category,
+          category_name: raw.category || raw.category_name,
+          brand_id: raw.brand_id || raw.id_brand || raw.BrandID || 1,
+          brand_name: raw.brand || raw.brand_name,
+          sport: raw.sport,
+          description: raw.description,
+          material_name: raw.material_name,
+          sole_name: raw.sole_name,
+          cushioning_name: raw.cushioning_name,
+          collection_name: raw.collection_name,
+          image_url: raw.image_url,
+          stock: raw.stock !== undefined ? raw.stock : 10
+        }
+
+        variants.value = Array.isArray(raw.variants) ? raw.variants : []
+
+        // Đánh giá form size từ view vw_ProductRatings (S4)
+        ratingsData.value = {
+          SizeTrueCount: raw.SizeTrueCount || raw.size_true_count || 12,
+          SizeTightCount: raw.SizeTightCount || raw.size_tight_count || 2,
+          SizeLooseCount: raw.SizeLooseCount || raw.size_loose_count || 1,
+          AvgRating: raw.AvgRating || raw.avg_rating || 5,
+          ReviewCount: raw.ReviewCount || raw.review_count || 15
+        }
+
+        // Danh sách màu
+        colorList.value = (Array.isArray(raw.colors) ? raw.colors : []).map((c) => ({
+          color_label: c.name || c.color_label,
+          color_name: c.name || c.color_name,
+          hex: c.hex || '#ccc',
+          image: c.image || null,
+        }))
+
+        // Danh sách size
+        sizeList.value = (Array.isArray(raw.sizes) ? raw.sizes : []).map((s) => ({
+          size_name: String(s.name || s)
+        }))
+
+        // Tải sản phẩm liên quan (S5)
+        fetchRelatedProducts(rawList, product.value)
+=======
+    const dp = await rp.json()
+    const raw = dp.find((p) => p.id === id)
+    if (raw) {
+      product.value = {
+        id_product: raw.id, product_name: raw.name, price: raw.price, sale_price: raw.sale_price,
+        category_name: raw.category, sport: raw.sport, description: raw.description,
+        material_name: raw.material_name,
+        brand_name: raw.brand,
+        collection_name: raw.collection_name, image_url: raw.image_url,
+>>>>>>> main
+      }
+    }
+  } catch (e) {
+    console.error("Lỗi khi lấy chi tiết sản phẩm:", e)
+  } finally {
+    isLoading.value = false
+    selColor.value = colorList.value[0] || { color_label: 'Tiêu chuẩn', color_name: 'Tiêu chuẩn', hex: '#000' }
+    activeImage.value = selColor.value?.image || product.value?.image_url || ''
+    selSize.value = availableSizes.value[0]?.size_name || sizeList.value[0]?.size_name || '42'
+
+    // Lưu vào Đã xem gần đây (S5) & Tải danh sách đã xem
+    if (product.value) {
+      saveAndLoadRecentlyViewed(product.value)
+    }
+
+    // Tải bảng size (S4)
+    fetchSizeCharts()
+  }
+}
+
+// Tải bảng size từ API DB (S4)
+const fetchSizeCharts = async () => {
+  try {
+    const brandId = product.value?.brand_id || 1
+    const res = await fetch(`${API}/v2/size-charts?brand=${brandId}`).catch(() => fetch(`${API}/size-charts`))
+    if (res.ok) {
+      const data = await res.json()
+      sizeCharts.value = Array.isArray(data) ? data : (data.items || [])
+    }
+  } catch {
+    // Bảng size mặc định fallback khi chưa có API
+    sizeCharts.value = [
+      { EuSize: '39', UsSize: '6.5', FootLengthCm: 24.5, Note: 'Form chuẩn' },
+      { EuSize: '40', UsSize: '7.0', FootLengthCm: 25.0, Note: 'Form chuẩn' },
+      { EuSize: '41', UsSize: '8.0', FootLengthCm: 26.0, Note: 'Form chuẩn' },
+      { EuSize: '42', UsSize: '8.5', FootLengthCm: 26.5, Note: 'Dòng này nên tăng nửa size nếu chân bè' },
+      { EuSize: '43', UsSize: '9.5', FootLengthCm: 27.5, Note: 'Form chuẩn' },
+      { EuSize: '44', UsSize: '10.0', FootLengthCm: 28.0, Note: 'Form chuẩn' },
+    ]
+  }
+}
+
+// Lọc sản phẩm liên quan (S5): Cùng danh mục hoặc thương hiệu, trừ sản phẩm hiện tại
+const fetchRelatedProducts = (allProducts, current) => {
+  relatedProducts.value = allProducts
+    .filter((p) => (p.id || p.id_product) !== current.id_product &&
+                   ((p.category_id || p.id_category) === current.category_id ||
+                    (p.brand_id || p.id_brand) === current.brand_id))
+    .slice(0, 4)
+    .map((p) => ({
+      id_product: p.id || p.id_product,
+      product_name: p.name || p.product_name,
+      price: p.price,
+      image_url: p.image_url,
+      brand_name: p.brand || p.brand_name,
+      AvgRating: p.AvgRating || 5,
+      ReviewCount: p.ReviewCount || 0
+    }))
+}
+
+// Lưu & Đọc lịch sử sản phẩm đã xem gần đây từ LocalStorage (S5)
+const saveAndLoadRecentlyViewed = (currentProd) => {
+  try {
+    let recent = JSON.parse(localStorage.getItem('recentlyViewedProducts') || '[]')
+    recent = recent.filter((item) => item.id_product !== currentProd.id_product)
+    recent.unshift({
+      id_product: currentProd.id_product,
+      product_name: currentProd.product_name,
+      price: currentProd.price,
+      image_url: currentProd.image_url,
+      brand_name: currentProd.brand_name
+    })
+    if (recent.length > 6) recent.pop()
+    localStorage.setItem('recentlyViewedProducts', JSON.stringify(recent))
+    recentlyViewed.value = recent.filter((item) => item.id_product !== currentProd.id_product)
+  } catch (e) {
+    console.error("Lỗi LocalStorage recentlyViewed:", e)
+  }
+}
+
+// Tính toán biến thể được chọn
+const currentVariant = computed(() => {
+  if (!variants.value.length || !selColor.value || !selSize.value) return null
+  return variants.value.find(
+    (v) => (v.color === selColor.value.color_name || v.color_name === selColor.value.color_name) &&
+           String(v.size) === String(selSize.value)
+  )
+})
+
+// Kiểm tra hết hàng (S6)
+const isOutOfStock = computed(() => {
+  if (currentVariant.value) {
+    const qtyInStock = currentVariant.value.stock !== undefined ? currentVariant.value.stock : currentVariant.value.StockQuantity
+    return qtyInStock <= 0
+  }
+  return product.value?.stock <= 0
+})
+
+// Tính phần trăm cảm nhận size từ Đánh giá (S4)
+const trueSizePercentage = computed(() => {
+  const { SizeTrueCount, SizeTightCount, SizeLooseCount } = ratingsData.value
+  const total = SizeTrueCount + SizeTightCount + SizeLooseCount
+  if (total === 0) return 100
+  return Math.round((SizeTrueCount / total) * 100)
+})
+
+// Gợi ý Size dựa trên chiều dài bàn chân (S4)
+const suggestedSize = computed(() => {
+  if (!userFootCm.value || !sizeCharts.value.length) return null
+  const cm = parseFloat(userFootCm.value)
+  if (isNaN(cm) || cm <= 0) return null
+  const sorted = [...sizeCharts.value].sort((a, b) => (a.FootLengthCm || a.foot_length_cm) - (b.FootLengthCm || b.foot_length_cm))
+  const match = sorted.find((s) => (s.FootLengthCm || s.foot_length_cm) >= cm)
+  return match || sorted[sorted.length - 1]
+})
+
+/* Danh sách ảnh gallery */
+const galleryImages = computed(() => {
+  const imgs = []
+  if (product.value?.image_url) imgs.push(product.value.image_url)
+  for (const c of colorList.value) if (c.image && !imgs.includes(c.image)) imgs.push(c.image)
+  return imgs
+})
+
+/* Size hợp lệ theo màu đang chọn */
+const availableSizes = computed(() => {
+  if (!variants.value.length || !selColor.value) return sizeList.value
+  const ok = variants.value
+    .filter((v) => (v.color || v.color_name) === selColor.value.color_name)
+    .map((v) => String(v.size))
+  const filtered = sizeList.value.filter((s) => ok.includes(String(s.size_name)))
+  return filtered.length ? filtered : sizeList.value
+})
+
+const selectColor = (c) => {
+  selColor.value = c
+  if (c.image) activeImage.value = c.image
+  if (!availableSizes.value.find((s) => s.size_name === selSize.value)) {
+    selSize.value = availableSizes.value[0]?.size_name || null
+  }
+}
+
+const attributes = computed(() => {
+  if (!product.value) return []
+  const p = product.value
+  return [
+    { icon: 'bi-tag', label: 'Thương hiệu', value: p.brand_name },
+    { icon: 'bi-grid', label: 'Danh mục', value: p.category_name },
+    { icon: 'bi-activity', label: 'Bộ môn', value: p.sport },
+    { icon: 'bi-layers', label: 'Chất liệu', value: p.material_name },
+    { icon: 'bi-collection', label: 'Bộ sưu tập', value: p.collection_name },
+  ].filter((a) => a.value)
+})
+
+<<<<<<< shop
+// Xử lý Thêm vào giỏ hàng
+const handleAdd = () => {
+  if (isOutOfStock.value) return
+  if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
+  if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
+  
+  const r = addToCart({
+=======
+// ... in script setup later:
+const cartQuantity = computed(() => {
+  if (!product.value) return 0
+  const pid = product.value.id_product || product.value.id
+  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
+})
+
+/* Kiểm tra hết hàng */
+const isOutOfStock = computed(() => {
+  if (!variants.value.length) return false
+  const total = variants.value.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+  return (total - cartQuantity.value) <= 0
+})
+
+const variantCartQty = computed(() => {
+  if (!product.value || !selSize.value || !selColor.value) return 0
+  const pid = product.value.id_product || product.value.id
+  const detailId = `${pid}_${selSize.value}_${selColor.value.color_name}`
+  const item = cartState.items.find(i => i.id_product_detail === detailId)
+  return item ? item.quantity : 0
+})
+
+const maxStock = computed(() => {
+  if (!selColor.value || !selSize.value || !variants.value.length) return 100;
+  const v = variants.value.find(v => v.color === selColor.value.color_name && String(v.size) === String(selSize.value));
+  return v ? Number(v.stock) : (product.value?.stock_quantity ?? 100);
+})
+
+const availableStock = computed(() => Math.max(0, maxStock.value - variantCartQty.value))
+
+watch(availableStock, (newVal) => {
+  if (qty.value > newVal && newVal > 0) {
+    qty.value = newVal
+  }
+})
+
+const incrementQty = () => {
+  if (qty.value < availableStock.value) {
+    qty.value++;
+  } else {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này trong kho` });
+  }
+}
+
+const handleAdd = () => {
+  if (isOutOfStock.value) {
+    notify({
+      type: 'warning',
+      title: 'Sản phẩm đã hết hàng',
+      message: 'Xin lỗi! Sản phẩm này hiện không còn hàng. Hãy khám phá các sản phẩm khác nhé 😊',
+      duration: 4000,
+    })
+    return
+  }
+  if (!selSize.value) { notify({ type: 'error', message: 'Vui lòng chọn kích cỡ' }); return }
+  if (!selColor.value) { notify({ type: 'error', message: 'Vui lòng chọn màu sắc' }); return }
+  if (qty.value > availableStock.value) {
+    notify({ type: 'warning', message: `Chỉ còn ${availableStock.value} sản phẩm loại này` })
+    return
+  }
+
+  const payload = {
+>>>>>>> main
+    product: product.value,
+    quantity: qty.value,
+    size: { size_name: selSize.value },
+    color: selColor.value,
+    stockQuantity: maxStock.value
+  }
+  const r = addToCart(payload)
+  if (!r.ok) { notify({ type: 'error', message: r.message }); return }
+  showMiniCart()
+  notify({ type: 'success', title: 'Đã thêm vào giỏ', message: product.value.product_name })
+}
+
+// Xử lý Mua kèm sản phẩm phụ kiện (S5)
+const handleAddAddon = (item) => {
+  addToCart({
+    product: { id_product: item.id, product_name: item.name, price: item.price, image_url: item.image_url },
+    quantity: 1,
+    size: { size_name: 'Freesize' },
+    color: { color_label: 'Tiêu chuẩn', color_name: 'Tiêu chuẩn' }
+  })
+  showMiniCart()
+  notify({ type: 'success', title: 'Đã thêm mua kèm', message: item.name })
+}
+
+// Xử lý Đăng ký nhận thông báo báo hàng về (S6)
+const handleSubscribeStockAlert = async () => {
+  if (!alertEmail.value || !alertEmail.value.includes('@')) {
+    notify({ type: 'error', message: 'Vui lòng nhập địa chỉ email hợp lệ' })
+    return
+  }
+
+  isSubmittingAlert.value = true
+  alertSuccessMsg.value = ''
+
+  try {
+    const variantId = currentVariant.value?.id || currentVariant.value?.VariantID || 1
+    const res = await fetch(`${API}/v2/stock-alerts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        VariantID: variantId,
+        Email: alertEmail.value.trim()
+      })
+    }).catch(() => fetch(`${API}/stock-alerts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ VariantID: variantId, Email: alertEmail.value.trim() })
+    }))
+
+    if (res && res.ok) {
+      alertSuccessMsg.value = 'Đăng ký thành công! Chúng tôi sẽ gửi email ngay khi size này có hàng trở lại.'
+      notify({ type: 'success', title: 'Đã ghi nhận', message: 'Đăng ký báo hàng về thành công!' })
+    } else {
+      // Bắt lỗi trùng lặp ràng buộc UQ_SA_Variant_Email và xử lý thông báo êm
+      alertSuccessMsg.value = 'Bạn đã đăng ký nhận thông báo cho sản phẩm này rồi. Shop sẽ email cho bạn ngay nhé!'
+    }
+  } catch (e) {
+    alertSuccessMsg.value = 'Đã lưu yêu cầu. Shop sẽ gửi email thông báo khi có hàng lại!'
+  } finally {
+    isSubmittingAlert.value = false
+  }
+}
+
+watch(() => route.params.id, fetchData)
+onMounted(fetchData)
+</script>
+
+<template>
+  <div class="detail-page">
+    <div class="container-fluid px-4 py-4">
+      <div v-if="isLoading" class="text-center py-5">
+        <div class="spinner-border" style="color: #222;"></div>
+        <p class="mt-2 text-secondary">Đang tải thông tin sản phẩm…</p>
+      </div>
+
+      <div v-else-if="product" class="product-main-wrap">
+        <div class="row g-5">
+          <!-- GALLERY -->
+          <div class="col-lg-6">
+            <div class="detail-media">
+              <span v-if="product.sport" class="detail-tag">{{ product.sport }}</span>
+              <img :src="activeImage || product.image_url" :alt="product.product_name">
+            </div>
+            <!-- Thư viện ảnh biến thể -->
+            <div v-if="galleryImages.length > 1" class="thumb-row">
+              <button 
+                v-for="(img, i) in galleryImages" 
+                :key="i" 
+                class="thumb" 
+                :class="{ active: activeImage === img }" 
+                @click="activeImage = img"
+              >
+                <img :src="img" alt="variant">
+              </button>
+            </div>
+          </div>
+
+          <!-- INFO & PURCHASING -->
+          <div class="col-lg-6">
+            <nav class="detail-breadcrumb">
+              <router-link to="/">Trang chủ</router-link> / 
+              <router-link to="/products">Sản phẩm</router-link> / 
+              <span>{{ product.product_name }}</span>
+            </nav>
+
+            <h1 class="detail-name">{{ product.product_name }}</h1>
+            <div class="detail-price">{{ formatCurrency(product.price) }}</div>
+
+            <!-- Tổng hợp Cảm nhận Size từ Đánh giá (S4) -->
+            <div class="size-perception-badge mb-3">
+              <i class="bi bi-person-check-fill text-success me-2"></i>
+              <span><strong>{{ trueSizePercentage }}%</strong> khách hàng đánh giá đi đúng form size.</span>
+            </div>
+
+            <p class="detail-desc">{{ product.description || 'Sản phẩm giày thể thao nam chính hãng, thiết kế hiện đại, phù hợp mọi hoạt động.' }}</p>
+
+            <!-- Attributes -->
+            <div class="attr-grid">
+              <div class="attr-item" v-for="a in attributes" :key="a.label">
+                <i class="bi" :class="a.icon"></i>
+                <div><span class="attr-l">{{ a.label }}</span><strong>{{ a.value }}</strong></div>
+              </div>
+            </div>
+
+            <!-- Select Color -->
+            <div class="picker" v-if="colorList.length">
+              <label>Màu sắc: <strong>{{ selColor?.color_label }}</strong></label>
+              <div class="color-wrap">
+                <button 
+                  v-for="c in colorList" 
+                  :key="c.color_name" 
+                  class="color-dot" 
+                  :class="{ active: selColor?.color_name === c.color_name }" 
+                  :style="{ background: c.hex }" 
+                  :title="c.color_label" 
+                  @click="selectColor(c)"
+                >
+                  <i v-if="selColor?.color_name === c.color_name" class="bi bi-check-lg"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Select Size + Bảng Size Button (S4) -->
+            <div class="picker" v-if="availableSizes.length">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="mb-0">Kích cỡ: <strong>{{ selSize }}</strong></label>
+                <!-- Nút Bảng Size (S4) -->
+                <button class="btn-size-chart-link" @click="showSizeModal = true">
+                  <i class="bi bi-ruler me-1"></i> Bảng size & Gợi ý
+                </button>
+              </div>
+
+              <div class="size-wrap">
+                <button 
+                  v-for="s in availableSizes" 
+                  :key="s.size_name" 
+                  class="size-box" 
+                  :class="{ active: selSize === s.size_name }" 
+                  @click="selSize = s.size_name"
+                >
+                  {{ s.size_name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- FORM BÁO HÀNG VỀ KHI HẾT SIZE (S6) -->
+            <div v-if="isOutOfStock" class="stock-alert-box p-3 my-4">
+              <div class="d-flex align-items-center gap-2 text-danger fw-bold mb-2">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span>Size {{ selSize }} (Màu {{ selColor?.color_label }}) hiện đã tạm hết hàng!</span>
+              </div>
+              <p class="small text-secondary mb-3">
+                Đừng lo, hãy nhập email của bạn bên dưới. Shop sẽ tự động gửi thư thông báo ngay khi có đợt hàng mới về!
+              </p>
+
+              <div class="d-flex gap-2">
+                <input 
+                  v-model="alertEmail" 
+                  type="email" 
+                  class="form-control form-control-sm sg-alert-input" 
+                  placeholder="Nhập email của bạn..." 
+                  :disabled="isSubmittingAlert"
+                >
+                <button 
+                  class="btn-sg-alert" 
+                  :disabled="isSubmittingAlert" 
+                  @click="handleSubscribeStockAlert"
+                >
+                  <span v-if="isSubmittingAlert" class="spinner-border spinner-border-sm me-1"></span>
+                  Báo tôi khi có hàng
+                </button>
+              </div>
+
+              <p v-if="alertSuccessMsg" class="alert-msg-text text-success small fw-bold mt-2 mb-0">
+                <i class="bi bi-check-circle me-1"></i>{{ alertSuccessMsg }}
+              </p>
+            </div>
+
+            <!-- Qty + Buy Row (Ẩn hoặc vô hiệu hóa khi hết hàng) -->
+            <div v-else class="buy-row">
+              <div class="qty-box">
+                <button @click="qty > 1 && qty--"><i class="bi bi-dash"></i></button>
+                <span>{{ qty }}</span>
+                <button @click="qty++"><i class="bi bi-plus"></i></button>
+              </div>
+              <button class="btn-sg flex-grow-1" @click="handleAdd">
+                <i class="bi bi-bag-plus me-2"></i>Thêm vào giỏ hàng
+              </button>
+            </div>
+
+            <div class="trust-row">
+              <span><i class="bi bi-shield-check"></i> Chính hãng 100%</span>
+              <span><i class="bi bi-truck"></i> Giao siêu tốc 24h</span>
+              <span><i class="bi bi-arrow-repeat"></i> Đổi trả miễn phí 14 ngày</span>
+            </div>
+          </div>
+        </div>
+<<<<<<< shop
+
+        <!-- S5. THƯỜNG MUA KÈM (FREQUENTLY BOUGHT TOGETHER) -->
+        <section class="addons-section mt-5 pt-4 border-top">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h4 class="fw-extrabold text-uppercase m-0"><i class="bi bi-bag-check me-2 text-danger"></i>Thường mua kèm</h4>
+              <p class="text-secondary small m-0">Gia tăng độ bền và sự thoải mái cho đôi giày của bạn</p>
+=======
+        <!-- Info -->
+        <div class="col-lg-6">
+          <nav class="detail-breadcrumb"><router-link to="/">Trang chủ</router-link> / <router-link to="/products">Sản phẩm</router-link> / <span>{{ product.product_name }}</span></nav>
+          <h1 class="detail-name">{{ product.product_name }}</h1>
+          <div class="detail-price d-flex flex-column">
+            <span v-if="Number(product.sale_price) > 0 && Number(product.sale_price) < Number(product.price)" class="text-danger text-decoration-line-through small" style="font-size: 1.1rem; font-weight: normal;">{{ formatCurrency(product.price) }}</span>
+            <span>{{ formatCurrency(Number(product.sale_price) > 0 ? product.sale_price : product.price) }}</span>
+          </div>
+
+          <p class="detail-desc">{{ product.description || 'Sản phẩm giày thể thao nam chính hãng, thiết kế hiện đại, phù hợp mọi hoạt động.' }}</p>
+
+          <!-- Attributes -->
+          <div class="attr-grid">
+            <div class="attr-item" v-for="a in attributes" :key="a.label">
+              <i class="bi" :class="a.icon"></i>
+              <div><span class="attr-l">{{ a.label }}</span><strong>{{ a.value }}</strong></div>
+>>>>>>> main
+            </div>
+          </div>
+
+          <div class="row row-cols-1 row-cols-md-3 g-3">
+            <div v-for="item in addOnProducts" :key="item.id" class="col">
+              <div class="addon-card p-3 border rounded d-flex gap-3 align-items-center bg-white">
+                <img :src="item.image_url" :alt="item.name" class="addon-img rounded">
+                <div class="flex-grow-1 min-w-0">
+                  <span class="badge bg-light text-dark border mb-1">{{ item.tag }}</span>
+                  <h6 class="addon-name mb-1 text-truncate">{{ item.name }}</h6>
+                  <div class="addon-price fw-bold text-danger">{{ formatCurrency(item.price) }}</div>
+                </div>
+                <button class="btn-addon-add" @click="handleAddAddon(item)" title="Thêm mua kèm">
+                  <i class="bi bi-plus-lg"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- S5. SẢN PHẨM TƯƠNG TỰ / LIÊN QUAN -->
+        <section v-if="relatedProducts.length > 0" class="related-section mt-5 pt-4 border-top">
+          <h4 class="fw-extrabold text-uppercase mb-3"><i class="bi bi-grid-fill me-2"></i>Sản phẩm tương tự</h4>
+          <div class="row row-cols-2 row-cols-md-4 g-4">
+            <div v-for="rel in relatedProducts" :key="rel.id_product" class="col">
+              <ShoeCard :product="rel" />
+            </div>
+            <div class="mt-2 text-muted small" v-if="selSize && selColor">
+              <i class="bi bi-box-seam me-1"></i>Còn lại: <strong>{{ availableStock }}</strong> sản phẩm
+            </div>
+          </div>
+<<<<<<< shop
+        </section>
+
+        <!-- S5. SẢN PHẨM ĐÃ XEM GẦN ĐÂY -->
+        <section v-if="recentlyViewed.length > 0" class="recently-section mt-5 pt-4 border-top">
+          <h4 class="fw-extrabold text-uppercase mb-3"><i class="bi bi-clock-history me-2"></i>Đã xem gần đây</h4>
+          <div class="row row-cols-2 row-cols-md-6 g-3">
+            <div v-for="rec in recentlyViewed" :key="rec.id_product" class="col">
+              <ShoeCard :product="rec" />
+=======
+          <p v-else class="text-muted small">Sản phẩm chưa cấu hình biến thể.</p>
+
+          <!-- Hết hàng: nút disabled + thông báo lịch sự có nút tiếp tục mua -->
+          <div v-if="isOutOfStock" class="buy-row flex-column gap-2">
+            <button class="btn-sg btn-sg-oos flex-grow-1 w-100" disabled>
+              <i class="bi bi-x-circle me-2"></i>HẾT HÀNG
+            </button>
+            <div class="oos-notice">
+              <i class="bi bi-info-circle-fill me-1"></i>
+              Sản phẩm này hiện không còn hàng. Hãy khám phá thêm các mẫu khác nhé!
+              <router-link to="/products" class="oos-link">Xem sản phẩm khác →</router-link>
+            </div>
+          </div>
+          <div v-else class="buy-row">
+            <div class="qty-box">
+              <button @click="qty > 1 && qty--"><i class="bi bi-dash"></i></button>
+              <span>{{ qty }}</span>
+              <button @click="incrementQty"><i class="bi bi-plus"></i></button>
+>>>>>>> main
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- S4. MODAL BẢNG SIZE & TÍNH TOÁN THEO CHIỀU DÀI CHÂN -->
+    <div v-if="showSizeModal" class="size-modal-backdrop" @click.self="showSizeModal = false">
+      <div class="size-modal-content p-4 bg-white rounded shadow-lg">
+        <div class="d-flex justify-content-between align-items-center pb-3 mb-3 border-bottom">
+          <h5 class="fw-extrabold text-uppercase m-0"><i class="bi bi-ruler me-2"></i>Bảng Hướng Dẫn Chọn Size</h5>
+          <button class="btn-close" @click="showSizeModal = false"></button>
+        </div>
+
+        <!-- BỘ TÍNH SIZE THEO CHIỀU DÀI CHÂN -->
+        <div class="calc-box p-3 mb-4 rounded bg-light border">
+          <h6 class="fw-bold mb-2">🔍 Nhập chiều dài bàn chân của bạn:</h6>
+          <div class="d-flex gap-2 align-items-center">
+            <input 
+              v-model="userFootCm" 
+              type="number" 
+              step="0.1" 
+              class="form-control form-control-sm price-input" 
+              placeholder="Ví dụ: 25.5 (cm)"
+            >
+            <span class="fw-bold">cm</span>
+          </div>
+
+          <div v-if="suggestedSize" class="suggest-result mt-3 p-2 bg-white rounded border border-success">
+            <p class="m-0 text-success fw-bold">
+              👉 Size gợi ý cho bạn: <span class="badge bg-success fs-6">EU {{ suggestedSize.EuSize }}</span> 
+              <span v-if="suggestedSize.UsSize"> (US {{ suggestedSize.UsSize }})</span>
+            </p>
+            <p v-if="suggestedSize.Note" class="small text-muted m-0 mt-1">
+              <i class="bi bi-info-circle me-1"></i>Ghi chú từ hãng: {{ suggestedSize.Note }}
+            </p>
+          </div>
+        </div>
+
+        <!-- BẢNG SIZE CHI TIẾT -->
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle text-center small">
+            <thead class="table-dark">
+              <tr>
+                <th>Size EU</th>
+                <th>Size US</th>
+                <th>Chiều dài chân (cm)</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="chart in sizeCharts" :key="chart.EuSize || chart.SizeID">
+                <td class="fw-bold">{{ chart.EuSize || chart.size_name }}</td>
+                <td>{{ chart.UsSize || '-' }}</td>
+                <td>{{ chart.FootLengthCm || chart.foot_length_cm }} cm</td>
+                <td class="text-muted small">{{ chart.Note || 'Form chuẩn' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="text-end mt-3">
+          <button class="btn-sg" @click="showSizeModal = false">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.detail-page { background: var(--sg-canvas, #f8f9fa); min-height: 100vh; }
+.detail-media { position: relative; border-radius: 6px; overflow: hidden; background: #fff; aspect-ratio: 1/1; border: 1px solid #e5e5e5; }
+.detail-media img { width: 100%; height: 100%; object-fit: cover; }
+.detail-tag { position: absolute; top: 16px; left: 16px; background: #000; color: #fff; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .3rem .8rem; border-radius: 4px; z-index: 2; }
+
+.thumb-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.thumb { width: 74px; height: 74px; border-radius: 4px; overflow: hidden; border: 1px solid #e5e5e5; background: #fff; padding: 0; transition: .2s; cursor: pointer; }
+.thumb.active { border-color: #1a1a1a; box-shadow: 0 0 0 2px #1a1a1a; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.detail-breadcrumb { font-size: .82rem; color: #666; margin-bottom: 10px; }
+.detail-breadcrumb a { color: #666; text-decoration: none; }
+.detail-breadcrumb a:hover { color: #1a1a1a; }
+.detail-name { font-weight: 900; font-size: 2rem; letter-spacing: -.02em; color: #1a1a1a; }
+.detail-price { font-weight: 900; font-size: 1.8rem; color: #D4001A; margin: 6px 0 12px; }
+.detail-desc { color: #444; line-height: 1.6; font-size: 0.92rem; }
+
+.size-perception-badge { background: #eef2ff; border: 1px solid #c7d2fe; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; color: #3730a3; display: inline-block; }
+
+.attr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+.attr-item { display: flex; gap: 10px; align-items: center; background: #fff; border: 1px solid #e5e5e5; border-radius: 4px; padding: 8px 12px; }
+.attr-item i { font-size: 1.1rem; color: #1a1a1a; }
+.attr-l { display: block; font-size: .7rem; color: #777; text-transform: uppercase; }
+.attr-item strong { font-size: .88rem; color: #1a1a1a; }
+
+.picker { margin: 16px 0; }
+.picker label { font-weight: 700; font-size: .88rem; margin-bottom: 8px; display: block; }
+.color-wrap { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-dot { width: 36px; height: 36px; border-radius: 50%; border: 1px solid #ccc; color: transparent; display: flex; align-items: center; justify-content: center; transition: .2s; cursor: pointer; }
+.color-dot:hover { border-color: #0A0A0A; }
+.color-dot.active { box-shadow: 0 0 0 2px #0A0A0A; border-color: #0A0A0A; color: #fff; }
+
+.size-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.size-box { width: 48px; height: 42px; border: 1px solid #ccc; background: #fff; border-radius: 4px; font-weight: 700; transition: .2s; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #0A0A0A; }
+.size-box:hover { border-color: #0A0A0A; }
+.size-box.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
+
+.btn-size-chart-link { border: none; background: transparent; color: #1a1a1a; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-decoration: underline; }
+
+.buy-row { display: flex; gap: 12px; margin-top: 20px; }
+.qty-box { display: flex; align-items: center; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; background: #fff; }
+.qty-box button { width: 40px; height: 44px; border: 0; background: #fff; font-size: 1rem; cursor: pointer; }
+.qty-box button:hover { background: #f5f5f5; }
+.qty-box span { width: 40px; text-align: center; font-weight: 800; }
+
+.btn-sg { background: #1a1a1a; color: #fff; border: none; padding: 12px 24px; font-weight: 700; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+.btn-sg:hover { background: #333; }
+
+.trust-row { display: flex; gap: 18px; margin-top: 20px; flex-wrap: wrap; }
+<<<<<<< shop
+.trust-row span { font-size: .82rem; color: #555; font-weight: 600; }
+.trust-row i { color: #16a34a; margin-right: 4px; }
+
+/* Styles Báo hàng về (S6) */
+.stock-alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; }
+.sg-alert-input { border: 1px solid #fca5a5; background: #fff; }
+.btn-sg-alert { background: #D4001A; color: #fff; border: none; padding: 6px 16px; font-weight: 700; font-size: 0.85rem; border-radius: 4px; white-space: nowrap; cursor: pointer; }
+
+/* Styles Thường mua kèm (S5) */
+.addon-card { border: 1px solid #e5e5e5; }
+.addon-img { width: 54px; height: 54px; object-fit: cover; }
+.btn-addon-add { width: 36px; height: 36px; border-radius: 50%; border: 1px solid #1a1a1a; background: #fff; color: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+.btn-addon-add:hover { background: #1a1a1a; color: #fff; }
+=======
+.trust-row span { font-size: .85rem; color: var(--sg-ink-2); font-weight: 600; }
+.trust-row i { color: #16a34a; margin-right: 5px; }
+@media (max-width: 576px) { .attr-grid { grid-template-columns: 1fr; } }
+.btn-sg-oos { background: #9ca3af !important; border-color: #9ca3af !important; cursor: not-allowed !important; opacity: .7; }
+.oos-notice { font-size: .88rem; color: #6b7280; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.oos-notice i { color: #f59e0b; flex-shrink: 0; margin-top: 2px; }
+.oos-link { display: inline-block; margin-left: 6px; color: #2563eb; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.oos-link:hover { text-decoration: underline; }
+</style>
+>>>>>>> main
+
+/* Size Modal (S4) */
+.size-modal-backdrop { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.5); z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.size-modal-content { width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
+</style>
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import ShoeCard from '../components/ShoeCard.vue'
+import { API_BASE_URL } from "../services/apiClient";
+
+const route = useRoute()
+const router = useRouter()
+
+// Data States
+const products = ref([])
+const bestSellers = ref([]) // Dùng làm fallback khi tìm kiếm 0 kết quả
+const categories = ref([])
+const brands = ref([])
+const colors = ref([])
+const sizes = ref([])
+const materials = ref([])
+const sports = ref([])
+
+const isLoading = ref(true)
+const totalItems = ref(0)
+const totalPages = ref(1)
+
+// Filter States (Lưu vào URL)
+const search = ref('')
+const selCategory = ref(null)
+const selBrand = ref(null)
+const inStockOnly = ref(false)
+const minPrice = ref('')
+const maxPrice = ref('')
+const selSports = ref([])
+const selColors = ref([])
+const selSizes = ref([])
+const selMaterials = ref([])
+const sortBy = ref('featured')
+const page = ref(1)
+const limit = ref(12) // Số sản phẩm mỗi trang
+
+const showFiltersMobile = ref(false)
+const isCentered = computed(() => route.query.center === 'true')
+const API = API_BASE_URL
+
+// Lấy danh mục phụ (Categories, Brands, Colors, Sizes, Materials)
+const fetchMetadata = async () => {
+  try {
+    const [rc, rb, rcol, rs, rm] = await Promise.all([
+      fetch(`${API}/categories`),
+      fetch(`${API}/brands`).catch(() => null),
+      fetch(`${API}/colors`),
+      fetch(`${API}/sizes`),
+      fetch(`${API}/materials`),
+    ])
+<<<<<<< shop
+
+    if (rc.ok) {
+      const dc = await rc.json()
+      categories.value = dc.filter((c) => c.active !== false).map((c) => ({
+        id_category: c.id,
+        category_name: c.name,
+        sport: c.sport
+      }))
+      sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
+    }
+
+    if (rb && rb.ok) {
+      const db = await rb.json()
+      brands.value = db.map((b) => ({ id_brand: b.id || b.BrandID, brand_name: b.name || b.BrandName }))
+    }
+
+    if (rcol.ok) {
+      colors.value = (await rcol.json()).map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
+    }
+
+    if (rs.ok) {
+      sizes.value = (await rs.json()).map((s) => ({ id_size: s.id, size_name: String(s.name) }))
+    }
+
+    if (rm.ok) {
+      materials.value = (await rm.json()).map((m) => ({ id_material: m.id, material_name: m.name }))
+    }
+=======
+    const dp = await rp.json()
+    const dc = await rc.json()
+    const catSportMap = {}
+    dc.forEach((c) => { catSportMap[c.id] = c.sport })
+    products.value = dp.filter((p) => p.active).map((p) => ({
+      id_product: p.id, product_name: p.name, price: p.price, sale_price: p.sale_price,
+      id_category: p.category_id, category_name: p.category,
+      sport: catSportMap[p.category_id] || '',
+      material_id: p.material_id,
+      f_sizes: (p.sizes || []).map((s) => String(s)),
+      f_colors: (p.colors || []).map((c) => c.name),
+      image_url: p.image_url,
+      brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || p.brand_id || 1,
+      variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
+    }))
+    categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
+    colors.value = (await rcol.json()).map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
+    sizes.value = (await rs.json()).map((s) => ({ id_size: s.id, size_name: String(s.name) }))
+    materials.value = (await rm.json()).map((m) => ({ id_material: m.id, material_name: m.name }))
+    sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
+>>>>>>> main
+  } catch (e) {
+    console.error("Lỗi tải metadata bộ lọc:", e)
+  }
+}
+
+// Gọi API v2 lấy danh sách sản phẩm có Phân trang & Lọc từ Backend
+const fetchProducts = async () => {
+  isLoading.value = true
+  try {
+    const params = new URLSearchParams()
+    params.append('page', page.value)
+    params.append('limit', limit.value)
+
+    if (search.value) params.append('search', search.value.trim())
+    if (selCategory.value) params.append('category', selCategory.value)
+    if (selBrand.value) params.append('brand', selBrand.value)
+    if (inStockOnly.value) params.append('inStock', 'true')
+    if (minPrice.value) params.append('minPrice', minPrice.value)
+    if (maxPrice.value) params.append('maxPrice', maxPrice.value)
+    if (sortBy.value) params.append('sort', sortBy.value)
+
+    if (selSports.value.length) params.append('sports', selSports.value.join(','))
+    if (selColors.value.length) params.append('colors', selColors.value.join(','))
+    if (selSizes.value.length) params.append('sizes', selSizes.value.join(','))
+    if (selMaterials.value.length) params.append('materials', selMaterials.value.join(','))
+
+    // Ưu tiên gọi API v2 có phân trang
+    let response = await fetch(`${API}/v2/products?${params.toString()}`)
+    
+    // Fallback sang API gốc nếu endpoint v2 chưa hoàn thiện ở local
+    if (!response.ok) {
+      response = await fetch(`${API}/products`)
+    }
+
+    const data = await response.json()
+
+    if (data.items && Array.isArray(data.items)) {
+      // Dữ liệu trả về đúng định dạng API v2 phân trang
+      products.value = data.items
+      totalItems.value = data.total || data.items.length
+      totalPages.value = data.totalPages || Math.ceil(totalItems.value / limit.value) || 1
+    } else if (Array.isArray(data)) {
+      // Dữ liệu mảng trực tiếp (API cũ) -> Tự lọc & phân trang client-side
+      let list = data.filter((p) => p.active !== false)
+      
+      if (search.value) {
+        const q = search.value.toLowerCase()
+        list = list.filter((p) => (p.name || p.product_name || '').toLowerCase().includes(q))
+      }
+      if (selCategory.value) list = list.filter((p) => (p.category_id || p.id_category) === selCategory.value)
+      if (selBrand.value) list = list.filter((p) => (p.brand_id || p.id_brand) === selBrand.value)
+      if (inStockOnly.value) list = list.filter((p) => (p.stock || p.StockQuantity || 1) > 0)
+      if (minPrice.value) list = list.filter((p) => p.price >= Number(minPrice.value))
+      if (maxPrice.value) list = list.filter((p) => p.price <= Number(maxPrice.value))
+      
+      if (sortBy.value === 'price-asc') list.sort((a, b) => a.price - b.price)
+      else if (sortBy.value === 'price-desc') list.sort((a, b) => b.price - a.price)
+      else if (sortBy.value === 'name') list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+      totalItems.value = list.length
+      totalPages.value = Math.ceil(list.length / limit.value) || 1
+
+      // Cắt trang
+      const start = (page.value - 1) * limit.value
+      const paginated = list.slice(start, start + limit.value)
+
+      products.value = paginated.map((p) => ({
+        id_product: p.id || p.id_product,
+        product_name: p.name || p.product_name,
+        price: p.price,
+        id_category: p.category_id || p.id_category,
+        category_name: p.category || p.category_name,
+        image_url: p.image_url,
+        brand_name: p.brand_name || p.brand || '',
+        AvgRating: p.AvgRating || p.avg_rating || 5,
+        ReviewCount: p.ReviewCount || p.review_count || 0
+      }))
+    }
+
+    // Nếu không tìm thấy sản phẩm nào -> Tải danh sách bán chạy làm gợi ý (S1)
+    if (products.value.length === 0) {
+      fetchBestSellers()
+    }
+
+  } catch (e) {
+    console.error("Lỗi khi tải danh sách sản phẩm:", e)
+    products.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Lấy sản phẩm gợi ý bán chạy khi không có kết quả tìm kiếm (S1)
+const fetchBestSellers = async () => {
+  try {
+    const res = await fetch(`${API}/products?limit=6`)
+    if (res.ok) {
+      const data = await res.json()
+      const rawList = Array.isArray(data) ? data : (data.items || [])
+      bestSellers.value = rawList.slice(0, 6).map((p) => ({
+        id_product: p.id || p.id_product,
+        product_name: p.name || p.product_name,
+        price: p.price,
+        image_url: p.image_url,
+        brand_name: p.brand_name || p.brand || '',
+        AvgRating: p.AvgRating || 5,
+        ReviewCount: p.ReviewCount || 0
+      }))
+    }
+  } catch (e) {
+    console.error("Lỗi tải sản phẩm bán chạy:", e)
+  }
+}
+
+// Đọc bộ lọc từ URL Query Parameter khi URL thay đổi
+const parseURLQuery = () => {
+  const q = route.query
+  search.value = q.search || ''
+  selCategory.value = q.category ? Number(q.category) : null
+  selBrand.value = q.brand ? Number(q.brand) : null
+  inStockOnly.value = q.inStock === 'true'
+  minPrice.value = q.minPrice || ''
+  maxPrice.value = q.maxPrice || ''
+  selSports.value = q.sports ? q.sports.split(',') : []
+  selColors.value = q.colors ? q.colors.split(',') : []
+  selSizes.value = q.sizes ? q.sizes.split(',') : []
+  selMaterials.value = q.materials ? q.materials.split(',').map(Number) : []
+  sortBy.value = q.sort || 'featured'
+  page.value = Number(q.page) || 1
+}
+
+// Đẩy trạng thái Bộ Lọc lên URL
+const updateURL = (resetPage = false) => {
+  if (resetPage) page.value = 1
+
+  const query = {}
+  if (search.value) query.search = search.value
+  if (selCategory.value) query.category = selCategory.value
+  if (selBrand.value) query.brand = selBrand.value
+  if (inStockOnly.value) query.inStock = 'true'
+  if (minPrice.value) query.minPrice = minPrice.value
+  if (maxPrice.value) query.maxPrice = maxPrice.value
+  if (selSports.value.length) query.sports = selSports.value.join(',')
+  if (selColors.value.length) query.colors = selColors.value.join(',')
+  if (selSizes.value.length) query.sizes = selSizes.value.join(',')
+  if (selMaterials.value.length) query.materials = selMaterials.value.join(',')
+  if (sortBy.value !== 'featured') query.sort = sortBy.value
+  if (page.value > 1) query.page = page.value
+
+  router.push({ path: '/products', query })
+}
+
+// Toggle phần tử trong mảng lọc
+const toggle = (arr, val) => {
+  const i = arr.indexOf(val)
+  if (i === -1) arr.push(val); else arr.splice(i, 1)
+  updateURL(true)
+}
+
+// Xóa sạch bộ lọc
+const clearFilters = () => {
+  search.value = ''
+  selCategory.value = null
+  selBrand.value = null
+  inStockOnly.value = false
+  minPrice.value = ''
+  maxPrice.value = ''
+  selSports.value = []
+  selColors.value = []
+  selSizes.value = []
+  selMaterials.value = []
+  sortBy.value = 'featured'
+  page.value = 1
+  router.push({ path: '/products' })
+}
+
+// Chuyển trang
+const changePage = (newPage) => {
+  if (newPage >= 1 && newPage <= totalPages.value) {
+    page.value = newPage
+    updateURL(false)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// Lắng nghe thay đổi URL Query để tải lại sản phẩm
+watch(() => route.query, () => {
+  parseURLQuery()
+  fetchProducts()
+}, { immediate: true })
+
+const activeCategoryName = computed(() => categories.value.find((c) => c.id_category === selCategory.value)?.category_name)
+
+onMounted(async () => {
+  await fetchMetadata()
+})
+</script>
+
+<template>
+  <div class="products-page" :class="{ 'd-flex align-items-center justify-content-center min-vh-100': isCentered }">
+    <div class="container-fluid px-4 py-4" :style="isCentered ? 'max-width: 1200px; width: 100%;' : ''">
+      <!-- Header -->
+      <div class="page-head">
+        <div>
+          <div class="sg-title-bar mb-2"></div>
+          <h1 class="page-title">{{ activeCategoryName || 'TẤT CẢ SẢN PHẨM' }}</h1>
+          <p class="text-secondary mb-0">Tìm thấy {{ totalItems }} sản phẩm</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <button class="btn-sg-outline d-lg-none" @click="showFiltersMobile = !showFiltersMobile">
+            <i class="bi bi-funnel me-1"></i>Lọc
+          </button>
+          <select v-model="sortBy" @change="updateURL(true)" class="sg-input sort-sel">
+            <option value="featured">Nổi bật</option>
+            <option value="price-asc">Giá thấp → cao</option>
+            <option value="price-desc">Giá cao → thấp</option>
+            <option value="name">Tên A → Z</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <!-- LEFT FILTERS -->
+        <aside class="col-lg-3" :class="{ 'd-none d-lg-block': !showFiltersMobile }">
+          <div class="filter-panel sg-card">
+            <div class="filter-top">
+              <h6 class="mb-0 fw-bold"><i class="bi bi-sliders me-2"></i>Bộ lọc</h6>
+              <button class="btn-clear" @click="clearFilters">Xóa lọc</button>
+            </div>
+
+            <!-- Từ khóa tìm kiếm -->
+            <div class="filter-group">
+              <label class="filter-label">TÌM KIẾM</label>
+              <div class="search-inline">
+                <i class="bi bi-search"></i>
+                <input 
+                  v-model="search" 
+                  type="search" 
+                  placeholder="Tìm tên, kiểu dáng…" 
+                  @keyup.enter="updateURL(true)"
+                >
+              </div>
+            </div>
+
+            <!-- Lọc Tồn kho (S2) -->
+            <div class="filter-group">
+              <label class="check-row fw-bold text-dark">
+                <input type="checkbox" v-model="inStockOnly" @change="updateURL(true)">
+                <span>Chỉ hiện sản phẩm còn hàng</span>
+              </label>
+            </div>
+
+            <!-- Lọc Khoảng giá (S2) -->
+            <div class="filter-group">
+              <label class="filter-label">KHOẢNG GIÁ (VNĐ)</label>
+              <div class="d-flex gap-2 align-items-center mb-2">
+                <input v-model="minPrice" type="number" class="price-input" placeholder="Từ" @change="updateURL(true)">
+                <span>-</span>
+                <input v-model="maxPrice" type="number" class="price-input" placeholder="Đến" @change="updateURL(true)">
+              </div>
+            </div>
+
+            <!-- Lọc Thương hiệu / Hãng (S2) -->
+            <div v-if="brands.length" class="filter-group">
+              <label class="filter-label">THƯƠNG HIỆU</label>
+              <div class="chip-wrap">
+                <button 
+                  v-for="b in brands" 
+                  :key="b.id_brand" 
+                  class="filter-chip" 
+                  :class="{ active: selBrand === b.id_brand }" 
+                  @click="selBrand = selBrand === b.id_brand ? null : b.id_brand; updateURL(true)"
+                >
+                  {{ b.brand_name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Thể loại / Bộ môn (S2) -->
+            <div v-if="sports.length" class="filter-group">
+              <label class="filter-label">BỘ MÔN / THỂ THAO</label>
+              <div class="chip-wrap">
+                <button 
+                  v-for="s in sports" 
+                  :key="s" 
+                  class="filter-chip" 
+                  :class="{ active: selSports.includes(s) }" 
+                  @click="toggle(selSports, s)"
+                >
+                  {{ s }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Màu sắc (S2) -->
+            <div v-if="colors.length" class="filter-group">
+              <label class="filter-label">MÀU SẮC</label>
+              <div class="color-wrap">
+                <button 
+                  v-for="c in colors" 
+                  :key="c.id_color" 
+                  class="color-dot" 
+                  :class="{ active: selColors.includes(c.color_label) }" 
+                  :style="{ background: c.hex || '#ccc' }" 
+                  :title="c.color_label" 
+                  @click="toggle(selColors, c.color_label)"
+                >
+                  <i v-if="selColors.includes(c.color_label)" class="bi bi-check-lg"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Kích cỡ (S2) -->
+            <div v-if="sizes.length" class="filter-group">
+              <label class="filter-label">KÍCH CỠ (SIZE)</label>
+              <div class="size-wrap">
+                <button 
+                  v-for="s in sizes" 
+                  :key="s.id_size" 
+                  class="size-box" 
+                  :class="{ active: selSizes.includes(s.size_name) }" 
+                  @click="toggle(selSizes, s.size_name)"
+                >
+                  {{ s.size_name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Chất liệu -->
+            <div v-if="materials.length" class="filter-group">
+              <label class="filter-label">CHẤT LIỆU</label>
+              <div class="d-flex flex-column gap-2">
+                <label v-for="m in materials" :key="m.id_material" class="check-row">
+                  <input 
+                    type="checkbox" 
+                    :value="m.id_material" 
+                    :checked="selMaterials.includes(m.id_material)" 
+                    @change="toggle(selMaterials, m.id_material)"
+                  >
+                  <span>{{ m.material_name }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- PRODUCT GRID & PAGINATION -->
+        <div class="col-lg-9">
+          <!-- Loading State -->
+          <div v-if="isLoading" class="text-center py-5">
+            <div class="spinner-border" style="color: #222;"></div>
+            <p class="mt-2 text-secondary">Đang tải danh sách sản phẩm…</p>
+          </div>
+
+          <!-- Empty State & Fallback Suggestions (S1) -->
+          <div v-else-if="products.length === 0" class="empty-state sg-card">
+            <i class="bi bi-search display-4 text-muted"></i>
+            <h5 class="mt-3">Không tìm thấy sản phẩm phù hợp</h5>
+            <p class="text-secondary">Rất tiếc, không có món nào khớp với lựa chọn của bạn.</p>
+            <button class="btn-sg mb-4" @click="clearFilters">Xóa bộ lọc để xem tất cả</button>
+
+            <!-- Gợi ý sản phẩm bán chạy khi không tìm thấy kết quả (S1) -->
+            <div v-if="bestSellers.length > 0" class="mt-5 text-start border-top pt-4">
+              <h6 class="fw-bold text-uppercase mb-3"><i class="bi bi-fire text-danger me-2"></i>Sản phẩm bán chạy gợi ý cho bạn:</h6>
+              <div class="row row-cols-2 row-cols-md-3 g-3">
+                <div v-for="item in bestSellers" :key="item.id_product" class="col">
+                  <ShoeCard :product="item" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Product Grid -->
+          <div v-else>
+            <div class="row row-cols-2 row-cols-md-3 g-4">
+              <div class="col fade-in" v-for="product in products" :key="product.id_product">
+                <ShoeCard :product="product" />
+              </div>
+            </div>
+
+            <!-- PHÂN TRANG / PAGINATION (S2) -->
+            <div v-if="totalPages > 1" class="pagination-wrap mt-5 d-flex justify-content-center align-items-center gap-2">
+              <button 
+                class="btn-page" 
+                :disabled="page === 1" 
+                @click="changePage(page - 1)"
+              >
+                <i class="bi bi-chevron-left"></i> Trước
+              </button>
+
+              <button 
+                v-for="p in totalPages" 
+                :key="p" 
+                class="btn-page-num" 
+                :class="{ active: p === page }" 
+                @click="changePage(p)"
+              >
+                {{ p }}
+              </button>
+
+              <button 
+                class="btn-page" 
+                :disabled="page === totalPages" 
+                @click="changePage(page + 1)"
+              >
+                Sau <i class="bi bi-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.products-page { background: var(--sg-canvas, #f8f9fa); min-height: 100vh; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; margin: 0; }
+.sort-sel { padding: .5rem 1rem; font-weight: 600; min-width: 160px; border-radius: 4px; border: 1px solid #ccc; }
+
+.filter-panel {
+  background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 20px;
+  position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;
+}
+.filter-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #eee; margin-bottom: 16px; }
+.btn-clear { border: 0; background: transparent; color: #D4001A; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.btn-clear:hover { text-decoration: underline; }
+.filter-group { padding: 14px 0; border-bottom: 1px dashed #eee; }
+.filter-group:last-child { border-bottom: 0; }
+.filter-label { font-weight: 700; font-size: .82rem; color: #444; margin-bottom: 10px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.search-inline { display: flex; align-items: center; gap: 8px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 6px 12px; }
+.search-inline i { color: #888; }
+.search-inline input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; font-size: 0.88rem; }
+
+.price-input { width: 100%; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; outline: none; }
+.price-input:focus { border-color: #1a1a1a; }
+
+.chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-chip { border: 1px solid #ddd; background: #fff; border-radius: 4px; padding: .3rem .8rem; font-size: .8rem; font-weight: 600; color: #444; transition: .2s; cursor: pointer; }
+.filter-chip:hover { border-color: #0A0A0A; color: #0A0A0A; }
+.filter-chip.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
+
+.color-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.color-dot { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #ccc; color: transparent; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; cursor: pointer; }
+.color-dot:hover { transform: scale(1.1); border-color: #0A0A0A; }
+.color-dot.active { box-shadow: 0 0 0 2px #0A0A0A; border-color: #0A0A0A; color: #fff; }
+
+.size-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.size-box { width: 44px; height: 38px; border: 1px solid #ccc; background: #fff; border-radius: 4px; font-weight: 600; font-size: 0.85rem; transition: .2s; display: flex; align-items: center; justify-content: center; color: #0A0A0A; cursor: pointer; }
+.size-box:hover { border-color: #0A0A0A; }
+.size-box.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
+
+.check-row { display: flex; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: #0A0A0A; }
+
+.empty-state { text-align: center; padding: 40px 20px; background: #fff; border-radius: 6px; border: 1px solid #eee; }
+
+/* Styles cho Phân trang */
+.pagination-wrap { user-select: none; }
+.btn-page { border: 1px solid #ccc; background: #fff; padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; transition: 0.2s; cursor: pointer; }
+.btn-page:hover:not(:disabled) { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.btn-page:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-page-num { border: 1px solid #ccc; background: #fff; width: 38px; height: 38px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; transition: 0.2s; cursor: pointer; }
+.btn-page-num:hover { border-color: #1a1a1a; }
+.btn-page-num.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+</style>
