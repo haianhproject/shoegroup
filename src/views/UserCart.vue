@@ -1,15 +1,78 @@
 <script setup>
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   cartItems, cartCount, cartSubtotal, cartShippingFee, cartTotal,
   formatCurrency, increaseQuantity, decreaseQuantity, removeFromCart, clearCart,
+  refreshCartAvailability, cartHasUnavailableItems, isCheckingCartStock,
 } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import { isAuthenticated } from '../stores/authStore'
 
 const router = useRouter()
 
-const goCheckout = () => {
+let stockPollTimer = null
+let lastUnavailableSignature = ''
+
+const checkCartStock = async ({ announceCurrent = false } = {}) => {
+  const result = await refreshCartAvailability()
+  if (!result.ok) return result
+
+  const unavailable = [...result.outOfStock, ...result.insufficient]
+  const signature = unavailable
+    .map(item => `${item.id_product_detail}:${item.stockAvailability}:${item.stockQuantity}`)
+    .sort()
+    .join('|')
+  const shouldAnnounce = unavailable.length > 0 && (
+    announceCurrent || result.newlyUnavailable.length > 0
+  ) && signature !== lastUnavailableSignature
+
+  if (shouldAnnounce) {
+    if (result.outOfStock.length > 0) {
+      notify({
+        type: 'error',
+        title: 'Sản phẩm vừa hết hàng',
+        message: `${result.outOfStock.length} sản phẩm/biến thể trong giỏ đã hết do khách khác mua trước. Sản phẩm đã được làm mờ; vui lòng xóa và chọn sản phẩm khác.`,
+      })
+    } else {
+      notify({
+        type: 'warning',
+        title: 'Số lượng trong kho đã thay đổi',
+        message: 'Một số sản phẩm không còn đủ số lượng. Vui lòng giảm số lượng trước khi thanh toán.',
+      })
+    }
+  }
+  lastUnavailableSignature = signature
+  return result
+}
+
+const onPageVisible = () => {
+  if (document.visibilityState === 'visible') checkCartStock()
+}
+
+onMounted(async () => {
+  await checkCartStock({ announceCurrent: true })
+  stockPollTimer = window.setInterval(() => checkCartStock(), 30000)
+  document.addEventListener('visibilitychange', onPageVisible)
+  window.addEventListener('focus', onPageVisible)
+})
+
+onUnmounted(() => {
+  if (stockPollTimer) window.clearInterval(stockPollTimer)
+  document.removeEventListener('visibilitychange', onPageVisible)
+  window.removeEventListener('focus', onPageVisible)
+})
+
+const goCheckout = async () => {
+  const stockResult = await checkCartStock({ announceCurrent: true })
+  if (!stockResult.ok) {
+    notify({ type: 'warning', title: 'Chưa kiểm tra được tồn kho', message: 'Vui lòng thử lại sau ít phút.' })
+    return
+  }
+  if (stockResult.outOfStock.length || stockResult.insufficient.length || cartHasUnavailableItems.value) {
+    notify({ type: 'error', title: 'Chưa thể thanh toán', message: 'Hãy xóa sản phẩm hết hàng hoặc giảm số lượng theo tồn kho hiện tại.' })
+    return
+  }
   if (!isAuthenticated.value) {
     notify({ type: 'warning', title: 'Cần đăng nhập', message: 'Vui lòng đăng nhập để thanh toán.' })
     router.push('/login')
@@ -29,8 +92,8 @@ const attrsOf = (item) => {
   ].filter((x) => x.value)
 }
 
-const handleIncrease = (id) => {
-  const r = increaseQuantity(id)
+const handleIncrease = (item) => {
+  const r = increaseQuantity(item.id_product_detail)
   if (!r.ok) notify({ type: 'warning', message: r.message })
 }
 
@@ -60,9 +123,15 @@ const handleDecrease = (id) => {
       <div v-else class="row g-5">
         <div class="col-lg-8">
           <div class="cart-list">
-            <div class="cart-item" v-for="item in cartItems" :key="item.id_product_detail">
+            <div
+              class="cart-item"
+              :class="{ 'cart-item-unavailable': item.isOutOfStock || item.hasInsufficientStock }"
+              v-for="item in cartItems"
+              :key="item.id_product_detail"
+            >
               <router-link :to="`/product/${item.id_product}`" class="ci-img">
                 <img :src="item.color?.image || item.product?.image_url" :alt="item.product?.product_name">
+                <span v-if="item.isOutOfStock" class="ci-oos-badge">HẾT HÀNG</span>
               </router-link>
               
               <div class="ci-body">
@@ -80,12 +149,25 @@ const handleDecrease = (id) => {
                     {{ a.label }}: {{ a.value }}
                   </span>
                 </div>
+
+                <div v-if="item.isOutOfStock" class="ci-stock-alert">
+                  <i class="bi bi-exclamation-triangle-fill"></i>
+                  Biến thể này đã hết hàng do khách khác mua trước.
+                  <router-link to="/products">Chọn sản phẩm khác</router-link>
+                </div>
+                <div v-else-if="item.hasInsufficientStock" class="ci-stock-alert warning">
+                  <i class="bi bi-exclamation-circle-fill"></i>
+                  Kho chỉ còn {{ item.stockQuantity }} sản phẩm. Hãy giảm số lượng để tiếp tục.
+                </div>
                 
                 <div class="ci-foot mt-4">
                   <div class="qty-box">
-                    <button @click="handleDecrease(item.id_product_detail)"><i class="bi bi-dash"></i></button>
+                    <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)"><i class="bi bi-dash"></i></button>
                     <span>{{ item.quantity }}</span>
-                    <button @click="handleIncrease(item.id_product_detail)"><i class="bi bi-plus"></i></button>
+                    <button
+                      :disabled="item.isOutOfStock || item.hasInsufficientStock || item.quantity >= Number(item.stockQuantity || 0)"
+                      @click="handleIncrease(item)"
+                    ><i class="bi bi-plus"></i></button>
                   </div>
                   <div class="ci-price">{{ formatCurrency(item.subtotal) }}</div>
                 </div>
@@ -119,8 +201,12 @@ const handleDecrease = (id) => {
               <strong>{{ formatCurrency(cartTotal) }}</strong>
             </div>
             
-            <button class="btn-sg-warm w-100 mt-4" @click="goCheckout">
-              TIẾN HÀNH THANH TOÁN
+            <button
+              class="btn-sg-warm w-100 mt-4"
+              :disabled="isCheckingCartStock || cartHasUnavailableItems"
+              @click="goCheckout"
+            >
+              {{ isCheckingCartStock ? 'ĐANG KIỂM TRA TỒN KHO...' : 'TIẾN HÀNH THANH TOÁN' }}
             </button>
             <router-link to="/products" class="btn-sg-outline w-100 mt-3 text-center d-block">
               TIẾP TỤC MUA SẮM
@@ -183,6 +269,19 @@ const handleDecrease = (id) => {
   gap: 24px;
   padding: 24px 0;
   border-bottom: 1px solid #e5e5e5;
+  transition: opacity 0.2s, background 0.2s;
+}
+.cart-item-unavailable {
+  background: #fafafa;
+}
+.cart-item-unavailable .ci-img img {
+  filter: grayscale(1);
+  opacity: 0.38;
+}
+.cart-item-unavailable .ci-name,
+.cart-item-unavailable .ci-attrs,
+.cart-item-unavailable .ci-price {
+  opacity: 0.5;
 }
 .ci-img {
   width: 140px;
@@ -190,12 +289,25 @@ const handleDecrease = (id) => {
   background: #f5f5f5;
   flex-shrink: 0;
   display: block;
+  position: relative;
 }
 .ci-img img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.ci-oos-badge {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a1a;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 .ci-body {
   flex: 1;
@@ -244,6 +356,27 @@ const handleDecrease = (id) => {
   padding-right: 0;
 }
 
+.ci-stock-alert {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #d4001a;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.ci-stock-alert.warning {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+.ci-stock-alert a {
+  color: inherit;
+  margin-left: 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .ci-foot {
   display: flex;
   align-items: center;
@@ -272,6 +405,11 @@ const handleDecrease = (id) => {
   transition: background 0.2s;
 }
 .qty-box button:hover {
+  background: #f5f5f5;
+}
+.qty-box button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
   background: #f5f5f5;
 }
 .qty-box span {

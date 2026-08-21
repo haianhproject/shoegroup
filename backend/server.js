@@ -36,6 +36,7 @@ const loginLimiter = createRateLimiter({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxLogin,
   key: "login",
+  skipSuccessfulRequests: true,
   message: "Ban dang nhap sai qua nhieu lan. Vui long thu lai sau 15 phut.",
 });
 app.use(attachUser); // [TOI UU] doc JWT tu header Authorization
@@ -1046,6 +1047,28 @@ app.put("/api/orders/:id/address", async (req, res) => {
         shippingAddress: updatedAddress,
         customerName: address.recipient,
         customerPhone: address.phone,
+      });
+    }
+
+    // Moi don chi duoc DOI THAT SU dia chi mot lan. Order dang duoc khoa
+    // UPDLOCK/HOLDLOCK nen hai request song song se xep hang; request thu hai
+    // se thay marker cua request dau va bi tu choi.
+    const previousAddressChange = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query(`
+        SELECT TOP (1) HistoryID
+        FROM OrderStatusHistory WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@oid
+          AND LEFT(ISNULL(Note, N''), 17)=N'[ADDRESS_CHANGED]'
+        ORDER BY HistoryID
+      `);
+    if (previousAddressChange.recordset.length > 0) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        code: "ADDRESS_CHANGE_LIMIT_REACHED",
+        addressChanged: true,
+        message: "Moi don hang chi duoc doi dia chi nhan hang mot lan.",
       });
     }
 

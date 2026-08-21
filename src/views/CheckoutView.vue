@@ -1,7 +1,10 @@
 <script setup>
 import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { cartItems, cartCount, cartSubtotal, formatCurrency, clearCart } from '../stores/cartStore'
+import {
+  cartItems, cartCount, cartSubtotal, formatCurrency, clearCart,
+  refreshCartAvailability, cartHasUnavailableItems,
+} from '../stores/cartStore'
 import { createOrder, setServerId, removeOrder, orderState, saveOrders } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
@@ -75,6 +78,21 @@ const loadAddresses = async () => {
 }
 
 onMounted(async () => {
+  const stockResult = await refreshCartAvailability()
+  if (!stockResult.ok) {
+    notify({ type: 'warning', title: 'Chưa kiểm tra được tồn kho', message: 'Vui lòng quay lại giỏ hàng và thử lại.' })
+    router.replace('/cart')
+    return
+  }
+  if (stockResult.outOfStock.length || stockResult.insufficient.length || cartHasUnavailableItems.value) {
+    notify({
+      type: 'error',
+      title: 'Giỏ hàng đã thay đổi',
+      message: 'Có sản phẩm vừa hết hàng hoặc không còn đủ số lượng. Vui lòng kiểm tra lại giỏ hàng.',
+    })
+    router.replace('/cart')
+    return
+  }
   await Promise.all([loadAddresses(), fetchProvinces()])
 })
 
@@ -355,6 +373,22 @@ const payLater = () => {
 }
 
 const placeOrder = async () => {
+  if (placing.value) return
+  const stockResult = await refreshCartAvailability()
+  if (!stockResult.ok) {
+    notify({ type: 'warning', title: 'Chưa kiểm tra được tồn kho', message: 'Vui lòng thử lại sau ít phút.' })
+    return
+  }
+  if (stockResult.outOfStock.length || stockResult.insufficient.length || cartHasUnavailableItems.value) {
+    notify({
+      type: 'error',
+      title: 'Sản phẩm vừa hết hàng',
+      message: 'Khách khác đã mua trước một sản phẩm trong giỏ. Vui lòng chọn sản phẩm khác.',
+    })
+    router.push('/cart')
+    return
+  }
+
   const deliveryAddress = selectedAddress.value
   const deliveryAddressText = formatAddress(deliveryAddress)
   if (!selectedAddressId.value || !deliveryAddress || !deliveryAddressText) {
@@ -438,11 +472,29 @@ const placeOrder = async () => {
     }
   } catch (error) {
     removeOrder(clientOrder.order.id)
-    notify({
-      type: 'error',
-      title: 'Không thể đặt hàng',
-      message: error.message || 'Không thể tạo đơn trên máy chủ. Giỏ hàng của bạn vẫn được giữ nguyên.'
-    })
+    if (error?.status === 409) {
+      const refreshed = await refreshCartAvailability()
+      if (refreshed.ok && (refreshed.outOfStock.length || refreshed.insufficient.length || cartHasUnavailableItems.value)) {
+        notify({
+          type: 'error',
+          title: 'Sản phẩm vừa hết hàng',
+          message: 'Khách khác đã mua sản phẩm trước bạn. Giỏ hàng đã được cập nhật; vui lòng chọn sản phẩm khác.',
+        })
+        router.push('/cart')
+      } else {
+        notify({
+          type: 'error',
+          title: 'Không thể đặt hàng',
+          message: error.message || 'Thông tin đơn hàng vừa thay đổi. Vui lòng kiểm tra lại.',
+        })
+      }
+    } else {
+      notify({
+        type: 'error',
+        title: 'Không thể đặt hàng',
+        message: error.message || 'Không thể tạo đơn trên máy chủ. Giỏ hàng của bạn vẫn được giữ nguyên.'
+      })
+    }
     return
   } finally {
     placing.value = false
@@ -491,7 +543,7 @@ const placeOrder = async () => {
                 <option v-if="addressesLoading" :value="null" disabled>Đang tải sổ địa chỉ…</option>
                 <option v-else :value="null" disabled>-- Chọn địa chỉ đã lưu trong sổ --</option>
                 <option v-for="a in savedAddresses" :key="a.id" :value="a.id">
-                  {{ a.recipient || a.fullName }} - {{ a.phone }} ({{ formatAddress(a) }}) {{ a.isDefault ? ' [⭐ Mặc định]' : '' }}
+                  {{ a.recipient || a.fullName }} - {{ a.phone }} ({{ formatAddress(a) }}) {{ a.isDefault ? ' [Mặc định]' : '' }}
                 </option>
               </select>
             </div>
@@ -659,7 +711,7 @@ const placeOrder = async () => {
       <div v-if="addrModal.open" class="modal-overlay" @click.self="addrModal.open = false">
         <div class="sg-card modal-box">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">Thêm địa chỉ mới ✨</h5>
+            <h5 class="fw-bold mb-0">Thêm địa chỉ mới</h5>
             <button class="btn-close-modal" @click="addrModal.open = false"><i class="bi bi-x-lg"></i></button>
           </div>
 

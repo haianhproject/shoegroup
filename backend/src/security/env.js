@@ -88,8 +88,12 @@ const config = {
 
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-    maxLogin: Number(process.env.RATE_LIMIT_MAX_LOGIN || 10),
-    maxApi: Number(process.env.RATE_LIMIT_MAX_API || 600),
+    maxLogin: Number(
+      process.env.RATE_LIMIT_MAX_LOGIN || process.env.LOGIN_RATE_LIMIT_MAX || 10,
+    ),
+    maxApi: Number(
+      process.env.RATE_LIMIT_MAX_API || process.env.RATE_LIMIT_MAX || 600,
+    ),
   },
 };
 

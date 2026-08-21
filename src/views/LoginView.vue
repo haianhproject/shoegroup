@@ -11,6 +11,7 @@ const showPwd = ref(false)
 const loading = ref(false)
 
 const submit = async () => {
+  if (loading.value) return
   if (!form.email || !form.password) { notify({ type: 'error', message: 'Vui lòng nhập email và mật khẩu.' }); return }
   loading.value = true
   const r = await login({ email: form.email, password: form.password })

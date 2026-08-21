@@ -1,6 +1,6 @@
 <!-- Trang: Quản Lý Xác Nhận Thanh Toán (Online / Offline + Chi tiết + Hóa đơn) -->
 <script setup>
-import { onMounted } from 'vue'
+import { reactive } from 'vue'
 import {
   paymentChannel, paymentSearch,
   paymentChannelOrders, paymentChannelCount, paymentTotalCount, countOrdersByChannel,
@@ -8,10 +8,56 @@ import {
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
-  formatDate, formatPrice, fetchAllData,
+  formatDate, formatPrice,
 } from '../adminStore'
 
-onMounted(fetchAllData)
+const transitionConfirm = reactive({
+  open: false,
+  order: null,
+  action: null,
+  busy: false,
+})
+
+function requestOrderAction(order, action) {
+  if (!order || !action || action.locked || transitionConfirm.busy) return
+  if (action.isCancel) {
+    runOrderAction(order, action)
+    return
+  }
+  transitionConfirm.order = order
+  transitionConfirm.action = action
+  transitionConfirm.open = true
+}
+
+function closeTransitionConfirm() {
+  if (transitionConfirm.busy) return
+  transitionConfirm.open = false
+  transitionConfirm.order = null
+  transitionConfirm.action = null
+}
+
+async function confirmTransition() {
+  if (!transitionConfirm.order || !transitionConfirm.action || transitionConfirm.busy) return
+  transitionConfirm.busy = true
+  try {
+    await runOrderAction(transitionConfirm.order, transitionConfirm.action)
+    transitionConfirm.open = false
+    transitionConfirm.order = null
+    transitionConfirm.action = null
+  } finally {
+    transitionConfirm.busy = false
+  }
+}
+
+function transitionMessage() {
+  const order = transitionConfirm.order
+  const action = transitionConfirm.action
+  if (!order || !action) return ''
+  if (action.markPaid) {
+    return `Bạn chắc chắn muốn chuyển trạng thái thanh toán của đơn #${order.id} sang “Đã thanh toán”?`
+  }
+  return `Bạn chắc chắn muốn chuyển đơn #${order.id} từ “${order.status}” sang “${action.next}”?`
+}
 </script>
 
 <template>
@@ -73,7 +119,7 @@ onMounted(fetchAllData)
                 <td>
                   <div class="d-flex align-items-center gap-2">
                     <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
-                    <span v-if="ord.address_changed" class="badge bg-warning text-dark" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
+                    <span v-if="ord.address_changed" class="badge bg-danger text-white" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
                   </div>
                   <div class="text-secondary" style="font-size:0.78rem;">
                     <span v-text="ord.handled_by || ord.customer_name || 'Khách lẻ'"></span>
@@ -156,7 +202,7 @@ onMounted(fetchAllData)
               <div class="col-md-6">
                 <span class="text-secondary d-block mb-1">Địa chỉ nhận hàng</span>
                 <span class="fw-medium text-dark" v-text="orderDetail.order.customer_address || '—'"></span>
-                <span v-if="orderDetail.order.address_changed" class="badge bg-warning text-dark ms-2">Đã đổi địa chỉ</span>
+                <span v-if="orderDetail.order.address_changed" class="badge bg-danger text-white ms-2">Đã đổi địa chỉ</span>
               </div>
             </div>
           </div>
@@ -209,8 +255,8 @@ onMounted(fetchAllData)
               <p class="text-secondary mb-2" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Tiến trình đơn hàng</p>
               <div class="d-grid gap-2">
                 <button v-for="act in getOrderActions(orderDetail.order)" :key="act.key"
-                  @click="runOrderAction(orderDetail.order, act)"
-                  :disabled="act.locked"
+                  @click="requestOrderAction(orderDetail.order, act)"
+                  :disabled="act.locked || transitionConfirm.open || transitionConfirm.busy"
                   class="btn btn-sm fw-medium"
                   style="border-radius:4px;"
                   :class="act.class"
@@ -224,5 +270,40 @@ onMounted(fetchAllData)
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="transitionConfirm.open"
+        class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+        style="z-index:2050;background:rgba(10,10,10,0.62);"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transition-confirm-title"
+        @click.self="closeTransitionConfirm"
+      >
+        <div class="bg-white border border-dark p-4 w-100" style="max-width:440px;border-radius:4px;box-shadow:0 18px 48px rgba(0,0,0,0.2);">
+          <h6 id="transition-confirm-title" class="fw-bold text-dark mb-2">Xác nhận chuyển trạng thái</h6>
+          <p class="text-secondary small mb-4" v-text="transitionMessage()"></p>
+          <div class="d-flex justify-content-end gap-2">
+            <button
+              type="button"
+              class="btn btn-sm btn-white border border-dark text-dark px-3"
+              :disabled="transitionConfirm.busy"
+              @click="closeTransitionConfirm"
+            >Hủy bỏ</button>
+            <button
+              type="button"
+              class="btn btn-sm btn-dark text-white px-3"
+              :disabled="transitionConfirm.busy"
+              @click="confirmTransition"
+            >
+              <span v-if="transitionConfirm.busy" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+              <span v-text="transitionConfirm.busy ? 'Đang cập nhật...' : 'Xác nhận chuyển'"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
   </div>
 </template>

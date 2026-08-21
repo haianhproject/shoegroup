@@ -344,7 +344,7 @@ const copyCoupon = (code) => {
           <!-- Addresses -->
           <div v-else-if="tab === 'address'" class="sg-card acc-block">
             <div class="d-flex justify-content-between align-items-center mb-3">
-              <div><div class="sg-title-bar mb-2"></div><h5 class="fw-bold mb-0">Sổ địa chỉ nhận hàng ✨</h5></div>
+              <div><div class="sg-title-bar mb-2"></div><h5 class="fw-bold mb-0">Sổ địa chỉ nhận hàng</h5></div>
               <button class="btn-sg" @click="openAdd"><i class="bi bi-plus-lg me-1"></i>Thêm địa chỉ mới</button>
             </div>
             <div v-if="loadingAddresses" class="text-center py-5 text-muted empty-state">
@@ -416,7 +416,7 @@ const copyCoupon = (code) => {
       <div v-if="modal.open" class="modal-overlay" @click.self="closeModal">
         <div class="sg-card modal-box">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">{{ modal.editId ? 'Cập nhật địa chỉ 📝' : 'Thêm địa chỉ mới ✨' }}</h5>
+            <h5 class="fw-bold mb-0">{{ modal.editId ? 'Cập nhật địa chỉ' : 'Thêm địa chỉ mới' }}</h5>
             <button class="btn-close-modal" @click="closeModal"><i class="bi bi-x-lg"></i></button>
           </div>
 

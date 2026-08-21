@@ -182,6 +182,14 @@ const loadSavedAddresses = async () => {
 }
 
 const openChangeAddress = async (order) => {
+  if (order.addressChanged) {
+    notify({
+      type: 'warning',
+      title: 'Đã hết lượt đổi địa chỉ',
+      message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.'
+    })
+    return
+  }
   if (['SHIPPING', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
     notify({
       type: 'warning',
@@ -279,6 +287,12 @@ const saveNewAddrQuick = async () => {
 }
 
 const confirmUpdateAddress = async () => {
+  const liveOrder = orderState.orders.find(o => o.id === changeAddrModal.order?.id)
+  if (changeAddrModal.order?.addressChanged || liveOrder?.addressChanged) {
+    notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.' })
+    changeAddrModal.open = false
+    return
+  }
   const targetAddr = savedAddresses.value.find(a => a.id === changeAddrModal.selectedAddrId)
   if (!targetAddr) {
     notify({ type: 'error', message: 'Vui lòng chọn một địa chỉ từ sổ địa chỉ.' })
@@ -321,7 +335,17 @@ const confirmUpdateAddress = async () => {
     notify({ type: 'success', title: 'Thành công', message: 'Đã đổi địa chỉ nhận đơn hàng thành công!' })
     changeAddrModal.open = false
   } catch (e) {
-    notify({ type: 'error', message: e.message || 'Không thể cập nhật địa chỉ lúc này. Vui lòng thử lại.' })
+    if (e?.status === 409 && e?.data?.code === 'ADDRESS_CHANGE_LIMIT_REACHED') {
+      const localOrder = orderState.orders.find(o => o.id === orderId)
+      if (localOrder) {
+        localOrder.addressChanged = true
+        saveOrders()
+      }
+      changeAddrModal.open = false
+      notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Địa chỉ của đơn này đã được đổi một lần trước đó.' })
+    } else {
+      notify({ type: 'error', message: e.message || 'Không thể cập nhật địa chỉ lúc này. Vui lòng thử lại.' })
+    }
   } finally {
     changeAddrModal.updating = false
   }
@@ -390,7 +414,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <div>
               <div class="fw-bold small text-dark">
                 <i class="bi bi-geo-alt-fill text-danger me-1"></i>Địa chỉ nhận hàng:
-                <span v-if="o.addressChanged" class="badge bg-warning text-dark ms-2">Đã đổi</span>
+                <span v-if="o.addressChanged" class="badge bg-danger text-white ms-2">Đã đổi địa chỉ</span>
               </div>
               <div class="small text-secondary mt-1">
                 <strong>{{ o.customer?.fullName }}</strong> ({{ o.customer?.phone }}) -
@@ -399,13 +423,13 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             </div>
             <div>
               <button
-                v-if="['PENDING', 'CONFIRMED'].includes(o.status)"
+                v-if="['PENDING', 'CONFIRMED'].includes(o.status) && !o.addressChanged"
                 class="btn-change-addr"
                 @click.stop="openChangeAddress(o)"
               >
                 <i class="bi bi-pencil-square me-1"></i>Đổi sổ địa chỉ
               </button>
-              <span v-else class="badge bg-secondary text-white py-2 px-3 small">
+              <span v-else-if="!o.addressChanged" class="badge bg-secondary text-white py-2 px-3 small">
                 <i class="bi bi-lock-fill me-1"></i>Khóa đổi địa chỉ
               </span>
             </div>

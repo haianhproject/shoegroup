@@ -1,5 +1,6 @@
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { currentUser } from "./authStore";
+import { api } from "../services/apiClient";
 
 // ============================================================
 // STORAGE
@@ -127,6 +128,9 @@ export const cartState = reactive({
   items: loadCartForUser(currentUser.value),
   isMiniCartOpen: false,
 });
+
+export const isCheckingCartStock = ref(false);
+let cartStockRefreshInFlight = null;
 
 // ============================================================
 // THEO DÕI ĐỔI TÀI KHOẢN
@@ -262,6 +266,164 @@ export const cartTotal = computed(() => {
     cartShippingFee.value
   );
 });
+
+// ============================================================
+// KIEM TRA TON KHO THAT
+// ============================================================
+
+const normalizeVariantText = (value) =>
+  String(value ?? "").trim().toLocaleLowerCase("vi-VN");
+
+const isEnabled = (value) =>
+  !(value === false || value === 0 || value === "0");
+
+export const cartUnavailableItems = computed(() =>
+  cartState.items.filter(
+    (item) => item.isOutOfStock === true || item.hasInsufficientStock === true,
+  ),
+);
+
+export const cartHasUnavailableItems = computed(
+  () => cartUnavailableItems.value.length > 0,
+);
+
+const refreshCartStockFromServer = async () => {
+  if (!cartState.items.length) {
+    return {
+      ok: true,
+      outOfStock: [],
+      insufficient: [],
+      newlyUnavailable: [],
+    };
+  }
+
+  const refreshUserKey = activeUserKey;
+  const requestedItems = new Map(
+    cartState.items.map((item) => [String(item.id_product_detail), item]),
+  );
+  isCheckingCartStock.value = true;
+  try {
+    const products = await api.get("/products");
+    if (!Array.isArray(products)) {
+      throw new Error("Du lieu ton kho khong hop le.");
+    }
+    // Tai khoan co the dang xuat/dang nhap trong luc request dang chay.
+    // Khong duoc ap ket qua cua gio cu sang gio cua tai khoan moi.
+    if (activeUserKey !== refreshUserKey) {
+      return {
+        ok: false,
+        cancelled: true,
+        message: "Gio hang da thay doi trong luc kiem tra ton kho.",
+        outOfStock: [],
+        insufficient: [],
+        newlyUnavailable: [],
+      };
+    }
+
+    const productsById = new Map(
+      products.map((product) => [
+        String(product.id ?? product.ProductID),
+        product,
+      ]),
+    );
+    const outOfStock = [];
+    const insufficient = [];
+    const newlyUnavailable = [];
+    const checkedAt = Date.now();
+
+    for (const item of cartState.items) {
+      if (requestedItems.get(String(item.id_product_detail)) !== item) continue;
+      const productId =
+        item.id_product ?? item.product?.id_product ?? item.product_id;
+      const product = productsById.get(String(productId));
+      const productActive = product && isEnabled(product.active ?? product.IsActive);
+      const variants = Array.isArray(product?.variants) ? product.variants : [];
+      const variantId = item.variant_id;
+      let variant = null;
+
+      if (variantId !== null && variantId !== undefined && String(variantId) !== "") {
+        // Variant ID la dinh danh chinh. Khong tu doi sang SKU khac neu ID cu mat.
+        variant = variants.find(
+          (candidate) => String(candidate.id ?? candidate.ProductVariantID) === String(variantId),
+        );
+      } else {
+        const wantedSize = normalizeVariantText(
+          item.size?.size_name ?? item.size,
+        );
+        const wantedColor = normalizeVariantText(
+          item.color?.color_label ?? item.color?.color_name ?? item.color,
+        );
+        variant = variants.find(
+          (candidate) =>
+            normalizeVariantText(candidate.size ?? candidate.Size) === wantedSize &&
+            normalizeVariantText(candidate.color ?? candidate.ColorName) === wantedColor,
+        );
+      }
+
+      const variantActive = variant && isEnabled(variant.active ?? variant.IsActive);
+      const stock = Math.max(
+        0,
+        Number(
+          variant?.stock ??
+            variant?.StockQuantity ??
+            (variants.length === 0
+              ? product?.total_stock ?? product?.stock_quantity ?? product?.stock
+              : 0),
+        ) || 0,
+      );
+      const variantFound = Boolean(variant) || Boolean(product && variants.length === 0);
+      const isOutOfStock =
+        !product ||
+        !productActive ||
+        !variantFound ||
+        (!variantActive && variants.length > 0) ||
+        stock <= 0;
+      const hasInsufficientStock =
+        !isOutOfStock && Number(item.quantity || 0) > stock;
+      const nextStatus = isOutOfStock
+        ? "out_of_stock"
+        : hasInsufficientStock
+          ? "insufficient"
+          : "available";
+      const previousStatus = item.stockAvailability || "available";
+
+      item.stockQuantity = stock;
+      item.isOutOfStock = isOutOfStock;
+      item.hasInsufficientStock = hasInsufficientStock;
+      item.stockAvailability = nextStatus;
+      item.stockCheckedAt = checkedAt;
+
+      if (isOutOfStock) outOfStock.push(item);
+      if (hasInsufficientStock) insufficient.push(item);
+      if (
+        previousStatus === "available" &&
+        (nextStatus === "out_of_stock" || nextStatus === "insufficient")
+      ) {
+        newlyUnavailable.push(item);
+      }
+    }
+
+    return { ok: true, outOfStock, insufficient, newlyUnavailable };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error?.message || "Khong the kiem tra ton kho luc nay.",
+      outOfStock: [],
+      insufficient: [],
+      newlyUnavailable: [],
+    };
+  } finally {
+    isCheckingCartStock.value = false;
+  }
+};
+
+export const refreshCartAvailability = () => {
+  if (cartStockRefreshInFlight) return cartStockRefreshInFlight;
+  cartStockRefreshInFlight = refreshCartStockFromServer().finally(() => {
+    cartStockRefreshInFlight = null;
+  });
+  return cartStockRefreshInFlight;
+};
 
 // ============================================================
 // ADD TO CART
@@ -539,6 +701,11 @@ export const addToCart = (payload) => {
     existingItem.stockQuantity =
       currentStock;
 
+    existingItem.isOutOfStock = false;
+    existingItem.hasInsufficientStock = false;
+    existingItem.stockAvailability = "available";
+    existingItem.stockCheckedAt = Date.now();
+
     existingItem.unitPrice =
       productPrice;
 
@@ -648,6 +815,11 @@ export const addToCart = (payload) => {
 
     stockQuantity:
       stock,
+
+    isOutOfStock: false,
+    hasInsufficientStock: false,
+    stockAvailability: "available",
+    stockCheckedAt: Date.now(),
   });
 
   return {
@@ -676,6 +848,13 @@ export const increaseQuantity = (
       ok: false,
       message:
         "Không tìm thấy sản phẩm trong giỏ.",
+    };
+  }
+
+  if (item.isOutOfStock) {
+    return {
+      ok: false,
+      message: "Sản phẩm này đã hết hàng. Vui lòng chọn sản phẩm khác.",
     };
   }
 
@@ -744,6 +923,15 @@ export const decreaseQuantity = (
 
   item.quantity =
     quantity - 1;
+
+  const stock = Number(item.stockQuantity || 0);
+  item.hasInsufficientStock =
+    !item.isOutOfStock && quantity - 1 > stock;
+  item.stockAvailability = item.isOutOfStock
+    ? "out_of_stock"
+    : item.hasInsufficientStock
+      ? "insufficient"
+      : "available";
 
   return {
     ok: true,

@@ -138,7 +138,13 @@ const adminRequired = (req, res, next) =>
     : deny(res, 403, "Chi quan tri vien moi duoc thao tac.");
 
 /* ---------- 3. Rate limit (khong can thu vien ngoai) ---------- */
-function createRateLimiter({ windowMs, max, key = "default", message }) {
+function createRateLimiter({
+  windowMs,
+  max,
+  key = "default",
+  message,
+  skipSuccessfulRequests = false,
+}) {
   const hits = new Map();
   setInterval(() => {
     const now = Date.now();
@@ -156,6 +162,15 @@ function createRateLimiter({ windowMs, max, key = "default", message }) {
     if (!rec || now > rec.reset) rec = { count: 0, reset: now + windowMs };
     rec.count += 1;
     hits.set(id, rec);
+    if (skipSuccessfulRequests) {
+      res.once("finish", () => {
+        if (res.statusCode >= 400) return;
+        const current = hits.get(id);
+        if (!current) return;
+        current.count = Math.max(0, current.count - 1);
+        if (current.count === 0) hits.delete(id);
+      });
+    }
     if (rec.count > max) {
       res.setHeader("Retry-After", Math.ceil((rec.reset - now) / 1000));
       return res.status(429).json({
