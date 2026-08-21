@@ -43,18 +43,23 @@ const POLICIES = [
   ["GET", /^\/api\/postoffices/, "PUBLIC"],
   ["GET", /^\/api\/shippingmethods/, "PUBLIC"],
   ["POST", /^\/api\/shipping\/quote$/, "PUBLIC"],
-  ["POST", /^\/api\/orders$/, "PUBLIC"],
-  ["PUT", /^\/api\/orders\/\d+\/payment$/, "PUBLIC"],
 
   // ===== Khach hang da dang nhap =====
   ["PUT", /^\/api\/orders\/\d+\/status$/, "CUSTOMER"], // khach tu huy don cua minh
+  ["POST", /^\/api\/orders$/, "CUSTOMER"],
+  ["PUT", /^\/api\/orders\/\d+\/payment$/, "CUSTOMER"],
+  ["PUT", /^\/api\/orders\/\d+\/address$/, "CUSTOMER"],
   ["PUT", /^\/api\/orders\/\d+\/receive$/, "CUSTOMER"],
+  ["GET", /^\/api\/addresses$/, "CUSTOMER"],
+  ["POST", /^\/api\/addresses$/, "CUSTOMER"],
+  ["PUT", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
+  ["DELETE", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
   ["POST", /^\/api\/returns$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/orders$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/notifications$/, "CUSTOMER"],
   ["PUT", /^\/api\/accounts\/\d+$/, "CUSTOMER"], // tu cap nhat thong tin ca nhan
   ["GET", /^\/api\/returns$/, "CUSTOMER"],
-  ["GET", /^\/api\/orders$/, "CUSTOMER"],
+  ["GET", /^\/api\/orders$/, "ADMIN"],
 
   // ===== Chi Admin =====
   ["*", /^\/api\/accounts/, "ADMIN"],
@@ -133,7 +138,13 @@ const adminRequired = (req, res, next) =>
     : deny(res, 403, "Chi quan tri vien moi duoc thao tac.");
 
 /* ---------- 3. Rate limit (khong can thu vien ngoai) ---------- */
-function createRateLimiter({ windowMs, max, key = "default", message }) {
+function createRateLimiter({
+  windowMs,
+  max,
+  key = "default",
+  message,
+  skipSuccessfulRequests = false,
+}) {
   const hits = new Map();
   setInterval(() => {
     const now = Date.now();
@@ -151,6 +162,15 @@ function createRateLimiter({ windowMs, max, key = "default", message }) {
     if (!rec || now > rec.reset) rec = { count: 0, reset: now + windowMs };
     rec.count += 1;
     hits.set(id, rec);
+    if (skipSuccessfulRequests) {
+      res.once("finish", () => {
+        if (res.statusCode >= 400) return;
+        const current = hits.get(id);
+        if (!current) return;
+        current.count = Math.max(0, current.count - 1);
+        if (current.count === 0) hits.delete(id);
+      });
+    }
     if (rec.count > max) {
       res.setHeader("Retry-After", Math.ceil((rec.reset - now) / 1000));
       return res.status(429).json({

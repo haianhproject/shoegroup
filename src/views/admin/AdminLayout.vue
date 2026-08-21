@@ -244,7 +244,7 @@ onMounted(fetchAllData);
 
     <!-- ============ MAIN ============ -->
     <main
-      class="flex-grow-1 transition-main d-flex flex-column bg-light-gray"
+      class="flex-grow-1 transition-main d-flex flex-column bg-light-gray position-relative"
       :style="{ marginLeft: isNavOpen ? '260px' : '0' }"
     >
       <header
@@ -277,13 +277,14 @@ onMounted(fetchAllData);
 
       <div
         v-if="isLoading"
-        class="d-flex flex-column justify-content-center align-items-center h-100 flex-grow-1"
+        class="position-absolute start-0 end-0 bottom-0 d-flex flex-column justify-content-center align-items-center"
+        style="top: 72px; z-index: 20; background: rgba(245, 246, 248, 0.96)"
       >
         <div class="spinner-border text-dark mb-3"></div>
         <p class="fw-medium text-secondary">Đang nạp dữ liệu từ CSDL...</p>
       </div>
 
-      <div v-else class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
+      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
         <!-- Mỗi trang con được render tại đây -->
         <router-view />
       </div>

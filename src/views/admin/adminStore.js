@@ -39,6 +39,8 @@ export const db = reactive({
   colors: [],
   sizes: [],
   materials: [],
+  soles: [],
+  cushionings: [],
   reviews: [],
 });
 
@@ -606,7 +608,7 @@ export function getOrderActions(o) {
             key: "bank_paid",
             text: "Xác nhận đã nhận tiền",
             markPaid: true,
-            class: "btn-primary text-white",
+            class: "btn-dark text-white",
           }
         ];
       }
@@ -615,13 +617,13 @@ export function getOrderActions(o) {
           key: "wait_bank",
           text: "Chờ khách chuyển khoản",
           locked: true,
-          class: "btn-light text-secondary border",
+          class: "btn-light text-dark border",
         },
         {
           key: "bank_paid",
           text: "Đã nhận tiền (Thủ công)",
           markPaid: true,
-          class: "btn-outline-primary ms-2",
+          class: "btn-outline-dark ms-2",
         }
       ];
     }
@@ -637,7 +639,7 @@ export function getOrderActions(o) {
         key: "complete",
         text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
-        class: "btn-info text-white",
+        class: "btn-dark text-white",
       });
     return acts;
   }
@@ -654,7 +656,7 @@ export function getOrderActions(o) {
       key: "ship",
       text: "Giao vận chuyển",
       next: "Đang vận chuyển",
-      class: "btn-primary text-white",
+      class: "btn-dark text-white",
     });
   else if (o.status === "Đang vận chuyển") {
     if (method === "COD" && !paid)
@@ -662,14 +664,14 @@ export function getOrderActions(o) {
         key: "cod_paid",
         text: "Thanh toán thành công (thu COD)",
         markPaid: true,
-        class: "btn-warning text-dark",
+        class: "btn-dark text-white",
       });
     else
       acts.push({
         key: "complete",
         text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
-        class: "btn-info text-white",
+        class: "btn-dark text-white",
       });
   }
   
@@ -3123,12 +3125,16 @@ export async function executeConfirm() {
 export function mapOrder(o) {
   return {
     id: o.OrderID ?? o.id,
-    date: o.OrderDate ?? o.date,
+    // Backend tra `created_at` theo ISO. Uu tien gia tri nay de JavaScript
+    // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
+    date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
     status: o.Status ?? o.status ?? "Chờ xác nhận",
     customer_name: o.CustomerName ?? o.customer_name ?? "Khách lẻ",
     customer_phone: o.CustomerPhone ?? o.customer_phone ?? "",
     customer_address: o.ShippingAddress ?? o.customer_address ?? "",
+    address_id: o.AddressID ?? o.address_id ?? null,
+    address_changed: Boolean(o.AddressChanged ?? o.address_changed),
     cancel_reason: o.CancelReason ?? o.cancel_reason ?? "",
     payment_status: o.PaymentStatus ?? o.payment_status ?? "Chưa thanh toán",
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
@@ -3152,7 +3158,19 @@ export function mapOrder(o) {
     })),
   };
 }
-export async function fetchAllData() {
+let fetchAllDataInFlight = null;
+
+export function fetchAllData() {
+  // Nhieu component/action co the yeu cau refresh cung luc. Dung chung mot
+  // Promise de khong tao bao request SQL va khong de request cu ghi de store.
+  if (fetchAllDataInFlight) return fetchAllDataInFlight;
+  fetchAllDataInFlight = loadAllData().finally(() => {
+    fetchAllDataInFlight = null;
+  });
+  return fetchAllDataInFlight;
+}
+
+async function loadAllData() {
   isLoading.value = true;
   apiErrors.value = [];
   try {
@@ -3187,6 +3205,30 @@ export async function fetchAllData() {
       api("/sizes"),
       api("/materials"),
     ]);
+    const responses = [
+      orders,
+      products,
+      categories,
+      discounts,
+      customers,
+      accounts,
+      brands,
+      collections,
+      inventory,
+      returns,
+      variantDiscounts,
+      colors,
+      sizes,
+      materials,
+    ];
+    // api() tra null khi API/SQL loi. Dung ngay truoc khi ghi store de du lieu
+    // dang hien thi khong bi bien thanh cac mang rong gia.
+    if (responses.some((value) => !Array.isArray(value))) {
+      const failed = apiErrors.value.map((item) => item.path).join(", ");
+      throw new Error(
+        "Khong tai duoc du lieu quan tri" + (failed ? ": " + failed : "."),
+      );
+    }
     // Sắp xếp theo đúng trường ngày sau khi ánh xạ (`date`).
     // Trước đây dùng `created_at` - trường KHÔNG tồn tại sau mapOrder -> so sánh NaN
     // nên danh sách đơn giữ nguyên thứ tự của API (nhiều khi cũ nhất lên đầu).
@@ -3352,25 +3394,17 @@ export async function fetchAllData() {
       name: m.MaterialName ?? m.name,
       active: (m.IsActive ?? m.active) !== false,
     }));
-    db.soles = (soles || []).map((s) => ({
-      id: s.SoleID ?? s.id,
-      name: s.SoleName ?? s.name,
-      active: (s.IsActive ?? s.active) !== false,
-    }));
-    db.cushionings = (cushionings || []).map((c) => ({
-      id: c.CushioningID ?? c.id,
-      name: c.CushioningName ?? c.name,
-      active: (c.IsActive ?? c.active) !== false,
-    }));
-    // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
-    const reviews = await api("/reviews");
-    db.reviews = (reviews || []).map((r) => ({
-      rating: Number(r.Rating ?? r.rating ?? r.stars ?? r.Score ?? 0),
-      product_id: r.ProductID ?? r.product_id,
-      product_name: r.ProductName ?? r.product_name ?? "",
-    }));
+    // Backend hien chua co API /soles, /cushionings va /reviews.
+    // Giu mang rong thay vi tham chieu bien chua khai bao lam dung ca lan tai.
+    db.soles = [];
+    db.cushionings = [];
+    db.reviews = [];
   } catch (err) {
     console.error("[fetchAllData] Error mapping admin data:", err);
+    notify(
+      "Không tải được dữ liệu quản trị. Vui lòng kiểm tra phiên đăng nhập và máy chủ.",
+      "error",
+    );
   } finally {
     isLoading.value = false;
   }
