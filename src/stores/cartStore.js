@@ -435,6 +435,11 @@ export const addToCart = (payload) => {
   //
   // ==========================================================
 
+  const hasFreshStock =
+    (stockQuantity !== null && stockQuantity !== undefined) ||
+    (product.stock_quantity !== null && product.stock_quantity !== undefined) ||
+    (product.total_stock !== null && product.total_stock !== undefined);
+
   let stock = Number(
     stockQuantity ??
       product.stock_quantity ??
@@ -457,6 +462,7 @@ export const addToCart = (payload) => {
     !Number.isFinite(
       requestedQuantity,
     ) ||
+    !Number.isInteger(requestedQuantity) ||
     requestedQuantity < 1
   ) {
     return {
@@ -513,12 +519,9 @@ export const addToCart = (payload) => {
 
     // Nếu API không gửi stock mới,
     // dùng stock đã lưu trong cart.
-    const currentStock =
-      stock > 0
-        ? stock
-        : Number(
-            existingItem.stockQuantity || 0,
-          );
+    const currentStock = hasFreshStock
+      ? stock
+      : Number(existingItem.stockQuantity ?? 0);
 
     if (newQuantity > currentStock) {
       return {

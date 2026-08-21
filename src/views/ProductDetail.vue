@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  cartState,
   addToCart,
   formatCurrency,
   showMiniCart
@@ -54,7 +53,9 @@ const fetchData = async () => {
         material_name: raw.material_name,
         brand_name: raw.brand,
         collection_name: raw.collection_name,
-        image_url: raw.image_url
+        image_url: raw.image_url,
+        stock_quantity: raw.stock_quantity ?? raw.stock ?? raw.total_stock ?? 0,
+        total_stock: raw.total_stock ?? raw.stock_quantity ?? raw.stock ?? 0
       }
 
       // ======================================================
@@ -527,65 +528,6 @@ const attributes = computed(() => {
   ].filter(
     (a) => a.value
   )
-})
-
-// ============================================================
-// SỐ LƯỢNG TRONG GIỎ CỦA BIẾN THỂ
-// ============================================================
-//
-// Chỉ dùng để hiển thị/tham khảo.
-// KHÔNG trừ khỏi kho.
-// ============================================================
-
-const variantCartQty = computed(() => {
-  if (
-    !product.value ||
-    !selectedVariant.value
-  ) {
-    return 0
-  }
-
-  const pid =
-    product.value.id_product
-
-  const variantId =
-    selectedVariantId.value
-
-  const item =
-    cartState.items.find(
-      (i) => {
-        if (
-          variantId !== null &&
-          variantId !== undefined
-        ) {
-          return (
-            i.id_product === pid &&
-            String(
-              i.variant_id
-            ) ===
-              String(variantId)
-          )
-        }
-
-        return (
-          i.id_product === pid &&
-          String(
-            i.size?.size_name
-          ) ===
-            String(selSize.value) &&
-          String(
-            i.color?.color_name
-          ) ===
-            String(
-              selColor.value.color_name
-            )
-        )
-      }
-    )
-
-  return item
-    ? Number(item.quantity) || 0
-    : 0
 })
 
 // ============================================================

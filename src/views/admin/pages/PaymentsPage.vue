@@ -1,5 +1,6 @@
 <!-- Trang: Quản Lý Xác Nhận Thanh Toán (Online / Offline + Chi tiết + Hóa đơn) -->
 <script setup>
+import { onMounted } from 'vue'
 import {
   paymentChannel, paymentSearch,
   paymentChannelOrders, paymentChannelCount, paymentTotalCount, countOrdersByChannel,
@@ -7,8 +8,10 @@ import {
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
-  formatDate, formatPrice,
+  formatDate, formatPrice, fetchAllData,
 } from '../adminStore'
+
+onMounted(fetchAllData)
 </script>
 
 <template>
@@ -68,7 +71,10 @@ import {
             <tbody>
               <tr v-for="ord in paymentChannelOrders" :key="ord.id">
                 <td>
-                  <div class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
+                    <span v-if="ord.address_changed" class="badge bg-warning text-dark" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
+                  </div>
                   <div class="text-secondary" style="font-size:0.78rem;">
                     <span v-text="ord.handled_by || ord.customer_name || 'Khách lẻ'"></span>
                     <span class="mx-1">|</span>
@@ -147,7 +153,11 @@ import {
               <div class="col-md-6"><span class="text-secondary d-block mb-1">Nhân viên xử lý</span><span class="fw-medium text-dark" v-text="orderDetail.order.handled_by || 'Admin'"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block mb-1">Khách hàng</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_name || 'Khách lẻ'"></span></div>
               <div class="col-md-6"><span class="text-secondary d-block mb-1">Số điện thoại</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_phone || '—'"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Địa chỉ nhận hàng</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_address || '—'"></span></div>
+              <div class="col-md-6">
+                <span class="text-secondary d-block mb-1">Địa chỉ nhận hàng</span>
+                <span class="fw-medium text-dark" v-text="orderDetail.order.customer_address || '—'"></span>
+                <span v-if="orderDetail.order.address_changed" class="badge bg-warning text-dark ms-2">Đã đổi địa chỉ</span>
+              </div>
             </div>
           </div>
 

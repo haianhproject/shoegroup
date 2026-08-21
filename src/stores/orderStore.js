@@ -238,6 +238,8 @@ const SERVER_STATUS_TO_KEY = {
   "Chờ xác nhận": "PENDING",
   "Chờ xử lý": "PENDING",
   "Đã xác nhận": "CONFIRMED",
+  "Đang lấy hàng": "CONFIRMED",
+  "Đang chuẩn bị hàng": "CONFIRMED",
   "Đang vận chuyển": "SHIPPING",
   "Đang giao": "SHIPPING",
   "Đã giao hàng thành công": "DELIVERED",
@@ -253,7 +255,10 @@ const CLIENT_TERMINAL = ["RECEIVED", "COMPLETED", "RETURNED"];
 const mapServerOrder = (s) => {
   const key = SERVER_STATUS_TO_KEY[s.status] || "PENDING";
   let createdAt = Date.now();
-  if (s.date) {
+  if (s.created_at) {
+    const d = new Date(s.created_at);
+    if (!isNaN(d)) createdAt = d.getTime();
+  } else if (s.date) {
     const m = String(s.date).match(/(\d{2})\/(\d{2})\/(\d{4})[ T]?(\d{2})?:?(\d{2})?:?(\d{2})?/);
     if (m) createdAt = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
     else { const d = new Date(s.date); if (!isNaN(d)) createdAt = d.getTime(); }
@@ -273,6 +278,9 @@ const mapServerOrder = (s) => {
     autoCancelled: false,
     cancelReason: s.cancel_reason || "",
     fromServer: true,
+    shippingAddress: s.shipping_address || s.customer_address || "",
+    addressId: s.address_id ?? null,
+    addressChanged: Boolean(s.address_changed),
     customer: {
       fullName: s.customer_name || "",
       phone: s.customer_phone || "",
@@ -292,8 +300,16 @@ const mapServerOrder = (s) => {
     shippingFee: s.shippingFee ?? 0,
     discount: s.discount ?? 0,
     total: s.total ?? 0,
-    shippingMethod: "",
-    paymentMethod: s.payment_method || "COD",
+    shippingMethod: {
+      code: s.shipping_method_code || "",
+      name: s.shipping_method || "Theo đơn hàng",
+      eta: s.shipping_eta || "",
+    },
+    paymentMethod: {
+      code: s.payment_method_code || "",
+      name: s.payment_method || "COD",
+    },
+    payment_status: s.payment_status || "Chưa thanh toán",
     note: s.note || "",
   };
 };
@@ -346,6 +362,37 @@ export const syncFromServer = async () => {
       changed = true;
     } else if (s.payment_method && typeof o.paymentMethod === 'string' && o.paymentMethod !== s.payment_method) {
       o.paymentMethod = s.payment_method;
+      changed = true;
+    }
+    const serverAddress = s.shipping_address || s.customer_address || "";
+    if (serverAddress && o.shippingAddress !== serverAddress) {
+      o.shippingAddress = serverAddress;
+      changed = true;
+    }
+    const serverAddressId = s.address_id ?? null;
+    if ((o.addressId ?? null) !== serverAddressId) {
+      o.addressId = serverAddressId;
+      changed = true;
+    }
+    const serverAddressChanged = Boolean(s.address_changed);
+    if (Boolean(o.addressChanged) !== serverAddressChanged) {
+      o.addressChanged = serverAddressChanged;
+      changed = true;
+    }
+    const customer = o.customer || {};
+    const serverCustomerName = s.customer_name || "";
+    const serverCustomerPhone = s.customer_phone || "";
+    if (
+      customer.fullName !== serverCustomerName ||
+      customer.phone !== serverCustomerPhone ||
+      (serverAddress && customer.address !== serverAddress)
+    ) {
+      o.customer = {
+        ...customer,
+        fullName: serverCustomerName,
+        phone: serverCustomerPhone,
+        address: serverAddress || customer.address || "",
+      };
       changed = true;
     }
   });

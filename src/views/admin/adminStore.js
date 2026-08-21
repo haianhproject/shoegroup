@@ -3129,6 +3129,8 @@ export function mapOrder(o) {
     customer_name: o.CustomerName ?? o.customer_name ?? "Khách lẻ",
     customer_phone: o.CustomerPhone ?? o.customer_phone ?? "",
     customer_address: o.ShippingAddress ?? o.customer_address ?? "",
+    address_id: o.AddressID ?? o.address_id ?? null,
+    address_changed: Boolean(o.AddressChanged ?? o.address_changed),
     cancel_reason: o.CancelReason ?? o.cancel_reason ?? "",
     payment_status: o.PaymentStatus ?? o.payment_status ?? "Chưa thanh toán",
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",

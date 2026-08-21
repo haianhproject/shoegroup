@@ -43,18 +43,23 @@ const POLICIES = [
   ["GET", /^\/api\/postoffices/, "PUBLIC"],
   ["GET", /^\/api\/shippingmethods/, "PUBLIC"],
   ["POST", /^\/api\/shipping\/quote$/, "PUBLIC"],
-  ["POST", /^\/api\/orders$/, "PUBLIC"],
-  ["PUT", /^\/api\/orders\/\d+\/payment$/, "PUBLIC"],
 
   // ===== Khach hang da dang nhap =====
   ["PUT", /^\/api\/orders\/\d+\/status$/, "CUSTOMER"], // khach tu huy don cua minh
+  ["POST", /^\/api\/orders$/, "CUSTOMER"],
+  ["PUT", /^\/api\/orders\/\d+\/payment$/, "CUSTOMER"],
+  ["PUT", /^\/api\/orders\/\d+\/address$/, "CUSTOMER"],
   ["PUT", /^\/api\/orders\/\d+\/receive$/, "CUSTOMER"],
+  ["GET", /^\/api\/addresses$/, "CUSTOMER"],
+  ["POST", /^\/api\/addresses$/, "CUSTOMER"],
+  ["PUT", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
+  ["DELETE", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
   ["POST", /^\/api\/returns$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/orders$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/notifications$/, "CUSTOMER"],
   ["PUT", /^\/api\/accounts\/\d+$/, "CUSTOMER"], // tu cap nhat thong tin ca nhan
   ["GET", /^\/api\/returns$/, "CUSTOMER"],
-  ["GET", /^\/api\/orders$/, "CUSTOMER"],
+  ["GET", /^\/api\/orders$/, "ADMIN"],
 
   // ===== Chi Admin =====
   ["*", /^\/api\/accounts/, "ADMIN"],

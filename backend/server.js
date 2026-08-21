@@ -222,6 +222,349 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
+// ================= API SO DIA CHI THEO TAI KHOAN =================
+const ADDRESS_SELECT = `
+  SELECT AddressID as id, UserID as userId,
+         RecipientName as recipient, ISNULL(Phone, '') as phone,
+         ISNULL(Province, '') as province, ISNULL(District, '') as district,
+         ISNULL(Ward, '') as ward, ISNULL(AddressLine, '') as line,
+         ISNULL(FullAddress, '') as fullAddress,
+         CAST(ISNULL(IsVerified, 0) AS bit) as isVerified,
+         CAST(ISNULL(IsDefault, 0) AS bit) as isDefault
+  FROM UserAddresses`;
+
+const cleanAddressText = (value, maxLength) =>
+  String(value ?? "")
+    .trim()
+    .slice(0, maxLength);
+
+function buildAddressPayload(body = {}, current = {}) {
+  const payload = {
+    recipient: cleanAddressText(
+      body.recipient ?? body.recipientName ?? current.recipient,
+      100,
+    ),
+    phone: cleanAddressText(body.phone ?? current.phone, 20),
+    province: cleanAddressText(
+      body.province ?? body.provinceName ?? current.province,
+      100,
+    ),
+    district: cleanAddressText(body.district ?? current.district, 100),
+    ward: cleanAddressText(
+      body.ward ?? body.communeName ?? current.ward,
+      100,
+    ),
+    line: cleanAddressText(
+      body.line ?? body.addressLine ?? current.line,
+      255,
+    ),
+  };
+  payload.fullAddress = [
+    payload.line,
+    payload.ward,
+    payload.district,
+    payload.province,
+  ]
+    .filter(Boolean)
+    .join(", ")
+    .slice(0, 500);
+  return payload;
+}
+
+function validateAddressPayload(payload) {
+  if (!payload.recipient || !payload.phone || !payload.province || !payload.ward || !payload.line) {
+    return "Vui long nhap day du nguoi nhan, so dien thoai va dia chi.";
+  }
+  if (!/^0(?:3|5|7|8|9)\d{8}$/.test(payload.phone)) {
+    return "So dien thoai nhan hang khong hop le.";
+  }
+  return null;
+}
+
+async function lockAddressesForUser(transaction, userId) {
+  const result = await new sql.Request(transaction)
+    .input("uid", sql.Int, userId)
+    .query(`${ADDRESS_SELECT} WITH (UPDLOCK, HOLDLOCK) WHERE UserID=@uid ORDER BY AddressID`);
+  return result.recordset;
+}
+
+async function keepOnlyDefaultAddress(transaction, userId, addressId) {
+  await new sql.Request(transaction)
+    .input("uid", sql.Int, userId)
+    .input("aid", sql.Int, addressId)
+    .query(`
+      UPDATE UserAddresses
+      SET IsDefault=CASE WHEN AddressID=@aid THEN 1 ELSE 0 END
+      WHERE UserID=@uid
+    `);
+}
+
+function preferredDefaultAddressId(addresses) {
+  if (!addresses.length) return null;
+  const defaults = addresses.filter((address) => address.isDefault);
+  return (defaults[defaults.length - 1] || addresses[addresses.length - 1]).id;
+}
+
+function normalizeOrderStatus(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .trim()
+    .toLowerCase();
+}
+
+async function restoreOrderStock(transaction, orderId) {
+  const details = await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .query(`
+      SELECT ProductID, ProductVariantID, Quantity, Size, Color
+      FROM OrderDetails
+      WHERE OrderID=@oid
+    `);
+  for (const row of details.recordset) {
+    if (row.ProductVariantID) {
+      await new sql.Request(transaction)
+        .input("vid", sql.Int, row.ProductVariantID)
+        .input("q", sql.Int, row.Quantity)
+        .query(`
+          UPDATE ProductVariants
+          SET StockQuantity=ISNULL(StockQuantity, 0)+@q
+          WHERE ProductVariantID=@vid
+        `);
+    } else if (row.ProductID && row.Size && row.Color) {
+      const variant = await new sql.Request(transaction)
+        .input("pid", sql.Int, row.ProductID)
+        .input("sz", sql.NVarChar, row.Size)
+        .input("clr", sql.NVarChar, row.Color)
+        .query(`
+          SELECT TOP 1 ProductVariantID as id
+          FROM ProductVariants WITH (UPDLOCK, HOLDLOCK)
+          WHERE ProductID=@pid AND ISNULL(Size, N'')=@sz AND ISNULL(ColorName, N'')=@clr
+          ORDER BY ProductVariantID
+        `);
+      const variantId = variant.recordset[0] && variant.recordset[0].id;
+      if (variantId) {
+        await new sql.Request(transaction)
+          .input("vid", sql.Int, variantId)
+          .input("q", sql.Int, row.Quantity)
+          .query(`
+            UPDATE ProductVariants
+            SET StockQuantity=ISNULL(StockQuantity, 0)+@q
+            WHERE ProductVariantID=@vid
+          `);
+      }
+    }
+  }
+}
+
+app.get("/api/addresses", async (req, res) => {
+  try {
+    const userId = Number(req.auth && req.auth.sub);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+    }
+    await poolConnect;
+    const result = await pool
+      .request()
+      .input("uid", sql.Int, userId)
+      .query(`${ADDRESS_SELECT} WHERE UserID=@uid ORDER BY IsDefault DESC, AddressID DESC`);
+    res.json(result.recordset);
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.post("/api/addresses", async (req, res) => {
+  const userId = Number(req.auth && req.auth.sub);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+
+  const body = req.body || {};
+  const payload = buildAddressPayload(body);
+  const validationError = validateAddressPayload(payload);
+  if (validationError) {
+    return res.status(400).json({ success: false, message: validationError });
+  }
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const lockedAddresses = await lockAddressesForUser(transaction, userId);
+    const defaultCount = lockedAddresses.filter((address) => address.isDefault).length;
+    const requestedDefault = body.isDefault === true || body.isDefault === 1;
+    const shouldBeDefault = requestedDefault || lockedAddresses.length === 0 || defaultCount === 0;
+
+    if (shouldBeDefault) {
+      await new sql.Request(transaction)
+        .input("uid", sql.Int, userId)
+        .query("UPDATE UserAddresses SET IsDefault=0 WHERE UserID=@uid");
+    } else if (defaultCount !== 1) {
+      await keepOnlyDefaultAddress(
+        transaction,
+        userId,
+        preferredDefaultAddressId(lockedAddresses),
+      );
+    }
+
+    const inserted = await new sql.Request(transaction)
+      .input("uid", sql.Int, userId)
+      .input("recipient", sql.NVarChar, payload.recipient)
+      .input("phone", sql.VarChar, payload.phone)
+      .input("province", sql.NVarChar, payload.province)
+      .input("district", sql.NVarChar, payload.district)
+      .input("ward", sql.NVarChar, payload.ward)
+      .input("line", sql.NVarChar, payload.line)
+      .input("full", sql.NVarChar, payload.fullAddress)
+      .input("isDefault", sql.Bit, shouldBeDefault).query(`
+        INSERT INTO UserAddresses
+          (UserID, RecipientName, Phone, Province, District, Ward, AddressLine, FullAddress, IsVerified, IsDefault, CreatedAt)
+        OUTPUT INSERTED.AddressID as id
+        VALUES (@uid, @recipient, @phone, @province, @district, @ward, @line, @full, 0, @isDefault, GETDATE())
+      `);
+    const addressId = inserted.recordset[0].id;
+    const result = await new sql.Request(transaction)
+      .input("uid", sql.Int, userId)
+      .input("aid", sql.Int, addressId)
+      .query(`${ADDRESS_SELECT} WHERE UserID=@uid AND AddressID=@aid`);
+    await transaction.commit();
+    res.status(201).json(result.recordset[0]);
+  } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.put("/api/addresses/:id", async (req, res) => {
+  const userId = Number(req.auth && req.auth.sub);
+  const addressId = Number(req.params.id);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(addressId) || addressId <= 0) {
+    return res.status(400).json({ success: false, message: "Dia chi khong hop le." });
+  }
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const lockedAddresses = await lockAddressesForUser(transaction, userId);
+    const current = lockedAddresses.find((address) => Number(address.id) === addressId);
+    if (!current) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay dia chi." });
+    }
+
+    const body = req.body || {};
+    const payload = buildAddressPayload(body, current);
+    const validationError = validateAddressPayload(payload);
+    if (validationError) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: validationError });
+    }
+
+    // Khi da co dia chi, he thong luon duy tri chinh xac mot dia chi mac dinh.
+    const defaultCount = lockedAddresses.filter((address) => address.isDefault).length;
+    const requestedDefault = body.isDefault === true || body.isDefault === 1;
+    const shouldBeDefault = requestedDefault || Boolean(current.isDefault) || defaultCount === 0;
+    if (shouldBeDefault) {
+      await new sql.Request(transaction)
+        .input("uid", sql.Int, userId)
+        .query("UPDATE UserAddresses SET IsDefault=0 WHERE UserID=@uid");
+    } else if (defaultCount !== 1) {
+      await keepOnlyDefaultAddress(
+        transaction,
+        userId,
+        preferredDefaultAddressId(lockedAddresses),
+      );
+    }
+
+    await new sql.Request(transaction)
+      .input("uid", sql.Int, userId)
+      .input("aid", sql.Int, addressId)
+      .input("recipient", sql.NVarChar, payload.recipient)
+      .input("phone", sql.VarChar, payload.phone)
+      .input("province", sql.NVarChar, payload.province)
+      .input("district", sql.NVarChar, payload.district)
+      .input("ward", sql.NVarChar, payload.ward)
+      .input("line", sql.NVarChar, payload.line)
+      .input("full", sql.NVarChar, payload.fullAddress)
+      .input("isDefault", sql.Bit, shouldBeDefault).query(`
+        UPDATE UserAddresses
+        SET RecipientName=@recipient, Phone=@phone, Province=@province,
+            District=@district, Ward=@ward, AddressLine=@line,
+            FullAddress=@full, IsVerified=0, IsDefault=@isDefault
+        WHERE UserID=@uid AND AddressID=@aid
+      `);
+
+    const result = await new sql.Request(transaction)
+      .input("uid", sql.Int, userId)
+      .input("aid", sql.Int, addressId)
+      .query(`${ADDRESS_SELECT} WHERE UserID=@uid AND AddressID=@aid`);
+    await transaction.commit();
+    res.json(result.recordset[0]);
+  } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.delete("/api/addresses/:id", async (req, res) => {
+  const userId = Number(req.auth && req.auth.sub);
+  const addressId = Number(req.params.id);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(addressId) || addressId <= 0) {
+    return res.status(400).json({ success: false, message: "Dia chi khong hop le." });
+  }
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const lockedAddresses = await lockAddressesForUser(transaction, userId);
+    if (!lockedAddresses.some((address) => Number(address.id) === addressId)) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay dia chi." });
+    }
+
+    // Don hang da luu snapshot ShippingAddress, nen co the bo FK truoc khi xoa khoi so.
+    await new sql.Request(transaction)
+      .input("aid", sql.Int, addressId)
+      .query("UPDATE Orders SET AddressID=NULL WHERE AddressID=@aid");
+    await new sql.Request(transaction)
+      .input("uid", sql.Int, userId)
+      .input("aid", sql.Int, addressId)
+      .query("DELETE FROM UserAddresses WHERE UserID=@uid AND AddressID=@aid");
+    const remainingAddresses = lockedAddresses.filter(
+      (address) => Number(address.id) !== addressId,
+    );
+    if (remainingAddresses.length) {
+      await keepOnlyDefaultAddress(
+        transaction,
+        userId,
+        preferredDefaultAddressId(remainingAddresses),
+      );
+    }
+    await transaction.commit();
+    res.json({ success: true });
+  } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ================= API QUAN LY DON HANG VA THANH TOAN =================
 
 // 1. TAO DON HANG (tu Checkout online VA tu Ban tai quay / POS)
@@ -231,31 +574,224 @@ app.post("/api/orders", async (req, res) => {
     await poolConnect;
     const b = req.body || {};
 
-    const userId = b.userId ?? b.user_id ?? null;
-    const totalAmount = b.totalAmount ?? b.total ?? 0;
-    const shippingAddress = b.shippingAddress ?? b.customer_address ?? "";
-    const customerName = b.customerName ?? b.customer_name ?? "Khach le";
-    const customerPhone = b.customerPhone ?? b.customer_phone ?? "";
-    const shippingFee = b.shippingFee ?? b.shipping_fee ?? 0;
-    const discountAmount = b.discountAmount ?? b.discount_amount ?? 0;
-    const paymentMethod = b.paymentMethod ?? b.payment_method ?? "COD";
-    const paymentStatus =
+    const isAdminOrder = req.auth && req.auth.role === "Admin";
+    const authenticatedUserId = Number(req.auth && req.auth.sub) || null;
+    const requestedUserId = b.userId ?? b.user_id ?? null;
+    const userId =
+      isAdminOrder
+        ? (requestedUserId == null || requestedUserId === "" ? null : Number(requestedUserId))
+        : authenticatedUserId;
+    let totalAmount = Number(b.totalAmount ?? b.total ?? 0);
+    let shippingAddress = b.shippingAddress ?? b.customer_address ?? "";
+    let customerName = b.customerName ?? b.customer_name ?? "Khach le";
+    let customerPhone = b.customerPhone ?? b.customer_phone ?? "";
+    const rawAddressId = b.addressId ?? b.address_id ?? null;
+    const addressId =
+      rawAddressId == null || rawAddressId === "" ? null : Number(rawAddressId);
+    let shippingFee = Number(b.shippingFee ?? b.shipping_fee ?? 0);
+    let discountAmount = Number(b.discountAmount ?? b.discount_amount ?? 0);
+    let paymentMethod = b.paymentMethod ?? b.payment_method ?? "COD";
+    let paymentStatus =
       b.paymentStatus ?? b.payment_status ?? "Chua thanh toan";
-    const status = b.status ?? "Chờ xác nhận";
-    const handledBy = b.handledBy ?? b.handled_by ?? null;
-    const note = b.note ?? b.order_note ?? "";
-    const couponCode = b.couponCode ?? b.coupon_code ?? null;
+    let status = b.status ?? "Chờ xác nhận";
+    let handledBy = b.handledBy ?? b.handled_by ?? null;
+    const note = cleanAddressText(b.note ?? b.order_note, 500);
+    const couponCode = cleanAddressText(b.couponCode ?? b.coupon_code, 50) || null;
     const items = b.items ?? b.products ?? [];
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "Don hang khong co san pham." });
+    }
+    if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
+      return res.status(400).json({ success: false, message: "Tai khoan dat hang khong hop le." });
+    }
+    if (addressId !== null && (!Number.isInteger(addressId) || addressId <= 0)) {
+      return res.status(400).json({ success: false, message: "Dia chi dat hang khong hop le." });
+    }
+    if (!isAdminOrder && addressId === null) {
+      return res.status(400).json({ success: false, message: "Vui long chon dia chi tu so dia chi." });
+    }
+
+    if (!isAdminOrder) {
+      const normalizedPaymentMethod = normalizeOrderStatus(paymentMethod);
+      if (["chuyen khoan", "bank"].some((token) => normalizedPaymentMethod.includes(token))) {
+        paymentMethod = "Chuyển khoản ngân hàng";
+      } else if (["cod", "nhan hang"].some((token) => normalizedPaymentMethod.includes(token))) {
+        paymentMethod = "Thanh toán khi nhận hàng (COD)";
+      } else {
+        return res.status(400).json({ success: false, message: "Phuong thuc thanh toan khong hop le." });
+      }
+      const shippingMethodCode = cleanAddressText(
+        b.shippingMethodCode ?? b.shipping_method_code ?? "STANDARD",
+        20,
+      ).toUpperCase();
+      if (!new Set(["STANDARD", "EXPRESS"]).has(shippingMethodCode)) {
+        return res.status(400).json({ success: false, message: "Phuong thuc van chuyen khong hop le." });
+      }
+      shippingFee = shippingMethodCode === "EXPRESS" ? 40000 : 30000;
+      status = "Chờ xác nhận";
+      paymentStatus = "Chưa thanh toán";
+      handledBy = "Online";
+    }
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     try {
+      if (addressId) {
+        if (!userId) {
+          const err = new Error("Can dang nhap de su dung dia chi da luu.");
+          err.statusCode = 401;
+          throw err;
+        }
+        const addressResult = await new sql.Request(transaction)
+          .input("uid", sql.Int, userId)
+          .input("aid", sql.Int, addressId)
+          .query(`${ADDRESS_SELECT} WHERE UserID=@uid AND AddressID=@aid`);
+        const selectedAddress = addressResult.recordset[0];
+        if (!selectedAddress) {
+          const err = new Error("Dia chi khong thuoc tai khoan dang dat hang.");
+          err.statusCode = 400;
+          throw err;
+        }
+        if (validateAddressPayload(selectedAddress)) {
+          const err = new Error("Dia chi da luu khong con hop le. Vui long cap nhat so dia chi.");
+          err.statusCode = 409;
+          throw err;
+        }
+        shippingAddress = selectedAddress.fullAddress || buildAddressPayload(selectedAddress).fullAddress;
+        customerName = selectedAddress.recipient;
+        customerPhone = selectedAddress.phone;
+      }
+
+      if (!isAdminOrder) {
+        let canonicalSubtotal = 0;
+        for (const item of items) {
+          const quantity = Number(item.quantity ?? 1);
+          const productId = Number(item.productId ?? item.product_id);
+          const rawVariantId =
+            item.productVariantId ??
+            item.product_variant_id ??
+            item.variant_id ??
+            null;
+          const variantId = rawVariantId === null ? null : Number(rawVariantId);
+          const size = cleanAddressText(item.size, 10);
+          const color = cleanAddressText(item.color, 50);
+          if (!Number.isInteger(quantity) || quantity <= 0) {
+            const err = new Error("So luong san pham trong don khong hop le.");
+            err.statusCode = 400;
+            throw err;
+          }
+          if (!Number.isInteger(productId) || productId <= 0) {
+            const err = new Error("Ma san pham trong don khong hop le.");
+            err.statusCode = 400;
+            throw err;
+          }
+          if (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0)) {
+            const err = new Error("Ma bien the san pham khong hop le.");
+            err.statusCode = 400;
+            throw err;
+          }
+          if (variantId === null && (!size || !color)) {
+            const err = new Error("San pham trong don thieu size hoac mau cua bien the.");
+            err.statusCode = 400;
+            throw err;
+          }
+
+          const priceRequest = new sql.Request(transaction)
+            .input("pid", sql.Int, productId)
+            .input("vid", sql.Int, variantId)
+            .input("sz", sql.NVarChar, size)
+            .input("clr", sql.NVarChar, color);
+          const pricedVariant = await priceRequest.query(`
+            SELECT TOP 1
+                   p.ProductName as name,
+                   CAST(CASE WHEN ISNULL(p.SalePrice, 0)>0 THEN p.SalePrice ELSE p.BasePrice END AS decimal(18,2)) as price,
+                   v.ProductVariantID as variantId,
+                   ISNULL(v.Size, N'') as size,
+                   ISNULL(v.ColorName, N'') as color
+            FROM Products p
+            JOIN ProductVariants v ON v.ProductID=p.ProductID
+            WHERE p.ProductID=@pid
+              AND ISNULL(p.IsActive, 1)=1
+              AND ISNULL(v.IsActive, 1)=1
+              AND (
+                (@vid IS NOT NULL AND v.ProductVariantID=@vid)
+                OR
+                (@vid IS NULL AND ISNULL(v.Size, N'')=@sz AND ISNULL(v.ColorName, N'')=@clr)
+              )
+            ORDER BY v.ProductVariantID
+          `);
+          const canonicalItem = pricedVariant.recordset[0];
+          if (!canonicalItem) {
+            const err = new Error("San pham hoac bien the khong con duoc kinh doanh.");
+            err.statusCode = 409;
+            throw err;
+          }
+
+          item.product_id = productId;
+          item.variant_id = Number(canonicalItem.variantId);
+          item.quantity = quantity;
+          item.price = Number(canonicalItem.price || 0);
+          item.name = canonicalItem.name || "San pham";
+          item.size = canonicalItem.size || size;
+          item.color = canonicalItem.color || color;
+          canonicalSubtotal += item.price * quantity;
+        }
+
+        discountAmount = 0;
+        if (couponCode) {
+          const couponResult = await new sql.Request(transaction)
+            .input("code", sql.VarChar, cleanAddressText(couponCode, 50))
+            .query(`
+              SELECT TOP 1 DiscountType, DiscountValue, DiscountPercent,
+                     MinOrderAmount, MaxDiscountAmount, UsageLimit, ISNULL(UsedCount, 0) as UsedCount
+              FROM Coupons WITH (UPDLOCK, HOLDLOCK)
+              WHERE CouponCode=@code AND ISNULL(IsActive, 1)=1
+                AND (StartDate IS NULL OR StartDate<=GETDATE())
+                AND ExpiryDate>=GETDATE()
+            `);
+          const coupon = couponResult.recordset[0];
+          if (!coupon || (Number(coupon.UsageLimit) > 0 && Number(coupon.UsedCount) >= Number(coupon.UsageLimit))) {
+            const err = new Error("Ma giam gia khong hop le hoac da het luot su dung.");
+            err.statusCode = 409;
+            throw err;
+          }
+          if (canonicalSubtotal < Number(coupon.MinOrderAmount || 0)) {
+            const err = new Error("Don hang chua dat gia tri toi thieu cua ma giam gia.");
+            err.statusCode = 409;
+            throw err;
+          }
+
+          const couponType = normalizeOrderStatus(coupon.DiscountType);
+          const couponValue = Number(coupon.DiscountValue || coupon.DiscountPercent || 0);
+          if (["co dinh", "fixed"].includes(couponType)) {
+            discountAmount = couponValue;
+          } else if (["phan tram", "percent"].includes(couponType)) {
+            discountAmount = Math.round((canonicalSubtotal * couponValue) / 100);
+          } else if (couponType === "freeship") {
+            discountAmount = shippingFee;
+          } else {
+            const err = new Error("Loai ma giam gia khong duoc ho tro.");
+            err.statusCode = 400;
+            throw err;
+          }
+          if (couponType === "freeship") {
+            discountAmount = Math.max(0, Math.min(discountAmount, shippingFee));
+          } else {
+            const maxDiscount = Number(coupon.MaxDiscountAmount || 0);
+            if (maxDiscount > 0) discountAmount = Math.min(discountAmount, maxDiscount);
+            discountAmount = Math.max(0, Math.min(discountAmount, canonicalSubtotal));
+          }
+        }
+        totalAmount = Math.max(0, canonicalSubtotal + shippingFee - discountAmount);
+      }
+
       const request = new sql.Request(transaction);
 
       // B1: Luu vao bang Orders (co PaymentStatus + HandledBy de phan biet Online/Offline)
       let orderResult = await request
         .input("uid", sql.Int, userId)
+        .input("addressId", sql.Int, addressId)
         .input("tot", sql.Decimal(18, 2), totalAmount)
         .input("cname", sql.NVarChar, customerName)
         .input("cphone", sql.VarChar, customerPhone)
@@ -267,27 +803,49 @@ app.post("/api/orders", async (req, res) => {
         .input("sfee", sql.Decimal(18, 2), shippingFee)
         .input("disc", sql.Decimal(18, 2), discountAmount)
         .input("note", sql.NVarChar, note).query(`
-          INSERT INTO Orders (UserID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline)
+          INSERT INTO Orders (UserID, AddressID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline)
           OUTPUT INSERTED.OrderID
-          VALUES (@uid, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()))
+          VALUES (@uid, @addressId, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()))
         `);
 
       const orderId = orderResult.recordset[0].OrderID;
 
       // B2: Luu tung san pham vao bang OrderDetails (ho tro ca ProductID lan bien the)
       for (let item of items) {
-        const productId = item.productId ?? item.product_id ?? null;
-        const variantId =
+        const quantity = Number(item.quantity ?? 1);
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+          const err = new Error("So luong san pham trong don khong hop le.");
+          err.statusCode = 400;
+          throw err;
+        }
+        const productId = Number(item.productId ?? item.product_id);
+        const rawVariantId =
           item.productVariantId ??
           item.product_variant_id ??
           item.variant_id ??
           null;
+        const variantId = rawVariantId === null ? null : Number(rawVariantId);
+        if (!Number.isInteger(productId) || productId <= 0) {
+          const err = new Error("Ma san pham trong don khong hop le.");
+          err.statusCode = 400;
+          throw err;
+        }
+        if (variantId !== null && (!Number.isInteger(variantId) || variantId <= 0)) {
+          const err = new Error("Ma bien the san pham khong hop le.");
+          err.statusCode = 400;
+          throw err;
+        }
+        if (variantId === null && (!item.size || !item.color)) {
+          const err = new Error("San pham trong don thieu size hoac mau cua bien the.");
+          err.statusCode = 400;
+          throw err;
+        }
         const detailReq = new sql.Request(transaction);
         await detailReq
           .input("oid", sql.Int, orderId)
           .input("pid", sql.Int, productId)
           .input("vid", sql.Int, variantId)
-          .input("qty", sql.Int, item.quantity ?? 1)
+          .input("qty", sql.Int, quantity)
           .input("price", sql.Decimal(18, 2), item.price ?? 0)
           .input("sz", sql.NVarChar, item.size ?? "")
           .input("clr", sql.NVarChar, item.color ?? "")
@@ -300,38 +858,68 @@ app.post("/api/orders", async (req, res) => {
       // B3: TRU TON KHO (FIX) - truoc day ban tai quay khong he tru StockQuantity
       // nen ton kho khong bao gio ve 0 va trang Thong ke khong the bao "het hang".
       for (let item of items) {
-        const qty = Number(item.quantity ?? 1) || 1;
-        const variantId =
+        const qty = Number(item.quantity ?? 1);
+        const rawVariantId =
           item.productVariantId ??
           item.product_variant_id ??
           item.variant_id ??
           null;
-        const productId = item.productId ?? item.product_id ?? null;
+        const variantId = rawVariantId === null ? null : Number(rawVariantId);
+        const productId = Number(item.productId ?? item.product_id);
         const stockReq = new sql.Request(transaction);
         if (variantId) {
-          await stockReq
+          const stockResult = await stockReq
             .input("vid", sql.Int, variantId)
+            .input("pid", sql.Int, productId)
             .input("q", sql.Int, qty)
             .query(
               `UPDATE ProductVariants
-               SET StockQuantity = CASE WHEN ISNULL(StockQuantity, 0) - @q < 0 THEN 0
-                                        ELSE ISNULL(StockQuantity, 0) - @q END
-               WHERE ProductVariantID = @vid`,
+               SET StockQuantity = ISNULL(StockQuantity, 0) - @q
+               WHERE ProductVariantID = @vid
+                 AND (@pid IS NULL OR ProductID = @pid)
+                 AND ISNULL(IsActive, 1) = 1
+                 AND ISNULL(StockQuantity, 0) >= @q`,
             );
-        } else if (productId && (item.size || item.color)) {
-          await stockReq
+          if (Number(stockResult.rowsAffected[0] || 0) !== 1) {
+            const err = new Error("Bien the san pham da het hang hoac khong du so luong.");
+            err.statusCode = 409;
+            throw err;
+          }
+        } else if (productId && item.size && item.color) {
+          const foundVariant = await stockReq
             .input("pid", sql.Int, productId)
             .input("sz", sql.NVarChar, item.size ?? "")
             .input("clr", sql.NVarChar, item.color ?? "")
-            .input("q", sql.Int, qty)
             .query(
-              `UPDATE ProductVariants
-               SET StockQuantity = CASE WHEN ISNULL(StockQuantity, 0) - @q < 0 THEN 0
-                                        ELSE ISNULL(StockQuantity, 0) - @q END
-               WHERE ProductID = @pid
+              `SELECT TOP 1 ProductVariantID as id
+               FROM ProductVariants WITH (UPDLOCK, HOLDLOCK)
+               WHERE ProductID = @pid AND ISNULL(IsActive, 1) = 1
                  AND (@sz = N'' OR ISNULL(Size, N'') = @sz)
-                 AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`,
+                 AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)
+               ORDER BY ProductVariantID`,
             );
+          const fallbackVariantId = foundVariant.recordset[0] && foundVariant.recordset[0].id;
+          if (!fallbackVariantId) {
+            const err = new Error("Khong tim thay bien the san pham da chon.");
+            err.statusCode = 409;
+            throw err;
+          }
+          const stockResult = await new sql.Request(transaction)
+            .input("vid", sql.Int, fallbackVariantId)
+            .input("q", sql.Int, qty).query(`
+              UPDATE ProductVariants
+              SET StockQuantity=ISNULL(StockQuantity, 0)-@q
+              WHERE ProductVariantID=@vid AND ISNULL(StockQuantity, 0)>=@q
+            `);
+          if (Number(stockResult.rowsAffected[0] || 0) !== 1) {
+            const err = new Error("Bien the san pham da het hang hoac khong du so luong.");
+            err.statusCode = 409;
+            throw err;
+          }
+        } else {
+          const err = new Error("Khong co du thong tin de cap nhat ton kho san pham.");
+          err.statusCode = 400;
+          throw err;
         }
       }
 
@@ -346,12 +934,156 @@ app.post("/api/orders", async (req, res) => {
       }
 
       await transaction.commit();
-      res.json({ success: true, orderId, OrderID: orderId });
+      res.json({
+        success: true,
+        orderId,
+        OrderID: orderId,
+        subtotalAmount: Math.max(0, Number(totalAmount) - Number(shippingFee) + Number(discountAmount)),
+        shippingFee: Number(shippingFee),
+        discountAmount: Number(discountAmount),
+        totalAmount: Number(totalAmount),
+      });
     } catch (err) {
       await transaction.rollback();
       throw err;
     }
   } catch (e) {
+    res.status(e.statusCode || 500).json({ success: false, message: e.message });
+  }
+});
+
+// Khach chi duoc doi dia chi cua chinh minh truoc khi don bat dau giao.
+app.put("/api/orders/:id/address", async (req, res) => {
+  const authenticatedUserId = Number(req.auth && req.auth.sub);
+  const orderId = Number(req.params.id);
+  const addressId = Number(req.body && req.body.addressId);
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(orderId) || orderId <= 0 || !Number.isInteger(addressId) || addressId <= 0) {
+    return res.status(400).json({ success: false, message: "Don hang hoac dia chi khong hop le." });
+  }
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    // Moi luong sua/xoa dia chi deu khoa Address truoc Order de tranh deadlock.
+    const addressResult = await new sql.Request(transaction)
+      .input("aid", sql.Int, addressId)
+      .query(`${ADDRESS_SELECT} WITH (UPDLOCK, HOLDLOCK) WHERE AddressID=@aid`);
+    const address = addressResult.recordset[0];
+    if (!address) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "Dia chi khong hop le." });
+    }
+
+    const orderResult = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query(`
+        SELECT OrderID, UserID, AddressID, Status,
+               ISNULL(ShippingAddress, '') as ShippingAddress,
+               ISNULL(CustomerName, '') as CustomerName,
+               ISNULL(CustomerPhone, '') as CustomerPhone
+        FROM Orders WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@oid
+      `);
+    const order = orderResult.recordset[0];
+    if (!order) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    }
+    if (req.auth.role !== "Admin" && Number(order.UserID) !== authenticatedUserId) {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: "Ban khong duoc doi dia chi don hang nay." });
+    }
+
+    const editableStatuses = new Set([
+      "cho xac nhan",
+      "cho xu ly",
+      "pending",
+      "da xac nhan",
+      "confirmed",
+      "dang lay hang",
+      "dang chuan bi hang",
+      "processing",
+      "picking",
+    ]);
+    const normalizedStatus = normalizeOrderStatus(order.Status);
+    if (!editableStatuses.has(normalizedStatus)) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        message: "Don hang da bat dau giao hoac da ket thuc, khong the doi dia chi.",
+      });
+    }
+
+    if (Number(address.userId) !== Number(order.UserID)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: "Dia chi khong thuoc tai khoan dat hang." });
+    }
+    const addressValidationError = validateAddressPayload(address);
+    if (addressValidationError) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: "Dia chi da luu khong con hop le. Vui long cap nhat so dia chi." });
+    }
+
+    const updatedAddress = String(
+      address.fullAddress || buildAddressPayload(address).fullAddress,
+    ).slice(0, 500);
+    const hasSameSnapshot =
+      Number(order.AddressID) === addressId &&
+      String(order.ShippingAddress || "") === updatedAddress &&
+      String(order.CustomerName || "") === String(address.recipient || "") &&
+      String(order.CustomerPhone || "") === String(address.phone || "");
+    if (hasSameSnapshot) {
+      await transaction.commit();
+      return res.json({
+        success: true,
+        unchanged: true,
+        orderId,
+        addressId,
+        shippingAddress: updatedAddress,
+        customerName: address.recipient,
+        customerPhone: address.phone,
+      });
+    }
+
+    await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .input("uid", sql.Int, order.UserID)
+      .input("aid", sql.Int, addressId)
+      .input("address", sql.NVarChar, updatedAddress)
+      .input("name", sql.NVarChar, address.recipient)
+      .input("phone", sql.VarChar, address.phone).query(`
+        UPDATE Orders
+        SET AddressID=@aid, ShippingAddress=@address, CustomerName=@name,
+            CustomerPhone=@phone, UpdatedAt=GETDATE()
+        WHERE OrderID=@oid AND UserID=@uid
+      `);
+    const historyNote = `[ADDRESS_CHANGED] ${order.ShippingAddress || ""} => ${updatedAddress}`.slice(0, 500);
+    await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .input("status", sql.NVarChar, order.Status || "")
+      .input("note", sql.NVarChar, historyNote)
+      .input("uid", sql.Int, authenticatedUserId).query(`
+        INSERT INTO OrderStatusHistory (OrderID, OldStatus, NewStatus, Note, ChangedBy, ChangedAt)
+        VALUES (@oid, @status, @status, @note, @uid, GETDATE())
+      `);
+    await transaction.commit();
+    res.json({
+      success: true,
+      orderId,
+      addressId,
+      shippingAddress: updatedAddress,
+      customerName: address.recipient,
+      customerPhone: address.phone,
+      addressChanged: true,
+    });
+  } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
     res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -366,6 +1098,12 @@ app.get("/api/orders", async (req, res) => {
              ISNULL(o.CustomerName, u.FullName) as customer_name,
              ISNULL(o.CustomerPhone, u.Phone) as customer_phone,
              ISNULL(o.ShippingAddress, ISNULL(u.Address, N'Chua cap nhat dia chi')) as customer_address,
+             ISNULL(o.ShippingAddress, ISNULL(u.Address, N'Chua cap nhat dia chi')) as shipping_address,
+             o.AddressID as address_id,
+             CAST(CASE WHEN EXISTS (
+               SELECT 1 FROM OrderStatusHistory ach
+               WHERE ach.OrderID=o.OrderID AND LEFT(ISNULL(ach.Note, N''), 17)=N'[ADDRESS_CHANGED]'
+             ) THEN 1 ELSE 0 END AS bit) as address_changed,
              o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
              o.PaymentMethod as payment_method,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
@@ -417,63 +1155,136 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
-// Cap nhat trang thai don hang (Admin)
+// Admin cap nhat luong don; khach hang chi duoc huy don cua chinh minh.
 app.put("/api/orders/:id/status", async (req, res) => {
-  try {
-    await poolConnect;
-    const orderId = req.params.id;
-    const newStatus = req.body.status;
-    const reason = req.body.reason || "";
-    
-    const isCancel = newStatus === "Đã hủy" || newStatus === "Da huy" || newStatus === "CANCELLED";
+  const authenticatedUserId = Number(req.auth && req.auth.sub);
+  const orderId = Number(req.params.id);
+  const newStatus = cleanAddressText(req.body && req.body.status, 50);
+  const reason = cleanAddressText(req.body && req.body.reason, 500);
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(orderId) || orderId <= 0 || !newStatus) {
+    return res.status(400).json({ success: false, message: "Don hang hoac trang thai khong hop le." });
+  }
 
-    if (isCancel) {
-      // Kiem tra trang thai hien tai
-      const currOrder = await pool.request().input("id", sql.Int, orderId).query(`SELECT Status FROM Orders WHERE OrderID = @id`);
-      if (currOrder.recordset.length > 0) {
-        const currStatus = currOrder.recordset[0].Status;
-        if (currStatus !== "Đã hủy" && currStatus !== "Da huy" && currStatus !== "CANCELLED") {
-          // Hoan lai kho
-          const details = await pool.request().input("id", sql.Int, orderId).query(`SELECT ProductID, ProductVariantID, Quantity, Size, Color FROM OrderDetails WHERE OrderID = @id`);
-          for (let row of details.recordset) {
-            if (row.ProductVariantID) {
-              await pool.request().input("vid", sql.Int, row.ProductVariantID).input("q", sql.Int, row.Quantity).query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductVariantID = @vid`);
-            } else if (row.ProductID && (row.Size || row.Color)) {
-              await pool.request()
-                .input("pid", sql.Int, row.ProductID)
-                .input("sz", sql.NVarChar, row.Size || "")
-                .input("clr", sql.NVarChar, row.Color || "")
-                .input("q", sql.Int, row.Quantity)
-                .query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductID = @pid AND (@sz = N'' OR ISNULL(Size, N'') = @sz) AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`);
-            }
-          }
-        }
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const currentResult = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query(`
+        SELECT OrderID, UserID, Status
+        FROM Orders WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@oid
+      `);
+    const currentOrder = currentResult.recordset[0];
+    if (!currentOrder) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    }
+
+    const isAdmin = req.auth.role === "Admin";
+    const normalizedNewStatus = normalizeOrderStatus(newStatus);
+    const normalizedCurrentStatus = normalizeOrderStatus(currentOrder.Status);
+    const isCancel = ["da huy", "cancelled", "canceled"].includes(normalizedNewStatus);
+    const alreadyCancelled = ["da huy", "cancelled", "canceled"].includes(normalizedCurrentStatus);
+    const statusToSave = isCancel ? "Đã hủy" : newStatus;
+
+    if (alreadyCancelled && !isCancel) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: "Don hang da huy khong the mo lai." });
+    }
+
+    if (!isAdmin) {
+      if (Number(currentOrder.UserID) !== authenticatedUserId) {
+        await transaction.rollback();
+        return res.status(403).json({ success: false, message: "Ban khong duoc cap nhat don hang nay." });
+      }
+      if (!isCancel) {
+        await transaction.rollback();
+        return res.status(403).json({ success: false, message: "Khach hang chi co the huy don qua API nay." });
+      }
+      const cancellableStatuses = new Set([
+        "cho xac nhan", "cho xu ly", "pending", "da xac nhan", "confirmed",
+        "dang lay hang", "dang chuan bi hang", "processing", "picking",
+      ]);
+      if (!cancellableStatuses.has(normalizedCurrentStatus)) {
+        await transaction.rollback();
+        return res.status(409).json({ success: false, message: "Don hang khong con o trang thai co the huy." });
       }
     }
 
-    await pool
-      .request()
+    if (isCancel && !alreadyCancelled) {
+      await restoreOrderStock(transaction, orderId);
+    }
+
+    await new sql.Request(transaction)
       .input("id", sql.Int, orderId)
-      .input("s", sql.NVarChar, newStatus)
+      .input("s", sql.NVarChar, statusToSave)
       .input("r", sql.NVarChar, reason)
       .query(
         `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END) ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
       );
+    await transaction.commit();
     res.json({ success: true });
   } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
     res.status(500).json({ error: e.message });
   }
 });
 
 // Cập nhật trạng thái thanh toán từ khu quản trị.
 app.put("/api/orders/:id/payment", async (req, res) => {
-  console.log("PUT /payment => ID:", req.params.id, "BODY:", req.body);
+  const authenticatedUserId = Number(req.auth && req.auth.sub);
+  const orderId = Number(req.params.id);
+  const paymentStatus = cleanAddressText(req.body && req.body.payment_status, 30) || "Chưa thanh toán";
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ success: false, message: "Don hang khong hop le." });
+  }
+
   try {
     await poolConnect;
+    const orderResult = await pool
+      .request()
+      .input("id", sql.Int, orderId)
+      .query(`
+        SELECT OrderID, UserID, PaymentMethod, PaymentStatus
+        FROM Orders
+        WHERE OrderID=@id
+      `);
+    const order = orderResult.recordset[0];
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    }
+
+    if (req.auth.role !== "Admin") {
+      if (Number(order.UserID) !== authenticatedUserId) {
+        return res.status(403).json({ success: false, message: "Ban khong duoc cap nhat don hang nay." });
+      }
+      const method = normalizeOrderStatus(order.PaymentMethod);
+      const currentPaymentStatus = normalizeOrderStatus(order.PaymentStatus);
+      if (normalizeOrderStatus(paymentStatus) !== "cho thanh toan") {
+        return res.status(403).json({ success: false, message: "Khach hang chi co the bao da gui thanh toan." });
+      }
+      if (!["chuyen khoan", "bank", "momo"].some((token) => method.includes(token))) {
+        return res.status(409).json({ success: false, message: "Don hang khong dung phuong thuc thanh toan online." });
+      }
+      if (["da thanh toan", "hoan tien", "da huy"].includes(currentPaymentStatus)) {
+        return res.status(409).json({ success: false, message: "Trang thai thanh toan khong the thay doi." });
+      }
+    }
+
     await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("ps", sql.NVarChar, req.body.payment_status || "Chưa thanh toán")
+      .input("id", sql.Int, orderId)
+      .input("ps", sql.NVarChar, paymentStatus)
       .query("UPDATE Orders SET PaymentStatus=@ps WHERE OrderID=@id");
     res.json({ success: true });
   } catch (e) {
@@ -1092,41 +1903,107 @@ app.delete("/api/materials/:id", async (req, res) => {
 app.get("/api/returns", async (req, res) => {
   try {
     await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT ReturnID, OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt FROM Returns ORDER BY ReturnID DESC",
-      );
+    const request = pool.request();
+    let ownerFilter = "";
+    if (req.auth.role !== "Admin") {
+      const userId = Number(req.auth && req.auth.sub);
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+      }
+      request.input("uid", sql.Int, userId);
+      ownerFilter = "WHERE o.UserID=@uid";
+    }
+    const r = await request.query(`
+      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.TrackingNumber,
+             r.Reason, r.Status, r.RefundAmount, r.CreatedAt
+      FROM Returns r
+      JOIN Orders o ON o.OrderID=r.OrderID
+      ${ownerFilter}
+      ORDER BY r.ReturnID DESC
+    `);
     res.json(r.recordset);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 app.post("/api/returns", async (req, res) => {
+  const authenticatedUserId = Number(req.auth && req.auth.sub);
+  const isAdmin = req.auth && req.auth.role === "Admin";
+  const b = req.body || {};
+  const orderId = Number(b.order_id ?? b.orderId);
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ success: false, message: "Don hang khong hop le." });
+  }
+
+  const returnType = cleanAddressText(b.return_type, 20) || "CUSTOMER";
+  const trackingNumber = cleanAddressText(b.tracking_number, 60);
+  const reason = cleanAddressText(b.reason, 500);
+  const returnStatus = isAdmin
+    ? (cleanAddressText(b.status, 50) || "Chờ xử lý")
+    : "Chờ xử lý";
+  const requestedRefund = Number(b.refund_amount || 0);
+  const refundAmount = isAdmin && Number.isFinite(requestedRefund) && requestedRefund >= 0
+    ? requestedRefund
+    : 0;
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
   try {
-    await poolConnect;
-    const b = req.body || {};
-    let r = await pool
-      .request()
-      .input("oid", sql.Int, b.order_id || null)
-      .input("rt", sql.VarChar(20), b.return_type || "CUSTOMER")
-      .input("trk", sql.VarChar, b.tracking_number || "")
-      .input("rs", sql.NVarChar(sql.MAX), b.reason || "")
-      .input("st", sql.NVarChar, b.status || "Chờ xử lý")
-      .input("amt", sql.Decimal(18, 0), b.refund_amount || 0)
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const orderResult = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query(`
+        SELECT OrderID, UserID, Status
+        FROM Orders WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@oid
+      `);
+    const order = orderResult.recordset[0];
+    if (!order) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    }
+    if (!isAdmin && Number(order.UserID) !== authenticatedUserId) {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: "Ban khong duoc tra don hang nay." });
+    }
+    const returnableStatuses = new Set([
+      "da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received",
+    ]);
+    if (!returnableStatuses.has(normalizeOrderStatus(order.Status))) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: "Don hang khong o trang thai co the tra hang." });
+    }
+
+    const duplicate = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query("SELECT TOP 1 ReturnID FROM Returns WITH (UPDLOCK, HOLDLOCK) WHERE OrderID=@oid");
+    if (duplicate.recordset.length) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: "Don hang da co yeu cau tra hang." });
+    }
+
+    const inserted = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .input("rt", sql.VarChar(20), returnType)
+      .input("trk", sql.VarChar, trackingNumber)
+      .input("rs", sql.NVarChar, reason)
+      .input("st", sql.NVarChar, returnStatus)
+      .input("amt", sql.Decimal(18, 0), refundAmount)
       .query(
         "INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rt, @trk, @rs, @st, @amt, GETDATE())",
       );
-    if (b.order_id) {
-      await pool
-        .request()
-        .input("oid", sql.Int, b.order_id)
-        .query(
-          "UPDATE Orders SET Status=N'Yêu cầu trả hàng' WHERE OrderID=@oid",
-        );
-    }
-    res.json({ success: true, ReturnID: r.recordset[0].ReturnID });
+    await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId)
+      .query("UPDATE Orders SET Status=N'Yêu cầu trả hàng' WHERE OrderID=@oid");
+    await transaction.commit();
+    res.json({ success: true, ReturnID: inserted.recordset[0].ReturnID });
   } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -1625,12 +2502,26 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       .request()
       .input("id", sql.Int, req.params.id)
       .query(
-        `SELECT OrderID as id, TotalAmount as total,
+        `SELECT OrderID as id, UserID as user_id, TotalAmount as total,
                 CONVERT(varchar, OrderDate, 103) + ' ' + CONVERT(varchar, OrderDate, 108) as date,
+                CONVERT(varchar(33), OrderDate, 126) as created_at,
                 ISNULL(Status, N'Cho xac nhan') as status,
                 ISNULL(PaymentStatus, N'Chua thanh toan') as payment_status,
-                ISNULL(PaymentMethod, 'COD') as paymentMethod,
-                ISNULL(HandledBy, '') as handled_by
+                ISNULL(PaymentMethod, 'COD') as payment_method,
+                ISNULL(HandledBy, '') as handled_by,
+                ISNULL(CustomerName, '') as customer_name,
+                ISNULL(CustomerPhone, '') as customer_phone,
+                ISNULL(ShippingAddress, '') as customer_address,
+                ISNULL(ShippingAddress, '') as shipping_address,
+                AddressID as address_id,
+                CAST(CASE WHEN EXISTS (
+                  SELECT 1 FROM OrderStatusHistory ach
+                  WHERE ach.OrderID=Orders.OrderID AND LEFT(ISNULL(ach.Note, N''), 17)=N'[ADDRESS_CHANGED]'
+                ) THEN 1 ELSE 0 END AS bit) as address_changed,
+                ISNULL(ShippingFee, 0) as shippingFee,
+                ISNULL(DiscountAmount, 0) as discount,
+                ISNULL(OrderNote, '') as note,
+                ISNULL(CancelReason, '') as cancel_reason
          FROM Orders WHERE UserID = @id ORDER BY OrderID DESC`,
       );
 
@@ -1825,11 +2716,42 @@ app.post("/api/shipping/quote", async (req, res) => {
 
 // 3) Khach xac nhan "Da nhan hang" (giong Shopee) - giu 14 ngay truoc khi tinh doanh thu
 app.put("/api/orders/:id/receive", async (req, res) => {
+  const authenticatedUserId = Number(req.auth && req.auth.sub);
+  const orderId = Number(req.params.id);
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  }
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ success: false, message: "Don hang khong hop le." });
+  }
+
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
   try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const currentResult = await new sql.Request(transaction)
+      .input("id", sql.Int, orderId)
+      .query(`
+        SELECT OrderID, UserID, Status
+        FROM Orders WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@id
+      `);
+    const currentOrder = currentResult.recordset[0];
+    if (!currentOrder) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    }
+    if (req.auth.role !== "Admin" && Number(currentOrder.UserID) !== authenticatedUserId) {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: "Ban khong duoc cap nhat don hang nay." });
+    }
+    if (!["da giao", "da giao hang thanh cong", "delivered"].includes(normalizeOrderStatus(currentOrder.Status))) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: "Don hang chua o trang thai da giao." });
+    }
+
+    await new sql.Request(transaction)
+      .input("id", sql.Int, orderId)
       .input("hold", sql.Int, 14).query(`
         UPDATE Orders
         SET Status = N'Đã nhận hàng',
@@ -1838,8 +2760,12 @@ app.put("/api/orders/:id/receive", async (req, res) => {
             IsCountedAsRevenue = 0
         WHERE OrderID = @id
       `);
+    await transaction.commit();
     res.json({ success: true });
   } catch (e) {
+    if (transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -1857,36 +2783,54 @@ async function runAutoCancelJob() {
         AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
     `);
     
-    // Hoàn lại kho cho các đơn này
-    for (let row of expiredOrders.recordset) {
-      const details = await pool.request().input("id", sql.Int, row.OrderID).query(`SELECT ProductID, ProductVariantID, Quantity, Size, Color FROM OrderDetails WHERE OrderID = @id`);
-      for (let det of details.recordset) {
-        if (det.ProductVariantID) {
-          await pool.request().input("vid", sql.Int, det.ProductVariantID).input("q", sql.Int, det.Quantity).query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductVariantID = @vid`);
-        } else if (det.ProductID && (det.Size || det.Color)) {
-          await pool.request()
-            .input("pid", sql.Int, det.ProductID)
-            .input("sz", sql.NVarChar, det.Size || "")
-            .input("clr", sql.NVarChar, det.Color || "")
-            .input("q", sql.Int, det.Quantity)
-            .query(`UPDATE ProductVariants SET StockQuantity = ISNULL(StockQuantity, 0) + @q WHERE ProductID = @pid AND (@sz = N'' OR ISNULL(Size, N'') = @sz) AND (@clr = N'' OR ISNULL(ColorName, N'') = @clr)`);
+    // Moi don duoc khoa, hoan kho va doi trang thai trong cung mot transaction.
+    for (const row of expiredOrders.recordset) {
+      const transaction = new sql.Transaction(pool);
+      try {
+        await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+        const claimed = await new sql.Request(transaction)
+          .input("id", sql.Int, row.OrderID)
+          .query(`
+            SELECT OrderID
+            FROM Orders WITH (UPDLOCK, HOLDLOCK)
+            WHERE OrderID=@id
+              AND AutoCancelDeadline IS NOT NULL
+              AND AutoCancelDeadline<GETDATE()
+              AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+          `);
+        if (!claimed.recordset.length) {
+          await transaction.commit();
+          continue;
         }
+
+        await restoreOrderStock(transaction, row.OrderID);
+        await new sql.Request(transaction)
+          .input("id", sql.Int, row.OrderID)
+          .input(
+            "reason",
+            sql.NVarChar,
+            "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.",
+          )
+          .query(`
+            UPDATE Orders
+            SET Status=N'Đã hủy', CancelReason=@reason,
+                PaymentStatus=CASE
+                  WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%'
+                    THEN N'Đã hủy'
+                  ELSE N'Hoàn tiền'
+                END,
+                AutoCancelDeadline=NULL
+            WHERE OrderID=@id
+          `);
+        await transaction.commit();
+      } catch (orderError) {
+        if (transaction._aborted !== true) {
+          try { await transaction.rollback(); } catch (_) {}
+        }
+        console.log(`AutoCancel order ${row.OrderID}:`, orderError.message);
       }
     }
 
-    await pool
-      .request()
-      .input(
-        "reason",
-        sql.NVarChar,
-        "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.",
-      ).query(`
-        UPDATE Orders
-        SET Status = N'Đã hủy', CancelReason = @reason, PaymentStatus = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END
-        WHERE AutoCancelDeadline IS NOT NULL
-          AND AutoCancelDeadline < GETDATE()
-          AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
-      `);
     await pool.request().query(`
       UPDATE Orders SET IsCountedAsRevenue = 1
       WHERE RevenueEligibleDate IS NOT NULL AND RevenueEligibleDate <= GETDATE()

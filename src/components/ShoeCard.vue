@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
-import { addToCart, formatCurrency, showMiniCart, cartState } from "../stores/cartStore"
+import { addToCart, formatCurrency, showMiniCart } from "../stores/cartStore"
 import { notify } from "../stores/uiStore"
 
 const props = defineProps({
@@ -16,11 +16,6 @@ const displayName = computed(() => (sportName.value ? `${sportName.value} - ${ba
 const router = useRouter()
 const productLink = computed(() => `/product/${props.product.id_product || props.product.id}`)
 
-const cartQuantity = computed(() => {
-  const pid = props.product.id_product || props.product.id
-  return cartState.items.reduce((sum, item) => item.id_product === pid ? sum + item.quantity : sum, 0)
-})
-
 const isOutOfStock = computed(() => {
   let ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
   if (ts === null || ts === undefined || ts === "" || ts === "null") {
@@ -29,7 +24,7 @@ const isOutOfStock = computed(() => {
   }
   const parsedTs = Number(ts)
   if (isNaN(parsedTs)) return true
-  return (parsedTs - cartQuantity.value) <= 0
+  return parsedTs <= 0
 })
 
 /* Modal chon bien the */
@@ -71,6 +66,10 @@ const isVariantOos = (colorName, sizeName) => {
 }
 
 const selectedVariantStock = computed(() => {
+  if ((props.product.variants || []).length === 0) {
+    const total = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
+    return Math.max(0, Number(total) || 0)
+  }
   if (!selectedColor.value || !selectedSize.value) return 0
   const v = getVariant(selectedColor.value.name, selectedSize.value)
   return v ? Number(v.stock) || 0 : 0
@@ -97,6 +96,7 @@ function openVariantModal() {
 }
 
 watch(selectedColor, () => { selectedSize.value = null })
+watch(selectedSize, () => { selectedQty.value = 1 })
 
 function confirmAddToCart() {
   const variants = props.product.variants || []
@@ -112,13 +112,13 @@ function confirmAddToCart() {
   let stockQty = selectedVariantStock.value
   if (stockQty === 0 && !hasVariants) {
     const ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
-    stockQty = isNaN(Number(ts)) ? 100 : Number(ts)
+    stockQty = isNaN(Number(ts)) ? 0 : Number(ts)
   }
   const result = addToCart({
     product: props.product, quantity: selectedQty.value,
     size: sizeObj, color: colorObj,
     variantId: selectedVariantId.value,
-    stockQuantity: stockQty || 100,
+    stockQuantity: stockQty,
   })
   if (!result.ok) { notify({ type: "warning", message: result.message }); return }
   showVariantModal.value = false
