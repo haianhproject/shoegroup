@@ -156,12 +156,16 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                o.TotalAmount AS total, o.ShippingFee AS shippingFee,
                o.DiscountAmount AS discount, o.PaymentMethod AS paymentMethod,
                ISNULL(o.PaymentStatus, N'Chua thanh toan') AS payment_status,
+               o.PaymentDueAt AS payment_due_at,
+               o.PaymentConfirmedAt AS payment_confirmed_at,
                ${useCode ? "o.StatusCode AS status_code," : ""}
                ISNULL(o.Status, N'Chờ xác nhận') AS status,
                ISNULL(o.CancelReason, '') AS cancel_reason,
                o.OrderDate AS order_date,
                CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) AS date,
-               (SELECT od.OrderDetailID AS id, COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
+               (SELECT od.OrderDetailID AS id, od.OrderDetailID AS order_detail_id,
+                       od.ProductID AS product_id, od.ProductVariantID AS variant_id,
+                       COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
                        COALESCE(p.ImageURL, od.ImageURLSnapshot, '') AS image,
                        od.Quantity AS quantity, od.UnitPrice AS price,
                        ISNULL(od.Size,'') AS size, ISNULL(od.Color, N'') AS color

@@ -31,6 +31,12 @@ const selMaterials = ref([])
 const sortBy = ref('featured')
 const showFiltersMobile = ref(false)
 
+// Hiển thị tối đa 8 sản phẩm mỗi trang.  Trang hiện tại được giữ trong
+// query string để các liên kết danh mục, nút See all và nút Back/Forward
+// của trình duyệt luôn khôi phục đúng trạng thái danh sách.
+const pageSize = 8
+const currentPage = ref(1)
+
 const API = API_BASE_URL
 
 const fetchAll = async () => {
@@ -61,15 +67,41 @@ const fetchAll = async () => {
     sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
   } catch (e) {
     console.error("Lỗi khi lấy dữ liệu bộ lọc từ DB:", e)
+    // Vẫn hiển thị được cửa hàng khi API chưa chạy (ví dụ môi trường demo).
+    // Chuẩn hóa cùng shape với dữ liệu API để bộ lọc và phân trang hoạt động
+    // nhất quán ở cả hai nguồn dữ liệu.
+    products.value = mockProducts.map((p) => ({
+      ...p,
+      f_sizes: (p.sizes || []).map((s) => String(s)),
+      f_colors: (p.colors || []).map((c) => c.name || c.color_label || c.color_name || c),
+    }))
+    categories.value = mockCats
+    colors.value = mockColors.map((c) => ({
+      id_color: c.id_color,
+      color_label: c.color_label || c.color_name,
+      hex: c.hex || '',
+    }))
+    sizes.value = mockSizes
+    materials.value = mockMaterials
+    sports.value = mockSports
   } finally {
     isLoading.value = false
   }
 }
 
-// Sync from URL (category / search set by navbar)
+const parsePage = (value) => {
+  const page = Number.parseInt(Array.isArray(value) ? value[0] : value, 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
+}
+
+// Sync from URL (category / search / page set by navbar and HomeDisplay)
 watch(() => route.query, (q) => {
-  selCategory.value = q.category ? Number(q.category) : null
-  search.value = q.search || ''
+  const categoryValue = Array.isArray(q.category) ? q.category[0] : q.category
+  const searchValue = Array.isArray(q.search) ? q.search[0] : q.search
+  const categoryId = categoryValue ? Number(categoryValue) : NaN
+  selCategory.value = Number.isFinite(categoryId) ? categoryId : null
+  search.value = searchValue || ''
+  currentPage.value = parsePage(q.page)
 }, { immediate: true })
 
 const toggle = (arr, val) => {
@@ -102,14 +134,48 @@ const filtered = computed(() => {
 const activeCategoryName = computed(() => categories.value.find((c) => c.id_category === selCategory.value)?.category_name)
 const fmtPrice = (v) => new Intl.NumberFormat('vi-VN').format(v) + 'đ'
 
-// Khi doi bo loc, dua trang ve dau danh sach de khong bi "nhay" xuong cuoi trang
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize)))
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filtered.value.slice(start, start + pageSize)
+})
+
+const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
+
+const updatePageQuery = (page) => {
+  const target = Math.min(Math.max(1, Number(page) || 1), totalPages.value)
+  currentPage.value = target
+  const query = { ...route.query }
+  if (target === 1) delete query.page
+  else query.page = String(target)
+  router.push({ path: '/products', query })
+  if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const resetPagination = () => {
+  if (currentPage.value === 1 && !route.query.page) return
+  currentPage.value = 1
+  const query = { ...route.query }
+  delete query.page
+  router.replace({ path: '/products', query })
+}
+
+// Khi thay đổi bộ lọc, luôn bắt đầu ở trang đầu; tránh trạng thái trang cũ
+// không còn dữ liệu sau khi lọc.
 watch(
-  [selCategory, selSports, selColors, selSizes, selMaterials, sortBy],
+  [selCategory, selSports, selColors, selSizes, selMaterials, sortBy, search],
   () => {
+    resetPagination()
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   },
   { deep: true },
 )
+
+// Nếu số trang giảm (ví dụ sau khi API trả về hoặc lọc), kẹp trang hiện tại
+// vào phạm vi hợp lệ.
+watch(totalPages, (pages) => {
+  if (currentPage.value > pages) updatePageQuery(pages)
+})
 
 onMounted(fetchAll)
 </script>
@@ -202,10 +268,41 @@ onMounted(fetchAll)
             <button class="btn-sg" @click="clearFilters">Xóa bộ lọc</button>
           </div>
           <div v-else class="row row-cols-2 row-cols-md-3 g-4">
-            <div class="col fade-in" v-for="product in filtered" :key="product.id_product">
+            <div class="col fade-in" v-for="product in paginatedProducts" :key="product.id_product">
               <ShoeCard :product="product" />
             </div>
           </div>
+
+          <!-- Pagination: tám sản phẩm trên mỗi trang -->
+          <nav v-if="totalPages > 1" class="products-pagination" aria-label="Phân trang sản phẩm">
+            <button
+              class="page-btn page-prev"
+              type="button"
+              :disabled="currentPage === 1"
+              aria-label="Trang trước"
+              @click="updatePageQuery(currentPage - 1)"
+            >
+              <i class="bi bi-chevron-left"></i>
+            </button>
+            <button
+              v-for="page in pageNumbers"
+              :key="page"
+              class="page-btn"
+              type="button"
+              :class="{ active: page === currentPage }"
+              :aria-current="page === currentPage ? 'page' : undefined"
+              @click="updatePageQuery(page)"
+            >{{ page }}</button>
+            <button
+              class="page-btn page-next"
+              type="button"
+              :disabled="currentPage === totalPages"
+              aria-label="Trang sau"
+              @click="updatePageQuery(currentPage + 1)"
+            >
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </nav>
         </div>
       </div>
     </div>
@@ -249,4 +346,33 @@ onMounted(fetchAll)
 .empty-state { text-align: center; padding: 60px 20px; }
 .empty-state i { font-size: 3rem; color: var(--sg-muted); }
 .empty-state h5 { font-weight: 800; margin-top: 12px; }
+
+/* Pagination */
+.products-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 32px 0 8px;
+}
+.page-btn {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--sg-line);
+  border-radius: 0;
+  background: #fff;
+  color: var(--sg-ink);
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--sg-ink); }
+.page-btn.active { background: var(--sg-ink); border-color: var(--sg-ink); color: #fff; }
+.page-btn:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 576px) {
+  .products-pagination { gap: 5px; margin-top: 24px; }
+  .page-btn { min-width: 36px; height: 36px; padding: 0 9px; }
+}
 </style>

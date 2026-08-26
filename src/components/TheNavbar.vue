@@ -9,6 +9,7 @@ import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from './BrandLogo.vue'
 import { API_BASE_URL } from "../services/apiClient";
+import { categories as mockCategories } from '../data/mockData'
 
 const router = useRouter()
 const route = useRoute()
@@ -88,6 +89,9 @@ const closeNotifOnClickOutside = (e) => {
   if (notifState.value.isOpen && !e.target.closest('.sg-notif-wrap')) {
     notifState.value.isOpen = false;
   }
+  if (isCategoryMenuOpen.value && !e.target.closest('.sg-category-wrap')) {
+    isCategoryMenuOpen.value = false
+  }
 }
 
 onMounted(() => {
@@ -100,6 +104,7 @@ onUnmounted(() => {
 
 watch(() => route.path, () => {
   notifState.value.isOpen = false;
+  isCategoryMenuOpen.value = false
 })
 
 const goToNotif = (n) => {
@@ -108,6 +113,30 @@ const goToNotif = (n) => {
 }
 
 const goCategory = (id) => router.push({ path: '/products', query: { category: id } })
+
+// Menu danh mục dùng cùng query `category` với các thẻ danh mục trên trang
+// chủ. Khi API chưa chạy, dữ liệu mẫu vẫn giúp menu có thể dùng được.
+const menuCategories = ref([])
+const isCategoryMenuOpen = ref(false)
+const fetchMenuCategories = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/categories`)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const data = await response.json()
+    if (!Array.isArray(data)) throw new Error('Danh mục không hợp lệ')
+    menuCategories.value = data
+      .filter((c) => c.active !== false && c.active !== 0 && c.active !== '0' && c.name)
+      .filter((c) => !['giày nam', 'tất cả'].includes(c.name.trim().toLowerCase()))
+      .map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
+  } catch {
+    menuCategories.value = mockCategories.filter((c) => !['giày nam', 'tất cả'].includes(c.category_name.toLowerCase()))
+  }
+}
+const toggleCategoryMenu = () => {
+  isCategoryMenuOpen.value = !isCategoryMenuOpen.value
+  if (isCategoryMenuOpen.value) notifState.value.isOpen = false
+}
+const closeCategoryMenu = () => { isCategoryMenuOpen.value = false }
 
 const searchOpen = ref(false)
 const searchQuery = ref('')
@@ -141,6 +170,7 @@ const onScroll = () => { scrolled.value = window.scrollY > 8 }
 let notifPollInterval = null
 onMounted(() => { 
   fetchNotifications()
+  fetchMenuCategories()
   notifPollInterval = setInterval(fetchNotifications, 5000)
   window.addEventListener('scroll', onScroll) 
 })
@@ -157,13 +187,33 @@ onUnmounted(() => {
       <div class="sg-nav-row">
         <!-- Brand Logo -->
         <router-link to="/" class="sg-logo">
-          <span class="sg-logo-icon"><img src="/logogiay.png" alt="ShoeGroup" class="sg-logo-img" /></span><span class="sg-logo-text"><span class="logo-shoe">shoe</span><span class="logo-group">group</span></span>
+          <span class="sg-logo-icon"><img src="/img/logogiay.png" alt="ShoeGroup" class="sg-logo-img" /></span><span class="sg-logo-text"><span class="logo-shoe">shoe</span><span class="logo-group">group</span></span>
         </router-link>
 
         <!-- Category nav (desktop) -->
         <nav class="sg-catnav d-none d-lg-flex">
           <router-link to="/" class="sg-catlink" active-class="active" exact>Trang chủ</router-link>
           <router-link to="/products" class="sg-catlink" active-class="active">Sản phẩm</router-link>
+          <div class="sg-category-wrap">
+            <button class="sg-catlink sg-category-trigger" :class="{ active: isCategoryMenuOpen }" type="button" @click="toggleCategoryMenu" aria-haspopup="true" :aria-expanded="isCategoryMenuOpen">
+              Danh mục <i class="bi bi-chevron-down" aria-hidden="true"></i>
+            </button>
+            <transition name="mc">
+              <div v-if="isCategoryMenuOpen" class="sg-category-dropdown" @click.stop>
+                <router-link
+                  v-for="category in menuCategories"
+                  :key="category.id_category"
+                  :to="{ path: '/products', query: { category: category.id_category } }"
+                  class="sg-category-item"
+                  @click="closeCategoryMenu"
+                >
+                  <span>{{ category.category_name }}</span>
+                  <small v-if="category.sport">{{ category.sport }}</small>
+                </router-link>
+                <router-link to="/products" class="sg-category-item sg-category-all" @click="closeCategoryMenu">Tất cả sản phẩm <i class="bi bi-arrow-right"></i></router-link>
+              </div>
+            </transition>
+          </div>
           <router-link to="/about" class="sg-catlink" active-class="active">Giới thiệu</router-link>
 
           <!-- Notifications popup -->
@@ -283,6 +333,12 @@ onUnmounted(() => {
       <div class="sg-catnav-mobile d-lg-none">
         <router-link to="/" class="sg-catlink">Trang chủ</router-link>
         <router-link to="/products" class="sg-catlink">Sản phẩm</router-link>
+        <router-link
+          v-for="category in menuCategories"
+          :key="`mobile-${category.id_category}`"
+          :to="{ path: '/products', query: { category: category.id_category } }"
+          class="sg-catlink sg-mobile-category"
+        >{{ category.category_name }}</router-link>
         <router-link to="/about" class="sg-catlink">Giới thiệu</router-link>
         <button class="sg-catlink" @click="toggleNotif">Thông báo</button>
         <router-link to="/contact" class="sg-catlink">Liên hệ</router-link>
@@ -351,7 +407,7 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 .sg-logo-text .logo-shoe { color: #1a1a1a; }
-.sg-logo-text .logo-group { color: #D4001A; }
+.sg-logo-text .logo-group { color: #1a1a1a; }
 
 /* ====== Category nav (desktop) ====== */
 .sg-catnav {
@@ -361,6 +417,49 @@ onUnmounted(() => {
   justify-content: center;
   gap: 4px;
 }
+
+.sg-category-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sg-category-trigger i {
+  font-size: .68rem;
+  transition: transform .2s ease;
+}
+.sg-category-trigger.active i { transform: rotate(180deg); }
+.sg-category-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .12);
+  z-index: 2700;
+}
+.sg-category-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  color: #333;
+  text-decoration: none;
+  font-size: .82rem;
+  font-weight: 600;
+  transition: background .2s ease, color .2s ease;
+}
+.sg-category-item:hover,
+.sg-category-item.router-link-active { background: #f5f5f5; color: #D4001A; }
+.sg-category-item small { color: #999; font-size: .68rem; font-weight: 500; }
+.sg-category-all { margin-top: 4px; border-top: 1px solid #f0f0f0; border-radius: 0; color: #111; }
 
 .sg-catlink {
   position: relative;
@@ -775,6 +874,7 @@ onUnmounted(() => {
   font-size: 0.78rem;
   padding: 6px 14px;
 }
+.sg-catnav-mobile .sg-mobile-category { color: #777; }
 
 /* ====== Transitions ====== */
 .searchbar-enter-active,

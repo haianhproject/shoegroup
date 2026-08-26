@@ -105,8 +105,8 @@ const isWaitingTransfer = (o) => {
 
 const timeRemaining = (o) => {
   const createdTime = new Date(o.createdAt).getTime()
-  const twelveHours = 12 * 60 * 60 * 1000
-  const deadline = createdTime + twelveHours
+  const deadlineFromServer = o.paymentDueAt ? new Date(o.paymentDueAt).getTime() : NaN
+  const deadline = Number.isFinite(deadlineFromServer) ? deadlineFromServer : createdTime + 24 * 60 * 60 * 1000
   const now = Date.now()
   if (now > deadline) return 'Hết hạn'
   const diff = deadline - now
@@ -126,7 +126,10 @@ const confirmPaid = async () => {
   if (payModal.serverId) {
     try {
       await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
-    } catch(e) {}
+    } catch(error) {
+      notify({ type: 'error', message: error.message || 'Không thể báo thanh toán. Vui lòng thử lại.' })
+      return
+    }
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
@@ -139,7 +142,7 @@ const confirmPaid = async () => {
 
 const closePayModal = () => { payModal.open = false }
 
-const goReturn = (order) => { window.open('https://zalo.me/0123456789', '_blank') }
+const goReturn = (order) => { router.push({ name: 'return-order', params: { orderId: order.id } }) }
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
@@ -469,7 +472,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
             <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-chat-dots me-1"></i>Liên hệ shop</button>
+            <button v-if="['DELIVERED','RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 

@@ -898,7 +898,7 @@ export function getPaymentMethodPill(pm) {
     s.includes("vnpay") ||
     s.includes("momo")
   )
-    return { code: "Chuyển khoản", cls: "bg-secondary-subtle text-dark" };
+    return { code: "Chuyển khoản", cls: "bg-light text-dark border" };
   if (s.includes("tiền mặt") || s === "cash")
     return { code: "Tiền mặt", cls: "bg-light text-dark border" };
   return { code: "Không rõ", cls: "bg-light text-secondary border" };
@@ -930,7 +930,7 @@ export function getPaymentStatusPill(o) {
   if (st === "Đã thanh toán")
     return { label: "Đã thanh toán", cls: "bg-dark text-white" };
   if (st === "Hoàn tiền")
-    return { label: "Hoàn tiền", cls: "bg-secondary-subtle text-dark" };
+    return { label: "Hoàn tiền", cls: "bg-light text-dark border" };
   if (st === "Khách báo đã chuyển")
     return { label: "Khách báo đã chuyển", cls: "bg-dark text-white" };
   if (st === "Chờ chuyển khoản")
@@ -946,7 +946,7 @@ export function getPaymentStatusPill(o) {
   if (st === "Chưa thanh toán")
     return {
       label: "Chưa thanh toán",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
     };
   return { label: "Không xác định", cls: "bg-light text-secondary border" };
 }
@@ -964,11 +964,11 @@ export function getOrderStatusPill(o) {
     },
     "Đang vận chuyển": {
       label: "Đang giao",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
     },
     "Đã xác nhận": {
       label: "Đã xác nhận",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
     },
     "Chờ xác nhận": {
       label: "Chờ xác nhận",

@@ -316,6 +316,73 @@ function normalizeOrderStatus(value) {
     .toLowerCase();
 }
 
+const ORDER_STATUS_TRANSITIONS = {
+  "cho xac nhan": new Set(["cho xac nhan", "da xac nhan", "da huy"]),
+  "da xac nhan": new Set(["da xac nhan", "dang van chuyen", "da huy"]),
+  "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "da huy"]),
+  "da giao hang thanh cong": new Set(["da giao hang thanh cong", "da nhan hang", "yeu cau tra hang"]),
+  "da nhan hang": new Set(["da nhan hang", "yeu cau tra hang"]),
+  "yeu cau tra hang": new Set(["yeu cau tra hang", "da nhan hang"]),
+  "da huy": new Set(["da huy"]),
+  "cho xu ly": new Set(["cho xu ly", "cho xac nhan", "da xac nhan", "da huy"]),
+  "pending": new Set(["pending", "cho xac nhan", "da xac nhan", "da huy"]),
+  "dang giao": new Set(["dang giao", "da giao hang thanh cong", "da huy"]),
+  "delivered": new Set(["delivered", "da nhan hang", "yeu cau tra hang"]),
+  "received": new Set(["received", "yeu cau tra hang"]),
+};
+
+const ORDER_STATUS_ALIASES = {
+  "cho xu ly": "Chờ xác nhận", "pending": "Chờ xác nhận", "cho xac nhan": "Chờ xác nhận",
+  "confirmed": "Đã xác nhận", "da xac nhan": "Đã xác nhận", "dang lay hang": "Đã xác nhận",
+  "dang chuan bi hang": "Đã xác nhận", "processing": "Đã xác nhận", "picking": "Đã xác nhận",
+  "dang van chuyen": "Đang vận chuyển", "dang giao": "Đang vận chuyển", "shipped": "Đang vận chuyển",
+  "da giao": "Đã giao hàng thành công", "da giao hang thanh cong": "Đã giao hàng thành công", "delivered": "Đã giao hàng thành công",
+  "da nhan hang": "Đã nhận hàng", "received": "Đã nhận hàng", "yeu cau tra hang": "Yêu cầu trả hàng",
+  "da hoan tat tra hang": "Đã hoàn tất trả hàng", "da huy": "Đã hủy", "cancelled": "Đã hủy", "canceled": "Đã hủy",
+};
+
+function canonicalOrderStatus(value) {
+  return ORDER_STATUS_ALIASES[normalizeOrderStatus(value)] || cleanAddressText(value, 50);
+}
+
+const PAYMENT_STATUSES = new Set([
+  "chua thanh toan",
+  "cho thanh toan",
+  "da thanh toan",
+  "hoan tien",
+  "da huy",
+]);
+
+const isBankPayment = (method) => {
+  const normalized = normalizeOrderStatus(method);
+  return normalized.includes("chuyen khoan") || normalized.includes("bank") || normalized.includes("momo") || normalized.includes("vnpay");
+};
+
+const isCodPayment = (method) => {
+  const normalized = normalizeOrderStatus(method);
+  return normalized.includes("cod") || normalized.includes("nhan hang") || normalized.includes("tien mat");
+};
+
+async function insertOrderHistory(transaction, orderId, oldStatus, newStatus, note, changedBy) {
+  await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .input("old", sql.NVarChar, oldStatus || "")
+    .input("next", sql.NVarChar, newStatus || "")
+    .input("note", sql.NVarChar, cleanAddressText(note, 500))
+    .input("uid", sql.Int, Number(changedBy) || null)
+    .query(`
+      INSERT INTO OrderStatusHistory (OrderID, OldStatus, NewStatus, Note, ChangedBy, ChangedAt)
+      VALUES (@oid, @old, @next, @note, @uid, GETDATE())
+    `);
+}
+
+function transitionAllowed(currentStatus, nextStatus) {
+  const current = normalizeOrderStatus(currentStatus);
+  const next = normalizeOrderStatus(nextStatus);
+  if (current === next) return true;
+  return Boolean(ORDER_STATUS_TRANSITIONS[current] && ORDER_STATUS_TRANSITIONS[current].has(next));
+}
+
 async function restoreOrderStock(transaction, orderId) {
   const details = await new sql.Request(transaction)
     .input("oid", sql.Int, orderId)
@@ -634,6 +701,21 @@ app.post("/api/orders", async (req, res) => {
       handledBy = "Online";
     }
 
+    const normalizedPaymentStatus = normalizeOrderStatus(paymentStatus);
+    if (!PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
+      return res.status(400).json({ success: false, message: "Trang thai thanh toan khong hop le." });
+    }
+    paymentStatus = {
+      "chua thanh toan": "Chưa thanh toán",
+      "cho thanh toan": "Chờ thanh toán",
+      "da thanh toan": "Đã thanh toán",
+      "hoan tien": "Hoàn tiền",
+      "da huy": "Đã hủy",
+    }[normalizedPaymentStatus];
+    const paymentDueAt = isBankPayment(paymentMethod) && !["Đã thanh toán", "Hoàn tiền", "Đã hủy"].includes(paymentStatus)
+      ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+      : null;
+
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
@@ -803,10 +885,11 @@ app.post("/api/orders", async (req, res) => {
         .input("hb", sql.NVarChar, handledBy)
         .input("sfee", sql.Decimal(18, 2), shippingFee)
         .input("disc", sql.Decimal(18, 2), discountAmount)
-        .input("note", sql.NVarChar, note).query(`
-          INSERT INTO Orders (UserID, AddressID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline)
+        .input("note", sql.NVarChar, note)
+        .input("due", sql.DateTime, paymentDueAt).query(`
+          INSERT INTO Orders (UserID, AddressID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline, PaymentDueAt)
           OUTPUT INSERTED.OrderID
-          VALUES (@uid, @addressId, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()))
+          VALUES (@uid, @addressId, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()), @due)
         `);
 
       const orderId = orderResult.recordset[0].OrderID;
@@ -1129,6 +1212,8 @@ app.get("/api/orders", async (req, res) => {
              ) THEN 1 ELSE 0 END AS bit) as address_changed,
              o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
              o.PaymentMethod as payment_method,
+             o.PaymentDueAt as payment_due_at,
+             o.PaymentConfirmedAt as payment_confirmed_at,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
              ISNULL(o.HandledBy, '') as handled_by,
              -- FIX KENH BAN: backend tu quyet dinh Online/Offline.
@@ -1155,7 +1240,7 @@ app.get("/api/orders", async (req, res) => {
     let details = [];
     try {
       let rDetails = await pool.request().query(`
-          SELECT od.OrderID,
+          SELECT od.OrderID, od.OrderDetailID as order_detail_id, od.ProductID as product_id, od.ProductVariantID as variant_id,
                  COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                  COALESCE(p.ImageURL, od.ImageURLSnapshot, '') as image,
                  od.Quantity as quantity, od.UnitPrice as price,
@@ -1198,7 +1283,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const currentResult = await new sql.Request(transaction)
       .input("oid", sql.Int, orderId)
       .query(`
-        SELECT OrderID, UserID, Status
+        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus
         FROM Orders WITH (UPDLOCK, HOLDLOCK)
         WHERE OrderID=@oid
       `);
@@ -1213,7 +1298,16 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const normalizedCurrentStatus = normalizeOrderStatus(currentOrder.Status);
     const isCancel = ["da huy", "cancelled", "canceled"].includes(normalizedNewStatus);
     const alreadyCancelled = ["da huy", "cancelled", "canceled"].includes(normalizedCurrentStatus);
-    const statusToSave = isCancel ? "Đã hủy" : newStatus;
+    const statusToSave = isCancel ? "Đã hủy" : canonicalOrderStatus(newStatus);
+
+    if (!isCancel && !transitionAllowed(currentOrder.Status, statusToSave)) {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, message: `Khong the chuyen don tu '${currentOrder.Status}' sang '${statusToSave}'.` });
+    }
+    if (isAdmin && !isCancel && ["da xac nhan", "dang van chuyen"].includes(normalizeOrderStatus(statusToSave)) && isBankPayment(currentOrder.PaymentMethod) && normalizeOrderStatus(currentOrder.PaymentStatus) !== "da thanh toan") {
+      await transaction.rollback();
+      return res.status(409).json({ success: false, code: "PAYMENT_REQUIRED", message: "Don chuyen khoan phai duoc xac nhan da thanh toan truoc khi xac nhan hoac giao hang." });
+    }
 
     if (alreadyCancelled && !isCancel) {
       await transaction.rollback();
@@ -1248,8 +1342,20 @@ app.put("/api/orders/:id/status", async (req, res) => {
       .input("s", sql.NVarChar, statusToSave)
       .input("r", sql.NVarChar, reason)
       .query(
-        `UPDATE Orders SET Status = @s, CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END, PaymentStatus = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' THEN N'Đã hủy' ELSE N'Hoàn tiền' END) ELSE PaymentStatus END, AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng') THEN NULL ELSE AutoCancelDeadline END WHERE OrderID = @id`,
+        `UPDATE Orders SET Status = @s,
+          CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END,
+          PaymentStatus = CASE
+            WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN ISNULL(PaymentStatus,N'Chưa thanh toán')=N'Đã thanh toán' THEN N'Hoàn tiền' ELSE N'Đã hủy' END)
+            WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN N'Đã thanh toán'
+            ELSE PaymentStatus END,
+          PaymentConfirmedAt = CASE WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
+          DeliveredDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(DeliveredDate,GETDATE()) ELSE DeliveredDate END,
+          RevenueEligibleDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(RevenueEligibleDate,DATEADD(day,14,GETDATE())) ELSE RevenueEligibleDate END,
+          AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
+          UpdatedAt=GETDATE()
+        WHERE OrderID = @id`,
       );
+    await insertOrderHistory(transaction, orderId, currentOrder.Status, statusToSave, reason || "Cập nhật trạng thái đơn hàng", authenticatedUserId);
     await transaction.commit();
     res.json({ success: true });
   } catch (e) {
@@ -1264,7 +1370,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
 app.put("/api/orders/:id/payment", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
   const orderId = Number(req.params.id);
-  const paymentStatus = cleanAddressText(req.body && req.body.payment_status, 30) || "Chưa thanh toán";
+  const requestedPaymentStatus = cleanAddressText(req.body && req.body.payment_status, 30) || "Chưa thanh toán";
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -1272,46 +1378,53 @@ app.put("/api/orders/:id/payment", async (req, res) => {
     return res.status(400).json({ success: false, message: "Don hang khong hop le." });
   }
 
+  const normalizedRequested = normalizeOrderStatus(requestedPaymentStatus);
+  if (!PAYMENT_STATUSES.has(normalizedRequested)) return res.status(400).json({ success: false, message: "Trang thai thanh toan khong hop le." });
+  const paymentStatus = { "chua thanh toan": "Chưa thanh toán", "cho thanh toan": "Chờ thanh toán", "da thanh toan": "Đã thanh toán", "hoan tien": "Hoàn tiền", "da huy": "Đã hủy" }[normalizedRequested];
+  const transaction = new sql.Transaction(pool);
   try {
     await poolConnect;
-    const orderResult = await pool
-      .request()
-      .input("id", sql.Int, orderId)
-      .query(`
-        SELECT OrderID, UserID, PaymentMethod, PaymentStatus
-        FROM Orders
-        WHERE OrderID=@id
-      `);
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const orderResult = await new sql.Request(transaction).input("id", sql.Int, orderId).query(`
+      SELECT OrderID, UserID, PaymentMethod, PaymentStatus, Status, TotalAmount
+      FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE OrderID=@id
+    `);
     const order = orderResult.recordset[0];
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
-    }
-
+    if (!order) throw Object.assign(new Error("Khong tim thay don hang."), { statusCode: 404 });
+    const currentPayment = normalizeOrderStatus(order.PaymentStatus);
     if (req.auth.role !== "Admin") {
-      if (Number(order.UserID) !== authenticatedUserId) {
-        return res.status(403).json({ success: false, message: "Ban khong duoc cap nhat don hang nay." });
-      }
-      const method = normalizeOrderStatus(order.PaymentMethod);
-      const currentPaymentStatus = normalizeOrderStatus(order.PaymentStatus);
-      if (normalizeOrderStatus(paymentStatus) !== "cho thanh toan") {
-        return res.status(403).json({ success: false, message: "Khach hang chi co the bao da gui thanh toan." });
-      }
-      if (!["chuyen khoan", "bank", "momo"].some((token) => method.includes(token))) {
-        return res.status(409).json({ success: false, message: "Don hang khong dung phuong thuc thanh toan online." });
-      }
-      if (["da thanh toan", "hoan tien", "da huy"].includes(currentPaymentStatus)) {
-        return res.status(409).json({ success: false, message: "Trang thai thanh toan khong the thay doi." });
+      if (Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc cap nhat don hang nay."), { statusCode: 403 });
+      if (normalizedRequested !== "cho thanh toan" || !isBankPayment(order.PaymentMethod)) throw Object.assign(new Error("Khach hang chi co the bao da gui thanh toan cho don online."), { statusCode: 403 });
+      if (["da thanh toan", "hoan tien", "da huy"].includes(currentPayment)) throw Object.assign(new Error("Trang thai thanh toan khong the thay doi."), { statusCode: 409 });
+    } else {
+      if (["da huy", "hoan tien"].includes(normalizeOrderStatus(order.Status)) && normalizedRequested === "da thanh toan") throw Object.assign(new Error("Don da ket thuc khong the ghi nhan thanh toan moi."), { statusCode: 409 });
+      if (isCodPayment(order.PaymentMethod) && normalizedRequested === "da thanh toan" && !["da giao hang thanh cong", "da nhan hang", "da hoan tat tra hang"].includes(normalizeOrderStatus(order.Status))) {
+        throw Object.assign(new Error("COD chi duoc xac nhan da thanh toan khi da giao hang."), { statusCode: 409 });
       }
     }
-
-    await pool
-      .request()
-      .input("id", sql.Int, orderId)
-      .input("ps", sql.NVarChar, paymentStatus)
-      .query("UPDATE Orders SET PaymentStatus=@ps WHERE OrderID=@id");
-    res.json({ success: true });
+    await new sql.Request(transaction).input("id", sql.Int, orderId).input("ps", sql.NVarChar, paymentStatus).query(`
+      UPDATE Orders SET PaymentStatus=@ps,
+        PaymentConfirmedAt=CASE WHEN @ps=N'Đã thanh toán' THEN GETDATE() ELSE PaymentConfirmedAt END,
+        UpdatedAt=GETDATE() WHERE OrderID=@id
+    `);
+    if (normalizedRequested === "cho thanh toan") {
+      await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).query(`
+        IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider=N'CUSTOMER_DECLARED' AND Status=N'PENDING')
+          INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt)
+          VALUES (@oid, N'CUSTOMER_DECLARED', @amt, N'PENDING', NULL, GETDATE())
+      `);
+    } else if (normalizedRequested === "da thanh toan") {
+      await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).query(`
+        IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider IN (N'MANUAL_CONFIRM',N'CUSTOMER_DECLARED') AND Status=N'SUCCESS')
+          INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
+          VALUES (@oid, N'MANUAL_CONFIRM', @amt, N'SUCCESS', 1, GETDATE(), GETDATE())
+      `);
+    }
+    await transaction.commit();
+    res.json({ success: true, payment_status: paymentStatus });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
+    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong cap nhat duoc thanh toan." });
   }
 });
 
@@ -1574,8 +1687,9 @@ app.put("/api/products/:id", async (req, res) => {
   }
 });
 app.delete("/api/products/:id", async (req, res) => {
-  // ?soft=1 => XOA MEM (chi an san pham). Mac dinh => XOA CUNG (xoa han khoi CSDL).
-  const soft = req.query.soft === "1" || req.query.soft === "true";
+  // Luon xoa mem mac dinh; xoa cung phai gui ?hard=1 de khong lam mat lich su don hang.
+  const hard = req.query.hard === "1" || req.query.hard === "true";
+  const soft = !hard;
   try {
     await poolConnect;
     const id = Number(req.params.id);
@@ -1666,12 +1780,20 @@ app.get("/api/accounts", async (req, res) => {
 app.post("/api/accounts", async (req, res) => {
   try {
     await poolConnect;
+    const email = String(req.body.username ?? req.body.email ?? "").trim().toLowerCase();
+    const name = cleanAddressText(req.body.name, 100);
+    const plainPassword = String(req.body.password ?? "");
+    const roleId = Number(req.body.role_id);
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !name || plainPassword.length < 6 || ![1, 2, 3].includes(roleId)) {
+      return res.status(400).json({ success: false, message: "Email, ho ten, mat khau (toi thieu 6 ky tu) hoac vai tro khong hop le." });
+    }
+    const passwordHash = await passwordHelper.hash(plainPassword);
     await pool
       .request()
-      .input("e", sql.VarChar, req.body.username)
-      .input("p", sql.VarChar, req.body.password)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("r", sql.Int, parseInt(req.body.role_id) || 1)
+      .input("e", sql.VarChar, email)
+      .input("p", sql.VarChar, passwordHash)
+      .input("n", sql.NVarChar, name)
+      .input("r", sql.Int, roleId)
       .query(
         "INSERT INTO Users (Email, PasswordHash, FullName, RoleID, IsActive) VALUES (@e, @p, @n, @r, 1)",
       );
@@ -1685,12 +1807,18 @@ app.put("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
     const b = req.body || {};
+    const isAdmin = req.auth && req.auth.role === "Admin";
+    if (!isAdmin && (b.role_id !== undefined || b.active !== undefined)) {
+      return res.status(403).json({ success: false, message: "Khach hang khong duoc thay doi vai tro hoac trang thai tai khoan." });
+    }
     // Chi cap nhat nhung truong duoc gui len -> tranh ghi de/xoa nham
     // (vi du doi vai tro thi khong lam mat Phone/Address/Email cu).
     let rq = pool.request().input("id", sql.Int, req.params.id);
     const sets = [];
     if (b.username !== undefined) {
-      rq = rq.input("e", sql.VarChar, b.username);
+      const email = String(b.username || "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ success: false, message: "Email khong hop le." });
+      rq = rq.input("e", sql.VarChar, email);
       sets.push("Email=@e");
     }
     if (b.name !== undefined) {
@@ -1718,8 +1846,10 @@ app.put("/api/accounts/:id", async (req, res) => {
       b.password !== null &&
       String(b.password).trim() !== ""
     ) {
-      rq = rq.input("pw", sql.VarChar, String(b.password));
+      if (String(b.password).length < 6) return res.status(400).json({ success: false, message: "Mat khau moi phai co it nhat 6 ky tu." });
+      rq = rq.input("pw", sql.VarChar, await passwordHelper.hash(String(b.password)));
       sets.push("PasswordHash=@pw");
+      sets.push("LastPasswordChangedAt=GETDATE()");
     }
     if (sets.length === 0) return res.json({ success: true });
     await rq.query("UPDATE Users SET " + sets.join(", ") + " WHERE UserID=@id");
@@ -1735,7 +1865,7 @@ app.delete("/api/accounts/:id", async (req, res) => {
     await pool
       .request()
       .input("id", sql.Int, req.params.id)
-      .query("DELETE FROM Users WHERE UserID=@id");
+      .query("UPDATE Users SET IsActive=0, UpdatedAt=GETDATE() WHERE UserID=@id");
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1923,6 +2053,120 @@ app.delete("/api/materials/:id", async (req, res) => {
 });
 
 // ================= API TRA HANG (Returns) =================
+const RETURN_STATUS_ALIASES = {
+  "cho xu ly": "Chờ xử lý",
+  "da tiep nhan": "Đã tiếp nhận",
+  "dang kiem tra": "Đang kiểm tra",
+  "da duyet": "Chấp nhận hoàn tiền",
+  "chap nhan hoan tien": "Chấp nhận hoàn tiền",
+  "cho hoan tien": "Chấp nhận hoàn tiền",
+  "da hoan tien": "Đã hoàn tiền",
+  "hoan tat": "Đã hoàn tất",
+  "da hoan tat": "Đã hoàn tất",
+  "tu choi": "Từ chối",
+  "su co": "Sự cố",
+  "huy": "Hủy",
+  "da huy": "Hủy",
+};
+const RETURN_TRANSITIONS = {
+  "cho xu ly": new Set(["cho xu ly", "da tiep nhan", "dang kiem tra", "tu choi", "huy"]),
+  "da tiep nhan": new Set(["da tiep nhan", "dang kiem tra", "tu choi", "su co"]),
+  "dang kiem tra": new Set(["dang kiem tra", "chap nhan hoan tien", "tu choi", "su co"]),
+  "chap nhan hoan tien": new Set(["chap nhan hoan tien", "da hoan tien", "su co"]),
+  "da hoan tien": new Set(["da hoan tien", "da hoan tat"]),
+  "da hoan tat": new Set(["da hoan tat"]),
+  "tu choi": new Set(["tu choi"]),
+  "su co": new Set(["su co", "dang kiem tra", "tu choi"]),
+  "huy": new Set(["huy"]),
+  "da duyet": new Set(["da duyet", "hoan tat"]),
+  "hoan tat": new Set(["hoan tat"]),
+};
+
+function canonicalReturnStatus(value) {
+  const key = normalizeOrderStatus(value);
+  return RETURN_STATUS_ALIASES[key] || null;
+}
+
+function returnTransitionAllowed(current, next) {
+  const c = normalizeOrderStatus(current);
+  const n = normalizeOrderStatus(next);
+  return c === n || Boolean(RETURN_TRANSITIONS[c] && RETURN_TRANSITIONS[c].has(n));
+}
+
+async function restockReturnItems(transaction, returnId) {
+  const existing = await new sql.Request(transaction)
+    .input("rid", sql.Int, returnId)
+    .query("SELECT RestockedAt FROM Returns WITH (UPDLOCK, HOLDLOCK) WHERE ReturnID=@rid");
+  if (!existing.recordset[0]) throw new Error("Khong tim thay yeu cau tra hang.");
+  if (existing.recordset[0].RestockedAt) return false;
+  const details = await new sql.Request(transaction)
+    .input("rid", sql.Int, returnId)
+    .query(`
+      SELECT od.ProductID, od.ProductVariantID, od.Size, od.Color, rd.Quantity, rd.Condition
+      FROM ReturnDetails rd
+      JOIN OrderDetails od ON od.OrderDetailID=rd.OrderDetailID
+      WHERE rd.ReturnID=@rid
+    `);
+  for (const row of details.recordset) {
+    const quantity = Number(row.Quantity) || 0;
+    if (quantity <= 0) continue;
+    // Hàng hư hỏng/tai nạn không được cộng lại vào tồn bán được.
+    // Vẫn giữ ReturnDetails.Condition để quản lý xử lý kho hỏng riêng nếu cần.
+    if (normalizeOrderStatus(row.Condition) === "damaged") continue;
+    if (row.ProductVariantID) {
+      const updateResult = await new sql.Request(transaction)
+        .input("vid", sql.Int, row.ProductVariantID)
+        .input("q", sql.Int, quantity)
+        .query("UPDATE ProductVariants SET StockQuantity=ISNULL(StockQuantity,0)+@q, Version=Version+1 WHERE ProductVariantID=@vid");
+      if (!updateResult.rowsAffected?.[0]) throw new Error("Khong tim thay bien the de nhap lai kho.");
+    } else if (row.ProductID && row.Size && row.Color) {
+      const updateResult = await new sql.Request(transaction)
+        .input("pid", sql.Int, row.ProductID)
+        .input("sz", sql.NVarChar, row.Size)
+        .input("clr", sql.NVarChar, row.Color)
+        .input("q", sql.Int, quantity)
+        .query(`
+          UPDATE v SET StockQuantity=ISNULL(v.StockQuantity,0)+@q, Version=v.Version+1
+          FROM ProductVariants v
+          WHERE v.ProductVariantID=(SELECT TOP 1 ProductVariantID FROM ProductVariants WITH (UPDLOCK, HOLDLOCK) WHERE ProductID=@pid AND ISNULL(Size,N'')=@sz AND ISNULL(ColorName,N'')=@clr ORDER BY ProductVariantID)
+        `);
+      if (!updateResult.rowsAffected?.[0]) throw new Error("Khong tim thay bien the de nhap lai kho.");
+    }
+  }
+  await new sql.Request(transaction)
+    .input("rid", sql.Int, returnId)
+    .query("UPDATE Returns SET RestockedAt=GETDATE() WHERE ReturnID=@rid");
+  return true;
+}
+
+async function finalizeReturn(transaction, returnRow, changedBy, resolutionNote) {
+  const restocked = await restockReturnItems(transaction, returnRow.ReturnID);
+  await new sql.Request(transaction)
+    .input("rid", sql.Int, returnRow.ReturnID)
+    .input("note", sql.NVarChar, cleanAddressText(resolutionNote, 1000))
+    .input("uid", sql.Int, Number(changedBy) || null)
+    .query(`
+      UPDATE Returns
+      SET Status=N'Đã hoàn tất', RefundedAt=ISNULL(RefundedAt, GETDATE()),
+          ResolutionNote=COALESCE(NULLIF(@note,N''), ResolutionNote), UpdatedBy=@uid, UpdatedAt=GETDATE()
+      WHERE ReturnID=@rid
+    `);
+  await new sql.Request(transaction)
+    .input("oid", sql.Int, returnRow.OrderID)
+    .input("amt", sql.Decimal(18, 2), Number(returnRow.RefundAmount) || 0)
+    .input("uid", sql.Int, Number(changedBy) || null)
+    .query(`
+      UPDATE Orders
+      SET Status=N'Đã hoàn tất trả hàng', PaymentStatus=N'Hoàn tiền',
+          PaymentConfirmedAt=ISNULL(PaymentConfirmedAt, GETDATE()), UpdatedAt=GETDATE()
+      WHERE OrderID=@oid;
+      IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider=N'MANUAL_REFUND' AND Status=N'REFUNDED')
+        INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
+        VALUES (@oid, N'MANUAL_REFUND', @amt, N'REFUNDED', 1, GETDATE(), GETDATE());
+    `);
+  return restocked;
+}
+
 app.get("/api/returns", async (req, res) => {
   try {
     await poolConnect;
@@ -1930,119 +2174,202 @@ app.get("/api/returns", async (req, res) => {
     let ownerFilter = "";
     if (req.auth.role !== "Admin") {
       const userId = Number(req.auth && req.auth.sub);
-      if (!userId) {
-        return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-      }
+      if (!userId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
       request.input("uid", sql.Int, userId);
       ownerFilter = "WHERE o.UserID=@uid";
     }
-    const r = await request.query(`
-      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.TrackingNumber,
-             r.Reason, r.Status, r.RefundAmount, r.CreatedAt
-      FROM Returns r
-      JOIN Orders o ON o.OrderID=r.OrderID
+    const returnsResult = await request.query(`
+      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.TrackingNumber, r.PostOfficeID,
+             r.ReturnAddress, r.Reason, r.Status, r.RefundAmount, r.CreatedAt, r.UpdatedAt,
+             r.InspectionNote, r.ResolutionNote, r.ApprovedAt, r.RefundedAt, r.RestockedAt,
+             r.UpdatedBy, o.UserID, o.CustomerName, o.CustomerPhone, o.PaymentMethod,
+             o.PaymentStatus, o.Status AS OrderStatus
+      FROM Returns r JOIN Orders o ON o.OrderID=r.OrderID
       ${ownerFilter}
-      ORDER BY r.ReturnID DESC
+      ORDER BY CASE WHEN r.Status IN (N'Chờ xử lý',N'Đã tiếp nhận',N'Đang kiểm tra') THEN 0 ELSE 1 END,
+               r.CreatedAt ASC, r.ReturnID ASC
     `);
-    res.json(r.recordset);
+    const ids = returnsResult.recordset.map((row) => row.ReturnID);
+    let details = [];
+    if (ids.length) {
+      const detailsResult = await pool.request().query(`
+        SELECT rd.ReturnID, rd.ReturnDetailID, rd.OrderDetailID, rd.Quantity, rd.Reason, rd.Condition,
+               od.ProductID, od.ProductVariantID, od.ProductNameSnapshot AS ProductName,
+               od.Size, od.Color, od.UnitPrice
+        FROM ReturnDetails rd JOIN OrderDetails od ON od.OrderDetailID=rd.OrderDetailID
+        WHERE rd.ReturnID IN (${ids.map((id) => Number(id)).filter((id) => id > 0).join(",") || "0"})
+      `);
+      details = detailsResult.recordset;
+    }
+    res.json(returnsResult.recordset.map((row) => ({ ...row, Details: details.filter((d) => d.ReturnID === row.ReturnID) })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/api/returns", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
   const isAdmin = req.auth && req.auth.role === "Admin";
   const b = req.body || {};
   const orderId = Number(b.order_id ?? b.orderId);
-  if (!authenticatedUserId) {
-    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  }
-  if (!Number.isInteger(orderId) || orderId <= 0) {
-    return res.status(400).json({ success: false, message: "Don hang khong hop le." });
-  }
-
-  const returnType = cleanAddressText(b.return_type, 20) || "CUSTOMER";
-  const trackingNumber = cleanAddressText(b.tracking_number, 60);
+  if (!authenticatedUserId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
+  if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ success: false, message: "Don hang khong hop le." });
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length) return res.status(400).json({ success: false, message: "Vui long chon san pham va so luong can tra." });
+  const returnType = cleanAddressText(b.return_type ?? b.returnType, 20) || "CUSTOMER";
+  const trackingNumber = cleanAddressText(b.tracking_number ?? b.trackingCode, 60);
   const reason = cleanAddressText(b.reason, 500);
-  const returnStatus = isAdmin
-    ? (cleanAddressText(b.status, 50) || "Chờ xử lý")
-    : "Chờ xử lý";
-  const requestedRefund = Number(b.refund_amount || 0);
-  const refundAmount = isAdmin && Number.isFinite(requestedRefund) && requestedRefund >= 0
-    ? requestedRefund
-    : 0;
+  if (!reason) return res.status(400).json({ success: false, message: "Vui long nhap ly do tra hang." });
+  const requestedStatus = canonicalReturnStatus(b.status || "Chờ xử lý");
+  const initialStatus = isAdmin && requestedStatus ? requestedStatus : "Chờ xử lý";
+  const requestedRefund = Number(b.refund_amount ?? b.refundAmount);
+  const postOfficeId = Number(b.post_office_id ?? b.postOfficeId) || null;
+  let returnAddress = cleanAddressText(b.return_address, 500);
+  if (normalizeOrderStatus(returnType) === "post_office" && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
 
   await poolConnect;
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    const orderResult = await new sql.Request(transaction)
-      .input("oid", sql.Int, orderId)
-      .query(`
-        SELECT OrderID, UserID, Status
-        FROM Orders WITH (UPDLOCK, HOLDLOCK)
-        WHERE OrderID=@oid
-      `);
+    const orderResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
+      SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount, ShippingAddress,
+             DeliveredDate, ReceivedConfirmedDate, RevenueEligibleDate
+      FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE OrderID=@oid
+    `);
     const order = orderResult.recordset[0];
-    if (!order) {
-      await transaction.rollback();
-      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
+    if (!order) throw Object.assign(new Error("Khong tim thay don hang."), { statusCode: 404 });
+    if (!isAdmin && Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc tra don hang nay."), { statusCode: 403 });
+    if (!["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"].includes(normalizeOrderStatus(order.Status))) {
+      throw Object.assign(new Error("Don hang khong o trang thai co the tra hang."), { statusCode: 409 });
     }
-    if (!isAdmin && Number(order.UserID) !== authenticatedUserId) {
-      await transaction.rollback();
-      return res.status(403).json({ success: false, message: "Ban khong duoc tra don hang nay." });
+    const returnWindowStart = order.ReceivedConfirmedDate || order.DeliveredDate;
+    if (returnWindowStart && Date.now() > new Date(returnWindowStart).getTime() + 14 * 24 * 60 * 60 * 1000) {
+      throw Object.assign(new Error("Don hang da qua thoi han doi tra 14 ngay."), { statusCode: 409 });
     }
-    const returnableStatuses = new Set([
-      "da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received",
-    ]);
-    if (!returnableStatuses.has(normalizeOrderStatus(order.Status))) {
-      await transaction.rollback();
-      return res.status(409).json({ success: false, message: "Don hang khong o trang thai co the tra hang." });
+    if (!returnAddress && normalizeOrderStatus(returnType) === "shipper") returnAddress = cleanAddressText(order.ShippingAddress, 500);
+    if (postOfficeId) {
+      const postOffice = await new sql.Request(transaction).input("po", sql.Int, postOfficeId).query("SELECT PostOfficeID FROM PostOffices WHERE PostOfficeID=@po AND ISNULL(IsActive,1)=1");
+      if (!postOffice.recordset.length) throw Object.assign(new Error("Buu cuc gui tra khong hop le."), { statusCode: 400 });
     }
-
-    const duplicate = await new sql.Request(transaction)
-      .input("oid", sql.Int, orderId)
-      .query("SELECT TOP 1 ReturnID FROM Returns WITH (UPDLOCK, HOLDLOCK) WHERE OrderID=@oid");
-    if (duplicate.recordset.length) {
-      await transaction.rollback();
-      return res.status(409).json({ success: false, message: "Don hang da co yeu cau tra hang." });
+    const duplicate = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
+      SELECT TOP 1 ReturnID FROM Returns WITH (UPDLOCK, HOLDLOCK)
+      WHERE OrderID=@oid AND ISNULL(Status,N'Chờ xử lý') NOT IN (N'Từ chối',N'Hủy',N'Đã hủy')
+    `);
+    if (duplicate.recordset.length) throw Object.assign(new Error("Don hang da co yeu cau tra hang dang xu ly."), { statusCode: 409 });
+    const detailResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
+      SELECT od.OrderDetailID, od.ProductID, od.ProductVariantID, od.Size, od.Color,
+             od.Quantity, od.UnitPrice, COALESCE(od.ProductNameSnapshot,p.ProductName,N'San pham') AS ProductName
+      FROM OrderDetails od LEFT JOIN Products p ON p.ProductID=od.ProductID
+      WHERE od.OrderID=@oid
+    `);
+    const detailsById = new Map(detailResult.recordset.map((row) => [Number(row.OrderDetailID), row]));
+    const activeReturnResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
+      SELECT rd.OrderDetailID, SUM(ISNULL(rd.Quantity,0)) AS Quantity
+      FROM ReturnDetails rd JOIN Returns r ON r.ReturnID=rd.ReturnID
+      WHERE r.OrderID=@oid AND ISNULL(r.Status,N'Chờ xử lý') NOT IN (N'Từ chối',N'Hủy',N'Đã hủy')
+      GROUP BY rd.OrderDetailID
+    `);
+    const alreadyReturned = new Map(activeReturnResult.recordset.map((row) => [Number(row.OrderDetailID), Number(row.Quantity) || 0]));
+    const selected = new Map();
+    const selectedMeta = new Map();
+    for (const item of items) {
+      const quantity = Number(item.quantity ?? item.return_qty);
+      if (!Number.isInteger(quantity) || quantity <= 0) continue;
+      let detail = detailsById.get(Number(item.order_detail_id ?? item.orderDetailId));
+      if (!detail) {
+        detail = detailResult.recordset.find((candidate) =>
+          Number(candidate.ProductID) === Number(item.product_id ?? item.productId) &&
+          String(candidate.Size || "") === String(item.size || "") &&
+          String(candidate.Color || "") === String(item.color || ""));
+      }
+      if (!detail) throw Object.assign(new Error("San pham tra hang khong thuoc don hang."), { statusCode: 400 });
+      const max = Number(detail.Quantity || 0) - (alreadyReturned.get(Number(detail.OrderDetailID)) || 0);
+      const next = (selected.get(Number(detail.OrderDetailID)) || 0) + quantity;
+      if (next > max) throw Object.assign(new Error(`So luong tra vuot qua so luong da mua (${detail.ProductName}).`), { statusCode: 409 });
+      selected.set(Number(detail.OrderDetailID), next);
+      selectedMeta.set(Number(detail.OrderDetailID), item);
     }
-
-    const inserted = await new sql.Request(transaction)
-      .input("oid", sql.Int, orderId)
-      .input("rt", sql.VarChar(20), returnType)
-      .input("trk", sql.VarChar, trackingNumber)
-      .input("rs", sql.NVarChar, reason)
-      .input("st", sql.NVarChar, returnStatus)
-      .input("amt", sql.Decimal(18, 0), refundAmount)
-      .query(
-        "INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, Reason, Status, RefundAmount, CreatedAt) OUTPUT INSERTED.ReturnID VALUES (@oid, @rt, @trk, @rs, @st, @amt, GETDATE())",
-      );
-    await new sql.Request(transaction)
-      .input("oid", sql.Int, orderId)
-      .query("UPDATE Orders SET Status=N'Yêu cầu trả hàng' WHERE OrderID=@oid");
+    if (!selected.size) throw Object.assign(new Error("Vui long chon it nhat mot san pham de tra."), { statusCode: 400 });
+    const canonicalRefund = [...selected.entries()].reduce((sum, [detailId, quantity]) => sum + Number(detailsById.get(detailId).UnitPrice || 0) * quantity, 0);
+    const refundAmount = isAdmin && Number.isFinite(requestedRefund) && requestedRefund >= 0
+      ? Math.min(requestedRefund, canonicalRefund)
+      : canonicalRefund;
+    const insertResult = await new sql.Request(transaction)
+      .input("oid", sql.Int, orderId).input("rt", sql.VarChar(20), returnType)
+      .input("trk", sql.VarChar(60), trackingNumber || null).input("po", sql.Int, postOfficeId)
+      .input("ra", sql.NVarChar(500), returnAddress || null).input("rs", sql.NVarChar(500), reason)
+      .input("st", sql.NVarChar(50), initialStatus).input("amt", sql.Decimal(18, 2), refundAmount)
+      .input("uid", sql.Int, authenticatedUserId)
+      .query(`
+        INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, PostOfficeID, ReturnAddress, Reason, Status, RefundAmount, CreatedAt, UpdatedAt, UpdatedBy)
+        OUTPUT INSERTED.ReturnID
+        VALUES (@oid,@rt,@trk,@po,@ra,@rs,@st,@amt,GETDATE(),GETDATE(),@uid)
+      `);
+    const returnId = insertResult.recordset[0].ReturnID;
+    for (const [detailId, quantity] of selected.entries()) {
+      const item = selectedMeta.get(detailId) || {};
+      await new sql.Request(transaction).input("rid", sql.Int, returnId).input("odid", sql.Int, detailId)
+        .input("q", sql.Int, quantity).input("rsn", sql.NVarChar(500), cleanAddressText(item.reason || reason, 500))
+        .input("cond", sql.NVarChar(30), cleanAddressText(item.condition, 30) || null)
+        .query("INSERT INTO ReturnDetails (ReturnID, OrderDetailID, Quantity, Reason, Condition) VALUES (@rid,@odid,@q,@rsn,@cond)");
+    }
+    await new sql.Request(transaction).input("oid", sql.Int, orderId).input("uid", sql.Int, authenticatedUserId).query(`
+      UPDATE Orders SET Status=N'Yêu cầu trả hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid;
+    `);
+    await insertOrderHistory(transaction, orderId, order.Status, "Yêu cầu trả hàng", `[RETURN_CREATED] #${returnId} ${reason}`, authenticatedUserId);
+    const insertedReturn = { ReturnID: returnId, OrderID: orderId, RefundAmount: refundAmount, Status: initialStatus };
+    if (isAdmin && ["Đã hoàn tiền", "Đã hoàn tất"].includes(initialStatus)) {
+      await finalizeReturn(transaction, insertedReturn, authenticatedUserId, b.resolution_note);
+    }
     await transaction.commit();
-    res.json({ success: true, ReturnID: inserted.recordset[0].ReturnID });
+    res.status(201).json({ success: true, ...insertedReturn });
   } catch (e) {
-    if (transaction._aborted !== true) {
-      try { await transaction.rollback(); } catch (_) {}
-    }
-    res.status(500).json({ error: e.message });
+    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
+    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong tao duoc yeu cau tra hang." });
   }
 });
+
 app.put("/api/returns/:id/status", async (req, res) => {
+  const returnId = Number(req.params.id);
+  const changedBy = Number(req.auth && req.auth.sub);
+  const requestedStatus = canonicalReturnStatus(req.body && req.body.status);
+  if (!Number.isInteger(returnId) || returnId <= 0 || !requestedStatus) return res.status(400).json({ success: false, message: "Yeu cau hoac trang thai tra hang khong hop le." });
+  await poolConnect;
+  const transaction = new sql.Transaction(pool);
   try {
-    await poolConnect;
-    await pool
-      .request()
-      .input("id", sql.Int, req.params.id)
-      .input("st", sql.NVarChar, req.body.status)
-      .query(
-        "UPDATE Returns SET Status=@st, UpdatedAt=GETDATE() WHERE ReturnID=@id",
-      );
-    res.json({ success: true });
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const result = await new sql.Request(transaction).input("rid", sql.Int, returnId).query(`
+      SELECT r.ReturnID, r.OrderID, r.Status, r.RefundAmount, r.RefundedAt, r.RestockedAt, o.Status AS OrderStatus
+      FROM Returns r JOIN Orders o WITH (UPDLOCK, HOLDLOCK) ON o.OrderID=r.OrderID
+      WHERE r.ReturnID=@rid
+    `);
+    const row = result.recordset[0];
+    if (!row) throw Object.assign(new Error("Khong tim thay yeu cau tra hang."), { statusCode: 404 });
+    if (!returnTransitionAllowed(row.Status, requestedStatus)) throw Object.assign(new Error(`Khong the chuyen tu '${row.Status}' sang '${requestedStatus}'.`), { statusCode: 409 });
+    const inspectionNote = cleanAddressText(req.body && req.body.inspection_note, 1000);
+    const resolutionNote = cleanAddressText(req.body && req.body.resolution_note, 1000);
+    const requestedRefund = Number(req.body && req.body.refund_amount);
+    if (Number.isFinite(requestedRefund) && requestedRefund >= 0) row.RefundAmount = Math.min(requestedRefund, Number(row.RefundAmount) || 0);
+    await new sql.Request(transaction).input("rid", sql.Int, returnId).input("st", sql.NVarChar(50), requestedStatus)
+      .input("ins", sql.NVarChar(1000), inspectionNote || null).input("res", sql.NVarChar(1000), resolutionNote || null)
+      .input("amt", sql.Decimal(18, 2), Number(row.RefundAmount) || 0).input("uid", sql.Int, changedBy)
+      .query(`
+        UPDATE Returns SET Status=@st, RefundAmount=@amt,
+          InspectionNote=COALESCE(@ins,InspectionNote), ResolutionNote=COALESCE(@res,ResolutionNote),
+          ApprovedAt=CASE WHEN @st=N'Chấp nhận hoàn tiền' THEN ISNULL(ApprovedAt,GETDATE()) ELSE ApprovedAt END,
+          UpdatedAt=GETDATE(), UpdatedBy=@uid WHERE ReturnID=@rid
+      `);
+    if (["Đã hoàn tiền", "Đã hoàn tất"].includes(requestedStatus)) {
+      await finalizeReturn(transaction, { ...row, ReturnID: returnId, RefundAmount: Number(row.RefundAmount) || 0 }, changedBy, resolutionNote);
+    } else if (["Từ chối", "Hủy"].includes(requestedStatus)) {
+      await new sql.Request(transaction).input("oid", sql.Int, row.OrderID).query("UPDATE Orders SET Status=N'Đã nhận hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid");
+    }
+    await insertOrderHistory(transaction, row.OrderID, row.OrderStatus, row.OrderStatus, `[RETURN_STATUS] #${returnId}: ${row.Status} -> ${requestedStatus}${inspectionNote ? `; ${inspectionNote}` : ""}`, changedBy);
+    await transaction.commit();
+    res.json({ success: true, ReturnID: returnId, status: requestedStatus, refund_amount: row.RefundAmount });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
+    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong cap nhat duoc yeu cau tra hang." });
   }
 });
 
@@ -2501,12 +2828,13 @@ app.post("/api/customers", async (req, res) => {
       });
     }
 
+    const passwordHash = await passwordHelper.hash(String(password));
     let r = await pool
       .request()
       .input("f", sql.NVarChar, fullName)
       .input("ph", sql.VarChar, phone)
       .input("e", sql.VarChar, email)
-      .input("p", sql.VarChar, password)
+      .input("p", sql.VarChar, passwordHash)
       .input("a", sql.NVarChar, address)
       .input("s", sql.NVarChar, source)
       .query(
@@ -2531,6 +2859,8 @@ app.get("/api/customers/:id/orders", async (req, res) => {
                 ISNULL(Status, N'Cho xac nhan') as status,
                 ISNULL(PaymentStatus, N'Chua thanh toan') as payment_status,
                 ISNULL(PaymentMethod, 'COD') as payment_method,
+                PaymentDueAt as payment_due_at,
+                PaymentConfirmedAt as payment_confirmed_at,
                 ISNULL(HandledBy, '') as handled_by,
                 ISNULL(CustomerName, '') as customer_name,
                 ISNULL(CustomerPhone, '') as customer_phone,
@@ -2554,7 +2884,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
         .request()
         .input("id", sql.Int, req.params.id)
         .query(
-          `SELECT od.OrderID,
+          `SELECT od.OrderID, od.OrderDetailID as order_detail_id, od.ProductID as product_id, od.ProductVariantID as variant_id,
                   COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                   COALESCE(p.ImageURL, od.ImageURLSnapshot, '') as image,
                   od.Quantity as quantity, od.UnitPrice as price,
@@ -2755,7 +3085,7 @@ app.put("/api/orders/:id/receive", async (req, res) => {
     const currentResult = await new sql.Request(transaction)
       .input("id", sql.Int, orderId)
       .query(`
-        SELECT OrderID, UserID, Status
+        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus
         FROM Orders WITH (UPDLOCK, HOLDLOCK)
         WHERE OrderID=@id
       `);
@@ -2780,9 +3110,13 @@ app.put("/api/orders/:id/receive", async (req, res) => {
         SET Status = N'Đã nhận hàng',
             ReceivedConfirmedDate = GETDATE(),
             RevenueEligibleDate = DATEADD(day, @hold, GETDATE()),
-            IsCountedAsRevenue = 0
+            IsCountedAsRevenue = 0,
+            PaymentStatus = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%' THEN N'Đã thanh toán' ELSE PaymentStatus END,
+            PaymentConfirmedAt = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%' THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
+            UpdatedAt=GETDATE()
         WHERE OrderID = @id
       `);
+    await insertOrderHistory(transaction, orderId, currentOrder.Status, "Đã nhận hàng", "Khách xác nhận đã nhận hàng", authenticatedUserId);
     await transaction.commit();
     res.json({ success: true });
   } catch (e) {
@@ -2800,10 +3134,17 @@ async function runAutoCancelJob() {
     
     // Tìm các đơn sẽ bị hủy
     const expiredOrders = await pool.request().query(`
-      SELECT OrderID FROM Orders 
-      WHERE AutoCancelDeadline IS NOT NULL 
-        AND AutoCancelDeadline < GETDATE() 
-        AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+      SELECT OrderID, Status, PaymentDueAt, PaymentMethod, PaymentStatus
+      FROM Orders
+      WHERE Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+        AND (
+          (AutoCancelDeadline IS NOT NULL AND AutoCancelDeadline < GETDATE())
+          OR (
+            PaymentDueAt IS NOT NULL AND PaymentDueAt < GETDATE()
+            AND (PaymentMethod LIKE N'%chuyển khoản%' OR PaymentMethod LIKE N'%bank%' OR PaymentMethod LIKE N'%momo%' OR PaymentMethod LIKE N'%vnpay%')
+            AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (N'Đã thanh toán',N'Hoàn tiền',N'Đã hủy')
+          )
+        )
     `);
     
     // Moi don duoc khoa, hoan kho va doi trang thai trong cung mot transaction.
@@ -2814,12 +3155,18 @@ async function runAutoCancelJob() {
         const claimed = await new sql.Request(transaction)
           .input("id", sql.Int, row.OrderID)
           .query(`
-            SELECT OrderID
+            SELECT OrderID, Status
             FROM Orders WITH (UPDLOCK, HOLDLOCK)
             WHERE OrderID=@id
-              AND AutoCancelDeadline IS NOT NULL
-              AND AutoCancelDeadline<GETDATE()
               AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
+              AND (
+                (AutoCancelDeadline IS NOT NULL AND AutoCancelDeadline<GETDATE())
+                OR (
+                  PaymentDueAt IS NOT NULL AND PaymentDueAt<GETDATE()
+                  AND (PaymentMethod LIKE N'%chuyển khoản%' OR PaymentMethod LIKE N'%bank%' OR PaymentMethod LIKE N'%momo%' OR PaymentMethod LIKE N'%vnpay%')
+                  AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (N'Đã thanh toán',N'Hoàn tiền',N'Đã hủy')
+                )
+              )
           `);
         if (!claimed.recordset.length) {
           await transaction.commit();
@@ -2827,24 +3174,30 @@ async function runAutoCancelJob() {
         }
 
         await restoreOrderStock(transaction, row.OrderID);
+        const paymentExpired = row.PaymentDueAt && new Date(row.PaymentDueAt).getTime() < Date.now()
+          && isBankPayment(row.PaymentMethod)
+          && !["da thanh toan", "hoan tien", "da huy"].includes(normalizeOrderStatus(row.PaymentStatus));
+        const cancelReason = paymentExpired
+          ? "Đơn chuyển khoản đã quá hạn thanh toán 24 giờ nên được tự động hủy."
+          : "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.";
         await new sql.Request(transaction)
           .input("id", sql.Int, row.OrderID)
           .input(
             "reason",
             sql.NVarChar,
-            "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.",
+            cancelReason,
           )
           .query(`
             UPDATE Orders
             SET Status=N'Đã hủy', CancelReason=@reason,
                 PaymentStatus=CASE
-                  WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%'
-                    THEN N'Đã hủy'
-                  ELSE N'Hoàn tiền'
+                  WHEN ISNULL(PaymentStatus,N'Chưa thanh toán')=N'Đã thanh toán' THEN N'Hoàn tiền'
+                  ELSE N'Đã hủy'
                 END,
-                AutoCancelDeadline=NULL
+                AutoCancelDeadline=NULL, UpdatedAt=GETDATE()
             WHERE OrderID=@id
           `);
+        await insertOrderHistory(transaction, row.OrderID, claimed.recordset[0].Status, "Đã hủy", cancelReason, null);
         await transaction.commit();
       } catch (orderError) {
         if (transaction._aborted !== true) {

@@ -45,6 +45,18 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* ---- Typography nhất quán ---- */
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--sg-ink);
+}
+p, span, li, td, th, label, input, select, textarea, button {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
 /* ---------- Utilities ---------- */
 .cursor-pointer { cursor: pointer; }
 .object-fit-cover { object-fit: cover; }
@@ -200,5 +212,5 @@ body {
 }
 
 /* Gradient text helper */
-.sg-gradient-text { color: var(--sg-red); }
+.sg-gradient-text { color: var(--sg-ink); font-weight: 900; }
 
