@@ -77,7 +77,7 @@ const submit = async () => {
 .fp-card { max-width: 460px; width: 100%; padding: 44px; text-align: center; border-radius: 26px; }
 .auth-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1.3rem; color: var(--sg-ink); text-decoration: none; font-family: 'Inter', sans-serif; letter-spacing: 0.12em; }
 .auth-logo-text .logo-shoe { color: #0A0A0A; }
-.auth-logo-text .logo-group { color: #D4001A; }
+.auth-logo-text .logo-group { color: #0A0A0A; }
 .fp-ic { width: 66px; height: 66px; margin: 26px auto 0; border-radius: 50%; background: var(--sg-soft); color: var(--sg-blue); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
 .fp-ic-warn { background: #fef3c7; color: #d97706; }
 .auth-title { font-weight: 900; font-size: 1.7rem; margin-top: 18px; }

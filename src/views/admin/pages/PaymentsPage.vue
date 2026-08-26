@@ -1,6 +1,6 @@
 <!-- Trang: Quản Lý Xác Nhận Thanh Toán (Online / Offline + Chi tiết + Hóa đơn) -->
 <script setup>
-import { reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import {
   paymentChannel, paymentSearch,
   paymentChannelOrders, paymentChannelCount, paymentTotalCount, countOrdersByChannel,
@@ -10,6 +10,36 @@ import {
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
   formatDate, formatPrice,
 } from '../adminStore'
+
+const queueView = ref('ACTIVE')
+
+const displayedOrders = computed(() => {
+  if (queueView.value === 'ALL') return paymentChannelOrders.value
+  return paymentChannelOrders.value.filter((order) =>
+    !['Đã hủy', 'Đã nhận hàng', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
+  )
+})
+
+const actionableCount = computed(() => displayedOrders.value.filter((order) =>
+  getOrderActions(order).some((action) => !action.locked && !action.isCancel)
+).length)
+
+function queueNumber(order, index) {
+  const supplied = Number(order?.queue_position ?? order?.priority_number)
+  return Number.isFinite(supplied) && supplied > 0 ? supplied : index + 1
+}
+
+function isTransfer(order) {
+  return getPaymentMethodPill(order?.payment_method).key === 'BANK_TRANSFER'
+}
+
+function dueLabel(order) {
+  if (!order?.payment_due_at) return 'Theo hạn trên đơn'
+  const due = new Date(order.payment_due_at)
+  if (Number.isNaN(due.getTime())) return 'Theo hạn trên đơn'
+  const overdue = due.getTime() < Date.now() && getPaymentStatusPill(order).label !== 'Đã thanh toán'
+  return `${overdue ? 'Quá hạn · ' : ''}${formatDate(due)}`
+}
 
 const transitionConfirm = reactive({
   open: false,
@@ -68,54 +98,67 @@ function transitionMessage() {
       <!-- Tiêu đề -->
       <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
         <div>
-          <h5 class="fw-bold mb-1 text-dark">Xác Nhận Thanh Toán</h5>
-          <p class="text-secondary small mb-0">Online: khách mua trên mạng &nbsp;|&nbsp; Tại quầy: khách lẻ mua tại quầy</p>
-          <p class="text-secondary mb-0" style="font-size:0.75rem;"><i class="bi bi-info-circle me-1"></i>Đơn chuyển khoản: khách phải chuyển TRƯỚC rồi mới xác nhận &amp; hoàn thành. Đơn COD: xác nhận → giao → thu tiền → hoàn thành.</p>
+          <p class="admin-eyebrow mb-2">Vận hành bán hàng</p>
+          <h5 class="fw-bold mb-2 text-dark">Hàng đợi thanh toán</h5>
         </div>
         <span class="badge bg-dark text-white px-3 py-2" style="border-radius:3px;" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
       </div>
 
-      <div class="bg-white p-3 p-md-4" style="border-radius: 4px;">
+      <div class="admin-surface p-3 p-md-4">
         <!-- Tabs Online / Offline + Tìm kiếm -->
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <div class="d-flex gap-2">
             <button @click="paymentChannel = 'Online'" class="btn btn-sm fw-medium border px-3"
               style="border-radius: 4px;"
               :class="paymentChannel === 'Online' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">
-              <i class="bi bi-globe2 me-1"></i> Online
+              Online
               <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Online') + ')'"></span>
             </button>
             <button @click="paymentChannel = 'Offline'" class="btn btn-sm fw-medium border px-3"
               style="border-radius: 4px;"
               :class="paymentChannel === 'Offline' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">
-              <i class="bi bi-shop-window me-1"></i> Tại quầy
+              Tại quầy
               <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Offline') + ')'"></span>
             </button>
           </div>
+          <div class="d-flex gap-2 ms-auto">
+            <button class="btn btn-sm border px-3" :class="queueView === 'ACTIVE' ? 'btn-dark' : 'btn-white text-secondary'" @click="queueView = 'ACTIVE'">Đang xử lý</button>
+            <button class="btn btn-sm border px-3" :class="queueView === 'ALL' ? 'btn-dark' : 'btn-white text-secondary'" @click="queueView = 'ALL'">Tất cả</button>
+          </div>
           <div class="position-relative" style="max-width:280px;width:100%;">
-            <i class="bi bi-search position-absolute text-secondary" style="left:10px;top:50%;transform:translateY(-50%);"></i>
             <input v-model="paymentSearch" type="text" class="form-control form-control-sm ps-4" style="border-radius:4px;" placeholder="Tìm mã đơn / khách hàng...">
           </div>
         </div>
 
         <!-- Bảng đơn hàng -->
-        <div v-if="paymentChannelOrders.length === 0" class="text-center text-secondary py-5">
-          <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>Không có đơn hàng nào ở kênh này.
+        <div class="queue-summary mb-3">
+          <span><strong>{{ displayedOrders.length }}</strong> đơn trong danh sách</span>
+          <span><strong>{{ actionableCount }}</strong> đơn có thể xử lý ngay</span>
+        </div>
+
+        <div v-if="displayedOrders.length === 0" class="admin-empty">
+          <strong>Không có đơn cần xử lý</strong>
+          <span>Thử đổi kênh bán, phạm vi hoặc từ khóa tìm kiếm.</span>
         </div>
         <div v-else class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
               <tr class="text-secondary small text-uppercase bg-light">
+                <th style="width:60px;">STT</th>
                 <th>Đơn hàng</th>
                 <th>Phương thức</th>
                 <th>Thanh toán</th>
+                <th>Hạn thanh toán</th>
                 <th>Trạng thái đơn</th>
                 <th class="text-end">Tổng tiền</th>
                 <th class="text-end">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ord in paymentChannelOrders" :key="ord.id">
+              <tr v-for="(ord, index) in displayedOrders" :key="ord.id" :class="{ 'queue-next': index === 0 && queueView === 'ACTIVE' }">
+                <td>
+                  <span class="queue-no">{{ String(queueNumber(ord, index)).padStart(2, '0') }}</span>
+                </td>
                 <td>
                   <div class="d-flex align-items-center gap-2">
                     <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
@@ -138,13 +181,16 @@ function transitionMessage() {
                     v-text="getPaymentStatusPill(ord).label"></span>
                 </td>
                 <td>
+                  <span class="small" :class="isTransfer(ord) ? 'text-dark fw-medium' : 'text-secondary'">{{ isTransfer(ord) ? dueLabel(ord) : 'Thu khi giao' }}</span>
+                </td>
+                <td>
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                     :class="getOrderStatusPill(ord).cls"
                     v-text="getOrderStatusPill(ord).label"></span>
                 </td>
                 <td class="text-end fw-bold text-dark small" v-text="formatPrice(ord.total)"></td>
                 <td class="text-end">
-                  <button @click="openOrderDetail(ord)" class="btn btn-sm btn-outline-dark fw-medium" style="border-radius:4px;"><i class="bi bi-eye me-1"></i> Chi tiết</button>
+                  <button @click="openOrderDetail(ord)" class="btn btn-sm btn-outline-dark fw-medium" style="border-radius:4px;">Mở đơn</button>
                 </td>
               </tr>
             </tbody>
@@ -158,14 +204,14 @@ function transitionMessage() {
       <!-- Thanh tiêu đề -->
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div class="d-flex align-items-center gap-2">
-          <button @click="closeOrderDetail()" class="btn btn-sm btn-light border" style="border-radius:4px;"><i class="bi bi-arrow-left"></i></button>
+          <button @click="closeOrderDetail()" class="btn btn-sm btn-light border" style="border-radius:4px;">Quay lại</button>
           <h5 class="fw-bold mb-0 text-dark">Chi tiết đơn <span class="text-secondary fw-normal">/</span> <span v-text="getTrackingCode(orderDetail.order)"></span></h5>
         </div>
         <div class="d-flex align-items-center gap-2">
           <span class="badge px-3 py-2" style="border-radius:3px;font-size:0.75rem;"
             :class="getPaymentStatusPill(orderDetail.order).cls"
             v-text="getPaymentStatusPill(orderDetail.order).label"></span>
-          <button @click="printInvoice(orderDetail.order)" class="btn btn-sm btn-dark fw-medium" style="border-radius:4px;"><i class="bi bi-printer me-1"></i> In hóa đơn</button>
+          <button @click="printInvoice(orderDetail.order)" class="btn btn-sm btn-dark fw-medium" style="border-radius:4px;">In hóa đơn</button>
         </div>
       </div>
 
@@ -265,7 +311,7 @@ function transitionMessage() {
               </div>
             </div>
 
-            <button @click="printInvoice(orderDetail.order)" class="btn btn-dark w-100 fw-medium btn-sm" style="border-radius:4px;"><i class="bi bi-printer me-1"></i> In hóa đơn</button>
+            <button @click="printInvoice(orderDetail.order)" class="btn btn-dark w-100 fw-medium btn-sm" style="border-radius:4px;">In hóa đơn</button>
           </div>
         </div>
       </div>
@@ -307,3 +353,22 @@ function transitionMessage() {
 
   </div>
 </template>
+
+<style scoped>
+.bg-white, .admin-surface { border: 1px solid #e5e7eb; box-shadow: 0 8px 24px rgba(15, 23, 42, .04); }
+.btn, .form-control { border-radius: 3px !important; }
+table th { font-size: .72rem; letter-spacing: .04em; font-weight: 700; }
+table td { border-color: #edf0f2; }
+
+/* Thêm css fix lỗi dính chữ */
+.queue-summary { display: flex; gap: 16px; flex-wrap: wrap; background: #f8f9fa; padding: 12px 16px; border-radius: 4px; font-size: 0.85rem; color: #444; border: 1px solid #eee; }
+.queue-summary > span { display: flex; align-items: center; gap: 6px; }
+.queue-summary > span:not(:last-child)::after { content: "•"; color: #ccc; margin-left: 10px; }
+
+.queue-no { font-weight: 700; font-size: 1.1rem; color: #0A0A0A; display: block; }
+.queue-next-label { font-size: 0.65rem; background: #0A0A0A; color: #fff; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; display: inline-block; margin-top: 4px; }
+
+/* Làm mỏng viền bảng */
+.queue-next td { background-color: #fafafa; }
+.badge { font-weight: 600; padding: 4px 8px; }
+</style>

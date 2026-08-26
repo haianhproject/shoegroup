@@ -189,7 +189,7 @@ onMounted(fetchAllData);
       >
         <div class="d-flex align-items-center gap-2">
           <BrandLogo :size="36" :radius="4" />
-          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span style="color:#D4001A">GROUP</span></h3>
+          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span class="text-white">GROUP</span></h3>
         </div>
       </div>
 
@@ -214,10 +214,10 @@ onMounted(fetchAllData);
               class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
               :class="isActive ? 'active-nav text-white' : 'text-secondary'"
             >
-              <span
-                ><i class="bi me-3 fs-6" :class="item.icon"></i>
-                <span v-text="item.label"></span
-              ></span>
+              <span class="d-flex align-items-center text-start">
+                <i class="bi me-2 fs-6" :class="item.icon" style="min-width: 20px;"></i>
+                <span v-text="item.label" class="lh-sm"></span>
+              </span>
               <span
                 v-if="item.badge && item.badge() > 0"
                 class="badge rounded-1 shadow-sm"
@@ -253,11 +253,12 @@ onMounted(fetchAllData);
       >
         <div class="d-flex align-items-center gap-3">
           <button
-            class="btn btn-light border-0 rounded-circle d-flex align-items-center justify-content-center text-dark bg-light-gray"
-            style="width: 40px; height: 40px"
+            class="btn btn-light border d-flex align-items-center justify-content-center text-dark bg-light-gray"
+            style="width: 40px; height: 40px; border-radius: 4px;"
             @click="isNavOpen = !isNavOpen"
+            title="Toggle Menu"
           >
-            <i class="bi bi-list fs-5"></i>
+            <i class="bi bi-list fs-4"></i>
           </button>
           <h2
             class="h5 mb-0 fw-bold text-dark d-none d-md-block tracking-wide"
@@ -284,7 +285,7 @@ onMounted(fetchAllData);
         <p class="fw-medium text-secondary">Đang nạp dữ liệu từ CSDL...</p>
       </div>
 
-      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
+      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light w-100 mx-auto" style="max-width: 1440px;">
         <!-- Mỗi trang con được render tại đây -->
         <router-view />
       </div>
@@ -799,7 +800,7 @@ onMounted(fetchAllData);
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #dc2626;
+  background: #0A0A0A;
   margin-top: 4px;
 }
 .timeline-line {

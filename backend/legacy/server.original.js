@@ -38,7 +38,8 @@ poolConnect
 // Nen dat qua bien moi truong khi deploy. Cai thu vien: npm install nodemailer
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const EMAIL_USER = process.env.EMAIL_USER || "anhbhth05764@gmail.com";
-const EMAIL_PASS = process.env.EMAIL_PASS || "labw adqs zelc mcen";
+// Khong luu app-password trong ma nguon. Dat EMAIL_PASS trong .env khi can chay legacy.
+const EMAIL_PASS = process.env.EMAIL_PASS || "";
 const mailTransporter = nodemailer.createTransport({
   service: "gmail",
   auth: { user: EMAIL_USER, pass: EMAIL_PASS },

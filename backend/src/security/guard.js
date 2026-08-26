@@ -28,6 +28,11 @@ const POLICIES = [
   ["POST", /^\/api\/log-error$/, "PUBLIC"],
   ["GET", /^\/api\/health$/, "PUBLIC"],
 
+  // Cac endpoint v2 dung chung voi route cu: san pham cong khai, don hang theo tai khoan.
+  ["GET", /^\/api\/v2\/products(\/|$)/, "PUBLIC"],
+  ["GET", /^\/api\/v2\/orders(\/|$)/, "CUSTOMER"],
+  ["GET", /^\/api\/v2\/dashboard\/summary$/, "ADMIN"],
+
   // Danh muc / du lieu tra cuu cho trang ban hang (chi doc)
   ["GET", /^\/api\/products(\/|$|\?)/, "PUBLIC"],
   ["GET", /^\/api\/categories/, "PUBLIC"],
