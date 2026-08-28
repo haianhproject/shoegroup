@@ -5,6 +5,7 @@ import TheNavbar from './components/TheNavbar.vue'
 import TheFooter from './components/TheFooter.vue'
 import CenterNotify from './components/CenterNotify.vue'
 import PromoModal from './components/PromoModal.vue'
+import CartDrawer from './components/CartDrawer.vue'
 
 const route = useRoute()
 const isAdmin = computed(() => route.path.startsWith('/admin'))
@@ -21,6 +22,7 @@ const isAdmin = computed(() => route.path.startsWith('/admin'))
     <!-- Global overlays (customer side only) -->
     <template v-if="!isAdmin">
       <PromoModal />
+      <CartDrawer />
     </template>
     <CenterNotify />
   </div>

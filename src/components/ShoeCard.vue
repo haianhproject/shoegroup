@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
-import { addToCart, formatCurrency, showMiniCart } from "../stores/cartStore"
+import { addToCart, formatCurrency, showDrawer } from "../stores/cartStore"
 import { notify } from "../stores/uiStore"
 
 const props = defineProps({
@@ -122,7 +122,7 @@ function confirmAddToCart() {
   })
   if (!result.ok) { notify({ type: "warning", message: result.message }); return }
   showVariantModal.value = false
-  showMiniCart()
+  showDrawer()
   notify({ type: "success", title: "Đã thêm vào giỏ", message: props.product.product_name || props.product.name, duration: 2200 })
 }
 </script>

@@ -54,7 +54,9 @@ function enterPanel() {
 }
 
 function goToStore() {
-  router.push('/')
+  // Admin không được thao tác như khách hàng — chặn điều hướng về trang chủ
+  // Giữ đăng nhập admin, chỉ cho phép thao tác trong /admin
+  return
 }
 
 function onLogoutClick() {
@@ -137,9 +139,9 @@ function onLogoutClick() {
         </span>
       </button>
 
-      <!-- Các liên kết phụ -->
+      <!-- Các liên kết phụ — admin không được về trang khách để đặt hàng -->
       <div class="d-flex justify-content-center align-items-center gap-3 text-muted small">
-        <button @click="goToStore" class="btn-sub-link">
+        <button class="btn-sub-link" disabled title="Tài khoản admin không được thao tác như khách hàng. Vui lòng đăng xuất nếu muốn mua hàng." style="opacity:.45; cursor:not-allowed;">
           <i class="bi bi-shop me-1"></i>Xem Cửa Hàng
         </button>
         <span class="dot-sep">•</span>
@@ -199,7 +201,7 @@ function onLogoutClick() {
   left: 0;
   right: 0;
   height: 4px;
-  background: #D4001A;
+  background: #0A0A0A;
 }
 
 .logo-box {
@@ -220,7 +222,7 @@ function onLogoutClick() {
 }
 
 .text-red {
-  color: #D4001A;
+  color: #0A0A0A;
 }
 
 .badge-admin {
@@ -255,7 +257,7 @@ function onLogoutClick() {
 }
 
 .text-name {
-  color: #D4001A;
+  color: #0A0A0A;
 }
 
 .welcome-subtitle {
@@ -287,13 +289,13 @@ function onLogoutClick() {
 }
 
 .role-tag {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #f3f4f6;
+  color: #0A0A0A;
   font-size: 0.7rem;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 3px;
-  border: 1px solid #fecaca;
+  border: 1px solid #e5e7eb;
   white-space: nowrap;
 }
 
@@ -317,9 +319,9 @@ function onLogoutClick() {
 }
 
 .btn-enter-panel:hover:not(:disabled) {
-  background: #D4001A;
+  background: #1a1a1a;
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(212, 0, 26, 0.25);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .btn-enter-panel:disabled {

@@ -53,6 +53,13 @@ router.beforeEach((to) => {
     return true;
   }
 
+  // Admin đã đăng nhập thì không được thao tác như khách hàng (đặt hàng, giỏ hàng...)
+  // Kể cả trang chào mừng cũng không được quay về trang chủ khách.
+  if (isAuthenticated.value && isAdmin()) {
+    // Chặn toàn bộ khu khách hàng khi đang là admin
+    return { path: "/admin" };
+  }
+
   if (to.meta && to.meta.requiresAuth && !isAuthenticated.value) {
     return { path: "/login", query: { redirect: path } };
   }

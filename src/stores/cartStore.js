@@ -127,6 +127,7 @@ let activeUserKey = getUserId(currentUser.value);
 export const cartState = reactive({
   items: loadCartForUser(currentUser.value),
   isMiniCartOpen: false,
+  isDrawerOpen: false,
 });
 
 export const isCheckingCartStock = ref(false);
@@ -990,4 +991,24 @@ export const hideMiniCart = () => {
 export const toggleMiniCart = () => {
   cartState.isMiniCartOpen =
     !cartState.isMiniCartOpen;
+};
+
+// ============================================================
+// DRAWER CART (slide-over, không làm mất trang nền)
+// ============================================================
+
+export const showDrawer = () => {
+  cartState.isDrawerOpen = true;
+  cartState.isMiniCartOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = 'hidden';
+};
+
+export const hideDrawer = () => {
+  cartState.isDrawerOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = '';
+};
+
+export const toggleDrawer = () => {
+  if (cartState.isDrawerOpen) hideDrawer();
+  else showDrawer();
 };

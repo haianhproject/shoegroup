@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import {
   addToCart,
   formatCurrency,
-  showMiniCart
+  showDrawer
 } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import { API_BASE_URL } from '../services/apiClient'
@@ -735,7 +735,7 @@ const handleAdd = () => {
   // MINI CART
   // ----------------------------------------------------------
 
-  showMiniCart()
+  showDrawer()
 
   notify({
     type: 'success',

@@ -3,7 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   cartState, cartItems, cartCount, cartSubtotal,
-  formatCurrency, showMiniCart, hideMiniCart, removeFromCart,
+  formatCurrency, showDrawer, hideDrawer,
 } from '../stores/cartStore'
 import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
@@ -163,9 +163,7 @@ const submitSearch = () => {
 
 watch(() => route.query.search, (s) => { searchQuery.value = s || '' }, { immediate: true })
 
-let hideTimeout = null
-const handleMouseEnter = () => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null } showMiniCart() }
-const handleMouseLeave = () => { hideTimeout = setTimeout(() => hideMiniCart(), 300) }
+const openCartDrawer = () => showDrawer()
 
 const scrolled = ref(false)
 const onScroll = () => { scrolled.value = window.scrollY > 8 }
@@ -259,53 +257,12 @@ onUnmounted(() => {
             <i class="bi" :class="searchOpen ? 'bi-x-lg' : 'bi-search'"></i>
           </button>
 
-          <!-- Cart + mini popover -->
-          <div class="sg-cart-wrap" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
-            <router-link to="/cart" class="sg-icon-btn" @click="hideMiniCart">
+          <!-- Cart: mở drawer thay vì chuyển trang (không làm mất trang nền) -->
+          <div class="sg-cart-wrap">
+            <button class="sg-icon-btn" @click="openCartDrawer" aria-label="Giỏ hàng">
               <i class="bi bi-bag"></i>
               <span v-if="cartCount > 0" class="sg-cart-badge">{{ cartCount }}</span>
-            </router-link>
-
-            <transition name="mc">
-              <div v-if="cartState.isMiniCartOpen" class="mini-cart" @click.stop>
-                <div class="mc-header">
-                  <span class="mc-title">Giỏ hàng</span>
-                  <span class="mc-count">{{ cartCount }} sản phẩm</span>
-                </div>
-                <div v-if="miniCartItems.length === 0" class="mc-empty">
-                  <i class="bi bi-bag-x"></i>
-                  <p>Giỏ hàng đang trống.</p>
-                </div>
-                <div v-else class="mc-body">
-                  <div v-for="item in miniCartItems" :key="item.id_product_detail" class="mc-item">
-                    <router-link :to="`/product/${item.id_product}`" class="mc-img" @click="hideMiniCart">
-                      <img :src="item.color?.image || item.product?.image_url" :alt="item.product?.product_name">
-                    </router-link>
-                    <div class="mc-info">
-                      <router-link :to="`/product/${item.id_product}`" class="mc-name" @click="hideMiniCart">
-                        {{ item.product?.product_name }}
-                      </router-link>
-                      <div class="mc-attrs">
-                        <span v-if="item.size?.size_name" class="mc-tag">Size {{ item.size.size_name }}</span>
-                        <span v-if="item.color?.color_label" class="mc-tag">{{ item.color.color_label }}</span>
-                      </div>
-                      <p class="mc-price">{{ item.quantity }} × {{ formatCurrency(item.unitPrice) }}</p>
-                    </div>
-                    <button class="mc-remove" @click="removeFromCart(item.id_product_detail)"><i class="bi bi-x"></i></button>
-                  </div>
-                  <div v-if="cartItems.length > 3" class="mc-more">Và {{ cartItems.length - 3 }} sản phẩm khác…</div>
-                  <div class="mc-divider"></div>
-                  <div class="mc-subtotal">
-                    <span>Tạm tính</span>
-                    <span class="mc-subtotal-value">{{ formatCurrency(cartSubtotal) }}</span>
-                  </div>
-                  <div class="mc-actions">
-                    <router-link to="/cart" class="mc-btn mc-btn--outline" @click="hideMiniCart">Xem giỏ hàng</router-link>
-                    <router-link to="/checkout" class="mc-btn mc-btn--primary" @click="hideMiniCart">Thanh toán</router-link>
-                  </div>
-                </div>
-              </div>
-            </transition>
+            </button>
           </div>
 
           <!-- Account -->

@@ -5,6 +5,7 @@ import { currentUser, updateProfile, logout } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import { formatCurrency } from '../stores/cartStore'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
+import { api } from '../services/apiClient'
 import MyOrders from './MyOrders.vue'
 
 const route = useRoute()
@@ -13,7 +14,7 @@ const tab = ref(['orders', 'address', 'profile', 'coupons'].includes(route.query
 
 onMounted(async () => {
   if (route.query.tab === 'orders') tab.value = 'orders'
-  await Promise.all([fetchProvinces(), loadAddresses()])
+  await Promise.all([fetchProvinces(), loadAddresses(), fetchUserCoupons()])
 })
 
 const setTab = (t) => {
@@ -290,13 +291,60 @@ const setDefault = async (id) => {
 
 const initials = computed(() => (profile.full_name || 'U').split(' ').map((w) => w[0]).slice(-2).join('').toUpperCase())
 
-const userCoupons = ref([
-  { code: 'WELCOME30', discount: '-30%', desc: 'Giảm 30% cho thành viên mới', icon: 'bi-gift-fill', minOrder: '500.000đ', expire: '31/12/2026', used: false, expired: false },
-  { code: 'FREESHIP', discount: 'Free Ship', desc: 'Miễn phí vận chuyển toàn quốc', icon: 'bi-truck', minOrder: '300.000đ', expire: '31/08/2026', used: false, expired: false },
-  { code: 'SUMMER20', discount: '-20%', desc: 'Ưu đãi mùa hè 2026', icon: 'bi-sun-fill', minOrder: '400.000đ', expire: '30/09/2026', used: false, expired: false },
-  { code: 'FLASH50K', discount: '-50.000đ', desc: 'Flash sale cuối tuần', icon: 'bi-ticket-perforated-fill', minOrder: '800.000đ', expire: '15/07/2026', used: true, expired: false },
-  { code: 'NEWYEAR', discount: '-15%', desc: 'Chào năm mới 2026', icon: 'bi-stars', minOrder: '0đ', expire: '31/01/2026', used: false, expired: true },
-])
+const userCoupons = ref([])
+const loadingCoupons = ref(false)
+
+const fetchUserCoupons = async () => {
+  loadingCoupons.value = true
+  try {
+    const list = await api.get('/discounts')
+    const now = new Date()
+    now.setHours(0,0,0,0)
+    userCoupons.value = (Array.isArray(list) ? list : []).map((c) => {
+      const code = c.code ?? c.CouponCode ?? ''
+      const name = c.name ?? c.CouponName ?? c.description ?? ''
+      const dtype = String(c.discount_type ?? c.DiscountType ?? '').toLowerCase()
+      const val = Number(c.value ?? c.DiscountValue ?? c.percent ?? c.DiscountPercent ?? 0)
+      const minOrderVal = Number(c.min_order ?? c.MinOrderAmount ?? 0)
+      const expiryRaw = c.expiry ?? c.ExpiryDate ?? c.Expiry ?? ''
+      let expireText = '—'
+      let expired = false
+      if (expiryRaw) {
+        const d = new Date(expiryRaw)
+        if (!isNaN(d.getTime())) {
+          expireText = d.toLocaleDateString('vi-VN')
+          const ed = new Date(d); ed.setHours(23,59,59,999)
+          expired = ed < new Date()
+        }
+      }
+      const used = Number(c.used ?? c.UsedCount ?? 0) >= Number(c.limit ?? c.UsageLimit ?? 999999) && Number(c.limit ?? 0) > 0
+      const active = c.active !== 0 && c.active !== false && c.active !== '0' && c.IsActive !== 0
+      const isExpired = expired || active === false
+      let discount = ''
+      if (dtype.includes('phần trăm') || dtype.includes('percent')) discount = `-${val}%`
+      else if (val) discount = `-${formatCurrency(val)}`
+      else discount = name || code
+      let icon = 'bi-ticket-perforated-fill'
+      if (code.toLowerCase().includes('ship') || name.toLowerCase().includes('ship')) icon = 'bi-truck'
+      else if (dtype.includes('phần trăm') || dtype.includes('percent')) icon = 'bi-percent'
+      else icon = 'bi-gift-fill'
+      return {
+        code,
+        discount: discount || '-',
+        desc: name || c.description || 'Mã giảm giá',
+        icon,
+        minOrder: minOrderVal ? formatCurrency(minOrderVal) : '0đ',
+        expire: expireText,
+        used: used && !isExpired,
+        expired: isExpired,
+      }
+    }).filter(c => c.code)
+  } catch (_) {
+    userCoupons.value = []
+  } finally {
+    loadingCoupons.value = false
+  }
+}
 
 const copyCoupon = (code) => {
   navigator.clipboard.writeText(code).then(() => notify({ type: 'success', title: 'Đã sao chép!', message: code }))
@@ -381,8 +429,10 @@ const copyCoupon = (code) => {
           <div v-else-if="tab === 'coupons'" class="sg-card acc-block">
             <div class="sg-title-bar mb-2"></div>
             <h5 class="fw-bold">Mã giảm giá của tôi</h5>
-            <p class="text-secondary mb-3">Danh sách mã giảm giá đang có hiệu lực hoặc đã dùng.</p>
-            <div class="coupon-grid">
+            <p class="text-secondary mb-3">Mã lấy trực tiếp từ cơ sở dữ liệu — đồng bộ với quản lý khuyến mãi.</p>
+            <div v-if="loadingCoupons" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải mã giảm giá…</div>
+            <div v-else-if="userCoupons.length === 0" class="text-center py-4 text-muted">Chưa có mã giảm giá khả dụng.</div>
+            <div v-else class="coupon-grid">
               <div v-for="c in userCoupons" :key="c.code" class="coupon-card" :class="{ used: c.used, expired: c.expired }">
                 <div class="coupon-left">
                   <div class="coupon-icon"><i class="bi" :class="c.icon"></i></div>
@@ -610,7 +660,7 @@ const copyCoupon = (code) => {
 .coupon-card:not(.used):not(.expired):hover { border-color: #0A0A0A; box-shadow: var(--sg-shadow-sm); }
 .coupon-card.used { opacity: .65; }
 .coupon-card.expired { opacity: .5; }
-.coupon-left { background: #D4001A; width: 70px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+.coupon-left { background: #0A0A0A; width: 70px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; }
 .coupon-card.used .coupon-left { background: #6b7280; }
 .coupon-card.expired .coupon-left { background: #e5e5e5; }
 .coupon-icon { color: #fff; font-size: 1.6rem; }
@@ -620,12 +670,12 @@ const copyCoupon = (code) => {
 .coupon-desc { font-size: .88rem; color: var(--sg-ink-2); margin: 4px 0; }
 .coupon-meta { display: flex; gap: 12px; flex-wrap: wrap; }
 .coupon-meta span { font-size: .76rem; color: var(--sg-muted); }
-.coupon-exp { color: #D4001A; font-weight: 600; }
+.coupon-exp { color: #0A0A0A; font-weight: 600; }
 .coupon-right { padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; min-width: 120px; }
-.coupon-discount { font-size: 1.4rem; font-weight: 900; color: #D4001A; }
+.coupon-discount { font-size: 1.4rem; font-weight: 900; color: #0A0A0A; }
 .coupon-card.used .coupon-discount, .coupon-card.expired .coupon-discount { color: var(--sg-muted); }
 .coupon-status-tag { font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; }
-.coupon-status-tag.active { background: #D4001A; color: #fff; }
+.coupon-status-tag.active { background: #0A0A0A; color: #fff; }
 .coupon-status-tag.used { background: #e5e5e5; color: #666; }
 .coupon-status-tag.expired { background: #e5e5e5; color: #999; }
 .coupon-copy { border: 1px solid #0A0A0A; background: transparent; color: #0A0A0A; border-radius: 4px; padding: .3rem .8rem; font-size: .78rem; font-weight: 700; transition: .2s; }
