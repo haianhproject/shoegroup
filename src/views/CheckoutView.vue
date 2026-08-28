@@ -8,9 +8,9 @@ import {
 import { createOrder, setServerId, removeOrder, orderState, saveOrders } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
-import { shippingMethods } from '../data/mockData'
 import { api } from '../services/apiClient'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
+import { shippingApi } from '../services/shippingService'
 
 const router = useRouter()
 
@@ -33,6 +33,11 @@ const selectedAddress = computed(() => savedAddresses.value.find(a => a.id === s
 const selectedAddressText = computed(() => formatAddress(selectedAddress.value))
 
 const shippingCode = ref('STANDARD')
+const shippingMethods = ref([])
+const shippingQuotes = reactive({})
+const shippingLoading = ref(false)
+const shippingQuoteError = ref('')
+let shippingQuoteRequestId = 0
 const paymentCode = ref('COD')
 const placing = ref(false)
 
@@ -94,6 +99,7 @@ onMounted(async () => {
     return
   }
   await Promise.all([loadAddresses(), fetchProvinces()])
+  await loadShippingMethods()
 })
 
 watch(selectedAddressId, (newId) => {
@@ -251,6 +257,68 @@ function validateForm() {
   return ok
 }
 
+/* ---- API báo giá vận chuyển ---- */
+const shippingAddressPayload = computed(() => {
+  const address = selectedAddress.value
+  if (!address) return null
+  return {
+    province: address.provinceName || address.province || '',
+    district: address.district || '',
+    ward: address.communeName || address.ward || '',
+    address: formatAddress(address),
+  }
+})
+
+const loadShippingMethods = async () => {
+  const methods = await shippingApi.methods()
+  shippingMethods.value = methods
+  if (!methods.some((method) => method.code === shippingCode.value)) {
+    shippingCode.value = methods[0]?.code || 'STANDARD'
+  }
+  await refreshShippingQuotes()
+}
+
+const refreshShippingQuotes = async () => {
+  const location = shippingAddressPayload.value
+  const methods = shippingMethods.value
+  const requestId = ++shippingQuoteRequestId
+
+  Object.keys(shippingQuotes).forEach((code) => { delete shippingQuotes[code] })
+  shippingQuoteError.value = ''
+  if (!location || !methods.length) {
+    shippingLoading.value = false
+    return
+  }
+
+  shippingLoading.value = true
+  const results = await Promise.allSettled(
+    methods.map((method) => shippingApi.quote({ ...location, methodCode: method.code })),
+  )
+  // Bỏ qua kết quả cũ nếu khách vừa đổi địa chỉ/phương thức.
+  if (requestId !== shippingQuoteRequestId) return
+
+  let successCount = 0
+  results.forEach((result, index) => {
+    if (result.status !== 'fulfilled' || !result.value) return
+    const method = methods[index]
+    shippingQuotes[method.code] = {
+      ...result.value,
+      methodCode: method.code,
+      fee: Number(result.value.fee) || Number(method.basePrice) || 0,
+      eta: result.value.eta || method.eta,
+    }
+    successCount += 1
+  })
+  if (!successCount) {
+    shippingQuoteError.value = 'Chưa lấy được giá theo địa chỉ; hệ thống sẽ kiểm tra lại khi đặt hàng.'
+  }
+  shippingLoading.value = false
+}
+
+watch([selectedAddressId, shippingCode], () => {
+  refreshShippingQuotes()
+})
+
 /* ---- Map & Shipping Calculation ---- */
 const addressVerified = computed(() => {
   const address = selectedAddressText.value
@@ -262,12 +330,31 @@ const mapUrl = computed(() => {
   return `https://www.google.com/maps?q=${query}&output=embed`
 })
 
+const selectedShippingMethod = computed(() =>
+  shippingMethods.value.find((method) => method.code === shippingCode.value) || null,
+)
+
+const selectedShippingQuote = computed(() => shippingQuotes[shippingCode.value] || null)
+
 const shippingFee = computed(() => {
-  const method = shippingMethods.find((s) => s.code === shippingCode.value)
-  return method ? Number(method.basePrice || 0) : 0
+  if (selectedShippingQuote.value) return Number(selectedShippingQuote.value.fee) || 0
+  return Number(selectedShippingMethod.value?.basePrice) || 0
 })
 
-const etaText = computed(() => shippingMethods.find((s) => s.code === shippingCode.value)?.eta || '')
+const etaText = computed(() =>
+  selectedShippingQuote.value?.eta || selectedShippingMethod.value?.eta || '',
+)
+
+const shippingPrice = (method) => {
+  const quote = shippingQuotes[method.code]
+  return quote ? Number(quote.fee) || 0 : Number(method.basePrice) || 0
+}
+
+const shippingDistance = (method) => {
+  const quote = shippingQuotes[method.code]
+  if (!quote || !Number(quote.distanceKm)) return ''
+  return `${Number(quote.distanceKm).toLocaleString('vi-VN')} km${quote.estimatedDistance ? ' (ước tính)' : ''}`
+}
 
 /* ---- Coupons ---- */
 const couponCode = ref('')
@@ -359,10 +446,17 @@ const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0
 
 const confirmPaid = async () => {
   if (payModal.serverId) {
-    try { await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' }) } catch {}
+    try {
+      // Chuyển khoản online được ghi nhận ngay sau khi khách xác nhận đã thanh toán.
+      // Không tạo thêm một bước duyệt trùng ở màn hình quản trị.
+      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
+      return
+    }
   }
   const order = orderState.orders.find((x) => x.id === payModal.orderId)
-  if (order) { order.payment_status = 'Chờ thanh toán'; saveOrders() }
+  if (order) { order.payment_status = 'Đã thanh toán'; saveOrders() }
   payModal.open = false
   router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
 }
@@ -401,13 +495,12 @@ const placeOrder = async () => {
     return
   }
 
-  if (shippingCode.value === 'EXPRESS' && !addressVerified.value) {
-    notify({ type: 'warning', title: 'Địa chỉ chưa hợp lệ', message: 'Giao hỏa tốc cần địa chỉ có số nhà rõ ràng.' })
-    return
-  }
-
   placing.value = true
-  const shipMethod = shippingMethods.find((s) => s.code === shippingCode.value)
+  const shipMethod = selectedShippingMethod.value || {
+    code: shippingCode.value,
+    name: 'Giao hàng tiêu chuẩn',
+    eta: '',
+  }
   const payMethod = payments.find((p) => p.code === paymentCode.value)
 
   const clientOrder = createOrder({
@@ -417,7 +510,12 @@ const placeOrder = async () => {
     shippingFee: shippingFee.value,
     discount: discountAmount.value,
     total: total.value,
-    shippingMethod: { code: shipMethod.code, name: shipMethod.name, eta: etaText.value, distanceKm: 0 },
+    shippingMethod: {
+      code: shipMethod.code,
+      name: shipMethod.name,
+      eta: etaText.value,
+      distanceKm: Number(selectedShippingQuote.value?.distanceKm) || 0,
+    },
     paymentMethod: { code: payMethod.code, name: payMethod.name },
     note: form.note,
   })
@@ -468,6 +566,10 @@ const placeOrder = async () => {
       clientOrder.order.shippingFee = Number(data?.shippingFee) || 0
       clientOrder.order.discount = Number(data?.discountAmount) || 0
       clientOrder.order.total = serverTotal
+      if (clientOrder.order.shippingMethod) {
+        clientOrder.order.shippingMethod.distanceKm = Number(data?.distanceKm) || clientOrder.order.shippingMethod.distanceKm || 0
+        clientOrder.order.shippingMethod.eta = data?.eta || clientOrder.order.shippingMethod.eta
+      }
       saveOrders()
     }
   } catch (error) {
@@ -585,15 +687,24 @@ const placeOrder = async () => {
           <!-- 2. Vận chuyển -->
           <div class="co-block">
             <h6 class="co-h"><span class="co-num">2</span> PHƯƠNG THỨC VẬN CHUYỂN</h6>
+            <div v-if="shippingQuoteError" class="shipping-quote-warning mt-3">
+              <i class="bi bi-info-circle me-1"></i>{{ shippingQuoteError }}
+            </div>
             <div class="ship-grid mt-4">
               <label v-for="m in shippingMethods" :key="m.code" class="ship-opt" :class="{ active: shippingCode === m.code }">
                 <input type="radio" :value="m.code" v-model="shippingCode" hidden />
                 <div class="flex-grow-1">
                   <div class="ship-name">{{ m.name }}</div>
                   <div class="ship-desc">{{ m.desc }}</div>
-                  <div class="ship-eta">Dự kiến: {{ m.eta }}</div>
+                  <div class="ship-eta">Dự kiến: {{ shippingQuotes[m.code]?.eta || m.eta }}</div>
+                  <div v-if="shippingDistance(m)" class="ship-distance">
+                    <i class="bi bi-geo-alt me-1"></i>{{ shippingDistance(m) }} từ kho Hai Bà Trưng, Hà Nội
+                  </div>
+                  <div v-else-if="shippingLoading" class="ship-distance text-muted">
+                    <i class="bi bi-arrow-repeat me-1"></i>Đang tính theo địa chỉ…
+                  </div>
                 </div>
-                <div class="ship-fee">{{ formatCurrency(m.basePrice) }}</div>
+                <div class="ship-fee">{{ formatCurrency(shippingPrice(m)) }}</div>
                 <div class="ship-check"></div>
               </label>
             </div>
@@ -739,7 +850,7 @@ const placeOrder = async () => {
                   type="text"
                   v-model="searchProvince"
                   class="sg-input w-100 pe-4"
-                  placeholder="🔍 Nhập để tìm Tỉnh/TP..."
+                  placeholder="Nhập để tìm Tỉnh/TP..."
                   @focus="showProvinceDropdown = true"
                   @blur="showProvinceDropdown = false"
                   @input="showProvinceDropdown = true; addrModal.provinceId = ''"
@@ -772,7 +883,7 @@ const placeOrder = async () => {
                   v-model="searchCommune"
                   class="sg-input w-100 pe-4"
                   :disabled="!addrModal.provinceId || loadingCommunes"
-                  :placeholder="loadingCommunes ? '⏳ Đang tải dữ liệu...' : '🔍 Nhập để tìm Phường/Xã...'"
+                  :placeholder="loadingCommunes ? 'Đang tải dữ liệu...' : 'Nhập để tìm Phường/Xã...'"
                   @focus="showCommuneDropdown = true"
                   @blur="showCommuneDropdown = false"
                   @input="showCommuneDropdown = true; addrModal.communeId = ''"
@@ -828,10 +939,10 @@ const placeOrder = async () => {
           <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" />
           <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Quét mã QR để chuyển khoản. Sau khi thanh toán bấm xác nhận bên dưới.</p>
+          <p class="text-secondary small mb-4">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
           <div class="d-flex flex-column gap-2">
             <button class="btn-sg-warm w-100" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="btn-sg-outline w-100" @click="payLater">ĐỂ SAU (CÒN 12H)</button>
+            <button class="btn-sg-outline w-100" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
           </div>
         </div>
       </div>
@@ -871,6 +982,8 @@ const placeOrder = async () => {
 .ship-name, .pay-name { font-weight: 700; font-size: 0.9rem; color: #1a1a1a; margin-bottom: 4px; }
 .ship-desc, .pay-desc { font-size: 0.8rem; color: #666; }
 .ship-eta { font-size: 0.75rem; color: #1a1a1a; font-weight: 600; margin-top: 6px; }
+.ship-distance { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
+.shipping-quote-warning { padding: 10px 12px; border: 1px solid #fde68a; border-radius: 4px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
 .ship-fee { font-weight: 600; color: #1a1a1a; font-size: 0.95rem; margin-right: 16px; }
 
 .ship-check, .pay-check { width: 20px; height: 20px; border: 1px solid #d0d0d0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }

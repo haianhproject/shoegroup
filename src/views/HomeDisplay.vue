@@ -118,100 +118,141 @@ const prev = () => go(current.value - 1)
 const startAuto = () => { stopAuto(); timer = setInterval(next, 5000) }
 const stopAuto = () => { if (timer) { clearInterval(timer); timer = null } }
 
-// Pointer events let the same interaction work with mouse, touch and pen.
-// Only a horizontal gesture changes slides; vertical gestures keep page scroll natural.
-const pointerStartX = ref(0)
-const pointerStartY = ref(0)
+const sliderRef = ref(null)
 const dragOffset = ref(0)
-const isPointerDown = ref(false)
 const isDragging = ref(false)
 const suppressClick = ref(false)
-let suppressClickTimer = null
 
-const clearSuppressClick = () => {
-  if (suppressClickTimer !== null) {
-    clearTimeout(suppressClickTimer)
-    suppressClickTimer = null
-  }
-  suppressClick.value = false
+let startX = 0
+let startY = 0
+let lastX = 0
+let lastTime = 0
+let vel = 0
+let dragging = false
+let suppressClickTimer = null
+let targetOffset = 0  // giá trị đích, RAF sẽ lerp tới đây
+let rafId = null
+
+// RAF loop: lerp dragOffset → targetOffset để chuyển động mượt hơn
+function rafLoop() {
+  if (!dragging) { rafId = null; return }
+  const diff = targetOffset - dragOffset.value
+  // Nếu sai lệch < 0.5px thì snap thẳng luôn
+  dragOffset.value = Math.abs(diff) < 0.5 ? targetOffset : dragOffset.value + diff * 0.55
+  rafId = requestAnimationFrame(rafLoop)
 }
 
 const slideTrackStyle = computed(() => ({
   transform: `translate3d(calc(-${current.value * 100}% + ${dragOffset.value}px), 0, 0)`,
-  transition: isDragging.value ? 'none' : undefined,
+  transition: isDragging.value ? 'none' : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)',
 }))
 
-const onPointerDown = (event) => {
-  if (event.pointerType === 'mouse' && event.button !== 0) return
-  // A new gesture should not inherit suppression from a previous drag.
-  clearSuppressClick()
-  pointerStartX.value = event.clientX
-  pointerStartY.value = event.clientY
-  dragOffset.value = 0
-  isPointerDown.value = true
+function onDragStart(clientX, clientY) {
+  startX = clientX
+  startY = clientY
+  lastX = clientX
+  lastTime = Date.now()
+  vel = 0
+  dragging = false
   isDragging.value = false
+  dragOffset.value = 0
+  targetOffset = 0
   stopAuto()
-  event.currentTarget?.setPointerCapture?.(event.pointerId)
 }
 
-const onPointerMove = (event) => {
-  if (!isPointerDown.value) return
-  const dx = event.clientX - pointerStartX.value
-  const dy = event.clientY - pointerStartY.value
+function onDragMove(clientX, clientY) {
+  const dx = clientX - startX
+  const dy = clientY - startY
+  // Ưu tiên scroll dọc nếu cử chỉ rõ ràng là dọc
+  if (!dragging && Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) return false
+  if (!dragging && Math.abs(dx) < 6) return true
 
-  // Give vertical movement back to the browser instead of hijacking page scroll.
-  if (!isDragging.value && Math.abs(dy) > 6 && Math.abs(dy) > Math.abs(dx)) {
-    isPointerDown.value = false
-    dragOffset.value = 0
-    startAuto()
-    return
+  if (!dragging) {
+    dragging = true
+    isDragging.value = true
+    // Bắt đầu RAF loop khi bắt đầu kéo
+    if (!rafId) rafId = requestAnimationFrame(rafLoop)
   }
-  if (!isDragging.value && Math.abs(dx) < 6) return
 
-  isDragging.value = true
-  dragOffset.value = dx
-  if (event.cancelable) event.preventDefault()
+  const now = Date.now()
+  const dt = now - lastTime
+  if (dt > 0) vel = (clientX - lastX) / dt
+  lastX = clientX
+  lastTime = now
+
+  // Resistance ở slide đầu/cuối
+  const atStart = current.value === 0 && dx > 0
+  const atEnd   = current.value === slides.length - 1 && dx < 0
+  targetOffset = (atStart || atEnd) ? dx * 0.2 : dx
+  return true
 }
 
-const onPointerUp = (event) => {
-  if (!isPointerDown.value) return
+function onDragEnd() {
+  // Dừng RAF
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+
+  if (!dragging) { startAuto(); return }
   const dx = dragOffset.value
-  const didSwipe = isDragging.value && Math.abs(dx) >= 50
-  const moved = isDragging.value && Math.abs(dx) > 8
+  const fastSwipe = Math.abs(vel) > 0.35
+  const farSwipe  = Math.abs(dx) >= 50
 
-  isPointerDown.value = false
+  dragging = false
   isDragging.value = false
   dragOffset.value = 0
-  if (didSwipe) (dx < 0 ? next : prev)()
-  startAuto()
+  targetOffset = 0
 
-  // A drag starts on the router-link, so suppress the synthetic click it may emit.
-  if (moved) {
-    suppressClick.value = true
-    if (suppressClickTimer !== null) clearTimeout(suppressClickTimer)
-    suppressClickTimer = setTimeout(() => {
-      suppressClick.value = false
-      suppressClickTimer = null
-    }, 350)
+  if (farSwipe || fastSwipe) {
+    dx < 0 ? next() : prev()
   }
-  event.currentTarget?.releasePointerCapture?.(event.pointerId)
-}
-
-const onPointerCancel = (event) => {
-  if (!isPointerDown.value) return
-  isPointerDown.value = false
-  isDragging.value = false
-  dragOffset.value = 0
+  // Luôn suppress click sau khi đã kéo (dù chưa đủ ngưỡng swipe)
+  suppressClick.value = true
+  clearTimeout(suppressClickTimer)
+  suppressClickTimer = setTimeout(() => { suppressClick.value = false }, 400)
   startAuto()
-  event.currentTarget?.releasePointerCapture?.(event.pointerId)
 }
 
-const handleSlideClick = (event) => {
-  if (!suppressClick.value) return
-  event.preventDefault()
-  event.stopPropagation()
-  clearSuppressClick()
+// ---- Mouse ----
+function onMouseDown(e) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  onDragStart(e.clientX, e.clientY)
+
+  function onMouseMove(e) { onDragMove(e.clientX, e.clientY) }
+  function onMouseUp() {
+    onDragEnd()
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+  }
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
 }
+
+// ---- Touch ----
+let touchId = null
+function onTouchStart(e) {
+  if (e.touches.length !== 1) return
+  touchId = e.touches[0].identifier
+  onDragStart(e.touches[0].clientX, e.touches[0].clientY)
+}
+function onTouchMove(e) {
+  const t = [...e.changedTouches].find(t => t.identifier === touchId)
+  if (!t) return
+  const handled = onDragMove(t.clientX, t.clientY)
+  if (handled && isDragging.value) e.preventDefault()
+}
+function onTouchEnd(e) {
+  const t = [...e.changedTouches].find(t => t.identifier === touchId)
+  if (t) onDragEnd()
+  touchId = null
+}
+
+const handleSlideClick = (e) => {
+  if (!suppressClick.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  suppressClick.value = false
+}
+
 
 const isActiveRecord = (value) => value !== false && value !== 0 && value !== '0'
 
@@ -263,15 +304,21 @@ onUnmounted(() => {
 <template>
   <div class="home">
     <!-- HERO SLIDESHOW -->
-    <section class="hero-slider" @mouseenter="stopAuto" @mouseleave="startAuto">
+    <section
+      ref="sliderRef"
+      class="hero-slider"
+      @mouseenter="stopAuto"
+      @mouseleave="startAuto"
+    >
       <div
         class="slides"
         :class="{ 'is-dragging': isDragging }"
         :style="slideTrackStyle"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerCancel"
+        @mousedown="onMouseDown"
+        @touchstart.passive="onTouchStart"
+        @touchmove="onTouchMove"
+        @touchend="onTouchEnd"
+        @touchcancel="onTouchEnd"
       >
         <div class="slide" v-for="(s, i) in slides" :key="s.img">
           <router-link :to="s.link" class="slide-link" :aria-label="`${s.alt} — xem tất cả sản phẩm`" @click="handleSlideClick">
@@ -295,7 +342,7 @@ onUnmounted(() => {
     <section class="services-wrap">
       <div class="services">
         <div class="service">
-          <div><h6>Giao hỏa tốc 24h</h6><p>Nội thành Hà Nội</p></div>
+          <div><h6>Giao hàng toàn quốc</h6><p>2-3 ngày</p></div>
         </div>
         <div class="service">
           <div><h6>Đổi trả 14 ngày</h6><p>Miễn phí đổi trả</p></div>
@@ -377,9 +424,11 @@ onUnmounted(() => {
 
 /* Hero slideshow: giữ gần đúng tỷ lệ 2:1 của ba banner trong img để không
    cắt phần chữ/logo đã được thiết kế sẵn trên ảnh. */
-.hero-slider { position: relative; overflow: hidden; width: 100%; background: #000; }
-.slides { display: flex; transition: transform .8s cubic-bezier(0.25, 1, 0.5, 1); touch-action: pan-y; cursor: grab; user-select: none; }
+.hero-slider { position: relative; overflow: hidden; width: 100%; background: #000; user-select: none; }
+.slides { display: flex; touch-action: pan-y; cursor: grab; user-select: none; will-change: transform; }
 .slides.is-dragging { cursor: grabbing; }
+/* Khi đang kéo: tắt hoàn toàn pointer-events trên link → không chuyển trang */
+.slides.is-dragging .slide-link { pointer-events: none; }
 .slide { position: relative; min-width: 100%; }
 .slide-link { display: block; width: 100%; }
 .slide img { width: 100%; height: auto; display: block; opacity: 1; pointer-events: none; }

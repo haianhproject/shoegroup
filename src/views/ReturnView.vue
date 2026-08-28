@@ -12,8 +12,11 @@ const order = ref(null)
 const postOffices = ref([])
 const isLoading = ref(true)
 const submitted = ref(false)
+const submittedNotReceived = ref(false)
 const API = API_BASE_URL
-const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['DELIVERED', 'RECEIVED'].includes(item.status)))
+const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['SHIPPING', 'DELIVERED', 'RECEIVED'].includes(item.status)))
+const isNotReceived = computed(() => order.value?.status === 'SHIPPING' || route.query.type === 'NOT_RECEIVED')
+const isPaymentRecorded = computed(() => ['Đã thanh toán', 'Chờ thanh toán'].includes(String(order.value?.payment_status || '')))
 
 const form = reactive({
   method: 'SHIPPER',       // SHIPPER = shipper tự lấy | POST_OFFICE = gửi tại bưu cục
@@ -36,7 +39,15 @@ const genTracking = () => 'SG' + Date.now().toString().slice(-9) + Math.floor(Ma
 
 const useOrder = (selected) => {
   order.value = selected || null
-  form.items = selected ? selected.items.map((item) => ({ ...item, checked: true, return_qty: Number(item.quantity) || 1, condition: 'UNOPENED' })) : []
+  submittedNotReceived.value = false
+  form.items = selected ? (selected.items || []).map((item) => ({ ...item, checked: true, return_qty: Number(item.quantity) || 1, condition: 'UNOPENED' })) : []
+  if (selected?.status === 'SHIPPING' || route.query.type === 'NOT_RECEIVED') {
+    form.method = 'NOT_RECEIVED'
+    form.reasonCode = 'NOT_RECEIVED'
+  } else if (form.method === 'NOT_RECEIVED') {
+    form.method = 'SHIPPER'
+    form.reasonCode = 'DEFECTIVE'
+  }
 }
 
 const selectOrder = async (selected) => {
@@ -61,24 +72,37 @@ const selectedPO = computed(() => postOffices.value.find((p) => p.id === form.po
 const refundAmount = computed(() => form.items.filter((i) => i.checked).reduce((sum, item) => sum + Number(item.unitPrice || 0) * Number(item.return_qty || 0), 0))
 
 const submit = async () => {
-  if (!form.reason.trim()) { notify({ type: 'error', message: 'Vui lòng nhập lý do trả hàng.' }); return }
-  if (!form.items.some((i) => i.checked)) { notify({ type: 'error', message: 'Chọn ít nhất 1 sản phẩm để trả.' }); return }
-  if (form.items.some((item) => item.checked && (!Number.isInteger(Number(item.return_qty)) || Number(item.return_qty) < 1 || Number(item.return_qty) > Number(item.quantity)))) {
+  const notReceivedRequest = isNotReceived.value
+  if (!notReceivedRequest && !form.reason.trim()) { notify({ type: 'error', message: 'Vui lòng nhập lý do trả hàng.' }); return }
+  // Khi chưa nhận hàng, báo cáo áp dụng cho cả kiện; khách không phải chọn
+  // từng sản phẩm (và cũng không thể biết chính xác món nào trong kiện).
+  const selectedItems = notReceivedRequest
+    ? form.items.map((item) => ({ ...item, checked: true, return_qty: Number(item.quantity) || 1 }))
+    : form.items.filter((i) => i.checked)
+  if (!notReceivedRequest && selectedItems.length === 0) { notify({ type: 'error', message: 'Chọn ít nhất 1 sản phẩm để trả.' }); return }
+  if (selectedItems.some((item) => item.checked && (!Number.isInteger(Number(item.return_qty)) || Number(item.return_qty) < 1 || Number(item.return_qty) > Number(item.quantity)))) {
     notify({ type: 'error', message: 'Số lượng trả phải từ 1 đến số lượng đã mua.' }); return
   }
-  if (form.method === 'POST_OFFICE' && !form.postOfficeId) { notify({ type: 'error', message: 'Chọn bưu cục để gửi trả.' }); return }
-  form.trackingCode = genTracking()
+  if (!notReceivedRequest && form.method === 'POST_OFFICE' && !form.postOfficeId) { notify({ type: 'error', message: 'Chọn bưu cục để gửi trả.' }); return }
+  form.trackingCode = notReceivedRequest ? '' : genTracking()
+  const reasonLabel = returnReasons.find((item) => item.value === form.reasonCode)?.label || 'Khác'
+  const refundAmountForRequest = notReceivedRequest
+    ? selectedItems.reduce((sum, item) => sum + Number(item.unitPrice || 0) * Number(item.return_qty || 0), 0)
+    : refundAmount.value
   const r = await requestReturn(order.value.id, {
-    method: form.method,
-    postOffice: form.method === 'POST_OFFICE' ? selectedPO.value : null,
-    reason: `[${returnReasons.find((item) => item.value === form.reasonCode)?.label || 'Khác'}] ${form.reason.trim()}`,
+    method: notReceivedRequest ? 'NOT_RECEIVED' : form.method,
+    postOffice: !notReceivedRequest && form.method === 'POST_OFFICE' ? selectedPO.value : null,
+    reason: notReceivedRequest
+      ? `[Chưa nhận được hàng] ${form.reason.trim() || 'Khách hàng chưa nhận được kiện hàng.'}`
+      : `[${reasonLabel}] ${form.reason.trim()}`,
     trackingCode: form.trackingCode,
-    refundAmount: refundAmount.value,
-    items: form.items.filter((i) => i.checked),
+    refundAmount: refundAmountForRequest,
+    items: selectedItems,
   })
   if (r?.ok === false) { notify({ type: 'error', message: r.message }); return }
+  submittedNotReceived.value = notReceivedRequest
   submitted.value = true
-  notify({ type: 'success', title: 'Đã tạo yêu cầu trả hàng', message: `Mã vận đơn: ${form.trackingCode}` })
+  notify({ type: 'success', title: notReceivedRequest ? 'Đã ghi nhận báo chưa nhận hàng' : 'Đã tạo yêu cầu trả hàng', message: notReceivedRequest ? 'Cửa hàng sẽ kiểm tra và phản hồi sớm.' : `Mã vận đơn: ${form.trackingCode}` })
 }
 
 onMounted(fetchData)
@@ -93,7 +117,7 @@ onMounted(fetchData)
       <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
       <div v-else-if="!order" class="sg-card rt-picker">
         <h5>Chọn đơn hàng cần trả</h5>
-        <p class="text-secondary">Chỉ các đơn đã giao hoặc đã xác nhận nhận hàng mới đủ điều kiện.</p>
+        <p class="text-secondary">Đơn đã giao/đã nhận đủ điều kiện trả hàng. Nếu đơn đang vận chuyển nhưng bạn chưa nhận được, hãy chọn để báo sự cố giao hàng.</p>
         <div v-if="returnableOrders.length" class="picker-list">
           <button v-for="item in returnableOrders" :key="item.id" type="button" class="picker-row" @click="selectOrder(item)">
             <span><strong>#{{ item.serverId || item.id }}</strong><small>{{ item.date }}</small></span>
@@ -108,11 +132,14 @@ onMounted(fetchData)
       <!-- Success -->
       <div v-else-if="submitted" class="sg-card rt-success">
         <div class="suc-check">OK</div>
-        <h3>Yêu cầu trả hàng đã được ghi nhận</h3>
-        <p class="text-secondary">Vui lòng lưu lại mã vận đơn để theo dõi.</p>
-        <div class="rt-track"><span>Mã vận đơn</span><strong>{{ form.trackingCode }}</strong></div>
+        <h3>{{ submittedNotReceived ? 'Báo chưa nhận được hàng đã được ghi nhận' : 'Yêu cầu trả hàng đã được ghi nhận' }}</h3>
+        <p class="text-secondary">{{ submittedNotReceived ? 'Cửa hàng sẽ kiểm tra hành trình và phản hồi về đơn hàng.' : 'Vui lòng lưu lại mã vận đơn để theo dõi.' }}</p>
+        <div v-if="!submittedNotReceived" class="rt-track"><span>Mã vận đơn</span><strong>{{ form.trackingCode }}</strong></div>
         <div class="rt-guide">
-          <template v-if="form.method === 'SHIPPER'">
+          <template v-if="submittedNotReceived">
+            <p><i class="bi bi-headset"></i> Yêu cầu “chưa nhận được hàng” đã được gửi. Bạn không cần gửi lại sản phẩm; hãy giữ điện thoại để cửa hàng/đơn vị vận chuyển liên hệ.</p>
+          </template>
+          <template v-else-if="form.method === 'SHIPPER'">
             <p><i class="bi bi-truck"></i> Shipper sẽ đến lấy hàng tại địa chỉ của bạn. Vui lòng đóng gói sản phẩm và ghi mã vận đơn <strong>{{ form.trackingCode }}</strong> lên kiện hàng.</p>
           </template>
           <template v-else>
@@ -126,7 +153,7 @@ onMounted(fetchData)
       <div v-else class="row g-4 mt-1">
         <div class="col-lg-7">
           <!-- Method -->
-          <div class="sg-card rt-block">
+          <div v-if="!isNotReceived" class="sg-card rt-block">
             <h6 class="rt-h"><span class="co-num">1</span> Hình thức trả hàng</h6>
             <div class="method-grid">
               <label class="method-opt" :class="{ active: form.method === 'SHIPPER' }">
@@ -152,8 +179,18 @@ onMounted(fetchData)
             </div>
           </div>
 
+          <div v-else class="sg-card rt-block not-received-card">
+            <h6 class="rt-h"><span class="co-num">1</span> Báo chưa nhận được hàng</h6>
+            <div class="not-received-note">
+              <i class="bi bi-truck"></i>
+              <div><strong>Chưa nhận được kiện hàng</strong><p class="mb-0">Gửi thông báo để cửa hàng kiểm tra với đơn vị vận chuyển. Không cần mang sản phẩm đến bưu cục.</p></div>
+            </div>
+            <label class="co-label mt-3">Mô tả thêm (không bắt buộc)</label>
+            <textarea v-model="form.reason" class="sg-input w-100" rows="3" placeholder="Ví dụ: đơn đã báo giao nhưng tôi chưa nhận được hàng..."></textarea>
+          </div>
+
           <!-- Items + reason -->
-          <div class="sg-card rt-block">
+          <div v-if="!isNotReceived" class="sg-card rt-block">
             <h6 class="rt-h"><span class="co-num">2</span> Sản phẩm & lý do</h6>
             <div class="ret-item" v-for="(it, i) in form.items" :key="i">
               <input type="checkbox" v-model="it.checked">
@@ -185,12 +222,13 @@ onMounted(fetchData)
           <div class="sg-card rt-summary">
             <h6 class="fw-bold mb-3">Thông tin hoàn trả</h6>
             <div class="sum-row"><span>Mã đơn gốc</span><strong>#{{ order.id }}</strong></div>
-            <div class="sum-row"><span>Hình thức</span><strong>{{ form.method === 'SHIPPER' ? 'Shipper tự lấy' : 'Gửi bưu cục' }}</strong></div>
+            <div class="sum-row"><span>Hình thức</span><strong>{{ isNotReceived ? 'Báo chưa nhận được hàng' : (form.method === 'SHIPPER' ? 'Shipper tự lấy' : 'Gửi bưu cục') }}</strong></div>
             <div class="sum-row" v-if="form.method === 'POST_OFFICE' && selectedPO"><span>Bưu cục</span><strong>{{ selectedPO.name }}</strong></div>
             <hr>
-            <div class="sum-row total"><span>Hoàn tiền dự kiến</span><strong>{{ formatCurrency(refundAmount) }}</strong></div>
-            <div class="rt-note">Mã vận đơn sẽ được cấp sau khi gửi yêu cầu. Vui lòng ghi mã vận đơn và mã đơn lên kiện hàng.</div>
-            <button class="btn-sg w-100 mt-3" @click="submit">Gửi yêu cầu trả hàng</button>
+            <div class="sum-row total"><span>{{ isNotReceived && !isPaymentRecorded ? 'Số tiền cần hoàn (nếu đã thu)' : 'Hoàn tiền dự kiến' }}</span><strong>{{ formatCurrency(refundAmount) }}</strong></div>
+            <div v-if="isNotReceived" class="rt-note">Không cần gửi trả hàng. Yêu cầu sẽ được chuyển cho cửa hàng kiểm tra hành trình giao.</div>
+            <div v-else class="rt-note">Mã vận đơn sẽ được cấp sau khi gửi yêu cầu. Vui lòng ghi mã vận đơn và mã đơn lên kiện hàng.</div>
+            <button class="btn-sg w-100 mt-3" @click="submit">{{ isNotReceived ? 'Báo chưa nhận được hàng' : 'Gửi yêu cầu trả hàng' }}</button>
           </div>
         </div>
       </div>
@@ -212,6 +250,9 @@ onMounted(fetchData)
 .picker-row > span:last-child { font-size: .8rem; font-weight: 800; }
 .empty-copy { border: 1px solid var(--sg-line); background: #f8fafc; padding: 22px; color: var(--sg-muted); }
 .rt-block { padding: 22px; margin-bottom: 18px; }
+.not-received-card { border-color: #93c5fd; background: #eff6ff; }
+.not-received-note { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid #bfdbfe; border-radius: 6px; background: #fff; color: var(--sg-ink-2); font-size: .86rem; }
+.not-received-note > i { color: var(--sg-blue); font-size: 1.5rem; }
 .rt-h { font-weight: 800; display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
 .co-num { width: 28px; height: 28px; border-radius: 50%; background: var(--sg-grad-primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: .9rem; }
 .co-label { font-weight: 700; font-size: .82rem; color: var(--sg-ink-2); margin-bottom: 6px; display: block; }

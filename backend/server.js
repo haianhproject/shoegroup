@@ -353,6 +353,11 @@ const PAYMENT_STATUSES = new Set([
   "da huy",
 ]);
 
+// Các trạng thái này đều biểu thị tiền đã vào hệ thống ("Chờ thanh toán"
+// là giá trị cũ được tạo khi khách đã bấm báo chuyển khoản).
+const PAID_PAYMENT_STATUS_KEYS = new Set(["da thanh toan", "cho thanh toan"]);
+const isPaidPaymentStatus = (value) => PAID_PAYMENT_STATUS_KEYS.has(normalizeOrderStatus(value));
+
 const isBankPayment = (method) => {
   const normalized = normalizeOrderStatus(method);
   return normalized.includes("chuyen khoan") || normalized.includes("bank") || normalized.includes("momo") || normalized.includes("vnpay");
@@ -373,6 +378,23 @@ async function insertOrderHistory(transaction, orderId, oldStatus, newStatus, no
     .query(`
       INSERT INTO OrderStatusHistory (OrderID, OldStatus, NewStatus, Note, ChangedBy, ChangedAt)
       VALUES (@oid, @old, @next, @note, @uid, GETDATE())
+    `);
+}
+
+// Lưu dấu vết hoàn tiền một lần cho cả hủy đơn và trả hàng. Trạng thái đơn
+// vẫn được cập nhật ngay; bản ghi này giúp đối soát không bị mất giao dịch.
+async function recordRefundTransaction(transaction, orderId, amount) {
+  await new sql.Request(transaction)
+    .input("oid", sql.Int, Number(orderId))
+    .input("amt", sql.Decimal(18, 2), Number(amount) || 0)
+    .query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM PaymentTransactions
+        WHERE OrderID=@oid AND Provider=N'MANUAL_REFUND' AND Status=N'REFUNDED'
+      )
+        INSERT INTO PaymentTransactions
+          (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
+        VALUES (@oid, N'MANUAL_REFUND', @amt, N'REFUNDED', 1, GETDATE(), GETDATE());
     `);
 }
 
@@ -657,6 +679,13 @@ app.post("/api/orders", async (req, res) => {
     const addressId =
       rawAddressId == null || rawAddressId === "" ? null : Number(rawAddressId);
     let shippingFee = Number(b.shippingFee ?? b.shipping_fee ?? 0);
+    let shippingMethodCode = cleanAddressText(
+      b.shippingMethodCode ?? b.shipping_method_code ?? "STANDARD",
+      20,
+    ).toUpperCase();
+    let shippingMethodId = null;
+    let shippingDistanceKm = null;
+    let shippingEta = null;
     let discountAmount = Number(b.discountAmount ?? b.discount_amount ?? 0);
     let paymentMethod = b.paymentMethod ?? b.payment_method ?? "COD";
     let paymentStatus =
@@ -688,14 +717,9 @@ app.post("/api/orders", async (req, res) => {
       } else {
         return res.status(400).json({ success: false, message: "Phuong thuc thanh toan khong hop le." });
       }
-      const shippingMethodCode = cleanAddressText(
-        b.shippingMethodCode ?? b.shipping_method_code ?? "STANDARD",
-        20,
-      ).toUpperCase();
-      if (!new Set(["STANDARD", "EXPRESS"]).has(shippingMethodCode)) {
+      if (shippingMethodCode !== "STANDARD") {
         return res.status(400).json({ success: false, message: "Phuong thuc van chuyen khong hop le." });
       }
-      shippingFee = shippingMethodCode === "EXPRESS" ? 40000 : 30000;
       status = "Chờ xác nhận";
       paymentStatus = "Chưa thanh toán";
       handledBy = "Online";
@@ -720,6 +744,7 @@ app.post("/api/orders", async (req, res) => {
     await transaction.begin();
 
     try {
+      let selectedAddressForShipping = null;
       if (addressId) {
         if (!userId) {
           const err = new Error("Can dang nhap de su dung dia chi da luu.");
@@ -730,20 +755,20 @@ app.post("/api/orders", async (req, res) => {
           .input("uid", sql.Int, userId)
           .input("aid", sql.Int, addressId)
           .query(`${ADDRESS_SELECT} WHERE UserID=@uid AND AddressID=@aid`);
-        const selectedAddress = addressResult.recordset[0];
-        if (!selectedAddress) {
+        selectedAddressForShipping = addressResult.recordset[0];
+        if (!selectedAddressForShipping) {
           const err = new Error("Dia chi khong thuoc tai khoan dang dat hang.");
           err.statusCode = 400;
           throw err;
         }
-        if (validateAddressPayload(selectedAddress)) {
+        if (validateAddressPayload(selectedAddressForShipping)) {
           const err = new Error("Dia chi da luu khong con hop le. Vui long cap nhat so dia chi.");
           err.statusCode = 409;
           throw err;
         }
-        shippingAddress = selectedAddress.fullAddress || buildAddressPayload(selectedAddress).fullAddress;
-        customerName = selectedAddress.recipient;
-        customerPhone = selectedAddress.phone;
+        shippingAddress = selectedAddressForShipping.fullAddress || buildAddressPayload(selectedAddressForShipping).fullAddress;
+        customerName = selectedAddressForShipping.recipient;
+        customerPhone = selectedAddressForShipping.phone;
       }
 
       if (!isAdminOrder) {
@@ -821,6 +846,23 @@ app.post("/api/orders", async (req, res) => {
           canonicalSubtotal += item.price * quantity;
         }
 
+        // Tính lại phí ở máy chủ từ địa chỉ đã lưu; không tin shippingFee do
+        // trình duyệt gửi lên để tránh sửa giá bằng DevTools. Cùng helper này
+        // được endpoint /shipping/quote sử dụng nên số tiền hiển thị và số
+        // tiền lưu trong Orders luôn đồng nhất.
+        const shippingQuote = await calculateShippingQuote({
+          methodCode: shippingMethodCode,
+          province: selectedAddressForShipping?.province || "",
+          district: selectedAddressForShipping?.district || "",
+          ward: selectedAddressForShipping?.ward || "",
+          address: shippingAddress,
+          transaction,
+        });
+        shippingFee = shippingQuote.fee;
+        shippingMethodId = shippingQuote.methodId;
+        shippingDistanceKm = shippingQuote.distanceKm;
+        shippingEta = shippingQuote.eta;
+
         discountAmount = 0;
         if (couponCode) {
           const couponResult = await new sql.Request(transaction)
@@ -884,12 +926,15 @@ app.post("/api/orders", async (req, res) => {
         .input("stt", sql.NVarChar, status)
         .input("hb", sql.NVarChar, handledBy)
         .input("sfee", sql.Decimal(18, 2), shippingFee)
+        .input("smid", sql.Int, shippingMethodId)
+        .input("dist", sql.Decimal(10, 2), shippingDistanceKm)
+        .input("eta", sql.NVarChar, shippingEta)
         .input("disc", sql.Decimal(18, 2), discountAmount)
         .input("note", sql.NVarChar, note)
         .input("due", sql.DateTime, paymentDueAt).query(`
-          INSERT INTO Orders (UserID, AddressID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, DiscountAmount, OrderNote, AutoCancelDeadline, PaymentDueAt)
+          INSERT INTO Orders (UserID, AddressID, TotalAmount, OrderDate, Status, ShippingAddress, CustomerName, CustomerPhone, PaymentMethod, PaymentStatus, HandledBy, ShippingFee, ShippingMethodID, DeliveryDistanceKm, EstimatedDeliveryText, DiscountAmount, OrderNote, AutoCancelDeadline, PaymentDueAt)
           OUTPUT INSERTED.OrderID
-          VALUES (@uid, @addressId, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @disc, @note, DATEADD(day, 7, GETDATE()), @due)
+          VALUES (@uid, @addressId, @tot, GETDATE(), @stt, @addr, @cname, @cphone, @pay, @pstat, @hb, @sfee, @smid, @dist, @eta, @disc, @note, DATEADD(day, 7, GETDATE()), @due)
         `);
 
       const orderId = orderResult.recordset[0].OrderID;
@@ -1026,6 +1071,10 @@ app.post("/api/orders", async (req, res) => {
         shippingFee: Number(shippingFee),
         discountAmount: Number(discountAmount),
         totalAmount: Number(totalAmount),
+        shippingMethodCode,
+        shippingMethodId,
+        distanceKm: shippingDistanceKm,
+        eta: shippingEta,
       });
     } catch (err) {
       await transaction.rollback();
@@ -1214,6 +1263,10 @@ app.get("/api/orders", async (req, res) => {
              o.PaymentMethod as payment_method,
              o.PaymentDueAt as payment_due_at,
              o.PaymentConfirmedAt as payment_confirmed_at,
+             o.DeliveredDate as delivered_date,
+             o.ReceivedConfirmedDate as received_confirmed_date,
+             o.RevenueEligibleDate as revenue_eligible_date,
+             o.IsCountedAsRevenue as is_counted_as_revenue,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
              ISNULL(o.HandledBy, '') as handled_by,
              -- FIX KENH BAN: backend tu quyet dinh Online/Offline.
@@ -1283,7 +1336,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const currentResult = await new sql.Request(transaction)
       .input("oid", sql.Int, orderId)
       .query(`
-        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus
+        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount
         FROM Orders WITH (UPDLOCK, HOLDLOCK)
         WHERE OrderID=@oid
       `);
@@ -1298,15 +1351,30 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const normalizedCurrentStatus = normalizeOrderStatus(currentOrder.Status);
     const isCancel = ["da huy", "cancelled", "canceled"].includes(normalizedNewStatus);
     const alreadyCancelled = ["da huy", "cancelled", "canceled"].includes(normalizedCurrentStatus);
+    const wasPaid = isPaidPaymentStatus(currentOrder.PaymentStatus);
     const statusToSave = isCancel ? "Đã hủy" : canonicalOrderStatus(newStatus);
 
     if (!isCancel && !transitionAllowed(currentOrder.Status, statusToSave)) {
       await transaction.rollback();
       return res.status(409).json({ success: false, message: `Khong the chuyen don tu '${currentOrder.Status}' sang '${statusToSave}'.` });
     }
-    if (isAdmin && !isCancel && ["da xac nhan", "dang van chuyen"].includes(normalizeOrderStatus(statusToSave)) && isBankPayment(currentOrder.PaymentMethod) && normalizeOrderStatus(currentOrder.PaymentStatus) !== "da thanh toan") {
+    if (isAdmin && !isCancel && ["da xac nhan", "dang van chuyen"].includes(normalizeOrderStatus(statusToSave)) && isBankPayment(currentOrder.PaymentMethod) && !["da thanh toan", "cho thanh toan"].includes(normalizeOrderStatus(currentOrder.PaymentStatus))) {
       await transaction.rollback();
       return res.status(409).json({ success: false, code: "PAYMENT_REQUIRED", message: "Don chuyen khoan phai duoc xac nhan da thanh toan truoc khi xac nhan hoac giao hang." });
+    }
+
+    // Hủy sau khi đơn đã giao/đã nhận phải đi qua quy trình trả hàng để
+    // tránh cộng lại tồn kho sai và hoàn tiền ngoài kiểm soát.
+    if (isAdmin && isCancel && !alreadyCancelled) {
+      const cancellableByAdmin = new Set([
+        "cho xac nhan", "cho xu ly", "pending", "da xac nhan", "confirmed",
+        "dang lay hang", "dang chuan bi hang", "processing", "picking",
+        "dang van chuyen", "dang giao", "shipped",
+      ]);
+      if (!cancellableByAdmin.has(normalizedCurrentStatus)) {
+        await transaction.rollback();
+        return res.status(409).json({ success: false, message: "Đơn đã giao/đã nhận không thể hủy trực tiếp; hãy tạo yêu cầu trả hàng." });
+      }
     }
 
     if (alreadyCancelled && !isCancel) {
@@ -1345,7 +1413,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
         `UPDATE Orders SET Status = @s,
           CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END,
           PaymentStatus = CASE
-            WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN ISNULL(PaymentStatus,N'Chưa thanh toán')=N'Đã thanh toán' THEN N'Hoàn tiền' ELSE N'Đã hủy' END)
+            WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN ISNULL(PaymentStatus,N'Chưa thanh toán') IN (N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan') THEN N'Hoàn tiền' ELSE N'Đã hủy' END)
             WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN N'Đã thanh toán'
             ELSE PaymentStatus END,
           PaymentConfirmedAt = CASE WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
@@ -1355,6 +1423,9 @@ app.put("/api/orders/:id/status", async (req, res) => {
           UpdatedAt=GETDATE()
         WHERE OrderID = @id`,
       );
+    if (isCancel && wasPaid) {
+      await recordRefundTransaction(transaction, orderId, currentOrder.TotalAmount);
+    }
     await insertOrderHistory(transaction, orderId, currentOrder.Status, statusToSave, reason || "Cập nhật trạng thái đơn hàng", authenticatedUserId);
     await transaction.commit();
     res.json({ success: true });
@@ -1380,7 +1451,7 @@ app.put("/api/orders/:id/payment", async (req, res) => {
 
   const normalizedRequested = normalizeOrderStatus(requestedPaymentStatus);
   if (!PAYMENT_STATUSES.has(normalizedRequested)) return res.status(400).json({ success: false, message: "Trang thai thanh toan khong hop le." });
-  const paymentStatus = { "chua thanh toan": "Chưa thanh toán", "cho thanh toan": "Chờ thanh toán", "da thanh toan": "Đã thanh toán", "hoan tien": "Hoàn tiền", "da huy": "Đã hủy" }[normalizedRequested];
+  let paymentStatus = { "chua thanh toan": "Chưa thanh toán", "cho thanh toan": "Chờ thanh toán", "da thanh toan": "Đã thanh toán", "hoan tien": "Hoàn tiền", "da huy": "Đã hủy" }[normalizedRequested];
   const transaction = new sql.Transaction(pool);
   try {
     await poolConnect;
@@ -1392,32 +1463,34 @@ app.put("/api/orders/:id/payment", async (req, res) => {
     const order = orderResult.recordset[0];
     if (!order) throw Object.assign(new Error("Khong tim thay don hang."), { statusCode: 404 });
     const currentPayment = normalizeOrderStatus(order.PaymentStatus);
+    let customerTransferConfirmation = false;
     if (req.auth.role !== "Admin") {
       if (Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc cap nhat don hang nay."), { statusCode: 403 });
-      if (normalizedRequested !== "cho thanh toan" || !isBankPayment(order.PaymentMethod)) throw Object.assign(new Error("Khach hang chi co the bao da gui thanh toan cho don online."), { statusCode: 403 });
+      if (!isBankPayment(order.PaymentMethod) || !["cho thanh toan", "da thanh toan"].includes(normalizedRequested)) throw Object.assign(new Error("Khach hang chi co the xac nhan thanh toan chuyen khoan cho don online."), { statusCode: 403 });
       if (["da thanh toan", "hoan tien", "da huy"].includes(currentPayment)) throw Object.assign(new Error("Trang thai thanh toan khong the thay doi."), { statusCode: 409 });
+      // Với chuyển khoản online, thao tác "Tôi đã thanh toán" là tín hiệu
+      // hoàn tất thanh toán của khách. Không bắt nhân viên bấm xác nhận lần 2.
+      customerTransferConfirmation = true;
     } else {
       if (["da huy", "hoan tien"].includes(normalizeOrderStatus(order.Status)) && normalizedRequested === "da thanh toan") throw Object.assign(new Error("Don da ket thuc khong the ghi nhan thanh toan moi."), { statusCode: 409 });
       if (isCodPayment(order.PaymentMethod) && normalizedRequested === "da thanh toan" && !["da giao hang thanh cong", "da nhan hang", "da hoan tat tra hang"].includes(normalizeOrderStatus(order.Status))) {
         throw Object.assign(new Error("COD chi duoc xac nhan da thanh toan khi da giao hang."), { statusCode: 409 });
       }
     }
+    if (customerTransferConfirmation) {
+      paymentStatus = "Đã thanh toán";
+    }
     await new sql.Request(transaction).input("id", sql.Int, orderId).input("ps", sql.NVarChar, paymentStatus).query(`
       UPDATE Orders SET PaymentStatus=@ps,
         PaymentConfirmedAt=CASE WHEN @ps=N'Đã thanh toán' THEN GETDATE() ELSE PaymentConfirmedAt END,
         UpdatedAt=GETDATE() WHERE OrderID=@id
     `);
-    if (normalizedRequested === "cho thanh toan") {
-      await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).query(`
-        IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider=N'CUSTOMER_DECLARED' AND Status=N'PENDING')
-          INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt)
-          VALUES (@oid, N'CUSTOMER_DECLARED', @amt, N'PENDING', NULL, GETDATE())
-      `);
-    } else if (normalizedRequested === "da thanh toan") {
-      await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).query(`
-        IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider IN (N'MANUAL_CONFIRM',N'CUSTOMER_DECLARED') AND Status=N'SUCCESS')
+    if (customerTransferConfirmation || normalizedRequested === "da thanh toan") {
+      const provider = customerTransferConfirmation ? "CUSTOMER_CONFIRMED" : "MANUAL_CONFIRM";
+      await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).input("provider", sql.NVarChar(30), provider).query(`
+        IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider IN (N'MANUAL_CONFIRM',N'CUSTOMER_DECLARED',N'CUSTOMER_CONFIRMED') AND Status=N'SUCCESS')
           INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
-          VALUES (@oid, N'MANUAL_CONFIRM', @amt, N'SUCCESS', 1, GETDATE(), GETDATE())
+          VALUES (@oid, @provider, @amt, N'SUCCESS', 1, GETDATE(), GETDATE())
       `);
     }
     await transaction.commit();
@@ -2082,6 +2155,43 @@ const RETURN_TRANSITIONS = {
   "hoan tat": new Set(["hoan tat"]),
 };
 
+function normalizeReturnType(value) {
+  return normalizeOrderStatus(value).replace(/[\s_-]+/g, " ").trim();
+}
+
+function isNotReceivedReturn(value) {
+  return new Set([
+    "not received",
+    "chua nhan duoc hang",
+    "khong nhan duoc hang",
+    "delivery issue",
+    "delivery failed",
+  ]).has(normalizeReturnType(value));
+}
+
+// Khi yêu cầu trả hàng bị từ chối/hủy, đơn phải quay về đúng mốc trước khi
+// tạo yêu cầu.  Không thể mặc định "Đã nhận hàng": khách có thể chưa bấm
+// xác nhận nhận hàng, hoặc chỉ đang báo kiện thất lạc trong lúc vận chuyển.
+// Các mốc ngày là nguồn tin cậy nhất; trạng thái hiện tại thường đã là
+// "Yêu cầu trả hàng" nên chỉ dùng trạng thái để dự phòng cho dữ liệu cũ.
+function restoreStatusAfterReturn(row) {
+  const status = normalizeOrderStatus(row && (row.ReturnOriginStatus || row.OrderStatus));
+  const received = Boolean(row && row.ReceivedConfirmedDate)
+    || ["da nhan hang", "received"].includes(status);
+  if (received) return "Đã nhận hàng";
+
+  const delivered = Boolean(row && row.DeliveredDate)
+    || ["da giao", "da giao hang thanh cong", "delivered"].includes(status);
+  if (delivered) return "Đã giao hàng thành công";
+
+  const shipping = ["dang van chuyen", "dang giao", "shipped", "shipping"].includes(status);
+  if (shipping || isNotReceivedReturn(row && row.ReturnType)) return "Đang vận chuyển";
+
+  // Yêu cầu trả hàng thường chỉ được tạo từ đơn đã giao; chọn mốc giao
+  // hàng thay vì đánh dấu khách đã nhận khi DB cũ thiếu timestamp.
+  return "Đã giao hàng thành công";
+}
+
 function canonicalReturnStatus(value) {
   const key = normalizeOrderStatus(value);
   return RETURN_STATUS_ALIASES[key] || null;
@@ -2140,14 +2250,26 @@ async function restockReturnItems(transaction, returnId) {
 }
 
 async function finalizeReturn(transaction, returnRow, changedBy, resolutionNote) {
-  const restocked = await restockReturnItems(transaction, returnRow.ReturnID);
+  // Case "chưa nhận được hàng" là sự cố giao vận: khách không có hàng để
+  // gửi lại, vì vậy tuyệt đối không cộng lại tồn kho như một đơn trả thường.
+  const notReceived = isNotReceivedReturn(returnRow.ReturnType ?? returnRow.return_type);
+  const restocked = notReceived
+    ? false
+    : await restockReturnItems(transaction, returnRow.ReturnID);
   await new sql.Request(transaction)
     .input("rid", sql.Int, returnRow.ReturnID)
+    .input("oid", sql.Int, returnRow.OrderID)
     .input("note", sql.NVarChar, cleanAddressText(resolutionNote, 1000))
     .input("uid", sql.Int, Number(changedBy) || null)
     .query(`
       UPDATE Returns
-      SET Status=N'Đã hoàn tất', RefundedAt=ISNULL(RefundedAt, GETDATE()),
+      SET Status=N'Đã hoàn tất',
+          RefundedAt=CASE WHEN EXISTS (
+            SELECT 1 FROM Orders
+            WHERE OrderID=@oid
+              AND ISNULL(PaymentStatus,N'Chưa thanh toán') IN
+                (N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan')
+          ) THEN ISNULL(RefundedAt, GETDATE()) ELSE RefundedAt END,
           ResolutionNote=COALESCE(NULLIF(@note,N''), ResolutionNote), UpdatedBy=@uid, UpdatedAt=GETDATE()
       WHERE ReturnID=@rid
     `);
@@ -2156,11 +2278,17 @@ async function finalizeReturn(transaction, returnRow, changedBy, resolutionNote)
     .input("amt", sql.Decimal(18, 2), Number(returnRow.RefundAmount) || 0)
     .input("uid", sql.Int, Number(changedBy) || null)
     .query(`
+      DECLARE @wasPaid bit = CASE WHEN EXISTS (
+        SELECT 1 FROM Orders WHERE OrderID=@oid
+          AND ISNULL(PaymentStatus,N'Chưa thanh toán') IN (N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan')
+      ) THEN 1 ELSE 0 END;
       UPDATE Orders
-      SET Status=N'Đã hoàn tất trả hàng', PaymentStatus=N'Hoàn tiền',
-          PaymentConfirmedAt=ISNULL(PaymentConfirmedAt, GETDATE()), UpdatedAt=GETDATE()
+      SET Status=N'Đã hoàn tất trả hàng',
+          PaymentStatus=CASE WHEN @wasPaid=1 THEN N'Hoàn tiền' ELSE N'Đã hủy' END,
+          PaymentConfirmedAt=CASE WHEN @wasPaid=1 THEN ISNULL(PaymentConfirmedAt, GETDATE()) ELSE PaymentConfirmedAt END,
+          UpdatedAt=GETDATE()
       WHERE OrderID=@oid;
-      IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider=N'MANUAL_REFUND' AND Status=N'REFUNDED')
+      IF @wasPaid=1 AND NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE OrderID=@oid AND Provider=N'MANUAL_REFUND' AND Status=N'REFUNDED')
         INSERT INTO PaymentTransactions (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
         VALUES (@oid, N'MANUAL_REFUND', @amt, N'REFUNDED', 1, GETDATE(), GETDATE());
     `);
@@ -2214,18 +2342,21 @@ app.post("/api/returns", async (req, res) => {
   const orderId = Number(b.order_id ?? b.orderId);
   if (!authenticatedUserId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ success: false, message: "Don hang khong hop le." });
-  const items = Array.isArray(b.items) ? b.items : [];
-  if (!items.length) return res.status(400).json({ success: false, message: "Vui long chon san pham va so luong can tra." });
   const returnType = cleanAddressText(b.return_type ?? b.returnType, 20) || "CUSTOMER";
-  const trackingNumber = cleanAddressText(b.tracking_number ?? b.trackingCode, 60);
-  const reason = cleanAddressText(b.reason, 500);
+  const notReceived = isNotReceivedReturn(returnType);
+  const items = Array.isArray(b.items) ? b.items : [];
+  // Báo chưa nhận được hàng áp dụng cho cả kiện, nên API không bắt buộc
+  // client phải gửi danh sách sản phẩm (frontend sẽ tự điền nếu có).
+  if (!items.length && !notReceived) return res.status(400).json({ success: false, message: "Vui long chon san pham va so luong can tra." });
+  const trackingNumber = notReceived ? "" : cleanAddressText(b.tracking_number ?? b.trackingCode, 60);
+  const reason = cleanAddressText(b.reason, 500) || (notReceived ? "[Chưa nhận được hàng] Khách hàng chưa nhận được kiện hàng." : "");
   if (!reason) return res.status(400).json({ success: false, message: "Vui long nhap ly do tra hang." });
   const requestedStatus = canonicalReturnStatus(b.status || "Chờ xử lý");
   const initialStatus = isAdmin && requestedStatus ? requestedStatus : "Chờ xử lý";
   const requestedRefund = Number(b.refund_amount ?? b.refundAmount);
-  const postOfficeId = Number(b.post_office_id ?? b.postOfficeId) || null;
-  let returnAddress = cleanAddressText(b.return_address, 500);
-  if (normalizeOrderStatus(returnType) === "post_office" && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
+  const postOfficeId = notReceived ? null : (Number(b.post_office_id ?? b.postOfficeId) || null);
+  let returnAddress = notReceived ? "" : cleanAddressText(b.return_address, 500);
+  if (["post_office", "post office"].includes(normalizeReturnType(returnType)) && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
 
   await poolConnect;
   const transaction = new sql.Transaction(pool);
@@ -2239,21 +2370,29 @@ app.post("/api/returns", async (req, res) => {
     const order = orderResult.recordset[0];
     if (!order) throw Object.assign(new Error("Khong tim thay don hang."), { statusCode: 404 });
     if (!isAdmin && Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc tra don hang nay."), { statusCode: 403 });
-    if (!["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"].includes(normalizeOrderStatus(order.Status))) {
-      throw Object.assign(new Error("Don hang khong o trang thai co the tra hang."), { statusCode: 409 });
+    const normalizedOrderStatus = normalizeOrderStatus(order.Status);
+    const deliveredStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"]);
+    const notReceivedStatuses = new Set([...deliveredStatuses, "dang van chuyen", "dang giao", "shipped", "shipping"]);
+    if (notReceived ? !notReceivedStatuses.has(normalizedOrderStatus) : !deliveredStatuses.has(normalizedOrderStatus)) {
+      throw Object.assign(new Error(notReceived
+        ? "Don hang chua o trang thai co the bao chua nhan duoc hang."
+        : "Don hang khong o trang thai co the tra hang."), { statusCode: 409 });
     }
     const returnWindowStart = order.ReceivedConfirmedDate || order.DeliveredDate;
     if (returnWindowStart && Date.now() > new Date(returnWindowStart).getTime() + 14 * 24 * 60 * 60 * 1000) {
       throw Object.assign(new Error("Don hang da qua thoi han doi tra 14 ngay."), { statusCode: 409 });
     }
-    if (!returnAddress && normalizeOrderStatus(returnType) === "shipper") returnAddress = cleanAddressText(order.ShippingAddress, 500);
+    if (!returnAddress && normalizeReturnType(returnType) === "shipper") returnAddress = cleanAddressText(order.ShippingAddress, 500);
     if (postOfficeId) {
       const postOffice = await new sql.Request(transaction).input("po", sql.Int, postOfficeId).query("SELECT PostOfficeID FROM PostOffices WHERE PostOfficeID=@po AND ISNULL(IsActive,1)=1");
       if (!postOffice.recordset.length) throw Object.assign(new Error("Buu cuc gui tra khong hop le."), { statusCode: 400 });
     }
     const duplicate = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
       SELECT TOP 1 ReturnID FROM Returns WITH (UPDLOCK, HOLDLOCK)
-      WHERE OrderID=@oid AND ISNULL(Status,N'Chờ xử lý') NOT IN (N'Từ chối',N'Hủy',N'Đã hủy')
+      WHERE OrderID=@oid AND ISNULL(Status,N'Chờ xử lý') NOT IN (
+        N'Từ chối',N'Tu choi',N'Rejected',
+        N'Hủy',N'Huy',N'Cancelled',N'Canceled',N'Đã hủy',N'Da huy'
+      )
     `);
     if (duplicate.recordset.length) throw Object.assign(new Error("Don hang da co yeu cau tra hang dang xu ly."), { statusCode: 409 });
     const detailResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
@@ -2262,17 +2401,30 @@ app.post("/api/returns", async (req, res) => {
       FROM OrderDetails od LEFT JOIN Products p ON p.ProductID=od.ProductID
       WHERE od.OrderID=@oid
     `);
+    // Nếu client không gửi items cho case chưa nhận hàng, coi toàn bộ dòng
+    // hàng của đơn là một kiện thất lạc để vẫn tính đúng khoản cần hoàn (nếu
+    // khách đã thanh toán) và hiển thị đầy đủ chi tiết cho quản trị viên.
+    const effectiveItems = notReceived && !items.length
+      ? detailResult.recordset.map((detail) => ({
+        order_detail_id: detail.OrderDetailID,
+        quantity: detail.Quantity,
+        reason,
+      }))
+      : items;
     const detailsById = new Map(detailResult.recordset.map((row) => [Number(row.OrderDetailID), row]));
     const activeReturnResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
       SELECT rd.OrderDetailID, SUM(ISNULL(rd.Quantity,0)) AS Quantity
       FROM ReturnDetails rd JOIN Returns r ON r.ReturnID=rd.ReturnID
-      WHERE r.OrderID=@oid AND ISNULL(r.Status,N'Chờ xử lý') NOT IN (N'Từ chối',N'Hủy',N'Đã hủy')
+      WHERE r.OrderID=@oid AND ISNULL(r.Status,N'Chờ xử lý') NOT IN (
+        N'Từ chối',N'Tu choi',N'Rejected',
+        N'Hủy',N'Huy',N'Cancelled',N'Canceled',N'Đã hủy',N'Da huy'
+      )
       GROUP BY rd.OrderDetailID
     `);
     const alreadyReturned = new Map(activeReturnResult.recordset.map((row) => [Number(row.OrderDetailID), Number(row.Quantity) || 0]));
     const selected = new Map();
     const selectedMeta = new Map();
-    for (const item of items) {
+    for (const item of effectiveItems) {
       const quantity = Number(item.quantity ?? item.return_qty);
       if (!Number.isInteger(quantity) || quantity <= 0) continue;
       let detail = detailsById.get(Number(item.order_detail_id ?? item.orderDetailId));
@@ -2289,7 +2441,7 @@ app.post("/api/returns", async (req, res) => {
       selected.set(Number(detail.OrderDetailID), next);
       selectedMeta.set(Number(detail.OrderDetailID), item);
     }
-    if (!selected.size) throw Object.assign(new Error("Vui long chon it nhat mot san pham de tra."), { statusCode: 400 });
+    if (!selected.size && !notReceived) throw Object.assign(new Error("Vui long chon it nhat mot san pham de tra."), { statusCode: 400 });
     const canonicalRefund = [...selected.entries()].reduce((sum, [detailId, quantity]) => sum + Number(detailsById.get(detailId).UnitPrice || 0) * quantity, 0);
     const refundAmount = isAdmin && Number.isFinite(requestedRefund) && requestedRefund >= 0
       ? Math.min(requestedRefund, canonicalRefund)
@@ -2317,7 +2469,7 @@ app.post("/api/returns", async (req, res) => {
       UPDATE Orders SET Status=N'Yêu cầu trả hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid;
     `);
     await insertOrderHistory(transaction, orderId, order.Status, "Yêu cầu trả hàng", `[RETURN_CREATED] #${returnId} ${reason}`, authenticatedUserId);
-    const insertedReturn = { ReturnID: returnId, OrderID: orderId, RefundAmount: refundAmount, Status: initialStatus };
+    const insertedReturn = { ReturnID: returnId, OrderID: orderId, ReturnType: returnType, RefundAmount: refundAmount, Status: initialStatus };
     if (isAdmin && ["Đã hoàn tiền", "Đã hoàn tất"].includes(initialStatus)) {
       await finalizeReturn(transaction, insertedReturn, authenticatedUserId, b.resolution_note);
     }
@@ -2339,12 +2491,41 @@ app.put("/api/returns/:id/status", async (req, res) => {
   try {
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     const result = await new sql.Request(transaction).input("rid", sql.Int, returnId).query(`
-      SELECT r.ReturnID, r.OrderID, r.Status, r.RefundAmount, r.RefundedAt, r.RestockedAt, o.Status AS OrderStatus
+      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.Status, r.RefundAmount, r.RefundedAt, r.RestockedAt,
+             o.Status AS OrderStatus, o.DeliveredDate, o.ReceivedConfirmedDate
       FROM Returns r JOIN Orders o WITH (UPDLOCK, HOLDLOCK) ON o.OrderID=r.OrderID
       WHERE r.ReturnID=@rid
     `);
     const row = result.recordset[0];
     if (!row) throw Object.assign(new Error("Khong tim thay yeu cau tra hang."), { statusCode: 404 });
+    // Lấy trạng thái ngay trước khi tạo yêu cầu để xử lý đúng cả dữ liệu cũ
+    // không có DeliveredDate/ReceivedConfirmedDate. Marker được ghi cùng
+    // transaction lúc POST /returns nên không bị nhầm với lịch sử khác.
+    const originResult = await new sql.Request(transaction)
+      .input("oid", sql.Int, row.OrderID)
+      .input("rid", sql.Int, returnId)
+      .query(`
+        SELECT TOP 1 OldStatus AS ReturnOriginStatus
+        FROM OrderStatusHistory WITH (UPDLOCK, HOLDLOCK)
+        WHERE OrderID=@oid
+          AND CHARINDEX(N'[RETURN_CREATED] #' + CONVERT(nvarchar(20), @rid), ISNULL(Note,N'')) = 1
+        ORDER BY HistoryID DESC
+      `);
+    row.ReturnOriginStatus = originResult.recordset[0]?.ReturnOriginStatus || null;
+    if (!row.ReturnOriginStatus) {
+      // Tương thích các yêu cầu trả hàng được tạo trước khi có marker
+      // [RETURN_CREATED]. Chỉ lấy lịch sử chuyển sang trạng thái yêu cầu trả.
+      const fallbackOrigin = await new sql.Request(transaction)
+        .input("oid", sql.Int, row.OrderID)
+        .query(`
+          SELECT TOP 1 OldStatus AS ReturnOriginStatus
+          FROM OrderStatusHistory WITH (UPDLOCK, HOLDLOCK)
+          WHERE OrderID=@oid
+            AND NewStatus IN (N'Yêu cầu trả hàng',N'Yeu cau tra hang')
+          ORDER BY HistoryID DESC
+        `);
+      row.ReturnOriginStatus = fallbackOrigin.recordset[0]?.ReturnOriginStatus || null;
+    }
     if (!returnTransitionAllowed(row.Status, requestedStatus)) throw Object.assign(new Error(`Khong the chuyen tu '${row.Status}' sang '${requestedStatus}'.`), { statusCode: 409 });
     const inspectionNote = cleanAddressText(req.body && req.body.inspection_note, 1000);
     const resolutionNote = cleanAddressText(req.body && req.body.resolution_note, 1000);
@@ -2359,14 +2540,21 @@ app.put("/api/returns/:id/status", async (req, res) => {
           ApprovedAt=CASE WHEN @st=N'Chấp nhận hoàn tiền' THEN ISNULL(ApprovedAt,GETDATE()) ELSE ApprovedAt END,
           UpdatedAt=GETDATE(), UpdatedBy=@uid WHERE ReturnID=@rid
       `);
+    let finalStatus = requestedStatus;
+    let orderStatusAfter = row.OrderStatus;
     if (["Đã hoàn tiền", "Đã hoàn tất"].includes(requestedStatus)) {
       await finalizeReturn(transaction, { ...row, ReturnID: returnId, RefundAmount: Number(row.RefundAmount) || 0 }, changedBy, resolutionNote);
+      finalStatus = "Đã hoàn tất";
+      orderStatusAfter = "Đã hoàn tất trả hàng";
     } else if (["Từ chối", "Hủy"].includes(requestedStatus)) {
-      await new sql.Request(transaction).input("oid", sql.Int, row.OrderID).query("UPDATE Orders SET Status=N'Đã nhận hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid");
+      const restoreStatus = restoreStatusAfterReturn(row);
+      await new sql.Request(transaction).input("oid", sql.Int, row.OrderID).input("st", sql.NVarChar(50), restoreStatus)
+        .query("UPDATE Orders SET Status=@st, UpdatedAt=GETDATE() WHERE OrderID=@oid");
+      orderStatusAfter = restoreStatus;
     }
-    await insertOrderHistory(transaction, row.OrderID, row.OrderStatus, row.OrderStatus, `[RETURN_STATUS] #${returnId}: ${row.Status} -> ${requestedStatus}${inspectionNote ? `; ${inspectionNote}` : ""}`, changedBy);
+    await insertOrderHistory(transaction, row.OrderID, row.OrderStatus, orderStatusAfter, `[RETURN_STATUS] #${returnId}: ${row.Status} -> ${requestedStatus}${inspectionNote ? `; ${inspectionNote}` : ""}`, changedBy);
     await transaction.commit();
-    res.json({ success: true, ReturnID: returnId, status: requestedStatus, refund_amount: row.RefundAmount });
+    res.json({ success: true, ReturnID: returnId, status: finalStatus, refund_amount: row.RefundAmount });
   } catch (e) {
     if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
     res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong cap nhat duoc yeu cau tra hang." });
@@ -2861,6 +3049,12 @@ app.get("/api/customers/:id/orders", async (req, res) => {
                 ISNULL(PaymentMethod, 'COD') as payment_method,
                 PaymentDueAt as payment_due_at,
                 PaymentConfirmedAt as payment_confirmed_at,
+                DeliveredDate as delivered_date,
+                ReceivedConfirmedDate as received_confirmed_date,
+                RevenueEligibleDate as revenue_eligible_date,
+                IsCountedAsRevenue as is_counted_as_revenue,
+                AutoCancelDeadline as auto_cancel_deadline,
+                ISNULL(TrackingNumber, '') as tracking_code,
                 ISNULL(HandledBy, '') as handled_by,
                 ISNULL(CustomerName, '') as customer_name,
                 ISNULL(CustomerPhone, '') as customer_phone,
@@ -2959,8 +3153,9 @@ app.get("/api/chart-data", async (req, res) => {
 // ============================================================
 const crypto = require("crypto");
 
-// Khoang cach uoc luong tu kho Ha Noi (km) theo tinh/thanh
+// Khoang cach uoc luong tu kho Hai Ba Trung, Ha Noi (km) theo tinh/thanh
 const HANOI_DISTANCE = {
+  "hai ba trung": 5,
   "ha noi": 8,
   hanoi: 8,
   "bac ninh": 35,
@@ -2991,7 +3186,159 @@ const HANOI_DISTANCE = {
   tphcm: 1720,
   "sai gon": 1720,
   "can tho": 1880,
+  // Các tỉnh còn lại (khoảng cách ước tính từ kho Hà Nội). Bảng này chỉ
+  // dùng để báo giá sơ bộ khi chưa kết nối hãng vận chuyển thật; tên đã được
+  // chuẩn hoá không dấu để khớp cả dữ liệu địa chỉ có dấu/không dấu.
+  "cao bang": 280,
+  "bac kan": 160,
+  "lang son": 155,
+  "tuyen quang": 150,
+  "lao cai": 300,
+  "yen bai": 180,
+  "phu tho": 105,
+  "hoa binh": 85,
+  "lai chau": 500,
+  "dien bien": 520,
+  "son la": 320,
+  "thai binh": 110,
+  "ha nam": 70,
+  "ninh binh": 100,
+  "quang binh": 500,
+  "quang tri": 590,
+  "binh dinh": 1040,
+  "phu yen": 1150,
+  "binh thuan": 1550,
+  "dak lak": 1400,
+  "dak nong": 1500,
+  "gia lai": 1250,
+  "kon tum": 1100,
+  "binh phuoc": 1650,
+  "tay ninh": 1750,
+  "long an": 1800,
+  "tien giang": 1850,
+  "ben tre": 1950,
+  "tra vinh": 2000,
+  "vinh long": 1950,
+  "dong thap": 1930,
+  "an giang": 2000,
+  "kien giang": 2200,
+  "bac lieu": 2200,
+  "ca mau": 2300,
+  "soc trang": 2150,
+  "hau giang": 2100,
 };
+
+const SHIPPING_METHOD_FALLBACKS = [
+  {
+    ShippingMethodID: null,
+    MethodCode: "STANDARD",
+    MethodName: "Giao hàng tiêu chuẩn",
+    BasePrice: 20000,
+    PricePerKm: 20,
+    OriginCity: "Hai Bà Trưng, Hà Nội",
+    EstimatedTimeText: "2 - 3 ngày",
+  },
+];
+
+function getStandardShippingFee(distanceKm) {
+  const d = Number(distanceKm) || 0;
+  if (d <= 20) return 20000;
+  if (d <= 50) return 25000;
+  if (d <= 120) return 30000;
+  if (d <= 300) return 35000;
+  if (d <= 600) return 45000;
+  if (d <= 1000) return 55000;
+  return 65000;
+}
+
+function getStandardEta(distanceKm) {
+  const d = Number(distanceKm) || 0;
+  if (d <= 30) return "1 ngày";
+  if (d <= 100) return "1-2 ngày";
+  if (d <= 300) return "2 ngày";
+  if (d <= 600) return "2-3 ngày";
+  if (d <= 1200) return "3-4 ngày";
+  return "4-5 ngày";
+}
+
+const normalizeShippingText = (value) =>
+  normalizeOrderStatus(value)
+    .replace(/[.,;:/]+/g, " ")
+    .replace(/[()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+function estimateShippingDistance({ province = "", district = "", ward = "", address = "" } = {}) {
+  const provinceKey = normalizeShippingText(province);
+  const locationKey = normalizeShippingText([address, ward, district, province].filter(Boolean).join(" "));
+  // Ưu tiên khớp tên tỉnh đầy đủ; tránh việc tên quận/phường có chữ "vinh"
+  // làm nhầm khoảng cách của tỉnh khác.
+  const rules = Object.entries(HANOI_DISTANCE).sort((a, b) => b[0].length - a[0].length);
+  const matched = rules.find(([name]) =>
+    provinceKey === name || provinceKey.includes(name) || (!provinceKey && locationKey.includes(name)),
+  );
+  const distanceKm = matched ? Number(matched[1]) : 150;
+  return {
+    distanceKm,
+    matchedProvince: matched ? matched[0] : null,
+    estimated: !matched,
+  };
+}
+
+async function loadShippingMethod(methodCode, transaction = null) {
+  const normalizedCode = String(methodCode || "STANDARD").trim().toUpperCase();
+  const fallback = SHIPPING_METHOD_FALLBACKS.find((item) => item.MethodCode === normalizedCode)
+    || SHIPPING_METHOD_FALLBACKS[0];
+  try {
+    const request = transaction ? new sql.Request(transaction) : pool.request();
+    const result = await request
+      .input("code", sql.VarChar(20), normalizedCode)
+      .query(`
+        SELECT TOP 1 ShippingMethodID, MethodCode, MethodName, BasePrice,
+               PricePerKm, OriginCity, EstimatedTimeText
+        FROM ShippingMethods
+        WHERE UPPER(MethodCode)=@code AND ISNULL(IsActive,1)=1
+        ORDER BY ShippingMethodID
+      `);
+    const row = result.recordset[0];
+    if (row) return row;
+  } catch (_) {
+    // CSDL cũ có thể chưa có bảng/cột này; vẫn trả về bảng giá dự phòng.
+  }
+  return fallback;
+}
+
+async function calculateShippingQuote({ methodCode = "STANDARD", province = "", district = "", ward = "", address = "", transaction = null } = {}) {
+  const method = await loadShippingMethod(methodCode, transaction);
+  const code = String(method.MethodCode || methodCode || "STANDARD").trim().toUpperCase();
+  const distance = estimateShippingDistance({ province, district, ward, address });
+  const basePrice = Math.max(0, Number(method.BasePrice) || 0);
+  const pricePerKm = Math.max(0, Number(method.PricePerKm) || 0);
+  // Giao tiêu chuẩn: phí và ETA tính theo khoảng cách từ kho Hai Bà Trưng, Hà Nội
+  let fee;
+  let eta;
+  if (code === "STANDARD") {
+    fee = getStandardShippingFee(distance.distanceKm);
+    eta = getStandardEta(distance.distanceKm);
+  } else {
+    const rawFee = basePrice + (pricePerKm > 0 ? distance.distanceKm * pricePerKm : 0);
+    fee = Math.max(0, Math.round(rawFee / 1000) * 1000);
+    eta = method.EstimatedTimeText || "2 - 3 ngày";
+  }
+  return {
+    methodId: method.ShippingMethodID == null ? null : Number(method.ShippingMethodID),
+    methodCode: code,
+    methodName: method.MethodName || "Giao hàng tiêu chuẩn",
+    basePrice,
+    pricePerKm,
+    distanceKm: distance.distanceKm,
+    estimatedDistance: distance.estimated,
+    matchedProvince: distance.matchedProvince,
+    fee,
+    eta,
+    originCity: method.OriginCity || "Hai Bà Trưng, Hà Nội",
+  };
+}
 
 // 1) Danh sach buu cuc (cho trang tra hang)
 app.get("/api/postoffices", async (req, res) => {
@@ -3007,63 +3354,75 @@ app.get("/api/postoffices", async (req, res) => {
   }
 });
 
-// 2) Tinh phi giao hang theo khoang cach (hoa toc) / co dinh (thuong)
-app.post("/api/shipping/quote", async (req, res) => {
+// 2) Danh sách phương thức vận chuyển đang bật. Frontend dùng endpoint này
+// thay vì phải hard-code bảng giá trong bundle.
+app.get("/api/shippingmethods", async (_req, res) => {
   try {
     await poolConnect;
-    const methodCode = (req.body && req.body.methodCode) || "STANDARD";
-    const province = (req.body && req.body.province) || "";
-    let method = null;
+    let rows = [];
     try {
-      const r = await pool
-        .request()
-        .input("c", sql.VarChar, methodCode)
-        .query(
-          "SELECT MethodCode, MethodName, BasePrice, PricePerKm, EstimatedTimeText FROM ShippingMethods WHERE MethodCode=@c AND ISNULL(IsActive,1)=1",
-        );
-      method = r.recordset[0] || null;
-    } catch (err) {
-      method = null;
+      const result = await pool.request().query(`
+        SELECT ShippingMethodID, MethodCode, MethodName, BasePrice, PricePerKm,
+               OriginCity, EstimatedTimeText
+        FROM ShippingMethods
+        WHERE ISNULL(IsActive,1)=1 AND UPPER(MethodCode)='STANDARD'
+        ORDER BY ShippingMethodID
+      `);
+      rows = result.recordset || [];
+      // Chỉ giữ STANDARD, loại bỏ hỏa tốc nếu DB còn dữ liệu cũ
+      rows = rows.filter((r) => String(r.MethodCode || "").trim().toUpperCase() === "STANDARD");
+    } catch (_) {
+      rows = [];
     }
-    if (!method) {
-      method =
-        methodCode === "EXPRESS"
-          ? {
-              MethodCode: "EXPRESS",
-              MethodName: "Giao hoa toc",
-              BasePrice: 40000,
-              PricePerKm: 5000,
-              EstimatedTimeText: "~24 gio",
-            }
-          : {
-              MethodCode: "STANDARD",
-              MethodName: "Giao tieu chuan",
-              BasePrice: 30000,
-              PricePerKm: 0,
-              EstimatedTimeText: "2 - 3 ngay",
-            };
-    }
-    const key = String(province).toLowerCase();
-    let km = 0;
-    for (const k in HANOI_DISTANCE) {
-      if (key.indexOf(k) !== -1) {
-        km = HANOI_DISTANCE[k];
-        break;
-      }
-    }
-    if (method.MethodCode === "EXPRESS" && !km) km = 150;
-    const fee =
-      Number(method.BasePrice) +
-      (method.MethodCode === "EXPRESS" ? km * Number(method.PricePerKm) : 0);
-    res.json({
-      methodCode: method.MethodCode,
-      methodName: method.MethodName,
-      distanceKm: km,
-      fee,
-      eta: method.EstimatedTimeText,
-    });
+    if (!rows.length) rows = SHIPPING_METHOD_FALLBACKS;
+    res.json(rows.map((row) => ({
+      id: row.ShippingMethodID == null ? null : Number(row.ShippingMethodID),
+      code: String(row.MethodCode || "STANDARD").trim().toUpperCase(),
+      name: row.MethodName || "Giao hàng tiêu chuẩn",
+      basePrice: Number(row.BasePrice) || 0,
+      pricePerKm: Number(row.PricePerKm) || 0,
+      originCity: row.OriginCity || "Hai Bà Trưng, Hà Nội",
+      eta: row.EstimatedTimeText || "2 - 3 ngày",
+      desc: "Tính theo khoảng cách từ kho Hai Bà Trưng, Hà Nội.",
+    })));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    // Endpoint đọc giá vẫn hữu ích khi DB tạm thời lỗi (ví dụ lúc dev chưa
+    // chạy SQL), nên trả bảng dự phòng thay vì làm checkout trắng trang.
+    res.json(SHIPPING_METHOD_FALLBACKS.map((row) => ({
+      id: null,
+      code: row.MethodCode,
+      name: row.MethodName,
+      basePrice: Number(row.BasePrice) || 0,
+      pricePerKm: Number(row.PricePerKm) || 0,
+      originCity: row.OriginCity,
+      eta: row.EstimatedTimeText,
+      desc: "Tính theo khoảng cách từ kho Hai Bà Trưng, Hà Nội.",
+    })));
+  }
+});
+
+// 3) Tính phí giao hàng theo địa điểm + phương thức. Payload nhận cả tên
+// tỉnh/quận/phường và địa chỉ chi tiết để dùng được với sổ địa chỉ hiện tại.
+app.post("/api/shipping/quote", async (req, res) => {
+  try {
+    // Không cần chặn báo giá nếu DB đang khởi động; calculateShippingQuote sẽ
+    // tự dùng bảng giá dự phòng khi chưa truy cập được ShippingMethods.
+    try { await poolConnect; } catch (_) {}
+    const body = req.body || {};
+    const methodCode = String(body.methodCode ?? body.method_code ?? "STANDARD").trim().toUpperCase();
+    if (methodCode !== "STANDARD") {
+      return res.status(400).json({ success: false, message: "Phương thức vận chuyển không hợp lệ." });
+    }
+    const quote = await calculateShippingQuote({
+      methodCode,
+      province: body.province ?? body.provinceName ?? body.city ?? "",
+      district: body.district ?? "",
+      ward: body.ward ?? body.commune ?? body.communeName ?? "",
+      address: body.address ?? body.addressLine ?? body.shippingAddress ?? "",
+    });
+    res.json({ success: true, ...quote });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -3134,7 +3493,7 @@ async function runAutoCancelJob() {
     
     // Tìm các đơn sẽ bị hủy
     const expiredOrders = await pool.request().query(`
-      SELECT OrderID, Status, PaymentDueAt, PaymentMethod, PaymentStatus
+      SELECT OrderID, Status, PaymentDueAt, PaymentMethod, PaymentStatus, TotalAmount
       FROM Orders
       WHERE Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
         AND (
@@ -3142,7 +3501,10 @@ async function runAutoCancelJob() {
           OR (
             PaymentDueAt IS NOT NULL AND PaymentDueAt < GETDATE()
             AND (PaymentMethod LIKE N'%chuyển khoản%' OR PaymentMethod LIKE N'%bank%' OR PaymentMethod LIKE N'%momo%' OR PaymentMethod LIKE N'%vnpay%')
-            AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (N'Đã thanh toán',N'Hoàn tiền',N'Đã hủy')
+            AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (
+              N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan',
+              N'Hoàn tiền',N'Hoan tien',N'Đã hủy',N'Da huy'
+            )
           )
         )
     `);
@@ -3155,7 +3517,7 @@ async function runAutoCancelJob() {
         const claimed = await new sql.Request(transaction)
           .input("id", sql.Int, row.OrderID)
           .query(`
-            SELECT OrderID, Status
+            SELECT OrderID, Status, PaymentDueAt, PaymentMethod, PaymentStatus, TotalAmount
             FROM Orders WITH (UPDLOCK, HOLDLOCK)
             WHERE OrderID=@id
               AND Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Cho xac nhan', N'Da xac nhan')
@@ -3164,7 +3526,10 @@ async function runAutoCancelJob() {
                 OR (
                   PaymentDueAt IS NOT NULL AND PaymentDueAt<GETDATE()
                   AND (PaymentMethod LIKE N'%chuyển khoản%' OR PaymentMethod LIKE N'%bank%' OR PaymentMethod LIKE N'%momo%' OR PaymentMethod LIKE N'%vnpay%')
-                  AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (N'Đã thanh toán',N'Hoàn tiền',N'Đã hủy')
+                  AND ISNULL(PaymentStatus,N'Chưa thanh toán') NOT IN (
+                    N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan',
+                    N'Hoàn tiền',N'Hoan tien',N'Đã hủy',N'Da huy'
+                  )
                 )
               )
           `);
@@ -3174,9 +3539,10 @@ async function runAutoCancelJob() {
         }
 
         await restoreOrderStock(transaction, row.OrderID);
-        const paymentExpired = row.PaymentDueAt && new Date(row.PaymentDueAt).getTime() < Date.now()
-          && isBankPayment(row.PaymentMethod)
-          && !["da thanh toan", "hoan tien", "da huy"].includes(normalizeOrderStatus(row.PaymentStatus));
+        const claimedOrder = claimed.recordset[0];
+        const paymentExpired = claimedOrder.PaymentDueAt && new Date(claimedOrder.PaymentDueAt).getTime() < Date.now()
+          && isBankPayment(claimedOrder.PaymentMethod)
+          && !["da thanh toan", "cho thanh toan", "hoan tien", "da huy"].includes(normalizeOrderStatus(claimedOrder.PaymentStatus));
         const cancelReason = paymentExpired
           ? "Đơn chuyển khoản đã quá hạn thanh toán 24 giờ nên được tự động hủy."
           : "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.";
@@ -3191,13 +3557,16 @@ async function runAutoCancelJob() {
             UPDATE Orders
             SET Status=N'Đã hủy', CancelReason=@reason,
                 PaymentStatus=CASE
-                  WHEN ISNULL(PaymentStatus,N'Chưa thanh toán')=N'Đã thanh toán' THEN N'Hoàn tiền'
+                  WHEN ISNULL(PaymentStatus,N'Chưa thanh toán') IN (N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan') THEN N'Hoàn tiền'
                   ELSE N'Đã hủy'
                 END,
                 AutoCancelDeadline=NULL, UpdatedAt=GETDATE()
             WHERE OrderID=@id
           `);
-        await insertOrderHistory(transaction, row.OrderID, claimed.recordset[0].Status, "Đã hủy", cancelReason, null);
+        if (isPaidPaymentStatus(claimedOrder.PaymentStatus)) {
+          await recordRefundTransaction(transaction, claimedOrder.OrderID, claimedOrder.TotalAmount);
+        }
+        await insertOrderHistory(transaction, row.OrderID, claimedOrder.Status, "Đã hủy", cancelReason, null);
         await transaction.commit();
       } catch (orderError) {
         if (transaction._aborted !== true) {

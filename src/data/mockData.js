@@ -75,15 +75,17 @@ export const shippingMethods = [
   {
     code: "STANDARD",
     name: "Giao hàng tiêu chuẩn",
-    basePrice: 30000,
-    pricePerKm: 0,
+    basePrice: 20000,
+    pricePerKm: 20,
     eta: "2 - 3 ngày",
-    desc: "Giá cố định, áp dụng toàn quốc.",
+    originCity: "Hai Bà Trưng, Hà Nội",
+    desc: "Tính theo khoảng cách từ kho Hai Bà Trưng, Hà Nội.",
   },
 ];
 
-/* Khoảng cách ước lượng từ Hà Nội (km) theo tỉnh/thành (key viết thường) */
+/* Khoảng cách ước lượng từ kho Hai Bà Trưng, Hà Nội (km) theo tỉnh/thành (key viết thường) */
 export const distanceFromHanoi = {
+  "hai bà trưng": 5,
   "hà nội": 8,
   "hanoi": 8,
   "bắc ninh": 35,

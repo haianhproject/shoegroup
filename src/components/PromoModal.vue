@@ -38,7 +38,7 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
             <div class="deal-badge warm"><i class="bi bi-truck"></i></div>
             <div>
               <div class="deal-h">Miễn phí giao hàng tiêu chuẩn</div>
-              <div class="deal-p">Cho mọi đơn hàng từ 2.000.000đ. Giao hỏa tốc 24h nội thành Hà Nội.</div>
+              <div class="deal-p">Cho mọi đơn hàng từ 2.000.000đ.</div>
             </div>
           </div>
           <div class="deal">

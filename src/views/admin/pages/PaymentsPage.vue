@@ -8,16 +8,28 @@ import {
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
-  formatDate, formatPrice,
+  formatDate, formatPrice, notify
 } from '../adminStore'
 
 const queueView = ref('ACTIVE')
 
+// FIFO: hàng đợi xử lý ưu tiên đơn đặt TRƯỚC lên đầu (cũ nhất → mới nhất)
+// Tab "Tất cả" vẫn giữ mới nhất lên đầu cho tiện tra cứu
+function sortFIFO(list) {
+  return [...list].sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : (Number(a.id) || 0)
+    const tb = b.created_at ? new Date(b.created_at).getTime() : (Number(b.id) || 0)
+    if (ta !== tb) return ta - tb  // cũ nhất lên đầu
+    return (Number(a.id) || 0) - (Number(b.id) || 0)
+  })
+}
+
 const displayedOrders = computed(() => {
   if (queueView.value === 'ALL') return paymentChannelOrders.value
-  return paymentChannelOrders.value.filter((order) =>
+  const active = paymentChannelOrders.value.filter((order) =>
     !['Đã hủy', 'Đã nhận hàng', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
   )
+  return sortFIFO(active)
 })
 
 const actionableCount = computed(() => displayedOrders.value.filter((order) =>
@@ -30,16 +42,10 @@ function queueNumber(order, index) {
 }
 
 function isTransfer(order) {
-  return getPaymentMethodPill(order?.payment_method).key === 'BANK_TRANSFER'
+  return getPaymentMethodPill(order?.payment_method).code === 'Chuyển khoản'
 }
 
-function dueLabel(order) {
-  if (!order?.payment_due_at) return 'Theo hạn trên đơn'
-  const due = new Date(order.payment_due_at)
-  if (Number.isNaN(due.getTime())) return 'Theo hạn trên đơn'
-  const overdue = due.getTime() < Date.now() && getPaymentStatusPill(order).label !== 'Đã thanh toán'
-  return `${overdue ? 'Quá hạn · ' : ''}${formatDate(due)}`
-}
+
 
 const transitionConfirm = reactive({
   open: false,
@@ -74,6 +80,8 @@ async function confirmTransition() {
     transitionConfirm.open = false
     transitionConfirm.order = null
     transitionConfirm.action = null
+  } catch (e) {
+    notify("Lỗi: " + e.message, "error")
   } finally {
     transitionConfirm.busy = false
   }
@@ -148,7 +156,6 @@ function transitionMessage() {
                 <th>Đơn hàng</th>
                 <th>Phương thức</th>
                 <th>Thanh toán</th>
-                <th>Hạn thanh toán</th>
                 <th>Trạng thái đơn</th>
                 <th class="text-end">Tổng tiền</th>
                 <th class="text-end">Thao tác</th>
@@ -179,9 +186,6 @@ function transitionMessage() {
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                     :class="getPaymentStatusPill(ord).cls"
                     v-text="getPaymentStatusPill(ord).label"></span>
-                </td>
-                <td>
-                  <span class="small" :class="isTransfer(ord) ? 'text-dark fw-medium' : 'text-secondary'">{{ isTransfer(ord) ? dueLabel(ord) : 'Thu khi giao' }}</span>
                 </td>
                 <td>
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"

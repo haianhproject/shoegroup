@@ -125,24 +125,27 @@ const handlePay = (o) => {
 const confirmPaid = async () => {
   if (payModal.serverId) {
     try {
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
     } catch(error) {
-      notify({ type: 'error', message: error.message || 'Không thể báo thanh toán. Vui lòng thử lại.' })
+      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
     }
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
-    order.payment_status = 'Chờ thanh toán'
+    order.payment_status = 'Đã thanh toán'
     saveOrders()
   }
   payModal.open = false
-  notify({ type: 'success', title: 'Xác nhận thành công', message: 'Cảm ơn bạn. Cửa hàng sẽ kiểm tra và xác nhận thanh toán.' })
+  notify({ type: 'success', title: 'Thanh toán đã được ghi nhận', message: 'Đơn hàng đã sẵn sàng để cửa hàng xác nhận và xử lý.' })
 }
 
 const closePayModal = () => { payModal.open = false }
 
-const goReturn = (order) => { router.push({ name: 'return-order', params: { orderId: order.id } }) }
+const goReturn = (order, mode = '') => {
+  const query = mode ? { type: mode } : undefined
+  router.push({ name: 'return-order', params: { orderId: order.id }, ...(query ? { query } : {}) })
+}
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
@@ -355,14 +358,33 @@ const confirmUpdateAddress = async () => {
 }
 
 let pollTimer = null
+let lastHidden = 0
+
+async function syncOrders() {
+  await loadOrders()
+  runAutoCancel()
+}
+
+function onVisibilityChange() {
+  if (!document.hidden) {
+    if (Date.now() - lastHidden > 4000) syncOrders()
+  } else {
+    lastHidden = Date.now()
+  }
+}
+
 onMounted(async () => {
   await loadOrders()
   runAutoCancel()
   isLoading.value = false
   await Promise.all([loadSavedAddresses(), fetchProvinces()])
-  pollTimer = setInterval(loadOrders, 8000)
+  pollTimer = setInterval(syncOrders, 6000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
-onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <template>
@@ -464,15 +486,18 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <i class="bi bi-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
           </div>
           <div v-else-if="isBankTransfer(o) && o.payment_status === 'Chờ thanh toán'" class="oc-hold" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;">
-            <i class="bi bi-hourglass-split"></i> Đã báo thanh toán. Đang chờ cửa hàng xác nhận.
+            <i class="bi bi-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
           </div>
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
+            <button v-if="o.status === 'SHIPPING'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-box-seam me-1"></i>Báo chưa nhận được hàng</button>
             <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="['DELIVERED','RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
+            <button v-if="o.status === 'DELIVERED'" class="btn-sg-outline btn-delivery-issue" @click.stop="goReturn(o, 'NOT_RECEIVED')"><i class="bi bi-exclamation-triangle me-1"></i>Chưa nhận được hàng</button>
+            <button v-if="o.status === 'DELIVERED'" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
+            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 
@@ -630,7 +655,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
           <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" style="width: 200px; height: 200px; object-fit: contain;" />
           <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng hoặc MoMo. Sau khi thanh toán thành công, ấn nút bên dưới để thông báo cho chúng tôi.</p>
+          <p class="text-secondary small mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
           <div class="d-flex flex-column gap-2">
             <button class="btn-sg" style="background: #ea580c" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
             <button class="btn-sg-outline w-100" @click="closePayModal">ĐÓNG</button>

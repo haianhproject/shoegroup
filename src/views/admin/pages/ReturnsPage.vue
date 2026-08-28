@@ -4,12 +4,13 @@ import {
   returnSearchCode, returnFoundOrder, returnItems, returnNote,
   searchReturnOrder, submitReturn, resetReturnForm, returnRefundTotal, returnSelectedCount,
   returnFilter, filteredReturns, getReturnBadgeClass, processReturn,
-  formatPrice, notify,
+  formatPrice, notify, getReturnTypeLabel,
 } from '../adminStore'
 
-const returnStatuses = ['Tất cả', 'Chờ xử lý', 'Đã tiếp nhận', 'Đang kiểm tra', 'Chấp nhận hoàn tiền', 'Sự cố', 'Từ chối', 'Đã hoàn tất']
+const returnStatuses = ['Tất cả', 'Chờ xử lý', 'Đã tiếp nhận', 'Đang kiểm tra', 'Chấp nhận hoàn tiền', 'Đã hoàn tiền', 'Sự cố', 'Từ chối', 'Hủy', 'Đã hoàn tất']
 
 function conditionLabel(request) {
+  if (getReturnTypeLabel(request?.return_type) === 'Chưa nhận được hàng') return 'Không áp dụng (chưa nhận hàng)'
   const conditions = (request?.details || []).map((detail) => String(detail.Condition ?? detail.condition ?? '').toUpperCase())
   if (conditions.includes('DAMAGED')) return 'Hư hỏng / tai nạn'
   if (conditions.includes('OPENED')) return 'Đã mở / đã thử'
@@ -102,7 +103,7 @@ function conditionLabel(request) {
             <tr v-for="r in filteredReturns" :key="r.id">
               <td class="fw-bold text-dark" v-text="'#' + r.id"></td>
               <td v-text="'#' + r.order_id"></td>
-              <td v-text="r.return_type"></td>
+              <td v-text="getReturnTypeLabel(r.return_type)"></td>
               <td class="small text-secondary" style="max-width:220px;" v-text="r.reason"></td>
               <td>
                 <span class="small fw-medium" v-text="conditionLabel(r)"></span>
@@ -123,7 +124,11 @@ function conditionLabel(request) {
                   <button @click="processReturn(r, 'Chấp nhận hoàn tiền')" class="btn btn-sm btn-dark" style="border-radius:4px;">Chấp nhận hoàn</button>
                   <button @click="processReturn(r, 'Từ chối')" class="btn btn-sm btn-light border text-danger" style="border-radius:4px;">Từ chối</button>
                 </div>
-                <button v-else-if="r.status === 'Chấp nhận hoàn tiền'" @click="processReturn(r, 'Đã hoàn tất')" class="btn btn-sm btn-dark" style="border-radius:4px;">Xác nhận hoàn tiền</button>
+                <div v-else-if="r.status === 'Sự cố'" class="d-flex gap-1 justify-content-end">
+                  <button @click="processReturn(r, 'Đang kiểm tra')" class="btn btn-sm btn-dark" style="border-radius:4px;">Kiểm tra lại</button>
+                  <button @click="processReturn(r, 'Từ chối')" class="btn btn-sm btn-light border text-danger" style="border-radius:4px;">Từ chối</button>
+                </div>
+                <button v-else-if="r.status === 'Chấp nhận hoàn tiền'" @click="processReturn(r, 'Đã hoàn tiền')" class="btn btn-sm btn-dark" style="border-radius:4px;">Xác nhận hoàn tiền</button>
                 <span v-else class="text-secondary small">—</span>
               </td>
             </tr>

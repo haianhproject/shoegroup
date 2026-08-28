@@ -1,6 +1,6 @@
 import { computed, reactive } from "vue";
 /* [TOI UU] Lay dia chi API tu .env + luu token JWT */
-import { API_BASE_URL, setToken, clearToken } from "../services/apiClient";
+import { API_BASE_URL, api, setToken, clearToken } from "../services/apiClient";
 
 /* =====================================================================
    authStore - có cơ chế bảo mật cookie / phiên theo trình duyệt
@@ -149,27 +149,22 @@ export const logout = () => {
 
 export const updateProfile = async (data) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/accounts/${data.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: data.email,
-        name: data.full_name,
-        phone: data.phone,
-        address: data.address,
-        role_id: data.role_id || 2,
-      }),
+    if (!data?.id) return { ok: false, message: "Khong xac dinh duoc tai khoan." };
+    // Dung api client de tu gan JWT. Khong gui role_id tu man hinh khach;
+    // backend chan thay doi quyen va truoc day khien luu ho so bi 403.
+    await api.put(`/accounts/${data.id}`, {
+      username: data.email,
+      name: data.full_name,
+      phone: data.phone,
+      ...(data.address !== undefined ? { address: data.address } : {}),
     });
-    if (res.ok) {
-      authState.currentUser.full_name = data.full_name;
-      authState.currentUser.phone = data.phone;
-      authState.currentUser.address = data.address;
-      saveCurrentUser(authState.currentUser);
-      return { ok: true };
-    }
-    return { ok: false, message: "C\u1eadp nh\u1eadt th\u1ea5t b\u1ea1i." };
-  } catch {
-    return { ok: false, message: "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7." };
+    authState.currentUser.full_name = data.full_name;
+    authState.currentUser.phone = data.phone;
+    if (data.address !== undefined) authState.currentUser.address = data.address;
+    saveCurrentUser(authState.currentUser);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Loi ket noi may chu." };
   }
 };
 

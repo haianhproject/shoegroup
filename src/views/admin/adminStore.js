@@ -178,6 +178,15 @@ export function handleLogout() {
 }
 
 /* ---------------- BADGE COUNTS ---------------- */
+// Chuyển khoản online đã được khách xác nhận ở checkout thì coi là đã thanh toán
+// ngay cả với dữ liệu cũ còn lưu trạng thái "Chờ thanh toán".
+export function isPaymentSettled(o) {
+  const status = normalizeStatusText(o?.payment_status || "");
+  if (["da thanh toan", "hoan tien"].includes(status)) return true;
+  // Đơn bán tại quầy thu tiền mặt được thanh toán ngay khi tạo đơn.
+  if (getPaymentMethodPill(o?.payment_method).code === "Tiền mặt") return true;
+  return status === "cho thanh toan" && getPaymentMethodPill(o?.payment_method).code === "Chuyển khoản";
+}
 export const pendingOrdersCount = computed(
   () => db.orders.filter((o) => o.status === "Chờ xác nhận").length,
 );
@@ -185,7 +194,7 @@ export const unpaidCount = computed(
   () =>
     db.orders.filter(
       (o) =>
-        (o.payment_status || "Chưa thanh toán") !== "Đã thanh toán" &&
+        !isPaymentSettled(o) &&
         o.status !== "Đã hủy",
     ).length,
 );
@@ -200,7 +209,7 @@ export const lowStockCount = computed(
 export const incompleteOrdersCount = computed(
   () =>
     db.orders.filter(
-      (o) => o.status !== "Đã giao hàng thành công" && o.status !== "Đã nhận hàng" && o.status !== "Đã hủy",
+      (o) => !["Đã giao hàng thành công", "Đã nhận hàng", "Đã hủy", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status),
     ).length,
 );
 /* Số sản phẩm hết hàng (tổng tồn kho = 0) */
@@ -576,6 +585,18 @@ export async function processOrderFlow(ord) {
   const action = orderFlow[ord.status];
   if (!action) return;
   const prev = ord.status;
+  
+  const res = await apiWrite("/orders/" + ord.id + "/status", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: action.next }),
+  });
+  
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Lỗi cập nhật trạng thái đơn.";
+     throw new Error(msg);
+  }
+
   ord.status = action.next;
   ord._history = ord._history || [];
   ord._history.push({
@@ -583,35 +604,22 @@ export async function processOrderFlow(ord) {
     date: new Date().toISOString(),
     note: "Cập nhật bởi " + getDisplayName.value,
   });
-  await api("/orders/" + ord.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: action.next }),
-  });
+  
   notify("Đơn #" + ord.id + ": " + prev + " → " + action.next, "success");
 }
 
 // Máy trạng thái đơn theo phương thức thanh toán.
-// - Chuyển khoản: khách phải chuyển khoản TRƯỚC (ở trang khách hàng) mới được xác nhận & hoàn thành đơn.
+// - Chuyển khoản: checkout ghi nhận thanh toán ngay sau khi khách xác nhận,
+//   nên admin chỉ xử lý trạng thái đơn, không bấm xác nhận thanh toán lần hai.
 // - COD: xác nhận → giao → THU TIỀN (gần cuối) → hoàn thành đơn.
 export function getOrderActions(o) {
-  if (!o || o.status === "Đã hủy" || o.status === "Đã giao hàng thành công" || o.status === "Đã nhận hàng")
+  if (!o || ["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
     return [];
   const method = getPaymentMethodPill(o.payment_method).code;
-  const paid = (o.payment_status || "") === "Đã thanh toán";
+  const paid = isPaymentSettled(o);
   const acts = [];
-  if (method === "BANK_TRANSFER") {
+  if (method === "Chuyển khoản") {
     if (!paid) {
-      if (o.payment_status === "Chờ thanh toán") {
-        return [
-          {
-            key: "bank_paid",
-            text: "Xác nhận đã nhận tiền",
-            markPaid: true,
-            class: "btn-dark text-white",
-          }
-        ];
-      }
       return [
         {
           key: "wait_bank",
@@ -621,10 +629,16 @@ export function getOrderActions(o) {
         },
         {
           key: "bank_paid",
-          text: "Đã nhận tiền (Thủ công)",
+          text: "Khách đã thanh toán (Thủ công)",
           markPaid: true,
           class: "btn-outline-dark ms-2",
-        }
+        },
+        {
+          key: "cancel",
+          text: "Hủy đơn",
+          class: "btn-outline-danger mt-2",
+          isCancel: true,
+        },
       ];
     }
     if (o.status === "Chờ xác nhận")
@@ -634,13 +648,28 @@ export function getOrderActions(o) {
         next: "Đã xác nhận",
         class: "btn-dark text-white",
       });
-    else
+    else if (o.status === "Đã xác nhận")
+      acts.push({
+        key: "ship",
+        text: "Giao vận chuyển",
+        next: "Đang vận chuyển",
+        class: "btn-dark text-white",
+      });
+    else if (o.status === "Đang vận chuyển")
       acts.push({
         key: "complete",
         text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
         class: "btn-dark text-white",
       });
+    // Đơn chuyển khoản đã thanh toán vẫn có thể cần hủy (hết hàng,
+    // khách yêu cầu...). API sẽ hoàn tiền nếu giao dịch đã được ghi nhận.
+    acts.push({
+      key: "cancel",
+      text: "Hủy đơn",
+      class: "btn-outline-danger mt-2",
+      isCancel: true,
+    });
     return acts;
   }
   // COD (và các phương thức khác)
@@ -659,10 +688,10 @@ export function getOrderActions(o) {
       class: "btn-dark text-white",
     });
   else if (o.status === "Đang vận chuyển") {
-    if (method === "COD" && !paid)
+    if (method === "Thu hộ" && !paid)
       acts.push({
         key: "cod_paid",
-        text: "Thanh toán thành công (thu COD)",
+        text: "Khách đã thanh toán (thu COD)",
         markPaid: true,
         class: "btn-dark text-white",
       });
@@ -690,7 +719,19 @@ export async function runOrderAction(o, act) {
     return;
   }
   if (act.markPaid) {
-    const isCOD = getPaymentMethodPill(o.payment_method).code === "COD";
+    const isCOD = getPaymentMethodPill(o.payment_method).code === "Thu hộ";
+    
+    const res = await apiWrite("/orders/" + o.id + "/payment", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment_status: "Đã thanh toán" }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi xác nhận thanh toán.";
+       throw new Error(msg);
+    }
+
     o.payment_status = "Đã thanh toán";
     o._history = o._history || [];
     o._history.push({
@@ -698,20 +739,27 @@ export async function runOrderAction(o, act) {
       date: new Date().toISOString(),
       note: isCOD ? "Thu tiền COD" : "Xác nhận chuyển khoản",
     });
-    await api("/orders/" + o.id + "/payment", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment_status: "Đã thanh toán" }),
-    });
+    
     notify("Đơn #" + o.id + (isCOD ? ": đã thu tiền COD" : ": đã xác nhận chuyển khoản"), "success");
     return;
   }
   if (act.next) {
+    const res = await apiWrite("/orders/" + o.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: act.next }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi cập nhật trạng thái.";
+       throw new Error(msg);
+    }
+
     const prev = o.status;
     o.status = act.next;
     if (
       act.next === "Đã giao hàng thành công" &&
-      getPaymentMethodPill(o.payment_method).code === "COD"
+      getPaymentMethodPill(o.payment_method).code === "Thu hộ"
     )
       o.payment_status = "Đã thanh toán";
     o._history = o._history || [];
@@ -720,11 +768,7 @@ export async function runOrderAction(o, act) {
       date: new Date().toISOString(),
       note: "Cập nhật bởi " + getDisplayName.value,
     });
-    await api("/orders/" + o.id + "/status", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: act.next }),
-    });
+    
     notify("Đơn #" + o.id + ": " + prev + " → " + act.next, "success");
   }
 }
@@ -745,22 +789,37 @@ export function openCancelModal(ord) {
 export async function submitCancelOrder() {
   const ord = cancelModal.order;
   if (!ord || !cancelModal.reason) return;
-  ord.status = "Đã hủy";
-  ord.payment_status = "Hoàn tiền";
-  ord.cancel_reason = cancelModal.reason;
-  ord._history = ord._history || [];
-  ord._history.push({
-    status: "Đã hủy",
-    date: new Date().toISOString(),
-    note: cancelModal.reason,
-  });
-  await api("/orders/" + ord.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "Đã hủy", reason: cancelModal.reason }),
-  });
-  cancelModal.open = false;
-  notify("Đã hủy đơn #" + ord.id, "warning");
+  
+  try {
+    cancelModal.busy = true;
+    const res = await apiWrite("/orders/" + ord.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Đã hủy", reason: cancelModal.reason }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Lỗi hủy đơn.";
+       throw new Error(msg);
+    }
+    
+    ord.status = "Đã hủy";
+    ord.payment_status = isPaymentSettled(ord) ? "Hoàn tiền" : "Đã hủy";
+    ord.cancel_reason = cancelModal.reason;
+    ord._history = ord._history || [];
+    ord._history.push({
+      status: "Đã hủy",
+      date: new Date().toISOString(),
+      note: cancelModal.reason,
+    });
+    
+    cancelModal.open = false;
+    notify("Đã hủy đơn #" + ord.id, "warning");
+  } catch (e) {
+    notify("Lỗi khi hủy đơn: " + e.message, "error");
+  } finally {
+    cancelModal.busy = false;
+  }
 }
 
 export const timelineModal = reactive({
@@ -781,19 +840,25 @@ export function openOrderTimeline(ord) {
 export const paymentOrders = computed(() =>
   db.orders.filter(
     (o) =>
-      (o.payment_status || "Chưa thanh toán") !== "Đã thanh toán" &&
+      !isPaymentSettled(o) &&
       o.status !== "Đã hủy" &&
-      o.payment_method === "BANK_TRANSFER" &&
+      getPaymentMethodPill(o.payment_method).code === "Chuyển khoản" &&
       getOrderChannel(o) === "Online"
   ),
 );
 export async function confirmPayment(ord) {
-  ord.payment_status = "Đã thanh toán";
-  await api("/orders/" + ord.id + "/payment", {
+  const res = await apiWrite("/orders/" + ord.id + "/payment", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ payment_status: "Đã thanh toán" }),
   });
+  
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Lỗi xác nhận thanh toán.";
+     throw new Error(msg);
+  }
+
+  ord.payment_status = "Đã thanh toán";
   notify("Đã xác nhận thanh toán đơn #" + ord.id, "success");
 }
 
@@ -887,7 +952,9 @@ export function countOrdersByChannel(ch) {
 
 // Chuẩn hóa phương thức thanh toán -> nhãn pill (BANK_TRANSFER / COD / CASH / UNKNOWN)
 export function getPaymentMethodPill(pm) {
-  const s = (pm || "").toLowerCase();
+  const s = typeof pm === "string"
+    ? pm.toLowerCase()
+    : String(pm?.name ?? pm?.label ?? pm?.code ?? "").toLowerCase();
   if (s.includes("cod") || s.includes("nhận hàng") || s.includes("thu hộ"))
     return { code: "Thu hộ", cls: "bg-dark text-white" };
   if (
@@ -905,22 +972,22 @@ export function getPaymentMethodPill(pm) {
 }
 
 // Pill trạng thái thanh toán
-// Suy ra trạng thái thanh toán TỰ ĐỘNG (admin KHÔNG cần bấm xác nhận)
-// - Chuyển khoản / ví điện tử: coi như đã thanh toán ngay khi tạo đơn (khách quét link).
-// - Tiền mặt tại quầy (POS): đã thanh toán ngay.
+// Suy ra trạng thái thanh toán theo nghiệp vụ: sau khi khách xác nhận chuyển
+// khoản ở checkout, cả trạng thái mới và trạng thái cũ "Chờ thanh toán" đều
+// được xem là đã thanh toán; admin không cần bấm xác nhận lần hai.
 export function effectivePaymentStatus(o) {
-  if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
-  if (o.status === "Đã hủy") return "Chưa thanh toán";
+  const rawStatus = String(o?.payment_status || "");
+  if (normalizeStatusText(rawStatus) === "hoan tien") return "Hoàn tiền";
+  if (normalizeStatusText(o?.status) === "da huy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
   if (pill.code === "Tiền mặt") return "Đã thanh toán";
   if (pill.code === "Chuyển khoản") {
-    if ((o.payment_status || "") === "Đã thanh toán") return "Đã thanh toán";
-    if ((o.payment_status || "") === "Chờ thanh toán") return "Khách báo đã chuyển";
+      if (isPaymentSettled(o)) return "Đã thanh toán";
     return "Chờ chuyển khoản";
   }
   if (pill.code === "Thu hộ")
     return o.status === "Đã giao hàng thành công" ||
-      (o.payment_status || "") === "Đã thanh toán"
+      normalizeStatusText(rawStatus) === "da thanh toan"
       ? "Đã thanh toán"
       : "Chờ thu hộ";
   return o.payment_status || "Chưa thanh toán";
@@ -1034,7 +1101,7 @@ export function buildOrderHistory(o) {
   ];
   const rank = order.indexOf(o.status);
   const isBank =
-    getPaymentMethodPill(o.payment_method).code === "BANK_TRANSFER";
+    getPaymentMethodPill(o.payment_method).code === "Chuyển khoản";
   const steps = [
     { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
   ];
@@ -1044,7 +1111,7 @@ export function buildOrderHistory(o) {
       label: "Chuyển khoản",
       icon: "bi-bank",
       done: paid,
-      date: paid ? findDate(["Đã thanh toán"]) || created : null,
+      date: paid ? findDate(["Đã thanh toán", "Thanh toán thành công"]) || o.payment_confirmed_at || created : null,
     });
     steps.push({
       label: "Xác nhận đơn",
@@ -1297,20 +1364,34 @@ export function getReturnBadgeClass(status) {
   return (
     {
       "Chờ xử lý": "bg-warning-subtle text-warning-emphasis",
-      "Đã duy�����t": "bg-info-subtle text-info-emphasis",
+      "Đã tiếp nhận": "bg-info-subtle text-info-emphasis",
+      "Đang kiểm tra": "bg-primary-subtle text-primary-emphasis",
+      "Chấp nhận hoàn tiền": "bg-info-subtle text-info-emphasis",
+      "Đã hoàn tiền": "bg-success-subtle text-success-emphasis",
       "Từ chối": "bg-danger-subtle text-danger-emphasis",
-      "Hoàn tất": "badge-active",
+      "Hủy": "bg-light text-secondary border",
+      "Đã hoàn tất": "badge-active",
     }[status] || "bg-secondary-subtle text-secondary"
   );
 }
-export async function processReturn(r, status) {
-  r.status = status;
-  await api("/returns/" + r.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  });
-  notify("Yêu cầu trả hàng #" + r.id + ": " + status, "success");
+export async function processReturn(r, status, options = {}) {
+  try {
+    const res = await apiWrite("/returns/" + r.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, ...options }),
+    });
+    if (!res.ok) {
+      const msg = res.data && res.data.message ? res.data.message : "Lỗi xử lý đổi trả.";
+      throw new Error(msg);
+    }
+    r.status = res.data?.status || status;
+    notify("Yêu cầu trả hàng #" + r.id + ": " + r.status, "success");
+    return true;
+  } catch (error) {
+    notify(error?.message || "Lỗi xử lý đổi trả.", "error");
+    return false;
+  }
 }
 
 /* ================================================================
@@ -1323,6 +1404,8 @@ export const returnNote = ref("");
 // Loại trả hàng: "CUSTOMER" = khách yêu cầu (cần duyệt); "DIRECT" = trả trực tiếp tại quầy (hoàn tất ngay)
 export const returnType = ref("CUSTOMER");
 export function getReturnTypeLabel(t) {
+  if (["NOT_RECEIVED", "not_received", "Chưa nhận được hàng"].includes(t))
+    return "Chưa nhận được hàng";
   return t === "DIRECT" || t === "Trực tiếp"
     ? "Trả trực tiếp tại quầy"
     : "Trả theo yêu cầu khách hàng";
@@ -1331,7 +1414,7 @@ export function getReturnTypeLabel(t) {
 export const completedReturnsRefundInRange = computed(() => {
   const ids = new Set(ordersInRange.value.map((o) => String(o.id)));
   return (db.returns || [])
-    .filter((r) => r.status === "Hoàn tất" && ids.has(String(r.order_id)))
+    .filter((r) => ["Hoàn tất", "Đã hoàn tất"].includes(r.status) && ids.has(String(r.order_id)))
     .reduce((s, r) => s + (Number(r.refund_amount) || 0), 0);
 });
 export function searchReturnOrder() {
@@ -1355,14 +1438,15 @@ export function searchReturnOrder() {
     notify("Không tìm thấy đơn hàng phù hợp", "error");
     return;
   }
-  // CHỈ cho phép trả hàng khi đơn ĐÃ giao thành công (khách đã nhận được hàng).
-  if (ord.status !== "Đã giao hàng thành công") {
+  // Đơn đã giao/đã nhận tạo yêu cầu trả hàng; đơn đang vận chuyển có thể
+  // tạo case riêng "chưa nhận được hàng" để cửa hàng kiểm tra giao vận.
+  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển"].includes(ord.status)) {
     returnFoundOrder.value = null;
     returnItems.value = [];
     notify(
       "Đơn " +
         getTrackingCode(ord) +
-        " chưa giao thành công nên chưa thể tạo yêu cầu trả hàng",
+      " chưa ở trạng thái có thể tạo yêu cầu trả hàng / báo chưa nhận hàng",
       "error",
     );
     return;
@@ -1372,6 +1456,9 @@ export function searchReturnOrder() {
   returnType.value = getOrderChannel(ord) === "Offline" ? "DIRECT" : "CUSTOMER";
   returnItems.value = (ord.products || []).map((p, idx) => ({
     idx,
+    order_detail_id: p.order_detail_id ?? p.id ?? null,
+    product_id: p.product_id ?? p.ProductID ?? null,
+    variant_id: p.variant_id ?? p.product_variant_id ?? null,
     name: p.name,
     color: p.color,
     size: p.size,
@@ -1410,17 +1497,21 @@ export async function submitReturn() {
   const direct = returnType.value === "DIRECT";
   // Trả trực tiếp tại quầy (khách mua trực tiếp): hoàn tất ngay, không cần duyệt.
   // Trả theo yêu cầu khách hàng (đơn online): tạo yêu cầu, chờ duyệt rồi hoàn tất.
+  const notReceived = ord.status === "Đang vận chuyển";
   const status = direct ? "Hoàn tất" : "Chờ xử lý";
   const payload = {
     order_id: ord.id,
     tracking_number: getTrackingCode(ord),
-    return_type: returnType.value,
+    return_type: notReceived ? "NOT_RECEIVED" : returnType.value,
     reason:
       returnNote.value ||
       (direct ? "Khách trả trực tiếp tại quầy" : "Khách yêu cầu trả hàng"),
     refund_amount: returnRefundTotal.value,
     status,
     items: items.map((it) => ({
+      order_detail_id: it.order_detail_id,
+      product_id: it.product_id,
+      variant_id: it.variant_id,
       name: it.name,
       color: it.color,
       size: it.size,
@@ -1436,22 +1527,32 @@ export async function submitReturn() {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    // Máy chủ có thể chưa sẵn sàng — vẫn ghi nhận cục bộ để hiển thị
+    notify("Không thể kết nối máy chủ để tạo yêu cầu trả hàng.", "error");
+    return;
+  }
+  if (!res?.ok) {
+    const message = res?.data?.message || res?.error || "Không thể tạo yêu cầu trả hàng.";
+    notify(message, "error");
+    return;
   }
   const newId =
     (res && res.data && (res.data.ReturnID || res.data.id)) ||
     "R-" + Date.now();
+  const persistedStatus = res.data?.status || (direct ? "Đã hoàn tất" : status);
   db.returns.unshift({
     id: newId,
     order_id: ord.id,
-    return_type: returnType.value,
+    return_type: payload.return_type,
     reason: payload.reason,
     refund_amount: payload.refund_amount,
-    status,
+    status: persistedStatus,
     created_at: new Date().toISOString(),
   });
+  ord.status = notReceived ? "Yêu cầu trả hàng" : (direct ? "Đã hoàn tất trả hàng" : "Yêu cầu trả hàng");
   notify(
-    direct
+      notReceived
+        ? "Đã ghi nhận báo chưa nhận được hàng cho đơn #" + ord.id
+        : direct
       ? "Đã trả hàng trực tiếp & hoàn tất cho đơn #" + ord.id
       : "Đã tạo yêu cầu trả hàng cho đơn #" + ord.id,
     "success",
@@ -1837,16 +1938,20 @@ async function finalizePosOrder() {
       price: c.price,
     })),
   };
-  let created = null;
-  try {
-    created = await api("/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    created = null;
+  const res = await apiWrite("/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Không thể tạo đơn hàng tại quầy.";
+     notify(msg, "error");
+     return;
   }
+  
+  const created = res.data;
+
   // Cập nhật db.inventory local ngay sau khi thanh toán thành công
   // để trang sản phẩm và kho hiển thị đúng số lượng mà không cần reload
   o.cart.forEach((c) => {
@@ -1864,8 +1969,8 @@ async function finalizePosOrder() {
   // Hiển thị đơn NGAY trên trang Xác nhận thanh toán (tab Offline) kể cả khi
   // API danh sách chưa kịp cập nhật -> tránh tình trạng "tạo đơn xong không thấy đâu".
   const newId =
-    (created && (created.OrderID || created.id || created.order_id)) ||
-    "TMP-" + Date.now();
+    (created && (created.OrderID || created.id || created.order_id || created.orderId)) ||
+    "POS-" + Date.now();
   const nowIso = new Date().toISOString();
   db.orders.unshift({
     id: newId,
@@ -2670,18 +2775,26 @@ export async function saveVariantDiscount() {
     Description: d.description || "",
   };
   const isEdit = !!d.id;
+  let res;
   if (isEdit)
-    await api("/variantDiscounts/" + d.id, {
+    res = await apiWrite("/variantDiscounts/" + d.id, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
   else
-    await api("/variantDiscounts", {
+    res = await apiWrite("/variantDiscounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi lưu giảm giá.";
+     notify(msg, "error");
+     return;
+  }
+  
   variantDiscountModal.open = false;
   notify(
     isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
@@ -3137,12 +3250,22 @@ export function mapOrder(o) {
     address_changed: Boolean(o.AddressChanged ?? o.address_changed),
     cancel_reason: o.CancelReason ?? o.cancel_reason ?? "",
     payment_status: o.PaymentStatus ?? o.payment_status ?? "Chưa thanh toán",
+    payment_due_at: o.PaymentDueAt ?? o.payment_due_at ?? null,
+    payment_confirmed_at: o.PaymentConfirmedAt ?? o.payment_confirmed_at ?? null,
+    delivered_at: o.DeliveredDate ?? o.delivered_date ?? null,
+    received_confirmed_at: o.ReceivedConfirmedDate ?? o.received_confirmed_date ?? null,
+    revenue_eligible_at: o.RevenueEligibleDate ?? o.revenue_eligible_date ?? null,
+    is_counted_as_revenue: Boolean(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
     handled_by: o.HandledBy ?? o.handled_by ?? "",
     // Kenh ban do backend tinh san - nguon dang tin cay nhat
     channel: o.channel ?? o.Channel ?? "",
     tracking_code: o.TrackingNumber ?? o.tracking_code ?? "",
     products: (o.products || o.OrderDetails || []).map((d) => ({
+      id: d.OrderDetailID ?? d.order_detail_id ?? d.id ?? null,
+      order_detail_id: d.OrderDetailID ?? d.order_detail_id ?? d.id ?? null,
+      product_id: d.ProductID ?? d.product_id ?? null,
+      variant_id: d.ProductVariantID ?? d.variant_id ?? d.product_variant_id ?? null,
       name: d.ProductName ?? d.name ?? "",
       color: d.ColorName ?? d.color ?? "",
       size: d.Size ?? d.size ?? "",
@@ -3158,20 +3281,56 @@ export function mapOrder(o) {
     })),
   };
 }
+
+// Smart merge: chỉ cập nhật đơn thực sự thay đổi thay vì thay toàn bộ mảng.
+// Điều này ngăn Vue re-render toàn bộ danh sách mỗi 10 giây → không còn nhấp nháy.
+function mergeOrders(existing, incoming) {
+  const incomingMap = new Map(incoming.map(o => [o.id, o]));
+  const existingMap = new Map(existing.map(o => [o.id, o]));
+
+  // Cập nhật và thêm mới
+  const merged = incoming.map(fresh => {
+    const old = existingMap.get(fresh.id);
+    if (!old) return fresh; // đơn mới → thêm vào
+    // Chỉ merge các field server cập nhật, giữ nguyên isExpanded và _history local
+    const changed =
+      old.status !== fresh.status ||
+      old.payment_status !== fresh.payment_status ||
+      old.total !== fresh.total ||
+      old.cancel_reason !== fresh.cancel_reason ||
+      old.tracking_code !== fresh.tracking_code ||
+      old.address_changed !== fresh.address_changed;
+    if (!changed) return old; // không đổi → giữ nguyên object cũ, Vue không re-render
+    return {
+      ...old,           // giữ isExpanded, _history v.v.
+      status: fresh.status,
+      payment_status: fresh.payment_status,
+      total: fresh.total,
+      cancel_reason: fresh.cancel_reason,
+      tracking_code: fresh.tracking_code,
+      address_changed: fresh.address_changed,
+      customer_name: fresh.customer_name,
+      customer_phone: fresh.customer_phone,
+      products: fresh.products,
+    };
+  });
+  return merged;
+}
+
 let fetchAllDataInFlight = null;
 
-export function fetchAllData() {
+export function fetchAllData(isBackground = false) {
   // Nhieu component/action co the yeu cau refresh cung luc. Dung chung mot
   // Promise de khong tao bao request SQL va khong de request cu ghi de store.
   if (fetchAllDataInFlight) return fetchAllDataInFlight;
-  fetchAllDataInFlight = loadAllData().finally(() => {
+  fetchAllDataInFlight = loadAllData(isBackground).finally(() => {
     fetchAllDataInFlight = null;
   });
   return fetchAllDataInFlight;
 }
 
-async function loadAllData() {
-  isLoading.value = true;
+async function loadAllData(isBackground) {
+  if (!isBackground) isLoading.value = true;
   apiErrors.value = [];
   try {
     const [
@@ -3232,7 +3391,13 @@ async function loadAllData() {
     // Sắp xếp theo đúng trường ngày sau khi ánh xạ (`date`).
     // Trước đây dùng `created_at` - trường KHÔNG tồn tại sau mapOrder -> so sánh NaN
     // nên danh sách đơn giữ nguyên thứ tự của API (nhiều khi cũ nhất lên đầu).
-    db.orders = sortOrdersNewestFirst((orders || []).map(mapOrder));
+    const freshOrders = sortOrdersNewestFirst((orders || []).map(mapOrder));
+    if (isBackground && db.orders.length > 0) {
+      // Smart merge: chỉ re-render dòng thực sự thay đổi, giữ ổn định giao diện
+      db.orders = sortOrdersNewestFirst(mergeOrders(db.orders, freshOrders));
+    } else {
+      db.orders = freshOrders;
+    }
     db.products = (products || []).map((p) => ({
       id: p.ProductID ?? p.id,
       name: p.ProductName ?? p.name,
@@ -3356,6 +3521,11 @@ async function loadAllData() {
       reason: r.Reason ?? r.reason ?? "",
       refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
       status: r.Status ?? r.status ?? "Chờ xử lý",
+      details: r.Details ?? r.details ?? [],
+      tracking_number: r.TrackingNumber ?? r.tracking_number ?? "",
+      inspection_note: r.InspectionNote ?? r.inspection_note ?? "",
+      resolution_note: r.ResolutionNote ?? r.resolution_note ?? "",
+      restocked_at: r.RestockedAt ?? r.restocked_at ?? null,
     }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,
@@ -3406,6 +3576,6 @@ async function loadAllData() {
       "error",
     );
   } finally {
-    isLoading.value = false;
+    if (!isBackground) isLoading.value = false;
   }
 }

@@ -7,7 +7,7 @@
     - Các modal & toast dùng chung nằm ở đây để phủ lên mọi trang
 -->
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import BrandLogo from "../../components/BrandLogo.vue";
 import {
@@ -167,7 +167,45 @@ function onLogout() {
   router.push("/login");
 }
 
-onMounted(fetchAllData);
+// Interval 10s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)
+const POLL_INTERVAL = 10_000;
+let pollTimer = null;
+const isRefreshing = ref(false);
+let lastFocused = Date.now();
+
+async function refresh() {
+  if (isRefreshing.value) return;
+  isRefreshing.value = true;
+  try { await fetchAllData(true); } finally { isRefreshing.value = false; }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(refresh, POLL_INTERVAL);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// Khi tab lấy lại focus (sau khi bị ẩn) → refresh ngay lập tức
+function onVisibilityChange() {
+  if (!document.hidden) {
+    const gap = Date.now() - lastFocused;
+    if (gap > 5000) refresh();
+  } else {
+    lastFocused = Date.now();
+  }
+}
+
+onMounted(async () => {
+  await fetchAllData();
+  startPolling();
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+onUnmounted(() => {
+  stopPolling();
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 </script>
 
 <template>
@@ -266,6 +304,11 @@ onMounted(fetchAllData);
           ></h2>
         </div>
         <div class="d-flex align-items-center gap-3">
+          <!-- Real-time indicator -->
+          <div class="d-flex align-items-center gap-2 d-none d-md-flex">
+            <span class="d-inline-block" style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite;" title="Tự động đồng bộ với hệ thống"></span>
+            <span class="text-secondary" style="font-size:0.72rem;">Dữ liệu trực tiếp</span>
+          </div>
           <div
             class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border"
             style="width: 40px; height: 40px"
@@ -350,10 +393,11 @@ onMounted(fetchAllData);
             Đóng</button
           ><button
             @click="submitCancelOrder"
-            :disabled="!cancelModal.reason"
+            :disabled="!cancelModal.reason || cancelModal.busy"
             class="btn btn-danger rounded-2 fw-bold"
           >
-            Xác nhận hủy
+            <span v-if="cancelModal.busy" class="spinner-border spinner-border-sm me-1"></span>
+            <span v-text="cancelModal.busy ? 'Đang hủy...' : 'Xác nhận hủy'"></span>
           </button>
         </div>
       </div>
@@ -868,6 +912,10 @@ onMounted(fetchAllData);
     opacity: 1;
     transform: scale(1);
   }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
 }
 </style>
 

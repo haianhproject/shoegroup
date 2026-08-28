@@ -8,7 +8,7 @@ import {
 import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from './BrandLogo.vue'
-import { API_BASE_URL } from "../services/apiClient";
+import { API_BASE_URL, api } from "../services/apiClient";
 import { categories as mockCategories } from '../data/mockData'
 
 const router = useRouter()
@@ -32,19 +32,22 @@ const fetchNotifications = async () => {
     const notifs = []
     
     // Fetch coupons (vouchers)
-    const resCoupons = await fetch(`${API_BASE_URL}/discounts`)
-    if (resCoupons.ok) {
-      const coupons = await resCoupons.json()
+    const coupons = await api.get('/discounts')
+    if (Array.isArray(coupons)) {
       coupons.forEach(c => {
-        if (c.IsActive) {
-          const discountStr = (c.DiscountType === 'Phần trăm' || c.DiscountType === 'percent')
-             ? `${c.DiscountValue || c.DiscountPercent}%` 
-             : formatCurrency(c.DiscountValue || c.MaxDiscountAmount);
-          const expDate = new Date(c.ExpiryDate).toLocaleDateString('vi-VN');
-          const dateAdded = new Date(c.CreatedAt || c.StartDate || Date.now());
+        const active = c.IsActive ?? c.active
+        if (active !== false && active !== 0 && active !== '0') {
+          const type = c.DiscountType ?? c.discount_type ?? ''
+          const value = c.DiscountValue ?? c.value ?? c.DiscountPercent ?? c.percent ?? 0
+          const discountStr = (type === 'Phần trăm' || String(type).toLowerCase() === 'percent' || String(type).toLowerCase() === 'phan tram')
+             ? `${value}%`
+             : formatCurrency(value || c.MaxDiscountAmount || c.max_discount);
+          const expiry = c.ExpiryDate ?? c.expiry
+          const expDate = expiry ? new Date(expiry).toLocaleDateString('vi-VN') : '—';
+          const dateAdded = new Date(c.CreatedAt ?? c.created_at ?? c.StartDate ?? c.start_date ?? Date.now());
           notifs.push({
             type: 'voucher',
-            message: `Voucher mới: ${c.CouponCode} giảm ${discountStr} (HSD: ${expDate})`,
+            message: `Voucher mới: ${c.CouponCode ?? c.code ?? ''} giảm ${discountStr} (HSD: ${expDate})`,
             date: dateAdded.toLocaleString('vi-VN'),
             timestamp: dateAdded.getTime(),
             link: '/products?center=true'
@@ -54,19 +57,19 @@ const fetchNotifications = async () => {
     }
 
     // Fetch notifications if authenticated
-    if (isAuthenticated.value && currentUser.value?.id) {
-      const resNotifs = await fetch(`${API_BASE_URL}/customers/${currentUser.value.id}/notifications`)
-      if (resNotifs.ok) {
-        const dbNotifs = await resNotifs.json()
+    const userId = currentUser.value?.id_user ?? currentUser.value?.id ?? currentUser.value?.UserID
+    if (isAuthenticated.value && userId) {
+      const dbNotifs = await api.get(`/customers/${userId}/notifications`)
+      if (Array.isArray(dbNotifs)) {
         dbNotifs.forEach(n => {
-          const dateAdded = new Date(n.created_at || Date.now());
+          const dateAdded = new Date(n.created_at ?? n.CreatedAt ?? Date.now());
           notifs.push({
-            type: n.type?.toLowerCase() || 'order',
-            message: n.message,
+            type: (n.type ?? n.Type)?.toLowerCase() || 'order',
+            message: n.message ?? n.Message ?? n.title ?? n.Title ?? '',
             date: dateAdded.toLocaleString('vi-VN'),
             timestamp: dateAdded.getTime(),
-            link: n.type === 'order' || n.type === 'Order' ? '/orders?center=true' : '/products?center=true',
-            isRead: n.is_read
+            link: ['order', 'Order'].includes(n.type ?? n.Type) ? '/orders?center=true' : '/products?center=true',
+            isRead: n.is_read ?? n.IsRead
           })
         })
       }
