@@ -8,7 +8,7 @@ import {
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
-  formatDate, formatPrice, notify
+  formatDate, formatPrice, notify, apiErrors
 } from '../adminStore'
 
 const queueView = ref('ACTIVE')
@@ -27,7 +27,7 @@ function sortFIFO(list) {
 const displayedOrders = computed(() => {
   if (queueView.value === 'ALL') return paymentChannelOrders.value
   const active = paymentChannelOrders.value.filter((order) =>
-    !['Đã hủy', 'Đã nhận hàng', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
+    !['Đã hủy', 'Đã nhận hàng', 'Đã giao hàng thành công', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
   )
   return sortFIFO(active)
 })
@@ -108,6 +108,9 @@ function transitionMessage() {
         <div>
           <p class="admin-eyebrow mb-2">Vận hành bán hàng</p>
           <h5 class="fw-bold mb-2 text-dark">Hàng đợi thanh toán</h5>
+          <p v-if="apiErrors.length" class="text-warning-emphasis small mb-0">
+            Hàng đợi vẫn hiển thị; một số dữ liệu phụ đang tạm thời chưa đồng bộ.
+          </p>
         </div>
         <span class="badge bg-dark text-white px-3 py-2" style="border-radius:3px;" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
       </div>
@@ -170,6 +173,7 @@ function transitionMessage() {
                   <div class="d-flex align-items-center gap-2">
                     <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
                     <span v-if="ord.address_changed" class="badge bg-danger text-white" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
+                    <span v-if="ord.stock_issue_status === 'NEEDS_REVIEW'" class="badge bg-warning text-dark" style="font-size:0.65rem;">Cần xử lý tồn kho</span>
                   </div>
                   <div class="text-secondary" style="font-size:0.78rem;">
                     <span v-text="ord.handled_by || ord.customer_name || 'Khách lẻ'"></span>
@@ -299,6 +303,12 @@ function transitionMessage() {
                   :class="getPaymentMethodPill(orderDetail.order.payment_method).cls"
                   v-text="getPaymentMethodPill(orderDetail.order.payment_method).code"></span>
               </div>
+            </div>
+
+            <div v-if="orderDetail.order.stock_issue_status === 'NEEDS_REVIEW'" class="alert alert-warning py-2 px-3 small mb-3">
+              <strong>Cần xử lý tồn kho.</strong>
+              <span class="d-block mt-1">{{ orderDetail.order.stock_issue_reason || 'Kiểm tra lại biến thể trước khi tiếp tục xử lý.' }}</span>
+              <span class="d-block mt-1">Nếu hủy đơn, hệ thống chỉ hoàn kho một lần.</span>
             </div>
 
             <div class="mb-3 pb-3 border-bottom">

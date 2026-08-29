@@ -152,17 +152,23 @@ export const updateProfile = async (data) => {
     if (!data?.id) return { ok: false, message: "Khong xac dinh duoc tai khoan." };
     // Dung api client de tu gan JWT. Khong gui role_id tu man hinh khach;
     // backend chan thay doi quyen va truoc day khien luu ho so bi 403.
-    await api.put(`/accounts/${data.id}`, {
+    const response = await api.put(`/accounts/${data.id}`, {
       username: data.email,
       name: data.full_name,
       phone: data.phone,
+      ...(data.avatar_url !== undefined ? { avatar_url: data.avatar_url } : {}),
       ...(data.address !== undefined ? { address: data.address } : {}),
     });
-    authState.currentUser.full_name = data.full_name;
-    authState.currentUser.phone = data.phone;
-    if (data.address !== undefined) authState.currentUser.address = data.address;
+    // Backend tra ve lai ban ghi vua cap nhat (bao gom avatar_url). Giu cac
+    // truong phien dang nhap khac nhu token/role neu API chi tra ve mot phan.
+    authState.currentUser = {
+      ...authState.currentUser,
+      ...data,
+      ...(response?.user || {}),
+    };
+    delete authState.currentUser.id;
     saveCurrentUser(authState.currentUser);
-    return { ok: true };
+    return { ok: true, user: authState.currentUser };
   } catch (error) {
     return { ok: false, message: error?.message || "Loi ket noi may chu." };
   }

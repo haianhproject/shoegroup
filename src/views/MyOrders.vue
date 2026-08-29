@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, confirmReceived, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders
+  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
@@ -49,20 +49,6 @@ const filtered = computed(() => {
 })
 
 const toggle = (id) => { expanded.value = expanded.value === id ? null : id }
-
-const handleReceived = async (order) => {
-  if (order.serverId) {
-    try {
-      await api.put(`/orders/${order.serverId}/receive`)
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Không thể xác nhận đã nhận hàng.' })
-      return
-    }
-  }
-  const r = confirmReceived(order.id)
-  if (r?.ok === false) { notify({ type: 'error', message: r.message }); return }
-  notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${order.id} hoàn tất. Cảm ơn bạn!` })
-}
 
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
 
@@ -142,10 +128,7 @@ const confirmPaid = async () => {
 
 const closePayModal = () => { payModal.open = false }
 
-const goReturn = (order, mode = '') => {
-  const query = mode ? { type: mode } : undefined
-  router.push({ name: 'return-order', params: { orderId: order.id }, ...(query ? { query } : {}) })
-}
+const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
@@ -493,11 +476,8 @@ onUnmounted(() => {
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
-            <button v-if="o.status === 'SHIPPING'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-box-seam me-1"></i>Báo chưa nhận được hàng</button>
-            <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="o.status === 'DELIVERED'" class="btn-sg-outline btn-delivery-issue" @click.stop="goReturn(o, 'NOT_RECEIVED')"><i class="bi bi-exclamation-triangle me-1"></i>Chưa nhận được hàng</button>
-            <button v-if="o.status === 'DELIVERED'" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
-            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
+            <button v-if="o.status === 'SHIPPING'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu hỗ trợ giao / trả hàng</button>
+            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 

@@ -22,6 +22,27 @@ const selColor = ref(null)
 const activeImage = ref('')
 const qty = ref(1)
 
+const originalPrice = computed(() => {
+  const value = Number(product.value?.price ?? product.value?.BasePrice ?? 0)
+  return Number.isFinite(value) && value > 0 ? value : 0
+})
+const salePrice = computed(() => {
+  const value = Number(product.value?.sale_price ?? product.value?.SalePrice ?? 0)
+  return Number.isFinite(value) && value > 0 ? value : 0
+})
+const hasDiscount = computed(() =>
+  originalPrice.value > 0 && salePrice.value > 0 && salePrice.value < originalPrice.value,
+)
+const displayPrice = computed(() => hasDiscount.value ? salePrice.value : originalPrice.value)
+const discountPercent = computed(() => hasDiscount.value
+  ? ((originalPrice.value - salePrice.value) / originalPrice.value) * 100
+  : 0)
+const discountLabel = computed(() => {
+  if (!discountPercent.value) return ''
+  const rounded = Math.round(discountPercent.value * 1000) / 1000
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(rounded)
+})
+
 const API = API_BASE_URL
 
 // ============================================================
@@ -867,45 +888,12 @@ onMounted(fetchData)
           </h1>
 
           <!-- PRICE -->
-          <div
-            class="detail-price d-flex flex-column"
-          >
-            <span
-              v-if="
-                Number(
-                  product.sale_price
-                ) > 0 &&
-                Number(
-                  product.sale_price
-                ) <
-                  Number(
-                    product.price
-                  )
-              "
-              class="text-danger text-decoration-line-through small"
-              style="
-                font-size: 1.1rem;
-                font-weight: normal;
-              "
-            >
-              {{
-                formatCurrency(
-                  product.price
-                )
-              }}
-            </span>
-
-            <span>
-              {{
-                formatCurrency(
-                  Number(
-                    product.sale_price
-                  ) > 0
-                    ? product.sale_price
-                    : product.price
-                )
-              }}
-            </span>
+          <div class="detail-price d-flex flex-column">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="detail-price-current">{{ formatCurrency(displayPrice) }}</span>
+              <span v-if="hasDiscount" class="detail-discount">-{{ discountLabel }}%</span>
+            </div>
+            <span v-if="hasDiscount" class="detail-price-old">{{ formatCurrency(originalPrice) }}</span>
           </div>
 
           <!-- DESCRIPTION -->
@@ -1425,6 +1413,9 @@ onMounted(fetchData)
   color: var(--sg-blue-700);
   margin: 6px 0 16px;
 }
+.detail-price-current { color: var(--sg-blue-700); }
+.detail-price-old { color: #8b8b8b; font-size: 1rem; font-weight: 500; text-decoration: line-through; }
+.detail-discount { display: inline-flex; align-items: center; padding: .28rem .55rem; border-radius: 6px; background: #ef3340; color: #fff; font-size: .8rem; font-weight: 800; }
 
 .detail-desc {
   color: var(--sg-ink-2);

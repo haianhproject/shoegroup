@@ -30,6 +30,9 @@ app.use(
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.maxApi,
     key: "api",
+    // GET/HEAD/OPTIONS là các request đọc/tiền kiểm tra; không tính quota để
+    // polling dữ liệu không làm khóa các thao tác xác nhận của quản trị viên.
+    skip: (req) => ["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase()),
   }),
 );
 const loginLimiter = createRateLimiter({
@@ -60,7 +63,102 @@ const dbConfig = {
 };
 
 const pool = new sql.ConnectionPool(dbConfig);
-const poolConnect = pool.connect();
+// mssql phát sự kiện `error` khi kết nối rớt/được khôi phục. Nếu không có
+// listener, EventEmitter có thể ném uncaught exception và làm tiến trình Node
+// chết; concurrently sẽ chỉ còn Vite chạy nên người dùng tưởng API mất.
+pool.on("error", (err) => {
+  console.error("[DB POOL ERROR]", err && err.message ? err.message : err);
+});
+// Tu dong dong bo cac thay doi schema/chinh sach nho cho CSDL da tao tu schema cu.
+// Cac lenh deu co dieu kien va idempotent, khong can xoa/tai lai bang.
+const poolConnect = pool.connect().then(async () => {
+  try {
+    await pool.request().query(
+      "IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH('dbo.Users', 'AvatarURL') IS NULL ALTER TABLE dbo.Users ADD AvatarURL nvarchar(max) NULL;",
+    );
+  } catch (err) {
+    console.error("[DB MIGRATION] Khong cap nhat cot AvatarURL:", err?.message || err);
+  }
+  try {
+    await pool.request().query(`
+      IF OBJECT_ID(N'dbo.Orders', N'U') IS NOT NULL
+      BEGIN
+        IF COL_LENGTH('dbo.Orders', 'StockIssueStatus') IS NULL
+          ALTER TABLE dbo.Orders ADD StockIssueStatus nvarchar(30) NULL;
+        IF COL_LENGTH('dbo.Orders', 'StockIssueReason') IS NULL
+          ALTER TABLE dbo.Orders ADD StockIssueReason nvarchar(500) NULL;
+        IF COL_LENGTH('dbo.Orders', 'StockRestoredAt') IS NULL
+          ALTER TABLE dbo.Orders ADD StockRestoredAt datetime NULL;
+      END;
+    `);
+    await pool.request().query(`
+      IF OBJECT_ID(N'dbo.Orders', N'U') IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM sys.indexes
+           WHERE name=N'IX_Orders_StockIssueStatus'
+             AND object_id=OBJECT_ID(N'dbo.Orders')
+         )
+        CREATE INDEX IX_Orders_StockIssueStatus ON dbo.Orders(StockIssueStatus, Status);
+    `);
+    await pool.request().query(`
+      IF OBJECT_ID(N'dbo.ProductVariants', N'U') IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM sys.check_constraints
+           WHERE name=N'CK_ProductVariants_Stock_NonNegative'
+             AND parent_object_id=OBJECT_ID(N'dbo.ProductVariants')
+         )
+         AND NOT EXISTS (SELECT 1 FROM dbo.ProductVariants WHERE ISNULL(StockQuantity,0)<0)
+        ALTER TABLE dbo.ProductVariants WITH CHECK
+          ADD CONSTRAINT CK_ProductVariants_Stock_NonNegative CHECK (StockQuantity>=0);
+    `);
+    // Đánh dấu các đơn cũ có chi tiết không thể đối soát (variant bị xóa,
+    // sai ProductID/số lượng hoặc tồn kho âm). Đơn hợp lệ không bị suy đoán
+    // là oversell vì số tồn hiện tại không chứa thông tin tồn ban đầu.
+    await pool.request().query(`
+      IF OBJECT_ID(N'dbo.Orders', N'U') IS NOT NULL
+         AND OBJECT_ID(N'dbo.OrderDetails', N'U') IS NOT NULL
+         AND OBJECT_ID(N'dbo.ProductVariants', N'U') IS NOT NULL
+      BEGIN
+        UPDATE o
+        SET StockIssueStatus=N'NEEDS_REVIEW',
+            StockIssueReason=COALESCE(NULLIF(o.StockIssueReason,N''), N'Dữ liệu tồn kho/biến thể cần quản lý kiểm tra.'),
+            UpdatedAt=GETDATE()
+        FROM dbo.Orders o
+        WHERE ISNULL(o.StockIssueStatus,N'')=N''
+          AND ISNULL(o.Status,N'') NOT IN (N'Đã hủy',N'Da huy',N'Đã nhận hàng',N'Da nhan hang',N'Đã hoàn tất trả hàng')
+          AND EXISTS (
+            SELECT 1
+            FROM dbo.OrderDetails od
+            LEFT JOIN dbo.ProductVariants v ON v.ProductVariantID=od.ProductVariantID
+            OUTER APPLY (
+              SELECT TOP 1 vv.ProductVariantID
+              FROM dbo.ProductVariants vv
+              WHERE vv.ProductID=od.ProductID
+                AND ISNULL(vv.Size,N'')=ISNULL(od.Size,N'')
+                AND ISNULL(vv.ColorName,N'')=ISNULL(od.Color,N'')
+              ORDER BY vv.ProductVariantID
+            ) matching
+            WHERE od.OrderID=o.OrderID
+              AND (
+                ISNULL(od.Quantity,0)<=0
+                OR (od.ProductVariantID IS NOT NULL AND (v.ProductVariantID IS NULL OR v.ProductID<>od.ProductID))
+                OR (od.ProductVariantID IS NULL AND matching.ProductVariantID IS NULL)
+                OR ISNULL(v.StockQuantity,0)<0
+              )
+          );
+      END;
+    `);
+  } catch (err) {
+    console.error("[DB MIGRATION] Khong cap nhat co che doi soat ton kho:", err?.message || err);
+  }
+  try {
+    await pool.request().query(
+      "IF OBJECT_ID(N'dbo.ShippingMethods', N'U') IS NOT NULL UPDATE dbo.ShippingMethods SET IsActive=0 WHERE UPPER(LTRIM(RTRIM(MethodCode)))='EXPRESS';",
+    );
+  } catch (err) {
+    console.error("[DB MIGRATION] Khong tat phuong thuc EXPRESS:", err?.message || err);
+  }
+});
 
 poolConnect
   .then(() => {
@@ -116,7 +214,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       .request()
       .input("e", sql.VarChar, String(email).trim().toLowerCase())
       .query(
-        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, RoleID as role_id, PasswordHash as password_hash FROM Users WHERE LOWER(Email)=@e AND IsActive=1",
+        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id, PasswordHash as password_hash FROM Users WHERE LOWER(Email)=@e AND IsActive=1",
       );
 
     const row = r.recordset[0];
@@ -204,7 +302,7 @@ app.post("/api/register", async (req, res) => {
       .input("e", sql.VarChar, mail)
       .input("p", sql.VarChar, hashed)
       .query(
-        "INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.RoleID as role_id VALUES (2, @f, @e, @p, 1)",
+        "INSERT INTO Users (RoleID, FullName, Email, PasswordHash, IsActive) OUTPUT INSERTED.UserID as id_user, INSERTED.Email as email, INSERTED.FullName as full_name, INSERTED.Phone as phone, INSERTED.Address as address, INSERTED.AvatarURL as avatar_url, INSERTED.RoleID as role_id VALUES (2, @f, @e, @p, 1)",
       );
 
     const user = { ...r.recordset[0], role: "Customer" };
@@ -406,6 +504,18 @@ function transitionAllowed(currentStatus, nextStatus) {
 }
 
 async function restoreOrderStock(transaction, orderId) {
+  // Khóa hàng đơn và dùng StockRestoredAt như idempotency key. Nhờ vậy retry
+  // hoặc hai thao tác hủy đồng thời không bao giờ cộng kho hai lần.
+  const restoreClaim = await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .query(`
+      SELECT StockRestoredAt
+      FROM Orders WITH (UPDLOCK, HOLDLOCK)
+      WHERE OrderID=@oid
+    `);
+  const claimRow = restoreClaim.recordset[0];
+  if (!claimRow || claimRow.StockRestoredAt) return false;
+
   const details = await new sql.Request(transaction)
     .input("oid", sql.Int, orderId)
     .query(`
@@ -420,7 +530,8 @@ async function restoreOrderStock(transaction, orderId) {
         .input("q", sql.Int, row.Quantity)
         .query(`
           UPDATE ProductVariants
-          SET StockQuantity=ISNULL(StockQuantity, 0)+@q
+          SET StockQuantity=ISNULL(StockQuantity, 0)+@q,
+              Version=ISNULL(Version, 0)+1
           WHERE ProductVariantID=@vid
         `);
     } else if (row.ProductID && row.Size && row.Color) {
@@ -441,12 +552,24 @@ async function restoreOrderStock(transaction, orderId) {
           .input("q", sql.Int, row.Quantity)
           .query(`
             UPDATE ProductVariants
-            SET StockQuantity=ISNULL(StockQuantity, 0)+@q
+            SET StockQuantity=ISNULL(StockQuantity, 0)+@q,
+                Version=ISNULL(Version, 0)+1
             WHERE ProductVariantID=@vid
           `);
       }
     }
   }
+
+  await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .query(`
+      UPDATE Orders
+      SET StockRestoredAt=GETDATE(),
+          StockIssueStatus=CASE WHEN StockIssueStatus=N'NEEDS_REVIEW' THEN N'RESTORED' ELSE StockIssueStatus END,
+          UpdatedAt=GETDATE()
+      WHERE OrderID=@oid AND StockRestoredAt IS NULL
+    `);
+  return true;
 }
 
 app.get("/api/addresses", async (req, res) => {
@@ -741,7 +864,10 @@ app.post("/api/orders", async (req, res) => {
       : null;
 
     const transaction = new sql.Transaction(pool);
-    await transaction.begin();
+    // Một giao dịch serializable bao trùm cả xác thực variant, tạo chi tiết
+    // và UPDATE tồn kho có điều kiện; hai checkout đồng thời không thể cùng
+    // nhận một đơn vị cuối cùng.
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
       let selectedAddressForShipping = null;
@@ -1003,15 +1129,17 @@ app.post("/api/orders", async (req, res) => {
             .input("q", sql.Int, qty)
             .query(
               `UPDATE ProductVariants
-               SET StockQuantity = ISNULL(StockQuantity, 0) - @q
+               SET StockQuantity = ISNULL(StockQuantity, 0) - @q,
+                   Version = ISNULL(Version, 0) + 1
                WHERE ProductVariantID = @vid
                  AND (@pid IS NULL OR ProductID = @pid)
                  AND ISNULL(IsActive, 1) = 1
                  AND ISNULL(StockQuantity, 0) >= @q`,
             );
           if (Number(stockResult.rowsAffected[0] || 0) !== 1) {
-            const err = new Error("Bien the san pham da het hang hoac khong du so luong.");
+            const err = new Error("Biến thể vừa hết hàng hoặc không đủ số lượng.");
             err.statusCode = 409;
+            err.code = "STOCK_UNAVAILABLE";
             throw err;
           }
         } else if (productId && item.size && item.color) {
@@ -1037,12 +1165,14 @@ app.post("/api/orders", async (req, res) => {
             .input("vid", sql.Int, fallbackVariantId)
             .input("q", sql.Int, qty).query(`
               UPDATE ProductVariants
-              SET StockQuantity=ISNULL(StockQuantity, 0)-@q
+              SET StockQuantity=ISNULL(StockQuantity, 0)-@q,
+                  Version=ISNULL(Version, 0)+1
               WHERE ProductVariantID=@vid AND ISNULL(StockQuantity, 0)>=@q
             `);
           if (Number(stockResult.rowsAffected[0] || 0) !== 1) {
-            const err = new Error("Bien the san pham da het hang hoac khong du so luong.");
+            const err = new Error("Biến thể vừa hết hàng hoặc không đủ số lượng.");
             err.statusCode = 409;
+            err.code = "STOCK_UNAVAILABLE";
             throw err;
           }
         } else {
@@ -1050,6 +1180,19 @@ app.post("/api/orders", async (req, res) => {
           err.statusCode = 400;
           throw err;
         }
+      }
+
+      // Lớp bảo vệ cuối: kể cả khi CSDL cũ chưa có CHECK constraint, không
+      // được commit giao dịch nếu bất kỳ biến thể nào rơi vào tồn âm.
+      const negativeStock = await new sql.Request(transaction).query(`
+        SELECT TOP 1 ProductVariantID
+        FROM ProductVariants WITH (HOLDLOCK)
+        WHERE ISNULL(StockQuantity, 0) < 0
+      `);
+      if (negativeStock.recordset.length) {
+        const err = new Error("Phat hien ton kho am; don hang da duoc rollback de quan ly kiem tra.");
+        err.statusCode = 409;
+        throw err;
       }
 
       // B4: Cap nhat luot dung Ma giam gia (neu co)
@@ -1081,7 +1224,9 @@ app.post("/api/orders", async (req, res) => {
       throw err;
     }
   } catch (e) {
-    res.status(e.statusCode || 500).json({ success: false, message: e.message });
+    const payload = { success: false, message: e.message };
+    if (e.code) payload.code = e.code;
+    res.status(e.statusCode || 500).json(payload);
   }
 });
 
@@ -1259,7 +1404,10 @@ app.get("/api/orders", async (req, res) => {
                SELECT 1 FROM OrderStatusHistory ach
                WHERE ach.OrderID=o.OrderID AND LEFT(ISNULL(ach.Note, N''), 17)=N'[ADDRESS_CHANGED]'
              ) THEN 1 ELSE 0 END AS bit) as address_changed,
-             o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
+              o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
+              o.DeliveryDistanceKm as shipping_distance_km,
+              sm.MethodCode as shipping_method_code,
+              o.EstimatedDeliveryText as estimated_delivery_text,
              o.PaymentMethod as payment_method,
              o.PaymentDueAt as payment_due_at,
              o.PaymentConfirmedAt as payment_confirmed_at,
@@ -1267,6 +1415,9 @@ app.get("/api/orders", async (req, res) => {
              o.ReceivedConfirmedDate as received_confirmed_date,
              o.RevenueEligibleDate as revenue_eligible_date,
              o.IsCountedAsRevenue as is_counted_as_revenue,
+             o.StockIssueStatus as stock_issue_status,
+             o.StockIssueReason as stock_issue_reason,
+             o.StockRestoredAt as stock_restored_at,
              ISNULL(o.PaymentStatus, N'Chua thanh toan') as payment_status,
              ISNULL(o.HandledBy, '') as handled_by,
              -- FIX KENH BAN: backend tu quyet dinh Online/Offline.
@@ -1286,7 +1437,8 @@ app.get("/api/orders", async (req, res) => {
              CONVERT(varchar(33), o.OrderDate, 126) as created_at,
              CONVERT(varchar(33), o.OrderDate, 126) as order_date_iso,
              ISNULL(o.Status, N'Chờ xác nhận') as status, ISNULL(o.CancelReason, '') as cancel_reason
-      FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID
+       FROM Orders o LEFT JOIN Users u ON o.UserID = u.UserID
+       LEFT JOIN ShippingMethods sm ON o.ShippingMethodID = sm.ShippingMethodID
       ORDER BY o.OrderDate DESC, o.OrderID DESC
     `);
 
@@ -1906,6 +2058,20 @@ app.put("/api/accounts/:id", async (req, res) => {
       rq = rq.input("ad", sql.NVarChar, b.address || "");
       sets.push("Address=@ad");
     }
+    if (b.avatar_url !== undefined || b.avatarUrl !== undefined) {
+      const avatar = b.avatar_url ?? b.avatarUrl;
+      const value = avatar == null ? "" : String(avatar).trim();
+      // Avatar duoc gui dang data URL tu trinh duyet. Gioi han ca kich thuoc
+      // va dinh dang de tranh luu noi dung khong phai anh vao CSDL.
+      if (value.length > 2200000) {
+        return res.status(413).json({ success: false, message: "Anh dai qua 2 MB, vui long chon anh nho hon." });
+      }
+      if (value && !/^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(value)) {
+        return res.status(400).json({ success: false, message: "Dinh dang anh khong hop le." });
+      }
+      rq = rq.input("avatar", sql.NVarChar(sql.MAX), value || null);
+      sets.push("AvatarURL=@avatar");
+    }
     if (b.role_id !== undefined && b.role_id !== null && b.role_id !== "") {
       rq = rq.input("r", sql.Int, parseInt(b.role_id) || 1);
       sets.push("RoleID=@r");
@@ -1925,8 +2091,11 @@ app.put("/api/accounts/:id", async (req, res) => {
       sets.push("LastPasswordChangedAt=GETDATE()");
     }
     if (sets.length === 0) return res.json({ success: true });
-    await rq.query("UPDATE Users SET " + sets.join(", ") + " WHERE UserID=@id");
-    res.json({ success: true });
+    await rq.query("UPDATE Users SET " + sets.join(", ") + ", UpdatedAt=GETDATE() WHERE UserID=@id");
+    const updated = await pool.request()
+      .input("uid", sql.Int, req.params.id)
+      .query("SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id FROM Users WHERE UserID=@uid");
+    res.json({ success: true, user: updated.recordset[0] || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -3233,8 +3402,8 @@ const SHIPPING_METHOD_FALLBACKS = [
     ShippingMethodID: null,
     MethodCode: "STANDARD",
     MethodName: "Giao hàng tiêu chuẩn",
-    BasePrice: 20000,
-    PricePerKm: 20,
+    BasePrice: 30000,
+    PricePerKm: 0,
     OriginCity: "Hai Bà Trưng, Hà Nội",
     EstimatedTimeText: "2 - 3 ngày",
   },
@@ -3242,13 +3411,13 @@ const SHIPPING_METHOD_FALLBACKS = [
 
 function getStandardShippingFee(distanceKm) {
   const d = Number(distanceKm) || 0;
-  if (d <= 20) return 20000;
-  if (d <= 50) return 25000;
-  if (d <= 120) return 30000;
-  if (d <= 300) return 35000;
-  if (d <= 600) return 45000;
-  if (d <= 1000) return 55000;
-  return 65000;
+  if (d <= 20) return 30000;
+  if (d <= 50) return 35000;
+  if (d <= 120) return 40000;
+  if (d <= 300) return 45000;
+  if (d <= 600) return 55000;
+  if (d <= 1000) return 65000;
+  return 75000;
 }
 
 function getStandardEta(distanceKm) {
@@ -3321,9 +3490,7 @@ async function calculateShippingQuote({ methodCode = "STANDARD", province = "", 
     fee = getStandardShippingFee(distance.distanceKm);
     eta = getStandardEta(distance.distanceKm);
   } else {
-    const rawFee = basePrice + (pricePerKm > 0 ? distance.distanceKm * pricePerKm : 0);
-    fee = Math.max(0, Math.round(rawFee / 1000) * 1000);
-    eta = method.EstimatedTimeText || "2 - 3 ngày";
+    throw new Error("Phương thức vận chuyển không hợp lệ.");
   }
   return {
     methodId: method.ShippingMethodID == null ? null : Number(method.ShippingMethodID),
@@ -3369,7 +3536,6 @@ app.get("/api/shippingmethods", async (_req, res) => {
         ORDER BY ShippingMethodID
       `);
       rows = result.recordset || [];
-      // Chỉ giữ STANDARD, loại bỏ hỏa tốc nếu DB còn dữ liệu cũ
       rows = rows.filter((r) => String(r.MethodCode || "").trim().toUpperCase() === "STANDARD");
     } catch (_) {
       rows = [];

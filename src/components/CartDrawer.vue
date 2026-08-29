@@ -17,11 +17,6 @@ const isOpen = computed(() => cartState.isDrawerOpen)
 let stockPollTimer = null
 let lastUnavailableSignature = ''
 
-const FREE_SHIP_THRESHOLD = 400000
-const freeShipRemaining = computed(() => Math.max(0, FREE_SHIP_THRESHOLD - cartSubtotal.value))
-const freeShipProgress = computed(() => Math.min(100, (cartSubtotal.value / FREE_SHIP_THRESHOLD) * 100))
-const freeShipAchieved = computed(() => cartSubtotal.value >= FREE_SHIP_THRESHOLD)
-
 const close = () => hideDrawer()
 
 const checkCartStock = async ({ announceCurrent = false } = {}) => {
@@ -118,16 +113,6 @@ const addSuggestedToCart = async (p) => {
             <button class="drawer-close" @click="close" aria-label="Đóng"><i class="bi bi-x-lg"></i></button>
           </div>
 
-          <!-- Free ship progress -->
-          <div v-if="cartCount > 0" class="free-ship">
-            <p v-if="!freeShipAchieved" class="free-ship-text">Mua thêm <strong>{{ formatCurrency(freeShipRemaining) }}</strong> để được miễn phí vận chuyển!</p>
-            <p v-else class="free-ship-text success"><i class="bi bi-check-circle-fill me-1"></i>Bạn đã được miễn phí vận chuyển!</p>
-            <div class="free-ship-bar">
-              <div class="free-ship-fill" :style="{ width: freeShipProgress + '%' }"></div>
-              <span class="free-ship-truck" :style="{ left: 'calc(' + freeShipProgress + '% - 12px)' }"><i class="bi bi-truck"></i></span>
-            </div>
-          </div>
-
           <!-- Body -->
           <div class="drawer-body">
             <div v-if="cartCount === 0" class="empty-state">
@@ -148,6 +133,12 @@ const addSuggestedToCart = async (p) => {
                   <div class="cc-variant">{{ attrsOf(item).map(a=>a.value).join(' / ') || '—' }}</div>
                   <div v-if="item.isOutOfStock" class="cc-alert">Biến thể đã hết hàng.</div>
                   <div v-else-if="item.hasInsufficientStock" class="cc-alert warn">Kho chỉ còn {{ item.stockQuantity }}.</div>
+                  <router-link
+                    v-if="item.isOutOfStock || item.hasInsufficientStock"
+                    :to="`/product/${item.id_product}`"
+                    class="cc-choose-variant"
+                    @click="close"
+                  ><i class="bi bi-arrow-repeat me-1"></i>Chọn biến thể khác</router-link>
                   <div class="cc-actions">
                     <div class="qty-compact">
                       <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)"><i class="bi bi-dash"></i></button>
@@ -240,14 +231,6 @@ const addSuggestedToCart = async (p) => {
 .drawer-close { width: 32px; height: 32px; border: 0; background: #f5f5f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #333; }
 .drawer-close:hover { background: #0A0A0A; color: #fff; }
 
-.free-ship { padding: 14px 20px 12px; border-bottom: 1px solid #f0f0f0; background: #fafafa; flex-shrink: 0; }
-.free-ship-text { font-size: .82rem; color: #333; margin: 0 0 8px; }
-.free-ship-text strong { color: #0A0A0A; }
-.free-ship-text.success { color: #111; font-weight: 700; }
-.free-ship-bar { position: relative; height: 6px; background: #e5e5e5; border-radius: 999px; overflow: visible; }
-.free-ship-fill { height: 100%; background: #0A0A0A; border-radius: 999px; transition: width .4s ease; }
-.free-ship-truck { position: absolute; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; background: #fff; border: 1.5px solid #0A0A0A; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #0A0A0A; transition: left .4s ease; }
-
 .drawer-body { flex: 1; overflow-y: auto; padding: 0; }
 .drawer-body::-webkit-scrollbar { width: 6px; }
 .drawer-body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
@@ -268,6 +251,8 @@ const addSuggestedToCart = async (p) => {
 .cc-variant { font-size: .76rem; color: #777; }
 .cc-alert { font-size: .74rem; font-weight: 700; color: #0A0A0A; background: #f5f5f5; border-left: 2px solid #0A0A0A; padding: 4px 8px; }
 .cc-alert.warn { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+.cc-choose-variant { align-self: flex-start; color: #0A0A0A; font-size: .73rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.cc-choose-variant:hover { color: #b91c1c; }
 .cc-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .qty-compact { display: inline-flex; align-items: center; border: 1px solid #d1d5db; border-radius: 999px; overflow: hidden; background: #fff; }
 .qty-compact button { width: 28px; height: 28px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #0A0A0A; }

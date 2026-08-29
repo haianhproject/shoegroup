@@ -42,8 +42,8 @@ const paymentCode = ref('COD')
 const placing = ref(false)
 
 const payments = [
-  { code: 'COD', name: 'Thanh toán khi nhận hàng (COD)', icon: 'bi-cash-coin', desc: 'Trả tiền mặt khi shipper giao đến.' },
-  { code: 'BANK', name: 'Chuyển khoản ngân hàng', icon: 'bi-bank', desc: 'VietQR / Internet Banking, xác nhận tự động.' },
+  { code: 'COD', name: 'Thanh toán khi nhận hàng (COD)', desc: 'Trả tiền mặt khi shipper giao đến.' },
+  { code: 'BANK', name: 'Chuyển khoản ngân hàng', desc: 'VietQR / Internet Banking, xác nhận tự động.' },
 ]
 
 // Hàm kiểm tra định dạng email
@@ -131,14 +131,14 @@ const searchCommune = ref('')
 const showProvinceDropdown = ref(false)
 const showCommuneDropdown = ref(false)
 
-// Lọc Tỉnh/Thành phố theo từ khóa gõ vào 🔍
+// Lọc Tỉnh/Thành phố theo từ khóa gõ vào.
 const filteredProvinces = computed(() => {
   if (!searchProvince.value) return provinces.value
   const kw = searchProvince.value.toLowerCase().trim()
   return provinces.value.filter(p => p.name.toLowerCase().includes(kw))
 })
 
-// Lọc Phường/Xã theo từ khóa gõ vào 🔍
+// Lọc Phường/Xã theo từ khóa gõ vào.
 const filteredCommunes = computed(() => {
   if (!searchCommune.value) return communes.value
   const kw = searchCommune.value.toLowerCase().trim()
@@ -362,6 +362,32 @@ const appliedCoupon = ref(null)
 const couponError = ref('')
 const dbCoupons = ref([])
 const couponsLoading = ref(false)
+const showCouponInput = ref(false)
+
+const couponValueLabel = (coupon) => {
+  const type = String(coupon?.discount_type || coupon?.type || '').toLowerCase()
+  const value = Number(coupon?.value) || 0
+  if (type.includes('freeship')) return 'Miễn phí vận chuyển'
+  if (type.includes('cố định') || type.includes('co dinh') || type.includes('fixed')) return `Giảm ${formatCurrency(value)}`
+  return `Giảm ${value}%`
+}
+const couponMinOrderLabel = (coupon) => {
+  const min = Number(coupon?.min_order) || 0
+  return min > 0 ? `Đơn tối thiểu ${formatCurrency(min)}` : 'Không yêu cầu đơn tối thiểu'
+}
+const couponExpiryLabel = (coupon) => coupon?.expiry
+  ? `HSD ${new Date(coupon.expiry).toLocaleDateString('vi-VN')}`
+  : 'Không giới hạn thời gian'
+const couponUsageLabel = (coupon) => {
+  const limit = Number(coupon?.limit ?? coupon?.quantity ?? 0)
+  const used = Number(coupon?.used) || 0
+  return limit > 0 ? `Còn ${Math.max(0, limit - used)} lượt` : 'Dùng không giới hạn'
+}
+const selectCoupon = (coupon) => {
+  couponCode.value = coupon?.code || ''
+  applyCoupon()
+  showCouponInput.value = false
+}
 
 async function loadCoupons() {
   couponsLoading.value = true
@@ -716,7 +742,6 @@ const placeOrder = async () => {
             <div class="pay-grid mt-4">
               <label v-for="p in payments" :key="p.code" class="pay-opt" :class="{ active: paymentCode === p.code }">
                 <input type="radio" :value="p.code" v-model="paymentCode" hidden />
-                <i class="bi" :class="p.icon"></i>
                 <div class="flex-grow-1">
                   <div class="pay-name">{{ p.name }}</div>
                   <div class="pay-desc">{{ p.desc }}</div>
@@ -734,8 +759,10 @@ const placeOrder = async () => {
 
             <div class="co-items mt-4">
               <div class="co-item" v-for="item in cartItems" :key="item.id_product_detail">
-                <div class="co-item-img">
-                  <img :src="item.product?.image_url" :alt="item.product?.product_name || 'Product'" />
+                <div class="co-item-img-wrap">
+                  <div class="co-item-img">
+                    <img :src="item.product?.image_url" :alt="item.product?.product_name || 'Product'" />
+                  </div>
                   <span class="co-qty">{{ item.quantity }}</span>
                 </div>
                 <div class="flex-grow-1">
@@ -746,41 +773,69 @@ const placeOrder = async () => {
               </div>
             </div>
 
-            <!-- Mã giảm giá -->
+            <!-- Mã giảm giá: hiển thị đầy đủ ưu đãi; ô nhập là thao tác phụ -->
             <div class="coupon-section mt-4">
-              <div class="coupon-label">MÃ GIẢM GIÁ</div>
-              <div v-if="appliedCoupon" class="coupon-applied mt-2">
-                <div class="ca-info">
-                  <span class="ca-code">{{ appliedCoupon.code }}</span>
-                  <span class="ca-desc">
-                    {{ appliedCoupon.name || (appliedCoupon.discount_type === 'Cố định' ? `Giảm ${Number(appliedCoupon.value).toLocaleString('vi-VN')}đ` : `Giảm ${appliedCoupon.value}%`) }}
-                  </span>
+              <div class="coupon-heading">
+                <div>
+                  <div class="coupon-label">MÃ GIẢM GIÁ</div>
+                  <div class="coupon-subtitle">Chọn ưu đãi phù hợp cho đơn hàng</div>
                 </div>
-                <button class="ca-remove" @click="removeCoupon"><i class="bi bi-x"></i></button>
+                <button
+                  type="button"
+                  class="coupon-add-btn"
+                  :class="{ active: showCouponInput }"
+                  @click="showCouponInput = !showCouponInput"
+                  :aria-expanded="showCouponInput"
+                  aria-label="Nhập mã giảm giá khác"
+                  title="Nhập mã giảm giá khác"
+                ><i class="bi" :class="showCouponInput ? 'bi-dash-lg' : 'bi-plus-lg'"></i></button>
               </div>
 
-              <div v-else class="coupon-input-row mt-2">
-                <input v-model="couponCode" class="sg-input flex-grow-1 uppercase" placeholder="Nhập mã..." @keyup.enter="applyCoupon" />
-                <button class="btn-sg-outline" @click="applyCoupon" :disabled="couponsLoading">
-                  {{ couponsLoading ? '...' : 'ÁP DỤNG' }}
+              <div v-if="appliedCoupon" class="coupon-applied mt-3">
+                <div class="ca-info">
+                  <div class="ca-status"><i class="bi bi-check-circle-fill"></i> Đã áp dụng</div>
+                  <span class="ca-code">{{ appliedCoupon.code }}</span>
+                  <span class="ca-desc">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
+                </div>
+                <button type="button" class="ca-remove" @click="removeCoupon" aria-label="Bỏ mã giảm giá"><i class="bi bi-x-lg"></i></button>
+              </div>
+
+              <div v-if="couponsLoading" class="coupon-loading mt-3">Đang tải ưu đãi...</div>
+              <div v-else-if="dbCoupons.length > 0" class="coupon-list mt-3">
+                <button
+                  v-for="c in dbCoupons"
+                  :key="c.id"
+                  type="button"
+                  class="coupon-card"
+                  :class="{ selected: appliedCoupon?.code === c.code }"
+                  @click="selectCoupon(c)"
+                >
+                  <span class="coupon-card-accent"></span>
+                  <span class="coupon-card-main">
+                    <span class="coupon-card-top">
+                      <strong class="coupon-code">{{ c.code }}</strong>
+                      <span class="coupon-value">{{ couponValueLabel(c) }}</span>
+                    </span>
+                    <span class="coupon-name">{{ c.name || 'Ưu đãi dành riêng cho bạn' }}</span>
+                    <span v-if="c.description" class="coupon-description">{{ c.description }}</span>
+                    <span class="coupon-meta"><span>{{ couponMinOrderLabel(c) }}</span><span>·</span><span>{{ couponExpiryLabel(c) }}</span><span>·</span><span>{{ couponUsageLabel(c) }}</span></span>
+                  </span>
+                  <span class="coupon-card-action">{{ appliedCoupon?.code === c.code ? 'Đã chọn' : 'Chọn mã' }}</span>
                 </button>
               </div>
+              <div v-else class="coupon-empty mt-3">Hiện chưa có mã giảm giá phù hợp.</div>
 
-              <div v-if="couponError" class="text-danger mt-2 small-error">{{ couponError }}</div>
-
-              <div v-if="dbCoupons.length > 0" class="coupon-hints mt-3">
-                <div class="ch-list">
-                  <button
-                    v-for="c in dbCoupons"
-                    :key="c.id"
-                    class="ch-btn"
-                    :class="{ sel: appliedCoupon?.code === c.code }"
-                    @click="couponCode = c.code; applyCoupon()"
-                  >
-                    {{ c.code }}
+              <div v-if="showCouponInput" class="coupon-input-box mt-3">
+                <div class="coupon-input-label">Nhập mã bạn có</div>
+                <div class="coupon-input-row">
+                  <input v-model="couponCode" class="sg-input flex-grow-1 uppercase" placeholder="Nhập mã..." @keyup.enter="applyCoupon" />
+                  <button type="button" class="btn-sg-outline" @click="applyCoupon" :disabled="couponsLoading">
+                    {{ couponsLoading ? '...' : 'ÁP DỤNG' }}
                   </button>
                 </div>
               </div>
+
+              <div v-if="couponError" class="text-danger mt-2 small-error">{{ couponError }}</div>
             </div>
 
             <hr class="summary-divider mt-4" />
@@ -957,70 +1012,90 @@ const placeOrder = async () => {
 .uppercase { text-transform: uppercase; }
 .small-error { font-size: 0.8rem; }
 
-.input-error { border-color: #D4001A !important; background: #fff8f8; }
-.field-error { color: #D4001A; font-size: 0.78rem; margin-top: 4px; font-weight: 500; }
+.input-error { border-color: #0A0A0A !important; background: #f9fafb; }
+.field-error { color: #0A0A0A; font-size: 0.78rem; margin-top: 4px; font-weight: 500; }
 
-.empty-state { text-align: center; padding: 80px 20px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 4px; }
+.empty-state { text-align: center; padding: 80px 20px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 12px; }
 .empty-state i { font-size: 2.5rem; color: #ccc; display: block; margin-bottom: 16px; }
 
 .co-block { margin-bottom: 40px; }
 .co-h { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.1em; color: #1a1a1a; display: flex; align-items: center; gap: 12px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
-.co-num { width: 24px; height: 24px; background: #1a1a1a; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; }
+.co-num { width: 24px; height: 24px; background: #0A0A0A; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; border-radius: 6px; }
 .co-label { font-weight: 600; font-size: 0.75rem; letter-spacing: 0.05em; color: #555; margin-bottom: 8px; display: block; }
 .addr-status { font-size: 0.8rem; font-weight: 500; }
 
 .btn-add-quick:hover { text-decoration: underline; cursor: pointer; }
 
-.map-wrap { border: 1px solid #e5e5e5; border-radius: 4px; overflow: hidden; }
+.map-wrap { border: 1px solid #e5e5e5; border-radius: 12px; overflow: hidden; }
 .map-wrap iframe { width: 100%; height: 250px; border: 0; display: block; }
 
-.ship-grid, .pay-grid { display: flex; flex-direction: column; gap: 16px; }
-.ship-opt, .pay-opt { display: flex; align-items: center; gap: 16px; border: 1px solid #e5e5e5; border-radius: 4px; padding: 20px; cursor: pointer; transition: all 0.2s; background: #fff; }
-.ship-opt:hover, .pay-opt:hover { border-color: #1a1a1a; }
-.ship-opt.active, .pay-opt.active { border-color: #1a1a1a; border-width: 2px; padding: 19px; }
+.ship-grid, .pay-grid { display: flex; flex-direction: column; gap: 12px; }
+.ship-opt, .pay-opt { display: flex; align-items: center; gap: 16px; border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px 20px; cursor: pointer; transition: all 0.2s; background: #fff; }
+.ship-opt:hover, .pay-opt:hover { border-color: #0A0A0A; background: #fafafa; }
+.ship-opt.active, .pay-opt.active { border-color: #0A0A0A; border-width: 1.5px; padding: 16.5px 20.5px; background: #f9fafb; }
 
 .ship-name, .pay-name { font-weight: 700; font-size: 0.9rem; color: #1a1a1a; margin-bottom: 4px; }
 .ship-desc, .pay-desc { font-size: 0.8rem; color: #666; }
 .ship-eta { font-size: 0.75rem; color: #1a1a1a; font-weight: 600; margin-top: 6px; }
 .ship-distance { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
-.shipping-quote-warning { padding: 10px 12px; border: 1px solid #fde68a; border-radius: 4px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
+.shipping-quote-warning { padding: 10px 12px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
 .ship-fee { font-weight: 600; color: #1a1a1a; font-size: 0.95rem; margin-right: 16px; }
 
-.ship-check, .pay-check { width: 20px; height: 20px; border: 1px solid #d0d0d0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.ship-opt.active .ship-check, .pay-opt.active .pay-check { border: 6px solid #1a1a1a; }
-.pay-opt i { font-size: 1.5rem; color: #1a1a1a; width: 40px; text-align: center; }
+.ship-check, .pay-check { width: 20px; height: 20px; border: 1.5px solid #d1d5db; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ship-opt.active .ship-check, .pay-opt.active .pay-check { border: 6px solid #0A0A0A; background: #fff; }
 
-.co-summary-box { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 4px; padding: 32px; position: sticky; top: 100px; }
+.co-summary-box { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 16px; padding: 28px; position: sticky; top: 100px; overflow: visible; }
 .summary-title { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.1em; color: #1a1a1a; margin: 0; }
-.co-items { display: flex; flex-direction: column; gap: 16px; max-height: 400px; overflow-y: auto; padding-right: 8px; }
-.co-item { display: flex; gap: 16px; align-items: center; }
-.co-item-img { position: relative; width: 64px; height: 64px; background: #fff; border: 1px solid #e5e5e5; border-radius: 4px; }
+.co-items { display: flex; flex-direction: column; gap: 16px; max-height: 400px; overflow-y: auto; overflow-x: visible; padding: 6px 8px 2px 0; margin: -6px 0 0 0; }
+.co-item { display: flex; gap: 16px; align-items: center; overflow: visible; }
+.co-item-img-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; overflow: visible; }
+.co-item-img { width: 100%; height: 100%; background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; overflow: hidden; }
 .co-item-img img { width: 100%; height: 100%; object-fit: cover; }
-.co-qty { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; background: #1a1a1a; color: #fff; border-radius: 50%; font-size: 0.7rem; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.co-qty { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; background: #0A0A0A; color: #fff; border-radius: 6px; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff; z-index: 1; line-height: 1; }
 .co-item-name { font-weight: 600; font-size: 0.9rem; line-height: 1.3; color: #1a1a1a; }
 .co-item-attr { font-size: 0.8rem; color: #666; margin-top: 4px; }
 .co-item-price { font-weight: 600; font-size: 0.9rem; color: #1a1a1a; }
 
 .coupon-section { border-top: 1px solid #e5e5e5; padding-top: 24px; }
-.coupon-label { font-weight: 600; font-size: 0.8rem; letter-spacing: 0.05em; color: #1a1a1a; }
+.coupon-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.coupon-label { font-weight: 800; font-size: 0.8rem; letter-spacing: 0.08em; color: #1a1a1a; }
+.coupon-subtitle { color: #8a8f98; font-size: .74rem; margin-top: 4px; }
+.coupon-add-btn { width: 34px; height: 34px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #d7dbe0; border-radius: 50%; background: #fff; color: #111827; cursor: pointer; transition: background .2s ease, color .2s ease, border-color .2s ease, transform .2s ease; }
+.coupon-add-btn:hover, .coupon-add-btn.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; transform: rotate(90deg); }
+.coupon-applied { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #f4fbf6; border: 1px solid #9bd2aa; padding: 12px 14px; border-radius: 12px; }
+.ca-info { min-width: 0; }
+.ca-status { color: #16803a; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.ca-status i { margin-right: 4px; }
+.ca-code { font-weight: 900; font-size: 0.92rem; color: #1a1a1a; display: block; letter-spacing: .04em; }
+.ca-desc { font-size: 0.78rem; color: #4b5563; display: block; margin-top: 2px; }
+.ca-remove { border: 0; background: transparent; color: #6b7280; font-size: .9rem; cursor: pointer; padding: 6px; border-radius: 6px; }
+.ca-remove:hover { color: #0A0A0A; background: #e5f3e8; }
+.coupon-list { display: flex; flex-direction: column; gap: 10px; }
+.coupon-card { position: relative; display: flex; align-items: stretch; width: 100%; min-width: 0; padding: 0; overflow: hidden; text-align: left; border: 1px solid #e1e5ea; border-radius: 12px; background: #fff; color: #111827; cursor: pointer; transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+.coupon-card:hover { border-color: #9aa2ad; box-shadow: 0 6px 18px rgba(15,23,42,.08); transform: translateY(-1px); }
+.coupon-card.selected { border-color: #0A0A0A; box-shadow: 0 0 0 1px #0A0A0A; background: #fcfcfc; }
+.coupon-card-accent { width: 5px; flex: 0 0 5px; background: #0A0A0A; }
+.coupon-card-main { display: flex; flex-direction: column; min-width: 0; flex: 1; padding: 11px 12px; }
+.coupon-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coupon-code { font-size: .84rem; letter-spacing: .05em; }
+.coupon-value { flex: 0 0 auto; color: #d73939; font-size: .76rem; font-weight: 900; }
+.coupon-name { margin-top: 4px; font-size: .8rem; font-weight: 700; color: #27313b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coupon-description { margin-top: 3px; color: #6b7280; font-size: .72rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.coupon-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; color: #8a8f98; font-size: .68rem; line-height: 1.3; }
+.coupon-card-action { align-self: center; flex: 0 0 auto; margin-right: 12px; color: #111827; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+.coupon-card.selected .coupon-card-action { color: #16803a; }
+.coupon-loading, .coupon-empty { border: 1px dashed #d7dbe0; border-radius: 10px; padding: 12px; color: #8a8f98; font-size: .76rem; text-align: center; background: #fafbfc; }
+.coupon-input-box { padding: 12px; border: 1px dashed #c7ccd3; border-radius: 10px; background: #fafbfc; }
+.coupon-input-label { margin-bottom: 7px; color: #6b7280; font-size: .72rem; font-weight: 700; }
 .coupon-input-row { display: flex; gap: 8px; }
-.coupon-applied { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #1a1a1a; padding: 12px 16px; border-radius: 4px; }
-.ca-code { font-weight: 700; font-size: 0.9rem; color: #1a1a1a; display: block; }
-.ca-desc { font-size: 0.8rem; color: #666; }
-.ca-remove { border: 0; background: transparent; color: #888; font-size: 1.2rem; cursor: pointer; }
-.ca-remove:hover { color: #D4001A; }
-
-.ch-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.ch-btn { border: 1px solid #e5e5e5; background: #fff; padding: 6px 12px; font-size: 0.75rem; font-weight: 600; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
-.ch-btn:hover { border-color: #1a1a1a; }
-.ch-btn.sel { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.coupon-input-row .sg-input { min-width: 0; }
 
 .summary-divider { border-top: 1px solid #e5e5e5; margin: 0; }
 .sum-row { display: flex; justify-content: space-between; margin-bottom: 12px; color: #555; font-size: 0.95rem; }
 .sum-row.total { font-size: 1.1rem; color: #1a1a1a; font-weight: 600; }
 
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,0.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: 8px; background: #fff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+.modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: 16px; background: #fff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
 .btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; padding: 4px; }
 .check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; accent-color: #0A0A0A; cursor: pointer; }
@@ -1073,4 +1148,11 @@ const placeOrder = async () => {
 .qr-img { width: 200px; height: 200px; object-fit: contain; }
 .suc-enter-active, .suc-leave-active { transition: opacity 0.3s; }
 .suc-enter-from, .suc-leave-to { opacity: 0; }
+
+/* ——— Checkout chuyên nghiệp đen/trắng bo góc ——— */
+:deep(.sg-input) { border-radius: 10px !important; }
+:deep(.btn-sg), :deep(.btn-sg-warm) { border-radius: 12px !important; background: #0A0A0A !important; border-color: #0A0A0A !important; color: #fff !important; }
+:deep(.btn-sg:hover), :deep(.btn-sg-warm:hover) { background: #000 !important; }
+:deep(.btn-sg-outline) { border-radius: 10px !important; border-color: #0A0A0A !important; color: #0A0A0A !important; }
+:deep(.btn-sg-outline:hover) { background: #0A0A0A !important; color: #fff !important; }
 </style>

@@ -149,6 +149,7 @@ function createRateLimiter({
   key = "default",
   message,
   skipSuccessfulRequests = false,
+  skip,
 }) {
   const hits = new Map();
   setInterval(() => {
@@ -157,6 +158,10 @@ function createRateLimiter({
   }, windowMs).unref?.();
 
   return function rateLimiter(req, res, next) {
+    // Các API đọc dữ liệu (đặc biệt polling realtime của admin/navbar) không
+    // nên bị tính vào quota thao tác ghi. Vẫn giữ giới hạn cho POST/PUT/PATCH/
+    // DELETE để chống spam và lạm dụng endpoint.
+    if (typeof skip === "function" && skip(req)) return next();
     const ip =
       req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
       req.socket?.remoteAddress ||

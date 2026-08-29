@@ -15,7 +15,9 @@ const submitted = ref(false)
 const submittedNotReceived = ref(false)
 const API = API_BASE_URL
 const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['SHIPPING', 'DELIVERED', 'RECEIVED'].includes(item.status)))
-const isNotReceived = computed(() => order.value?.status === 'SHIPPING' || route.query.type === 'NOT_RECEIVED')
+const requestMode = ref(route.query.type === 'NOT_RECEIVED' ? 'NOT_RECEIVED' : 'RETURN')
+const isNotReceived = computed(() => requestMode.value === 'NOT_RECEIVED')
+const canChooseRequestMode = computed(() => Boolean(order.value))
 const isPaymentRecorded = computed(() => ['Đã thanh toán', 'Chờ thanh toán'].includes(String(order.value?.payment_status || '')))
 
 const form = reactive({
@@ -42,9 +44,22 @@ const useOrder = (selected) => {
   submittedNotReceived.value = false
   form.items = selected ? (selected.items || []).map((item) => ({ ...item, checked: true, return_qty: Number(item.quantity) || 1, condition: 'UNOPENED' })) : []
   if (selected?.status === 'SHIPPING' || route.query.type === 'NOT_RECEIVED') {
+    requestMode.value = 'NOT_RECEIVED'
     form.method = 'NOT_RECEIVED'
     form.reasonCode = 'NOT_RECEIVED'
-  } else if (form.method === 'NOT_RECEIVED') {
+  } else {
+    requestMode.value = 'RETURN'
+    if (form.method === 'NOT_RECEIVED') form.method = 'SHIPPER'
+    if (form.reasonCode === 'NOT_RECEIVED') form.reasonCode = 'DEFECTIVE'
+  }
+}
+
+const setRequestMode = (mode) => {
+  requestMode.value = mode === 'NOT_RECEIVED' ? 'NOT_RECEIVED' : 'RETURN'
+  if (requestMode.value === 'NOT_RECEIVED') {
+    form.method = 'NOT_RECEIVED'
+    form.reasonCode = 'NOT_RECEIVED'
+  } else {
     form.method = 'SHIPPER'
     form.reasonCode = 'DEFECTIVE'
   }
@@ -127,6 +142,27 @@ onMounted(fetchData)
         </div>
         <div v-else class="empty-copy">Bạn chưa có đơn hàng nào đủ điều kiện trả.</div>
         <router-link to="/orders" class="btn-sg mt-3">Về đơn hàng</router-link>
+      </div>
+
+      <!-- Hai trường hợp dùng chung một luồng yêu cầu; khách chọn loại sự cố
+           tại đây thay vì phải có nút "Đã nhận/Chưa nhận" rời rạc ở Đơn hàng. -->
+      <div v-if="order && !submitted && canChooseRequestMode" class="sg-card request-mode-card">
+        <div>
+          <h6 class="request-mode-title">Bạn cần hỗ trợ trường hợp nào?</h6>
+          <p class="request-mode-subtitle">Chọn một loại yêu cầu để cửa hàng xử lý đúng quy trình.</p>
+        </div>
+        <div class="request-mode-grid">
+          <button type="button" class="request-mode-option" :class="{ active: requestMode === 'RETURN' }" @click="setRequestMode('RETURN')">
+            <span class="request-mode-icon"><i class="bi bi-arrow-return-left"></i></span>
+            <span><strong>Trả / đổi sản phẩm</strong><small>Sản phẩm lỗi, sai hàng hoặc không vừa</small></span>
+            <i class="bi bi-check-circle-fill request-mode-check"></i>
+          </button>
+          <button type="button" class="request-mode-option" :class="{ active: requestMode === 'NOT_RECEIVED' }" @click="setRequestMode('NOT_RECEIVED')">
+            <span class="request-mode-icon"><i class="bi bi-truck"></i></span>
+            <span><strong>Chưa nhận được hàng</strong><small>Đơn báo giao nhưng bạn chưa nhận kiện</small></span>
+            <i class="bi bi-check-circle-fill request-mode-check"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Success -->
@@ -242,6 +278,19 @@ onMounted(fetchData)
 .empty { text-align: center; padding: 60px; }
 .empty i { font-size: 3rem; color: var(--sg-muted); }
 .rt-picker { max-width: 760px; margin: 24px auto; padding: 28px; }
+.request-mode-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 22px; margin: 18px 0 4px; border-radius: 14px; }
+.request-mode-title { margin: 0; font-size: .95rem; font-weight: 800; color: var(--sg-ink); }
+.request-mode-subtitle { margin: 5px 0 0; color: var(--sg-muted); font-size: .78rem; }
+.request-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(190px, 1fr)); gap: 10px; flex: 1; max-width: 650px; }
+.request-mode-option { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 11px 30px 11px 11px; border: 1px solid var(--sg-line); border-radius: 10px; background: #fff; color: var(--sg-ink); text-align: left; cursor: pointer; transition: border-color .2s ease, background .2s ease, box-shadow .2s ease; }
+.request-mode-option:hover { border-color: var(--sg-ink); background: #fafafa; }
+.request-mode-option.active { border-color: var(--sg-ink); background: #f8fafc; box-shadow: 0 0 0 1px var(--sg-ink); }
+.request-mode-option strong, .request-mode-option small { display: block; }
+.request-mode-option strong { font-size: .78rem; line-height: 1.25; }
+.request-mode-option small { margin-top: 3px; color: var(--sg-muted); font-size: .68rem; line-height: 1.25; }
+.request-mode-icon { width: 30px; height: 30px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #111827; color: #fff; font-size: .8rem; }
+.request-mode-check { position: absolute; top: 9px; right: 9px; display: none; color: #16803a; font-size: .8rem; }
+.request-mode-option.active .request-mode-check { display: block; }
 .picker-list { display: grid; border: 1px solid var(--sg-line); }
 .picker-row { border: 0; border-bottom: 1px solid var(--sg-line); background: #fff; padding: 15px 16px; display: grid; grid-template-columns: 1fr auto auto; gap: 24px; align-items: center; text-align: left; color: var(--sg-ink); }
 .picker-row:last-child { border-bottom: 0; }
@@ -290,5 +339,9 @@ onMounted(fetchData)
 .rt-track span { display: block; font-size: .74rem; color: var(--sg-muted); } .rt-track strong { font-size: 1.3rem; letter-spacing: .04em; color: var(--sg-blue-700); }
 .rt-guide { text-align: left; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 16px; font-size: .86rem; color: var(--sg-ink-2); }
 .rt-guide i { color: var(--sg-blue); margin-right: 6px; }
+@media (max-width: 768px) {
+  .request-mode-card { display: block; }
+  .request-mode-grid { grid-template-columns: 1fr; max-width: none; margin-top: 14px; }
+}
 @media (max-width: 576px) { .method-grid { grid-template-columns: 1fr; } }
 </style>

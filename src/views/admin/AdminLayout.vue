@@ -158,8 +158,8 @@ const sections = [
 
 const activeTabTitle = computed(() => route.meta.title || "Bảng Điều Khiển");
 
-function go(path) {
-  router.push(path);
+function go(navigate) {
+  navigate();
   if (window.innerWidth < 768) isNavOpen.value = false;
 }
 function onLogout() {
@@ -167,8 +167,9 @@ function onLogout() {
   router.push("/login");
 }
 
-// Interval 10s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)
-const POLL_INTERVAL = 10_000;
+// Interval 30s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)
+// để không tạo tải SQL dồn dập khi mở khu quản trị trong thời gian dài.
+const POLL_INTERVAL = 30_000;
 let pollTimer = null;
 const isRefreshing = ref(false);
 let lastFocused = Date.now();
@@ -248,7 +249,8 @@ onUnmounted(() => {
             v-slot="{ isActive, navigate }"
           >
             <button
-              @click="go(item.to)"
+              type="button"
+              @click="go(navigate)"
               class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
               :class="isActive ? 'active-nav text-white' : 'text-secondary'"
             >
@@ -329,8 +331,16 @@ onUnmounted(() => {
       </div>
 
       <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light w-100 mx-auto" style="max-width: 1440px;">
-        <!-- Mỗi trang con được render tại đây -->
-        <router-view />
+        <!-- Chỉ chuyển mượt vùng nội dung; sidebar/header quản lý giữ nguyên. -->
+        <router-view v-slot="{ Component, route }">
+          <div class="position-relative w-100">
+            <Transition name="admin-page">
+              <div :key="route.fullPath" class="admin-page-wrapper w-100">
+                <component :is="Component" />
+              </div>
+            </Transition>
+          </div>
+        </router-view>
       </div>
     </main>
 
@@ -900,6 +910,17 @@ onUnmounted(() => {
   border-left-color: #333333;
   color: #333333;
 }
+.admin-page-enter-active,
+.admin-page-leave-active {
+  transition: opacity .2s ease, transform .2s ease;
+}
+.admin-page-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.admin-page-enter-from { opacity: 0; transform: translateY(6px); }
+.admin-page-leave-to { opacity: 0; transform: translateY(-3px); }
 .fade-in-scale {
   animation: fadeInScale 0.25s ease;
 }

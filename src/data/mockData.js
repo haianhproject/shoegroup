@@ -70,16 +70,17 @@ export const collections = [
   { id_collection: 3, collection_name: "Urban Street" },
 ];
 
-/* Phương thức vận chuyển: [0]=Thường */
+/* Phương thức vận chuyển dùng khi API chưa sẵn sàng. Giá cuối cùng vẫn
+   được tính lại ở máy chủ theo địa chỉ, không tin số tiền từ trình duyệt. */
 export const shippingMethods = [
   {
     code: "STANDARD",
     name: "Giao hàng tiêu chuẩn",
-    basePrice: 20000,
-    pricePerKm: 20,
+    basePrice: 30000,
+    pricePerKm: 0,
     eta: "2 - 3 ngày",
     originCity: "Hai Bà Trưng, Hà Nội",
-    desc: "Tính theo khoảng cách từ kho Hai Bà Trưng, Hà Nội.",
+    desc: "Giao tiết kiệm, tính theo khu vực nhận hàng.",
   },
 ];
 

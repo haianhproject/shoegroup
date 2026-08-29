@@ -9,7 +9,6 @@ import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from './BrandLogo.vue'
 import { API_BASE_URL, api } from "../services/apiClient";
-import { categories as mockCategories } from '../data/mockData'
 
 const router = useRouter()
 const route = useRoute()
@@ -117,8 +116,8 @@ const goToNotif = (n) => {
 
 const goCategory = (id) => router.push({ path: '/products', query: { category: id } })
 
-// Menu danh mục dùng cùng query `category` với các thẻ danh mục trên trang
-// chủ. Khi API chưa chạy, dữ liệu mẫu vẫn giúp menu có thể dùng được.
+// Menu danh mục lấy trực tiếp từ CSDL qua API. Không dùng dữ liệu mẫu ở đây,
+// vì như vậy các môn không tồn tại trong CSDL vẫn bị hiển thị trên navbar.
 const menuCategories = ref([])
 const isCategoryMenuOpen = ref(false)
 const fetchMenuCategories = async () => {
@@ -128,11 +127,12 @@ const fetchMenuCategories = async () => {
     const data = await response.json()
     if (!Array.isArray(data)) throw new Error('Danh mục không hợp lệ')
     menuCategories.value = data
-      .filter((c) => c.active !== false && c.active !== 0 && c.active !== '0' && c.name)
+      .filter((c) => c.id != null && c.active !== false && c.active !== 0 && c.active !== '0' && c.name)
       .filter((c) => !['giày nam', 'tất cả'].includes(c.name.trim().toLowerCase()))
       .map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
   } catch {
-    menuCategories.value = mockCategories.filter((c) => !['giày nam', 'tất cả'].includes(c.category_name.toLowerCase()))
+    // API lỗi thì để menu rỗng, tuyệt đối không tự chèn danh mục mẫu.
+    menuCategories.value = []
   }
 }
 const toggleCategoryMenu = () => {
@@ -172,7 +172,9 @@ let notifPollInterval = null
 onMounted(() => { 
   fetchNotifications()
   fetchMenuCategories()
-  notifPollInterval = setInterval(fetchNotifications, 5000)
+  // Đồng bộ vừa đủ nhanh nhưng không tạo hàng chục request/phút khi để mở
+  // navbar lâu; request GET vẫn không ảnh hưởng quota API ghi.
+  notifPollInterval = setInterval(fetchNotifications, 30000)
   window.addEventListener('scroll', onScroll) 
 })
 onUnmounted(() => {

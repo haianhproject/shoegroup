@@ -338,23 +338,6 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <!-- SERVICES -->
-    <section class="services-wrap">
-      <div class="services">
-        <div class="service">
-          <div><h6>Giao hàng toàn quốc</h6><p>2-3 ngày</p></div>
-        </div>
-        <div class="service">
-          <div><h6>Đổi trả 14 ngày</h6><p>Miễn phí đổi trả</p></div>
-        </div>
-        <div class="service">
-          <div><h6>Chính hãng 100%</h6><p>Cam kết hoàn tiền</p></div>
-        </div>
-        <div class="service">
-          <div><h6>Hỗ trợ 9–21h</h6><p>0375.990.871</p></div>
-        </div>
-      </div>
-    </section>
 
     <!-- SECTION SẢN PHẨM NỔI BẬT -->
     <section class="featured-section">
@@ -397,7 +380,7 @@ onUnmounted(() => {
         </div>
       </template>
       <template v-else>
-        <div class="row row-cols-2 row-cols-md-4 g-4 featured-grid">
+        <div class="row row-cols-2 row-cols-md-4 g-3 g-lg-4 featured-grid">
           <div class="col fade-in-up" v-for="(product, i) in featuredProducts" :key="product.id_product" :style="`animation-delay:${i * 0.07}s`">
             <ShoeCard :product="product" />
           </div>
@@ -555,8 +538,34 @@ onUnmounted(() => {
   border-bottom-color: #1a1a1a;
 }
 
-.featured-grid { margin-top: 0; }
+.featured-grid {
+  /* Lưới bám theo mép vùng nội dung; không căn giữa một nhóm ít sản phẩm
+     khiến hai mép trang xuất hiện khoảng trắng lớn như trước. */
+  margin: 0 -12px;
+  /* 960px tạo bốn cột cùng tỷ lệ với lưới trang Sản phẩm (card ~216px
+     ở desktop), đồng thời vẫn chừa đủ chỗ cho khoảng cách Bootstrap. */
+  max-width: 960px;
+}
 .category-see-all { display: flex; justify-content: center; margin-top: 2rem; }
+
+/* ——— Nút Xem tất cả chuyên nghiệp ——— */
+.featured-header .btn-sg-outline {
+  border: 1.5px solid #0A0A0A !important;
+  border-radius: 999px !important;
+  padding: 9px 20px !important;
+  font-size: .82rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+  color: #0A0A0A !important;
+  background: #fff !important;
+  text-transform: uppercase;
+  transition: all .2s ease !important;
+  text-decoration: none !important;
+}
+.featured-header .btn-sg-outline:hover {
+  background: #0A0A0A !important;
+  color: #fff !important;
+}
 .see-all-link { display: inline-flex; align-items: center; gap: .55rem; color: var(--sg-ink); border-bottom: 1px solid currentColor; padding: .45rem .15rem; text-decoration: none; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: .8rem; transition: gap .2s ease, color .2s ease; }
 .see-all-link:hover { color: var(--sg-red); gap: .8rem; }
 </style>

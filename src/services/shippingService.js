@@ -2,7 +2,7 @@ import { api } from './apiClient'
 import { shippingMethods as fallbackShippingMethods } from '../data/mockData'
 
 // Bảng dự phòng giúp checkout vẫn dùng được khi máy chủ chưa chạy migration
-// hoặc đang tạm mất kết nối. Khi API hoạt động, giá trong DB luôn được ưu tiên.
+// hoặc đang tạm mất kết nối. Chỉ còn giao hàng tiêu chuẩn theo chính sách hiện tại.
 const FALLBACK_METHODS = [
   ...fallbackShippingMethods,
 ]
