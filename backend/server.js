@@ -419,17 +419,18 @@ const ORDER_STATUS_TRANSITIONS = {
   "da xac nhan": new Set(["da xac nhan", "dang van chuyen", "da huy"]),
   // Không có shipper thật trong môi trường mô phỏng nên quản lý có thể
   // ghi nhận cả giao thành công lẫn giao thất bại từ mốc đang vận chuyển.
-  "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
-  "giao hang that bai": new Set(["giao hang that bai", "yeu cau tra hang", "da huy"]),
+  "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
+  "giao hang that bai": new Set(["giao hang that bai", "ve kho", "yeu cau tra hang", "da huy"]),
+  "ve kho": new Set(["ve kho", "dang van chuyen", "yeu cau tra hang"]),
   "da giao hang thanh cong": new Set(["da giao hang thanh cong", "da nhan hang", "yeu cau tra hang"]),
   "da nhan hang": new Set(["da nhan hang", "yeu cau tra hang"]),
   "yeu cau tra hang": new Set(["yeu cau tra hang", "da nhan hang"]),
   "da huy": new Set(["da huy"]),
   "cho xu ly": new Set(["cho xu ly", "cho xac nhan", "da xac nhan", "da huy"]),
   "pending": new Set(["pending", "cho xac nhan", "da xac nhan", "da huy"]),
-  "dang giao": new Set(["dang giao", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
-  "shipped": new Set(["shipped", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
-  "shipping": new Set(["shipping", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
+  "dang giao": new Set(["dang giao", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
+  "shipped": new Set(["shipped", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
+  "shipping": new Set(["shipping", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
   "delivered": new Set(["delivered", "da nhan hang", "yeu cau tra hang"]),
   "received": new Set(["received", "yeu cau tra hang"]),
 };
@@ -441,6 +442,7 @@ const ORDER_STATUS_ALIASES = {
   "dang van chuyen": "Đang vận chuyển", "dang giao": "Đang vận chuyển", "shipped": "Đang vận chuyển",
   "giao hang that bai": "Giao hàng thất bại", "khong giao duoc hang": "Giao hàng thất bại",
   "delivery failed": "Giao hàng thất bại", "delivery_failure": "Giao hàng thất bại", "failed_delivery": "Giao hàng thất bại", "deliveryfailed": "Giao hàng thất bại",
+  "ve kho": "Về kho", "returned to warehouse": "Về kho", "warehouse return": "Về kho", "return_to_warehouse": "Về kho",
   "da giao": "Đã giao hàng thành công", "da giao hang thanh cong": "Đã giao hàng thành công", "delivered": "Đã giao hàng thành công",
   "da nhan hang": "Đã nhận hàng", "received": "Đã nhận hàng", "yeu cau tra hang": "Yêu cầu trả hàng",
   "da hoan tat tra hang": "Đã hoàn tất trả hàng", "da huy": "Đã hủy", "cancelled": "Đã hủy", "canceled": "Đã hủy",
@@ -501,6 +503,44 @@ async function recordRefundTransaction(transaction, orderId, amount) {
           (OrderID, Provider, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
         VALUES (@oid, N'MANUAL_REFUND', @amt, N'REFUNDED', 1, GETDATE(), GETDATE());
     `);
+}
+
+// Lưu thông báo trạng thái để khách thấy ngay trong mục Thông báo. Bảng này
+// có ở schema hiện tại; nếu CSDL cũ chưa có bảng thì không được làm hỏng việc
+// chuyển trạng thái đơn (ghi log và tiếp tục transaction chính).
+async function insertOrderNotification(transaction, userId, orderId, title, message, type = "ORDER_STATUS") {
+  if (!Number.isInteger(Number(userId)) || Number(userId) <= 0) return;
+  try {
+    await new sql.Request(transaction)
+      .input("uid", sql.Int, Number(userId))
+      .input("title", sql.NVarChar(255), cleanAddressText(title, 255))
+      .input("message", sql.NVarChar(sql.MAX), cleanAddressText(message, 2000))
+      .input("type", sql.VarChar(50), cleanAddressText(type, 50))
+      .input("rid", sql.Int, Number(orderId))
+      .query(`
+        IF OBJECT_ID(N'dbo.Notifications', N'U') IS NOT NULL
+          INSERT INTO Notifications (UserID, Title, Message, Type, RelatedID, IsRead, CreatedAt)
+          VALUES (@uid, @title, @message, @type, @rid, 0, GETDATE());
+      `);
+  } catch (error) {
+    console.error("[NOTIFICATION] Khong ghi duoc thong bao don:", error?.message || error);
+  }
+}
+
+function isLostDeliveryReason(value) {
+  const normalized = normalizeOrderStatus(value);
+  return normalized.includes("mat hang")
+    || normalized.includes("that lac")
+    || normalized.includes("lost")
+    || normalized.includes("mat trong van chuyen");
+}
+
+function isAccidentDeliveryReason(value) {
+  const normalized = normalizeOrderStatus(value);
+  return normalized.includes("tai nan")
+    || normalized.includes("truc trac")
+    || normalized.includes("va cham")
+    || normalized.includes("su co van chuyen");
 }
 
 function transitionAllowed(currentStatus, nextStatus) {
@@ -575,6 +615,86 @@ async function restoreOrderStock(transaction, orderId) {
           StockIssueStatus=CASE WHEN StockIssueStatus=N'NEEDS_REVIEW' THEN N'RESTORED' ELSE StockIssueStatus END,
           UpdatedAt=GETDATE()
       WHERE OrderID=@oid AND StockRestoredAt IS NULL
+    `);
+  return true;
+}
+
+async function reserveOrderStock(transaction, orderId) {
+  // Giao lại sau khi kiện đã về kho phải giữ lại tồn một lần nữa. Mọi dòng
+  // hàng được trừ trong cùng transaction; chỉ cần một biến thể không đủ là
+  // toàn bộ lần giao lại rollback, tuyệt đối không để tồn âm.
+  const details = await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .query(`
+      SELECT ProductID, ProductVariantID, Quantity, Size, Color
+      FROM OrderDetails
+      WHERE OrderID=@oid
+    `);
+  if (!details.recordset.length) throw Object.assign(new Error("Đơn hàng không có sản phẩm để giao lại."), { statusCode: 409, code: "STOCK_UNAVAILABLE" });
+
+  for (const row of details.recordset) {
+    const quantity = Number(row.Quantity) || 0;
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw Object.assign(new Error("Số lượng sản phẩm trong đơn không hợp lệ."), { statusCode: 409, code: "STOCK_UNAVAILABLE" });
+    }
+    if (row.ProductVariantID) {
+      const updated = await new sql.Request(transaction)
+        .input("vid", sql.Int, row.ProductVariantID)
+        .input("pid", sql.Int, row.ProductID)
+        .input("q", sql.Int, quantity)
+        .query(`
+          UPDATE ProductVariants
+          SET StockQuantity=ISNULL(StockQuantity,0)-@q,
+              Version=ISNULL(Version,0)+1
+          WHERE ProductVariantID=@vid AND ProductID=@pid
+            AND ISNULL(IsActive,1)=1 AND ISNULL(StockQuantity,0)>=@q
+        `);
+      if (Number(updated.rowsAffected?.[0] || 0) !== 1) {
+        throw Object.assign(new Error("Biến thể vừa hết hàng hoặc không đủ số lượng để giao lại."), { statusCode: 409, code: "STOCK_UNAVAILABLE" });
+      }
+      continue;
+    }
+
+    const variant = await new sql.Request(transaction)
+      .input("pid", sql.Int, row.ProductID)
+      .input("sz", sql.NVarChar, row.Size || "")
+      .input("clr", sql.NVarChar, row.Color || "")
+      .input("q", sql.Int, quantity)
+      .query(`
+        SELECT TOP 1 ProductVariantID AS id
+        FROM ProductVariants WITH (UPDLOCK,HOLDLOCK)
+        WHERE ProductID=@pid AND ISNULL(IsActive,1)=1
+          AND ISNULL(Size,N'')=@sz AND ISNULL(ColorName,N'')=@clr
+          AND ISNULL(StockQuantity,0)>=@q
+        ORDER BY ProductVariantID
+      `);
+    const variantId = variant.recordset[0]?.id;
+    if (!variantId) {
+      throw Object.assign(new Error("Không còn đủ tồn kho cho biến thể giao lại."), { statusCode: 409, code: "STOCK_UNAVAILABLE" });
+    }
+    const updated = await new sql.Request(transaction)
+      .input("vid", sql.Int, variantId)
+      .input("q", sql.Int, quantity)
+      .query(`
+        UPDATE ProductVariants
+        SET StockQuantity=ISNULL(StockQuantity,0)-@q,
+            Version=ISNULL(Version,0)+1
+        WHERE ProductVariantID=@vid AND ISNULL(StockQuantity,0)>=@q
+      `);
+    if (Number(updated.rowsAffected?.[0] || 0) !== 1) {
+      throw Object.assign(new Error("Biến thể vừa hết hàng hoặc không đủ số lượng để giao lại."), { statusCode: 409, code: "STOCK_UNAVAILABLE" });
+    }
+  }
+
+  await new sql.Request(transaction)
+    .input("oid", sql.Int, orderId)
+    .query(`
+      UPDATE Orders
+      SET StockRestoredAt=NULL,
+          StockIssueStatus=CASE WHEN StockIssueStatus IN (N'DELIVERY_FAILED',N'RETURNED_TO_WAREHOUSE',N'DELIVERY_ACCIDENT') THEN NULL ELSE StockIssueStatus END,
+          StockIssueReason=CASE WHEN StockIssueStatus IN (N'DELIVERY_FAILED',N'RETURNED_TO_WAREHOUSE',N'DELIVERY_ACCIDENT') THEN NULL ELSE StockIssueReason END,
+          UpdatedAt=GETDATE()
+      WHERE OrderID=@oid
     `);
   return true;
 }
@@ -1464,8 +1584,27 @@ app.get("/api/orders", async (req, res) => {
       console.log(e.message);
     }
 
+    let histories = [];
+    try {
+      const orderIds = rOrders.recordset
+        .map((o) => Number(o.id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      const historyResult = orderIds.length
+        ? await pool.request().query(`
+        SELECT OrderID, NewStatus AS status, ChangedAt AS date, ISNULL(Note,N'') AS note
+        FROM OrderStatusHistory
+        WHERE OrderID IN (${orderIds.join(",")})
+        ORDER BY HistoryID
+      `)
+        : { recordset: [] };
+      histories = historyResult.recordset;
+    } catch (e) {
+      console.log(e.message);
+    }
+
     let orders = rOrders.recordset.map((o) => {
       o.products = details.filter((d) => d.OrderID === o.id);
+      o.history = histories.filter((h) => h.OrderID === o.id);
       return o;
     });
 
@@ -1495,7 +1634,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const currentResult = await new sql.Request(transaction)
       .input("oid", sql.Int, orderId)
       .query(`
-        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount
+        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount, StockRestoredAt
         FROM Orders WITH (UPDLOCK, HOLDLOCK)
         WHERE OrderID=@oid
       `);
@@ -1510,8 +1649,33 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const normalizedCurrentStatus = normalizeOrderStatus(currentOrder.Status);
     const isCancel = ["da huy", "cancelled", "canceled"].includes(normalizedNewStatus);
     const alreadyCancelled = ["da huy", "cancelled", "canceled"].includes(normalizedCurrentStatus);
-    const wasPaid = isPaidPaymentStatus(currentOrder.PaymentStatus);
+    const lostDeliveryCancellation = isAdmin
+      && isCancel
+      && isLostDeliveryReason(reason)
+      && ["dang van chuyen", "dang giao", "shipped", "shipping", "giao hang that bai"].includes(normalizedCurrentStatus);
+    const returningToWarehouse = normalizedNewStatus === "ve kho";
     const statusToSave = isCancel ? "Đã hủy" : canonicalOrderStatus(newStatus);
+    const reshippingFromWarehouse = normalizedCurrentStatus === "ve kho"
+      && normalizeOrderStatus(statusToSave) === "dang van chuyen";
+    const inShippingStage = ["dang van chuyen", "dang giao", "shipped", "shipping"].includes(normalizedCurrentStatus);
+    const directFailureResolution = isAdmin
+      && inShippingStage
+      && (returningToWarehouse || lostDeliveryCancellation);
+    const accidentDelivery = isAccidentDeliveryReason(reason);
+    const wasPaid = isPaidPaymentStatus(currentOrder.PaymentStatus);
+
+    // Luồng quản trị mới luôn phải chốt ngay một trong ba nguyên nhân giao
+    // thất bại. Không cho API tạo thêm trạng thái trung gian “Giao hàng thất
+    // bại” từ giao diện/ứng dụng cũ; lịch sử vẫn được ghi tự động khi chọn
+    // Về kho hoặc Đã hủy do thất lạc.
+    if (isAdmin && inShippingStage && normalizedNewStatus === "giao hang that bai") {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        code: "FAILURE_REASON_REQUIRED",
+        message: "Hãy chọn một lý do giao hàng thất bại: chưa nhận hàng, trục trặc vận chuyển hoặc thất lạc.",
+      });
+    }
 
     if (!isCancel && !transitionAllowed(currentOrder.Status, statusToSave)) {
       await transaction.rollback();
@@ -1528,11 +1692,10 @@ app.put("/api/orders/:id/status", async (req, res) => {
       const cancellableByAdmin = new Set([
         "cho xac nhan", "cho xu ly", "pending", "da xac nhan", "confirmed",
         "dang lay hang", "dang chuan bi hang", "processing", "picking",
-        "dang van chuyen", "dang giao", "shipped", "giao hang that bai",
       ]);
-      if (!cancellableByAdmin.has(normalizedCurrentStatus)) {
+      if (!cancellableByAdmin.has(normalizedCurrentStatus) && !lostDeliveryCancellation) {
         await transaction.rollback();
-        return res.status(409).json({ success: false, message: "Đơn đã giao/đã nhận không thể hủy trực tiếp; hãy tạo yêu cầu trả hàng." });
+        return res.status(409).json({ success: false, message: "Chỉ được hủy trước khi chuyển sang giao; nếu hàng thất lạc hãy dùng đúng nhánh hủy do vận chuyển." });
       }
     }
 
@@ -1560,7 +1723,18 @@ app.put("/api/orders/:id/status", async (req, res) => {
       }
     }
 
-    if (isCancel && !alreadyCancelled) {
+    // Giao lại sau khi kiện đã về kho phải trừ tồn lại trong cùng transaction.
+    if (reshippingFromWarehouse) {
+      await reserveOrderStock(transaction, orderId);
+    }
+    // Khách không nghe máy hoặc tai nạn vận chuyển: kiện quay về kho và cộng
+    // tồn đúng một lần.
+    if (returningToWarehouse) {
+      await restoreOrderStock(transaction, orderId);
+    }
+    // Hàng thất lạc khi vận chuyển: hủy đơn để không ghi doanh thu, nhưng
+    // tuyệt đối không cộng tồn vì sản phẩm thực tế đã mất.
+    if (isCancel && !alreadyCancelled && !lostDeliveryCancellation) {
       await restoreOrderStock(transaction, orderId);
     }
 
@@ -1568,9 +1742,22 @@ app.put("/api/orders/:id/status", async (req, res) => {
       .input("id", sql.Int, orderId)
       .input("s", sql.NVarChar, statusToSave)
       .input("r", sql.NVarChar, reason)
+      .input("lost", sql.Bit, lostDeliveryCancellation ? 1 : 0)
+      .input("accident", sql.Bit, accidentDelivery ? 1 : 0)
       .query(
         `UPDATE Orders SET Status = @s,
           CancelReason = CASE WHEN @s IN (N'Đã hủy', N'Da huy') THEN @r ELSE CancelReason END,
+          StockIssueStatus = CASE
+            WHEN @lost = 1 THEN N'LOST_IN_TRANSIT'
+            WHEN @s = N'Giao hàng thất bại' THEN N'DELIVERY_FAILED'
+            WHEN @s = N'Về kho' AND @accident = 1 THEN N'DELIVERY_ACCIDENT'
+            WHEN @s = N'Về kho' THEN N'RETURNED_TO_WAREHOUSE'
+            ELSE StockIssueStatus
+          END,
+          StockIssueReason = CASE
+            WHEN @lost = 1 OR @s IN (N'Giao hàng thất bại', N'Về kho') THEN NULLIF(@r, N'')
+            ELSE StockIssueReason
+          END,
           PaymentStatus = CASE
             WHEN @s IN (N'Đã hủy', N'Da huy') THEN (CASE WHEN ISNULL(PaymentStatus,N'Chưa thanh toán') IN (N'Đã thanh toán',N'Da thanh toan',N'Chờ thanh toán',N'Cho thanh toan') THEN N'Hoàn tiền' ELSE N'Đã hủy' END)
             WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN N'Đã thanh toán'
@@ -1578,21 +1765,65 @@ app.put("/api/orders/:id/status", async (req, res) => {
           PaymentConfirmedAt = CASE WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
           DeliveredDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(DeliveredDate,GETDATE()) ELSE DeliveredDate END,
           RevenueEligibleDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(RevenueEligibleDate,DATEADD(day,14,GETDATE())) ELSE RevenueEligibleDate END,
-          AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Giao hàng thất bại', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
+          AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Giao hàng thất bại', N'Về kho', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
           UpdatedAt=GETDATE()
         WHERE OrderID = @id`,
       );
     if (isCancel && wasPaid) {
       await recordRefundTransaction(transaction, orderId, currentOrder.TotalAmount);
     }
-    await insertOrderHistory(transaction, orderId, currentOrder.Status, statusToSave, reason || "Cập nhật trạng thái đơn hàng", authenticatedUserId);
+    if (directFailureResolution) {
+      await insertOrderHistory(transaction, orderId, currentOrder.Status, "Giao hàng thất bại", reason || "Giao hàng không thành công", authenticatedUserId);
+    }
+    await insertOrderHistory(
+      transaction,
+      orderId,
+      directFailureResolution ? "Giao hàng thất bại" : currentOrder.Status,
+      statusToSave,
+      reason || "Cập nhật trạng thái đơn hàng",
+      authenticatedUserId,
+    );
+    if (normalizeOrderStatus(currentOrder.Status) !== normalizeOrderStatus(statusToSave)) {
+      if (normalizeOrderStatus(statusToSave) === "giao hang that bai") {
+        await insertOrderNotification(transaction, currentOrder.UserID, orderId,
+          "Giao hàng thất bại",
+          "Đơn hàng của bạn giao không thành công. Vui lòng vào mục Trả hàng để báo chưa nhận được hàng hoặc theo dõi hướng xử lý.");
+      } else if (reshippingFromWarehouse) {
+        await insertOrderNotification(transaction, currentOrder.UserID, orderId,
+          "Đơn hàng được sắp xếp giao lại",
+          "Shop đã sắp xếp giao lại đơn hàng vào thời gian gần nhất. Bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.");
+      } else if (returningToWarehouse && accidentDelivery) {
+        await insertOrderNotification(transaction, currentOrder.UserID, orderId,
+          "Trục trặc trong quá trình vận chuyển",
+          "Đơn hàng gặp trục trặc trong quá trình vận chuyển. Shop sẽ sắp xếp giao lại vào ngày gần nhất.");
+      } else if (returningToWarehouse) {
+        await insertOrderNotification(transaction, currentOrder.UserID, orderId,
+          "Đơn hàng sẽ được giao lại",
+          "Đơn hàng chưa giao thành công vì chưa liên hệ được người nhận. Shop sẽ sắp xếp giao lại vào ngày gần nhất.");
+      } else if (lostDeliveryCancellation) {
+        const refundMessage = isBankPayment(currentOrder.PaymentMethod)
+          ? " Nếu đã chuyển khoản, vui lòng liên hệ shop để được hoàn tiền."
+          : " Nếu đã thanh toán, shop sẽ xử lý hoàn tiền theo quy định.";
+        await insertOrderNotification(transaction, currentOrder.UserID, orderId,
+          "Đơn hàng bị hủy do vận chuyển thất bại",
+          "Đơn hàng bị thất lạc trong quá trình vận chuyển nên đã được hủy." + refundMessage);
+      }
+    }
     await transaction.commit();
     res.json({ success: true });
   } catch (e) {
     if (transaction._aborted !== true) {
       try { await transaction.rollback(); } catch (_) {}
     }
-    res.status(500).json({ error: e.message });
+    const statusCode = Number.isInteger(e?.statusCode) && e.statusCode >= 400 && e.statusCode < 600
+      ? e.statusCode
+      : 500;
+    res.status(statusCode).json({
+      success: false,
+      code: e?.code || undefined,
+      error: e.message,
+      message: e.message,
+    });
   }
 });
 
@@ -1636,9 +1867,14 @@ app.put("/api/orders/:id/payment", async (req, res) => {
       if ((terminalOrder || terminalPayment) && normalizedRequested === "da thanh toan") {
         throw Object.assign(new Error("Đơn đã kết thúc hoặc đã hoàn tiền, không thể ghi nhận thanh toán mới."), { statusCode: 409 });
       }
-      // COD được xác nhận thủ công trong màn quản lý vì dự án không kết nối
-      // shipper thật. Khi giao thành công, endpoint trạng thái vẫn tự ghi
-      // nhận COD như trước; thao tác này chỉ bỏ chặn bước mô phỏng thu tiền.
+      // COD chỉ phát sinh thanh toán khi đã giao thành công/khách đã nhận.
+      // Không có shipper thật không có nghĩa là được ghi nhận tiền trước
+      // thời điểm giao; trạng thái giao thành công bên dưới sẽ tự thu COD.
+      if (isCodPayment(order.PaymentMethod)
+        && normalizedRequested === "da thanh toan"
+        && !["da giao hang thanh cong", "da nhan hang"].includes(normalizeOrderStatus(order.Status))) {
+        throw Object.assign(new Error("COD chỉ được xác nhận đã thanh toán khi đơn đã giao thành công."), { statusCode: 409 });
+      }
     }
     if (customerTransferConfirmation) {
       paymentStatus = "Đã thanh toán";
@@ -2346,6 +2582,7 @@ function isNotReceivedReturn(value) {
     "khong nhan duoc hang",
     "khong giao duoc hang",
     "giao hang that bai",
+    "ve kho",
     "delivery issue",
     "delivery failed",
     "delivery failure",
@@ -2369,6 +2606,7 @@ function restoreStatusAfterReturn(row) {
   if (delivered) return "Đã giao hàng thành công";
 
   if (["giao hang that bai", "delivery failed", "delivery failure", "failed delivery", "delivery_failure"].includes(status)) return "Giao hàng thất bại";
+  if (["ve kho", "returned to warehouse", "warehouse return", "return_to_warehouse"].includes(status)) return "Về kho";
   const shipping = ["dang van chuyen", "dang giao", "shipped", "shipping"].includes(status);
   if (shipping || isNotReceivedReturn(row && row.ReturnType)) return "Đang vận chuyển";
 
@@ -2559,7 +2797,7 @@ app.post("/api/returns", async (req, res) => {
     const deliveredStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"]);
     // Đã xác nhận nhận hàng thì không thể đồng thời báo "chưa nhận".
     // Trường hợp đang giao/giao thất bại vẫn được mở case hỗ trợ giao vận.
-    const notReceivedStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "dang van chuyen", "dang giao", "shipped", "shipping", "giao hang that bai", "delivery failed"]);
+    const notReceivedStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "dang van chuyen", "dang giao", "shipped", "shipping", "giao hang that bai", "delivery failed", "ve kho"]);
     if (notReceived ? !notReceivedStatuses.has(normalizedOrderStatus) : !deliveredStatuses.has(normalizedOrderStatus)) {
       throw Object.assign(new Error(notReceived
         ? "Don hang chua o trang thai co the bao chua nhan duoc hang."
@@ -3238,10 +3476,13 @@ app.get("/api/customers/:id/orders", async (req, res) => {
                 PaymentConfirmedAt as payment_confirmed_at,
                 DeliveredDate as delivered_date,
                 ReceivedConfirmedDate as received_confirmed_date,
-                RevenueEligibleDate as revenue_eligible_date,
-                IsCountedAsRevenue as is_counted_as_revenue,
-                AutoCancelDeadline as auto_cancel_deadline,
-                ISNULL(TrackingNumber, '') as tracking_code,
+                 RevenueEligibleDate as revenue_eligible_date,
+                 IsCountedAsRevenue as is_counted_as_revenue,
+                 AutoCancelDeadline as auto_cancel_deadline,
+                 StockIssueStatus as stock_issue_status,
+                 StockIssueReason as stock_issue_reason,
+                 StockRestoredAt as stock_restored_at,
+                 ISNULL(TrackingNumber, '') as tracking_code,
                 ISNULL(HandledBy, '') as handled_by,
                 ISNULL(CustomerName, '') as customer_name,
                 ISNULL(CustomerPhone, '') as customer_phone,
@@ -3278,8 +3519,26 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       console.log(e.message);
     }
 
+    let histories = [];
+    try {
+      const historyResult = await pool
+        .request()
+        .input("id", sql.Int, req.params.id)
+        .query(`
+          SELECT h.OrderID, h.NewStatus AS status, h.ChangedAt AS date, ISNULL(h.Note,N'') AS note
+          FROM OrderStatusHistory h
+          JOIN Orders o ON o.OrderID=h.OrderID
+          WHERE o.UserID=@id
+          ORDER BY h.HistoryID
+        `);
+      histories = historyResult.recordset;
+    } catch (e) {
+      console.log(e.message);
+    }
+
     let orders = rOrders.recordset.map((o) => {
       o.products = details.filter((d) => d.OrderID === o.id);
+      o.history = histories.filter((h) => h.OrderID === o.id);
       return o;
     });
     res.json(orders);

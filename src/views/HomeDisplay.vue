@@ -253,6 +253,18 @@ const handleSlideClick = (e) => {
   suppressClick.value = false
 }
 
+function clearSuppressClick() {
+  if (suppressClickTimer) clearTimeout(suppressClickTimer)
+  suppressClickTimer = null
+  suppressClick.value = false
+  if (rafId) cancelAnimationFrame(rafId)
+  rafId = null
+  dragging = false
+  isDragging.value = false
+  dragOffset.value = 0
+  targetOffset = 0
+}
+
 
 const isActiveRecord = (value) => value !== false && value !== 0 && value !== '0'
 

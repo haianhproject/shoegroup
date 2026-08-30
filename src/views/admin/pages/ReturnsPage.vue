@@ -9,7 +9,7 @@ import {
 } from '../adminStore'
 
 const returnStatuses = ['Tất cả', 'Chờ xử lý', 'Đã tiếp nhận', 'Đang kiểm tra', 'Chấp nhận hoàn tiền', 'Đã hoàn tiền', 'Sự cố', 'Từ chối', 'Hủy', 'Đã hoàn tất']
-const isNotReceivedOrder = computed(() => ['Đang vận chuyển', 'Giao hàng thất bại'].includes(returnFoundOrder.value?.status))
+const isNotReceivedOrder = computed(() => ['Đang vận chuyển', 'Giao hàng thất bại', 'Về kho'].includes(returnFoundOrder.value?.status))
 const canSubmitFoundReturn = computed(() => isNotReceivedOrder.value || returnSelectedCount.value > 0)
 
 function conditionLabel(request) {
@@ -27,7 +27,7 @@ function conditionLabel(request) {
     <!-- Ô tra cứu hóa đơn -->
     <div class="bg-white p-4 mb-4" style="border-radius:4px;">
       <h5 class="fw-bold mb-1 text-dark">Trả hàng</h5>
-      <p class="text-secondary small mb-3">Tra cứu theo mã vận đơn để tạo yêu cầu trả / hoàn tiền. Đơn đã giao có thể trả sản phẩm; đơn đang giao hoặc giao thất bại có thể báo <b>chưa nhận được hàng</b>.</p>
+      <p class="text-secondary small mb-3">Tra cứu theo mã vận đơn để tạo yêu cầu trả / hoàn tiền. Đơn đã giao có thể trả sản phẩm; đơn đang giao, giao thất bại hoặc đã về kho có thể báo <b>chưa nhận được hàng</b>.</p>
       <div class="d-flex flex-wrap align-items-center gap-2">
         <label class="fw-medium text-dark mb-0">Mã vận đơn:</label>
         <div class="position-relative flex-grow-1" style="min-width:240px;max-width:440px;">
@@ -41,7 +41,7 @@ function conditionLabel(request) {
     <!-- Chưa tìm thấy: trạng thái rỗng -->
     <div v-if="!returnFoundOrder" class="bg-white p-5 text-center mb-4" style="border-radius:4px;">
       <h6 class="fw-bold text-secondary mt-3 mb-1">TRẢ HÀNG</h6>
-      <p class="text-secondary small mb-0">Nhập mã vận đơn phía trên để bắt đầu. Đơn đã giao có thể trả sản phẩm; đơn đang giao hoặc giao thất bại có thể báo chưa nhận hàng.</p>
+      <p class="text-secondary small mb-0">Nhập mã vận đơn phía trên để bắt đầu. Đơn đã giao có thể trả sản phẩm; đơn đang giao, giao thất bại hoặc đã về kho có thể báo chưa nhận hàng.</p>
     </div>
 
     <!-- Đã tìm thấy đơn -->

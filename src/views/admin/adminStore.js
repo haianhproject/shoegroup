@@ -210,7 +210,7 @@ export const lowStockCount = computed(
 export const incompleteOrdersCount = computed(
   () =>
     db.orders.filter(
-      (o) => !["Đã giao hàng thành công", "Đã nhận hàng", "Đã hủy", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status),
+      (o) => !["Đã giao hàng thành công", "Đã nhận hàng", "Đã hủy", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng", "Về kho"].includes(o.status),
     ).length,
 );
 /* Số sản phẩm hết hàng (tổng tồn kho = 0) */
@@ -356,6 +356,7 @@ export function buildOrderStatusData() {
     "Đã xác nhận": "#0ea5e9",
     "Đang vận chuyển": "#6366f1",
     "Giao hàng thất bại": "#dc2626",
+    "Về kho": "#f59e0b",
     "Đã giao hàng thành công": "#10b981",
     "Đã hủy": "#ef4444",
   };
@@ -530,6 +531,7 @@ export const orderStatuses = [
   "Đã xác nhận",
   "Đang vận chuyển",
   "Giao hàng thất bại",
+  "Về kho",
   "Đã giao hàng thành công",
   "Đã nhận hàng",
   "Đã hủy",
@@ -552,6 +554,7 @@ export function getStatusBadgeClass(status) {
       "Đã xác nhận": "bg-secondary-subtle text-dark",
       "Đang vận chuyển": "bg-secondary-subtle text-dark",
       "Giao hàng thất bại": "bg-danger-subtle text-danger-emphasis",
+      "Về kho": "bg-warning-subtle text-warning-emphasis",
       "Đã giao hàng thành công": "bg-dark text-white",
       "Đã hủy": "bg-light text-danger border",
     }[status] || "bg-light text-secondary border"
@@ -615,13 +618,64 @@ export async function processOrderFlow(ord) {
 // Máy trạng thái đơn theo phương thức thanh toán.
 // - Chuyển khoản: checkout ghi nhận thanh toán ngay sau khi khách xác nhận,
 //   nên admin chỉ xử lý trạng thái đơn, không bấm xác nhận thanh toán lần hai.
-// - COD: xác nhận → giao → THU TIỀN (gần cuối) → hoàn thành đơn.
+// - COD: xác nhận → giao; chuyển giao thành công sẽ tự ghi nhận đã thu tiền.
+export function getDeliveryFailureOptions() {
+  return [
+    {
+      key: "return_warehouse",
+      text: "Khách chưa bắt máy / chưa nhận hàng",
+      next: "Về kho",
+      reason: "Khách không bắt máy / không nhận hàng, kiện đã về kho.",
+      class: "btn-dark text-white",
+    },
+    {
+      key: "delivery_accident",
+      text: "Tai nạn / trục trặc vận chuyển",
+      next: "Về kho",
+      reason: "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại vào ngày gần nhất.",
+      class: "btn-outline-dark",
+    },
+    {
+      key: "lost_delivery_cancel",
+      text: "Thất lạc hàng khi vận chuyển",
+      next: "Đã hủy",
+      reason: "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.",
+      class: "btn-outline-danger",
+    },
+  ];
+}
+
 export function getOrderActions(o) {
-  if (!o || ["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
-    return [];
+  if (!o) return [];
   const method = getPaymentMethodPill(o.payment_method).code;
   const paid = isPaymentSettled(o);
+  if (["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
+    return [];
   const acts = [];
+  const preShipping = ["Chờ xác nhận", "Đã xác nhận"].includes(o.status);
+  if (o.status === "Về kho") {
+    if (method === "Chuyển khoản" && !paid) return [{
+      key: "wait_bank",
+      text: "Chờ khách chuyển khoản",
+      locked: true,
+      class: "btn-light text-dark border",
+    }];
+    return [{
+      key: "reship",
+      text: "Giao lại đơn hàng",
+      next: "Đang vận chuyển",
+      reason: "Shop đã sắp xếp giao lại đơn hàng vào ngày gần nhất.",
+      class: "btn-dark text-white",
+    }];
+  }
+  // Sau khi giao thất bại phải tách rõ hai hướng xử lý: khách không nghe
+  // máy thì hàng quay về kho; thất lạc thì hủy nhưng không cộng lại tồn.
+  if (o.status === "Giao hàng thất bại") return [{
+    key: "delivery_failed_menu",
+    text: "Giao hàng thất bại",
+    menu: getDeliveryFailureOptions(),
+    class: "btn-outline-danger",
+  }];
   if (method === "Chuyển khoản") {
     if (!paid) {
       const unpaidActions = [
@@ -637,19 +691,18 @@ export function getOrderActions(o) {
           markPaid: true,
           class: "btn-outline-dark ms-2",
         },
-        {
-          key: "cancel",
-          text: "Hủy đơn",
-          class: "btn-outline-danger mt-2",
-          isCancel: true,
-        },
       ];
       if (o.status === "Đang vận chuyển") unpaidActions.splice(2, 0, {
-        key: "delivery_failed",
+        key: "delivery_failed_menu",
         text: "Giao hàng thất bại",
-        next: "Giao hàng thất bại",
-        reason: "Không giao được hàng / khách chưa nhận được kiện.",
+        menu: getDeliveryFailureOptions(),
         class: "btn-outline-danger",
+      });
+      if (preShipping) unpaidActions.push({
+        key: "cancel",
+        text: "Hủy đơn",
+        class: "btn-outline-danger mt-2",
+        isCancel: true,
       });
       return unpaidActions;
     }
@@ -675,16 +728,13 @@ export function getOrderActions(o) {
         class: "btn-dark text-white",
       });
       acts.push({
-        key: "delivery_failed",
+        key: "delivery_failed_menu",
         text: "Giao hàng thất bại",
-        next: "Giao hàng thất bại",
-        reason: "Không giao được hàng / khách chưa nhận được kiện.",
+        menu: getDeliveryFailureOptions(),
         class: "btn-outline-danger",
       });
     }
-    // Đơn chuyển khoản đã thanh toán vẫn có thể cần hủy (hết hàng,
-    // khách yêu cầu...). API sẽ hoàn tiền nếu giao dịch đã được ghi nhận.
-    acts.push({
+    if (preShipping) acts.push({
       key: "cancel",
       text: "Hủy đơn",
       class: "btn-outline-danger mt-2",
@@ -692,18 +742,7 @@ export function getOrderActions(o) {
     });
     return acts;
   }
-  // COD (và các phương thức khác)
-  // Môi trường này không kết nối shipper thật: quản lý được phép ghi nhận
-  // đã thu COD thủ công ở mọi mốc đơn còn đang xử lý, sau đó mới tiếp tục
-  // mô phỏng giao thành công hoặc ghi nhận giao thất bại.
-  if (method === "Thu hộ" && !paid && o.status !== "Giao hàng thất bại") {
-    acts.push({
-      key: "cod_paid",
-      text: "Xác nhận đã thu COD (thủ công)",
-      markPaid: true,
-      class: "btn-dark text-white",
-    });
-  }
+  // COD chỉ được thu tự động khi chuyển sang giao thành công.
   if (o.status === "Chờ xác nhận")
     acts.push({
       key: "confirm",
@@ -726,23 +765,13 @@ export function getOrderActions(o) {
       class: "btn-dark text-white",
     });
     acts.push({
-      key: "delivery_failed",
+      key: "delivery_failed_menu",
       text: "Giao hàng thất bại",
-      next: "Giao hàng thất bại",
-      reason: "Không giao được hàng / khách chưa nhận được kiện.",
+      menu: getDeliveryFailureOptions(),
       class: "btn-outline-danger",
     });
-  } else if (o.status === "Giao hàng thất bại") {
-    acts.push({
-      key: "cancel_failed_delivery",
-      text: "Hủy đơn & hoàn kho",
-      class: "btn-outline-danger",
-      isCancel: true,
-    });
-    return acts;
   }
-  
-  acts.push({
+  if (preShipping) acts.push({
     key: "cancel",
     text: "Hủy đơn",
     class: "btn-outline-danger mt-2",
@@ -800,6 +829,22 @@ export async function runOrderAction(o, act) {
       getPaymentMethodPill(o.payment_method).code === "Thu hộ"
     )
       o.payment_status = "Đã thanh toán";
+    if (act.next === "Đã hủy") {
+      o.payment_status = isPaymentSettled(o) ? "Hoàn tiền" : "Đã hủy";
+      o.cancel_reason = act.reason || o.cancel_reason;
+      if (act.reason && /mất hàng|thất lạc|lost/i.test(act.reason)) {
+        o.stock_issue_status = "LOST_IN_TRANSIT";
+        o.stock_issue_reason = act.reason;
+      }
+    }
+    if (act.next === "Về kho") o.stock_restored_at = new Date().toISOString();
+    if (act.next === "Đang vận chuyển" && prev === "Về kho") {
+      o.stock_restored_at = null;
+      if (["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT"].includes(o.stock_issue_status)) {
+        o.stock_issue_status = null;
+        o.stock_issue_reason = "";
+      }
+    }
     o._history = o._history || [];
     o._history.push({
       status: act.next,
@@ -814,7 +859,6 @@ export async function runOrderAction(o, act) {
 export const cancelReasons = [
   "Hết hàng",
   "Lỗi tồn kho cần xử lý",
-  "Giao hàng thất bại / khách chưa nhận được hàng",
   "Khách yêu cầu hủy",
   "Sai thông tin đơn",
   "Không liên hệ được khách",
@@ -1077,6 +1121,10 @@ export function getOrderStatusPill(o) {
       label: "Giao thất bại",
       cls: "bg-danger-subtle text-danger-emphasis",
     },
+    "Về kho": {
+      label: "Về kho",
+      cls: "bg-warning-subtle text-warning-emphasis",
+    },
     "Đã xác nhận": {
       label: "Đã xác nhận",
       cls: "bg-light text-dark border",
@@ -1134,18 +1182,24 @@ export function buildOrderHistory(o) {
     const h = hist.find((x) => statuses.includes(x.status));
     return h ? h.date : null;
   };
+  const currentKey = normalizeStatusText(o.status);
+  const hasStatus = (statuses) => {
+    const normalized = statuses.map(normalizeStatusText);
+    return normalized.includes(currentKey)
+      || hist.some((h) => normalized.includes(normalizeStatusText(h.status)));
+  };
   const created = o.date;
   const paid = effectivePaymentStatus(o) === "Đã thanh toán";
-  const deliveryFailed = normalizeStatusText(o.status) === "giao hang that bai"
-    || hist.some((h) => normalizeStatusText(h.status) === "giao hang that bai");
-  const order = [
-    "Chờ xác nhận",
-    "Đã xác nhận",
-    "Đang vận chuyển",
-    "Đã giao hàng thành công",
-    "Đã nhận hàng",
-  ];
-  const rank = order.indexOf(o.status);
+  const deliveryFailed = hasStatus(["Giao hàng thất bại"])
+    || ["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT", "LOST_IN_TRANSIT"].includes(String(o.stock_issue_status || "").toUpperCase());
+  const warehouseReturned = hasStatus(["Về kho"]);
+  const delivered = hasStatus(["Đã giao hàng thành công", "Đã giao", "Đã nhận hàng", "Hoàn thành"]);
+  const shipping = hasStatus(["Đang vận chuyển", "Đang giao", "Đã giao hàng thành công", "Giao hàng thất bại", "Về kho"]);
+  const confirmed = hasStatus(["Đã xác nhận", "Đang vận chuyển", "Đang giao", "Đã giao hàng thành công", "Giao hàng thất bại", "Về kho"]);
+  const redelivering = warehouseReturned && ["dang van chuyen", "dang giao", "shipping", "shipped"].includes(currentKey);
+  const lostDelivery = currentKey === "da huy"
+    && (String(o.stock_issue_status || "").toUpperCase() === "LOST_IN_TRANSIT"
+      || /mất hàng|thất lạc|lost/i.test(`${o.stock_issue_reason || ""} ${o.cancel_reason || ""}`));
   const isBank =
     getPaymentMethodPill(o.payment_method).code === "Chuyển khoản";
   const steps = [
@@ -1162,8 +1216,14 @@ export function buildOrderHistory(o) {
     steps.push({
       label: "Xác nhận đơn",
       icon: "bi-check2-circle",
-      done: rank >= 1,
+      done: confirmed,
       date: findDate(["Đã xác nhận"]),
+    });
+    steps.push({
+      label: redelivering ? "Đang giao lại" : "Đang giao hàng",
+      icon: "bi-truck",
+      done: shipping,
+      date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
@@ -1171,37 +1231,43 @@ export function buildOrderHistory(o) {
       done: true,
       date: findDate(["Giao hàng thất bại"]),
     });
+    if (warehouseReturned) steps.push({
+      label: "Về kho",
+      icon: "bi-box-seam",
+      done: true,
+      date: findDate(["Về kho"]),
+    });
     steps.push({
       label: "Đã giao hàng",
       icon: "bi-box-seam",
-      done: rank >= 3,
+      done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
-    });
-    steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
-      done: rank >= 4,
-      date: findDate(["Đã nhận hàng"]),
     });
   } else {
     // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
     steps.push({
       label: "Xác nhận đơn",
       icon: "bi-check2-circle",
-      done: rank >= 1,
+      done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
-      label: "Đang giao hàng",
+      label: redelivering ? "Đang giao lại" : "Đang giao hàng",
       icon: "bi-truck",
-      done: rank >= 2,
-      date: findDate(["Đang vận chuyển"]),
+      done: shipping,
+      date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
       icon: "bi-exclamation-triangle",
       done: true,
       date: findDate(["Giao hàng thất bại"]),
+    });
+    if (warehouseReturned) steps.push({
+      label: "Về kho",
+      icon: "bi-box-seam",
+      done: true,
+      date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Thanh toán (COD)",
@@ -1214,16 +1280,16 @@ export function buildOrderHistory(o) {
     steps.push({
       label: "Đã giao hàng",
       icon: "bi-box-seam",
-      done: rank >= 3,
+      done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
-    steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
-      done: rank >= 4,
-      date: findDate(["Đã nhận hàng"]),
-    });
   }
+  if (lostDelivery) steps.push({
+    label: "Đã hủy",
+    icon: "bi-x-circle",
+    done: true,
+    date: findDate(["Đã hủy"]),
+  });
   return steps;
 }
 
@@ -1463,7 +1529,7 @@ export const returnNote = ref("");
 export const returnType = ref("CUSTOMER");
 export function getReturnTypeLabel(t) {
   const normalized = normalizeStatusText(t).replace(/[_-]+/g, " ");
-  if (["not received", "chua nhan duoc hang", "delivery failed", "delivery failure", "giao hang that bai"].includes(normalized))
+  if (["not received", "chua nhan duoc hang", "delivery failed", "delivery failure", "giao hang that bai", "ve kho"].includes(normalized))
     return "Chưa nhận được hàng";
   return t === "DIRECT" || t === "Trực tiếp"
     ? "Trả trực tiếp tại quầy"
@@ -1499,7 +1565,7 @@ export function searchReturnOrder() {
   }
   // Đơn đã giao/đã nhận tạo yêu cầu trả hàng; đơn đang vận chuyển có thể
   // tạo case riêng "chưa nhận được hàng" để cửa hàng kiểm tra giao vận.
-  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển", "Giao hàng thất bại"].includes(ord.status)) {
+  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status)) {
     returnFoundOrder.value = null;
     returnItems.value = [];
     notify(
@@ -1550,7 +1616,7 @@ export async function submitReturn() {
   if (!ord) return;
   // Báo chưa nhận là sự cố theo cả kiện hàng; quản lý không cần chọn từng
   // dòng sản phẩm (API sẽ tự lấy toàn bộ chi tiết đơn nếu items rỗng).
-  const notReceived = ["Đang vận chuyển", "Giao hàng thất bại"].includes(ord.status);
+  const notReceived = ["Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status);
   const items = returnItems.value.filter((it) => Number(it.return_qty) > 0);
   if (items.length === 0 && !notReceived) {
     notify("Chọn ít nhất 1 sản phẩm để trả", "error");
@@ -3319,6 +3385,9 @@ export function mapOrder(o) {
     received_confirmed_at: o.ReceivedConfirmedDate ?? o.received_confirmed_date ?? null,
     revenue_eligible_at: o.RevenueEligibleDate ?? o.revenue_eligible_date ?? null,
     is_counted_as_revenue: Boolean(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
+    stock_issue_status: o.StockIssueStatus ?? o.stock_issue_status ?? null,
+    stock_issue_reason: o.StockIssueReason ?? o.stock_issue_reason ?? "",
+    stock_restored_at: o.StockRestoredAt ?? o.stock_restored_at ?? null,
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
     handled_by: o.HandledBy ?? o.handled_by ?? "",
     // Kenh ban do backend tinh san - nguon dang tin cay nhat
@@ -3355,23 +3424,35 @@ function mergeOrders(existing, incoming) {
   const merged = incoming.map(fresh => {
     const old = existingMap.get(fresh.id);
     if (!old) return fresh; // đơn mới → thêm vào
-    // Chỉ merge các field server cập nhật, giữ nguyên isExpanded và _history local
+    // Lịch sử từ server là nguồn chính; nếu DB cũ chưa có lịch sử thì giữ lại
+    // các mốc local vừa ghi trong cùng phiên quản trị.
+    const nextHistory = Array.isArray(fresh._history) && fresh._history.length
+      ? fresh._history
+      : (old._history || []);
     const changed =
       old.status !== fresh.status ||
       old.payment_status !== fresh.payment_status ||
       old.total !== fresh.total ||
       old.cancel_reason !== fresh.cancel_reason ||
       old.tracking_code !== fresh.tracking_code ||
-      old.address_changed !== fresh.address_changed;
+      old.address_changed !== fresh.address_changed ||
+      old.stock_issue_status !== fresh.stock_issue_status ||
+      old.stock_issue_reason !== fresh.stock_issue_reason ||
+      old.stock_restored_at !== fresh.stock_restored_at ||
+      JSON.stringify(old._history || []) !== JSON.stringify(nextHistory);
     if (!changed) return old; // không đổi → giữ nguyên object cũ, Vue không re-render
     return {
-      ...old,           // giữ isExpanded, _history v.v.
+      ...old,           // giữ isExpanded và các field UI cục bộ
       status: fresh.status,
       payment_status: fresh.payment_status,
       total: fresh.total,
       cancel_reason: fresh.cancel_reason,
       tracking_code: fresh.tracking_code,
       address_changed: fresh.address_changed,
+      stock_issue_status: fresh.stock_issue_status,
+      stock_issue_reason: fresh.stock_issue_reason,
+      stock_restored_at: fresh.stock_restored_at,
+      _history: nextHistory,
       customer_name: fresh.customer_name,
       customer_phone: fresh.customer_phone,
       products: fresh.products,

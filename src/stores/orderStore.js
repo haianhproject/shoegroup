@@ -21,6 +21,7 @@ export const ORDER_STATUS = {
   CONFIRMED: "Đã xác nhận",
   SHIPPING: "Đang giao",
   DELIVERY_FAILED: "Giao hàng thất bại",
+  WAREHOUSE_RETURN: "Về kho",
   DELIVERED: "Đã giao",
   RECEIVED: "Đã nhận hàng",
   COMPLETED: "Hoàn thành",
@@ -304,6 +305,7 @@ export const mapStatusToKey = (status) => {
   if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
   if (n.includes("hoan thanh") || n.includes("complete")) return "COMPLETED";
   if (n.includes("giao hang that bai") || n.includes("khong giao duoc hang") || n.includes("delivery failed") || n.includes("delivery failure") || n.includes("delivery_failure")) return "DELIVERY_FAILED";
+  if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
   if (n.includes("da giao") || n.includes("giao hang thanh cong") || n.includes("deliver")) return "DELIVERED";
   if (n.includes("van chuyen") || n.includes("dang giao") || n.includes("ship")) return "SHIPPING";
   if (n.includes("chuan bi") || n.includes("lay hang") || n.includes("process") || n.includes("picking")) return "CONFIRMED";
@@ -354,6 +356,14 @@ export const mapServerOrder = (s) => {
     receivedConfirmedDate,
     revenueEligibleDate,
     isCountedAsRevenue,
+    stockIssueStatus: s.stock_issue_status ?? s.StockIssueStatus ?? null,
+    stockIssueReason: s.stock_issue_reason ?? s.StockIssueReason ?? "",
+    stockRestoredAt: toTimestamp(s.stock_restored_at ?? s.StockRestoredAt),
+    history: (s.history || s.OrderStatusHistory || []).map((h) => ({
+      status: h.status ?? h.Status ?? h.NewStatus ?? "",
+      date: h.date ?? h.ChangedAt ?? null,
+      note: h.note ?? h.Note ?? "",
+    })),
     autoCancelled: false,
     cancelReason: s.cancel_reason || "",
     fromServer: true,
@@ -418,6 +428,11 @@ export const syncFromServer = async () => {
   if (!Array.isArray(list)) return;
 
   let changed = false;
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
   // 1. Cập nhật các đơn đã tồn tại trong local storage
   orderState.orders.forEach((o) => {
@@ -454,6 +469,39 @@ export const syncFromServer = async () => {
       changed = true;
     }
 
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_status") || Object.prototype.hasOwnProperty.call(s, "StockIssueStatus")) {
+      const serverIssueStatus = s.stock_issue_status ?? s.StockIssueStatus ?? null;
+      if ((o.stockIssueStatus ?? null) !== (serverIssueStatus ?? null)) {
+        o.stockIssueStatus = serverIssueStatus;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_reason") || Object.prototype.hasOwnProperty.call(s, "StockIssueReason")) {
+      const serverIssueReason = s.stock_issue_reason ?? s.StockIssueReason ?? "";
+      if ((o.stockIssueReason ?? "") !== serverIssueReason) {
+        o.stockIssueReason = serverIssueReason;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_restored_at") || Object.prototype.hasOwnProperty.call(s, "StockRestoredAt")) {
+      const serverRestoredAt = toTimestamp(s.stock_restored_at ?? s.StockRestoredAt);
+      if ((o.stockRestoredAt ?? null) !== (serverRestoredAt ?? null)) {
+        o.stockRestoredAt = serverRestoredAt;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "history") || Object.prototype.hasOwnProperty.call(s, "OrderStatusHistory")) {
+      const serverHistory = (s.history || s.OrderStatusHistory || []).map((h) => ({
+        status: h.status ?? h.Status ?? h.NewStatus ?? "",
+        date: h.date ?? h.ChangedAt ?? null,
+        note: h.note ?? h.Note ?? "",
+      }));
+      if (JSON.stringify(o.history || []) !== JSON.stringify(serverHistory)) {
+        o.history = serverHistory;
+        changed = true;
+      }
+    }
+
     const serverAddress = s.shipping_address || s.customer_address || "";
     if (serverAddress && o.shippingAddress !== serverAddress) {
       o.shippingAddress = serverAddress;
@@ -465,11 +513,6 @@ export const syncFromServer = async () => {
       changed = true;
     }
 
-    const toTimestamp = (value) => {
-      if (!value) return null;
-      const parsed = new Date(value).getTime();
-      return Number.isFinite(parsed) ? parsed : null;
-    };
     const hasField = (...names) => names.some((name) => Object.prototype.hasOwnProperty.call(s, name));
     const dateFields = [
       ["deliveredDate", ["delivered_date", "DeliveredDate"]],

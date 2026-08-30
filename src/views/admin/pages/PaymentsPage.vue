@@ -27,7 +27,7 @@ function sortFIFO(list) {
 const displayedOrders = computed(() => {
   if (queueView.value === 'ALL') return paymentChannelOrders.value
   const active = paymentChannelOrders.value.filter((order) =>
-    !['Đã hủy', 'Đã nhận hàng', 'Đã giao hàng thành công', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
+    !['Đã hủy', 'Đã nhận hàng', 'Đã giao hàng thành công', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Về kho', 'Hoàn tất'].includes(order.status)
   )
   return sortFIFO(active)
 })
@@ -87,12 +87,34 @@ async function confirmTransition() {
   }
 }
 
+async function chooseFailureResolution(option) {
+  const menuAction = transitionConfirm.action
+  if (!menuAction || !Array.isArray(menuAction.menu) || transitionConfirm.busy) return
+  transitionConfirm.action = option
+  await confirmTransition()
+  // Nếu API từ chối (ví dụ hết tồn kho khi giao lại), giữ menu để quản lý
+  // chọn lại nguyên nhân thay vì biến thành một trạng thái trung gian.
+  if (transitionConfirm.open) transitionConfirm.action = menuAction
+}
+
 function transitionMessage() {
   const order = transitionConfirm.order
   const action = transitionConfirm.action
   if (!order || !action) return ''
   if (action.markPaid) {
     return `Bạn chắc chắn muốn chuyển trạng thái thanh toán của đơn #${order.id} sang “Đã thanh toán”?`
+  }
+  if (action.key === 'return_warehouse') {
+    return `Xác nhận khách không nghe máy/không nhận hàng ở đơn #${order.id}? Đơn sẽ được đưa về kho và dự kiến giao lại vào ngày gần nhất.`
+  }
+  if (action.key === 'delivery_failed_menu') {
+    return `Chọn lý do giao hàng thất bại cho đơn #${order.id}. Hệ thống sẽ chốt và cập nhật đúng nhánh ngay sau khi bạn chọn.`
+  }
+  if (action.key === 'delivery_accident') {
+    return `Xác nhận đơn #${order.id} giao thất bại do tai nạn hoặc trục trặc vận chuyển? Đơn sẽ được sắp xếp giao lại vào ngày gần nhất.`
+  }
+  if (action.key === 'lost_delivery_cancel') {
+    return `Xác nhận đơn #${order.id} bị thất lạc khi vận chuyển? Đơn sẽ bị hủy, không ghi doanh thu và không cộng lại tồn kho.`
   }
   return `Bạn chắc chắn muốn chuyển đơn #${order.id} từ “${order.status}” sang “${action.next}”?`
 }
@@ -344,7 +366,22 @@ function transitionMessage() {
         <div class="bg-white border border-dark p-4 w-100" style="max-width:440px;border-radius:4px;box-shadow:0 18px 48px rgba(0,0,0,0.2);">
           <h6 id="transition-confirm-title" class="fw-bold text-dark mb-2">Xác nhận chuyển trạng thái</h6>
           <p class="text-secondary small mb-4" v-text="transitionMessage()"></p>
-          <div class="d-flex justify-content-end gap-2">
+          <div v-if="transitionConfirm.action?.menu" class="d-grid gap-2 mb-3">
+            <button
+              v-for="option in transitionConfirm.action.menu"
+              :key="option.key"
+              type="button"
+              class="btn btn-sm fw-medium text-start"
+              style="border-radius:4px;"
+              :class="option.class"
+              :disabled="transitionConfirm.busy"
+              @click="chooseFailureResolution(option)"
+            >{{ option.text }}</button>
+            <div class="d-flex justify-content-end mt-1">
+              <button type="button" class="btn btn-sm btn-white border border-dark text-dark px-3" :disabled="transitionConfirm.busy" @click="closeTransitionConfirm">Hủy bỏ</button>
+            </div>
+          </div>
+          <div v-if="!transitionConfirm.action?.menu" class="d-flex justify-content-end gap-2">
             <button
               type="button"
               class="btn btn-sm btn-white border border-dark text-dark px-3"
