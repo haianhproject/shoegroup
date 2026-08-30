@@ -133,17 +133,20 @@ onMounted(() => {
 }
 .display-title { 
   font-size: clamp(2.5rem, 5vw, 4.5rem); 
-  font-weight: 700; 
+  font-weight: 800; 
   line-height: 1.1; 
   letter-spacing: 0.05em; 
   margin-bottom: 24px; 
+  color: #ffffff !important;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.55);
 }
 .hero-sub { 
   font-size: 1.1rem; 
-  color: rgba(255,255,255,0.85); 
+  color: rgba(255,255,255,0.92) !important; 
   line-height: 1.6; 
   max-width: 650px; 
   margin: 0 auto;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.4);
 }
 
 /* Stats */

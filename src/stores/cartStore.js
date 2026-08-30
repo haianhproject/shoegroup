@@ -127,6 +127,7 @@ let activeUserKey = getUserId(currentUser.value);
 export const cartState = reactive({
   items: loadCartForUser(currentUser.value),
   isMiniCartOpen: false,
+  isDrawerOpen: false,
 });
 
 export const isCheckingCartStock = ref(false);
@@ -213,13 +214,21 @@ export const formatCurrency = (value) => {
 // ============================================================
 
 export const cartItems = computed(() => {
-  return cartState.items.map((item) => ({
-    ...item,
-
+  const items = cartState.items.map((item, index) => ({
+    item,
+    index,
     subtotal:
       Number(item.unitPrice || 0) *
       Number(item.quantity || 0),
   }));
+  // Giữ sản phẩm còn mua được ở đầu giỏ; biến thể vừa hết/không đủ kho
+  // được đẩy xuống cuối để khách dễ nhận biết và xử lý trước khi thanh toán.
+  items.sort((a, b) => {
+    const unavailableA = a.item.isOutOfStock || a.item.hasInsufficientStock ? 1 : 0;
+    const unavailableB = b.item.isOutOfStock || b.item.hasInsufficientStock ? 1 : 0;
+    return unavailableA - unavailableB || a.index - b.index;
+  });
+  return items.map(({ item, subtotal }) => ({ ...item, subtotal }));
 });
 
 // ============================================================
@@ -990,4 +999,24 @@ export const hideMiniCart = () => {
 export const toggleMiniCart = () => {
   cartState.isMiniCartOpen =
     !cartState.isMiniCartOpen;
+};
+
+// ============================================================
+// DRAWER CART (slide-over, không làm mất trang nền)
+// ============================================================
+
+export const showDrawer = () => {
+  cartState.isDrawerOpen = true;
+  cartState.isMiniCartOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = 'hidden';
+};
+
+export const hideDrawer = () => {
+  cartState.isDrawerOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = '';
+};
+
+export const toggleDrawer = () => {
+  if (cartState.isDrawerOpen) hideDrawer();
+  else showDrawer();
 };

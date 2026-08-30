@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "setup": "npm install && npm --prefix backend install",
-    "dev": "concurrently -n WEB,API -c cyan,green \"vite --port=3000\" \"npm --prefix backend run dev\"",
+    "dev": "concurrently --restart-tries -1 --restart-after 1000 -n WEB,API -c cyan,green \"vite --port=3000\" \"npm --prefix backend run dev\"",
     "dev:web": "vite --port=3000",
     "dev:api": "npm --prefix backend run dev",
     "build": "vite build",

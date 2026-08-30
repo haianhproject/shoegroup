@@ -1,15 +1,19 @@
 <!-- Trang: Trả Hàng / Đổi Trả -->
 <script setup>
+import { computed } from 'vue'
 import {
   returnSearchCode, returnFoundOrder, returnItems, returnNote,
   searchReturnOrder, submitReturn, resetReturnForm, returnRefundTotal, returnSelectedCount,
   returnFilter, filteredReturns, getReturnBadgeClass, processReturn,
-  formatPrice, notify,
+  formatPrice, notify, getReturnTypeLabel,
 } from '../adminStore'
 
-const returnStatuses = ['Tất cả', 'Chờ xử lý', 'Đã tiếp nhận', 'Đang kiểm tra', 'Chấp nhận hoàn tiền', 'Sự cố', 'Từ chối', 'Đã hoàn tất']
+const returnStatuses = ['Tất cả', 'Chờ xử lý', 'Đã tiếp nhận', 'Đang kiểm tra', 'Chấp nhận hoàn tiền', 'Đã hoàn tiền', 'Sự cố', 'Từ chối', 'Hủy', 'Đã hoàn tất']
+const isNotReceivedOrder = computed(() => ['Đang vận chuyển', 'Giao hàng thất bại', 'Về kho'].includes(returnFoundOrder.value?.status))
+const canSubmitFoundReturn = computed(() => isNotReceivedOrder.value || returnSelectedCount.value > 0)
 
 function conditionLabel(request) {
+  if (getReturnTypeLabel(request?.return_type) === 'Chưa nhận được hàng') return 'Không áp dụng (chưa nhận hàng)'
   const conditions = (request?.details || []).map((detail) => String(detail.Condition ?? detail.condition ?? '').toUpperCase())
   if (conditions.includes('DAMAGED')) return 'Hư hỏng / tai nạn'
   if (conditions.includes('OPENED')) return 'Đã mở / đã thử'
@@ -23,7 +27,7 @@ function conditionLabel(request) {
     <!-- Ô tra cứu hóa đơn -->
     <div class="bg-white p-4 mb-4" style="border-radius:4px;">
       <h5 class="fw-bold mb-1 text-dark">Trả hàng</h5>
-      <p class="text-secondary small mb-3">Tra cứu theo mã vận đơn để tạo yêu cầu trả / hoàn tiền. Chỉ áp dụng với đơn đã <b>giao hàng thành công</b>.</p>
+      <p class="text-secondary small mb-3">Tra cứu theo mã vận đơn để tạo yêu cầu trả / hoàn tiền. Đơn đã giao có thể trả sản phẩm; đơn đang giao, giao thất bại hoặc đã về kho có thể báo <b>chưa nhận được hàng</b>.</p>
       <div class="d-flex flex-wrap align-items-center gap-2">
         <label class="fw-medium text-dark mb-0">Mã vận đơn:</label>
         <div class="position-relative flex-grow-1" style="min-width:240px;max-width:440px;">
@@ -37,7 +41,7 @@ function conditionLabel(request) {
     <!-- Chưa tìm thấy: trạng thái rỗng -->
     <div v-if="!returnFoundOrder" class="bg-white p-5 text-center mb-4" style="border-radius:4px;">
       <h6 class="fw-bold text-secondary mt-3 mb-1">TRẢ HÀNG</h6>
-      <p class="text-secondary small mb-0">Nhập mã vận đơn phía trên để bắt đầu. Chỉ đơn đã giao thành công mới được trả hàng.</p>
+      <p class="text-secondary small mb-0">Nhập mã vận đơn phía trên để bắt đầu. Đơn đã giao có thể trả sản phẩm; đơn đang giao, giao thất bại hoặc đã về kho có thể báo chưa nhận hàng.</p>
     </div>
 
     <!-- Đã tìm thấy đơn -->
@@ -45,7 +49,7 @@ function conditionLabel(request) {
       <div class="col-lg-8">
         <div class="bg-white rounded-1 shadow-sm p-4">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="fw-bold mb-0 text-dark">Danh sách sản phẩm trả</h6>
+            <h6 class="fw-bold mb-0 text-dark">{{ isNotReceivedOrder ? 'Chi tiết kiện hàng cần kiểm tra' : 'Danh sách sản phẩm trả' }}</h6>
             <span class="badge rounded-1 bg-light text-secondary border" v-text="'Đơn #' + returnFoundOrder.id"></span>
           </div>
           <div class="table-responsive">
@@ -82,7 +86,8 @@ function conditionLabel(request) {
           <div class="d-flex justify-content-between mb-2"><span class="text-secondary">Tổng tiền đơn</span><span class="fw-medium" v-text="formatPrice(returnFoundOrder.total)"></span></div>
           <div class="d-flex justify-content-between mb-2"><span class="text-secondary">Số SP chọn trả</span><span class="fw-medium" v-text="returnSelectedCount + ' sản phẩm'"></span></div>
           <div class="d-flex justify-content-between align-items-center mb-3"><span class="fw-bold text-dark">Số tiền hoàn trả</span><h5 class="fw-bolder mb-0 text-dark" v-text="formatPrice(returnRefundTotal)"></h5></div>
-          <button @click="submitReturn()" :disabled="returnSelectedCount === 0" class="btn btn-dark w-100 rounded-2 fw-bold py-2">Tạo yêu cầu trả hàng</button>
+          <div v-if="isNotReceivedOrder" class="small text-secondary mb-2">Không cần chọn từng sản phẩm; nếu để trống, hệ thống sẽ ghi nhận toàn bộ kiện hàng chưa nhận.</div>
+          <button @click="submitReturn()" :disabled="!canSubmitFoundReturn" class="btn btn-dark w-100 rounded-2 fw-bold py-2">{{ isNotReceivedOrder ? 'Báo chưa nhận được hàng' : 'Tạo yêu cầu trả hàng' }}</button>
           <button @click="resetReturnForm()" class="btn btn-light border w-100 rounded-2 mt-2">Hủy</button>
         </div>
       </div>
@@ -102,7 +107,7 @@ function conditionLabel(request) {
             <tr v-for="r in filteredReturns" :key="r.id">
               <td class="fw-bold text-dark" v-text="'#' + r.id"></td>
               <td v-text="'#' + r.order_id"></td>
-              <td v-text="r.return_type"></td>
+              <td v-text="getReturnTypeLabel(r.return_type)"></td>
               <td class="small text-secondary" style="max-width:220px;" v-text="r.reason"></td>
               <td>
                 <span class="small fw-medium" v-text="conditionLabel(r)"></span>
@@ -123,7 +128,11 @@ function conditionLabel(request) {
                   <button @click="processReturn(r, 'Chấp nhận hoàn tiền')" class="btn btn-sm btn-dark" style="border-radius:4px;">Chấp nhận hoàn</button>
                   <button @click="processReturn(r, 'Từ chối')" class="btn btn-sm btn-light border text-danger" style="border-radius:4px;">Từ chối</button>
                 </div>
-                <button v-else-if="r.status === 'Chấp nhận hoàn tiền'" @click="processReturn(r, 'Đã hoàn tất')" class="btn btn-sm btn-dark" style="border-radius:4px;">Xác nhận hoàn tiền</button>
+                <div v-else-if="r.status === 'Sự cố'" class="d-flex gap-1 justify-content-end">
+                  <button @click="processReturn(r, 'Đang kiểm tra')" class="btn btn-sm btn-dark" style="border-radius:4px;">Kiểm tra lại</button>
+                  <button @click="processReturn(r, 'Từ chối')" class="btn btn-sm btn-light border text-danger" style="border-radius:4px;">Từ chối</button>
+                </div>
+                <button v-else-if="r.status === 'Chấp nhận hoàn tiền'" @click="processReturn(r, 'Đã hoàn tiền')" class="btn btn-sm btn-dark" style="border-radius:4px;">Xác nhận hoàn tiền</button>
                 <span v-else class="text-secondary small">—</span>
               </td>
             </tr>

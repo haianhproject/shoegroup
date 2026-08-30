@@ -18,6 +18,8 @@ IF COL_LENGTH('dbo.Returns', 'UpdatedBy') IS NULL
   ALTER TABLE dbo.Returns ADD UpdatedBy int NULL;
 IF COL_LENGTH('dbo.ReturnDetails', 'Condition') IS NULL
   ALTER TABLE dbo.ReturnDetails ADD Condition nvarchar(30) NULL;
+IF COL_LENGTH('dbo.Users', 'AvatarURL') IS NULL
+  ALTER TABLE dbo.Users ADD AvatarURL nvarchar(max) NULL;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ReturnDetails_ReturnID' AND object_id = OBJECT_ID('dbo.ReturnDetails'))

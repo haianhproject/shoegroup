@@ -267,7 +267,7 @@ onMounted(fetchAll)
             <p class="text-secondary">Thử điều chỉnh bộ lọc hoặc từ khóa khác.</p>
             <button class="btn-sg" @click="clearFilters">Xóa bộ lọc</button>
           </div>
-          <div v-else class="row row-cols-2 row-cols-md-3 g-4">
+          <div v-else class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3 g-lg-4 product-grid">
             <div class="col fade-in" v-for="product in paginatedProducts" :key="product.id_product">
               <ShoeCard :product="product" />
             </div>
@@ -313,10 +313,10 @@ onMounted(fetchAll)
 .products-page { background: var(--sg-canvas); min-height: 100vh; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; margin: 0; }
-.sort-sel { padding: .5rem 1rem; font-weight: 600; min-width: 160px; }
+.sort-sel { padding: .5rem 1rem; font-weight: 600; min-width: 160px; border-radius: 10px; }
 
 .filter-panel {
-  background: #fff; border: 1px solid #e5e5e5; border-radius: 0px; padding: 20px;
+  background: #fff; border: 1px solid #e5e5e5; border-radius: 16px; padding: 20px;
   position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow-y: auto;
 }
 .filter-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--sg-line); margin-bottom: 16px; }
@@ -325,25 +325,25 @@ onMounted(fetchAll)
 .filter-group { padding: 14px 0; border-bottom: 1px dashed var(--sg-line); }
 .filter-group:last-child { border-bottom: 0; }
 .filter-label { font-weight: 700; font-size: .85rem; color: var(--sg-ink-2); margin-bottom: 10px; display: block; }
-.search-inline { display: flex; align-items: center; gap: 8px; background: var(--sg-canvas); border: 1px solid var(--sg-line); border-radius: 0px; padding: 6px 12px; }
+.search-inline { display: flex; align-items: center; gap: 8px; background: var(--sg-canvas); border: 1px solid var(--sg-line); border-radius: 10px; padding: 6px 12px; }
 .search-inline i { color: var(--sg-muted); }
 .search-inline input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
 .chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
-.filter-chip { border: 1px solid var(--sg-line); background: #fff; border-radius: 0px; padding: .3rem .8rem; font-size: .8rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
+.filter-chip { border: 1px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
 .filter-chip:hover { border-color: #0A0A0A; color: #0A0A0A; }
 .filter-chip.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
 .color-wrap { display: flex; flex-wrap: wrap; gap: 10px; }
-.color-dot { width: 34px; height: 34px; border-radius: 0px; border: 1px solid #ccc; color: transparent; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; }
+.color-dot { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #ccc; color: transparent; display: flex; align-items: center; justify-content: center; font-size: .8rem; transition: .2s; }
 .color-dot:hover { transform: scale(1.12); border-color: #0A0A0A; }
 .color-dot.active { box-shadow: 0 0 0 2px #0A0A0A; border-color: #0A0A0A; color: #fff; }
 .size-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
-.size-box { width: 46px; height: 40px; border: 1px solid #ccc; background: #fff; border-radius: 0px; font-weight: 700; transition: .2s; display: flex; align-items: center; justify-content: center; color: #0A0A0A; }
+.size-box { width: 46px; height: 40px; border: 1px solid #ccc; background: #fff; border-radius: 10px; font-weight: 700; transition: .2s; display: flex; align-items: center; justify-content: center; color: #0A0A0A; }
 .size-box:hover { border-color: #0A0A0A; }
 .size-box.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; }
 .check-row { display: flex; align-items: center; gap: 8px; font-size: .88rem; cursor: pointer; }
 .check-row input { width: 17px; height: 17px; accent-color: #0A0A0A; }
 
-.empty-state { text-align: center; padding: 60px 20px; }
+.empty-state { text-align: center; padding: 60px 20px; border-radius: 16px; }
 .empty-state i { font-size: 3rem; color: var(--sg-muted); }
 .empty-state h5 { font-weight: 800; margin-top: 12px; }
 
@@ -360,7 +360,7 @@ onMounted(fetchAll)
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--sg-line);
-  border-radius: 0;
+  border-radius: 10px;
   background: #fff;
   color: var(--sg-ink);
   font-size: .88rem;

@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, confirmReceived, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders
+  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
@@ -21,6 +21,8 @@ const statusMeta = {
   PENDING: { color: 'amber', icon: 'bi-hourglass-split' },
   CONFIRMED: { color: 'blue', icon: 'bi-check2-circle' },
   SHIPPING: { color: 'cyan', icon: 'bi-truck' },
+  DELIVERY_FAILED: { color: 'red', icon: 'bi-truck' },
+  WAREHOUSE_RETURN: { color: 'amber', icon: 'bi-box-seam' },
   DELIVERED: { color: 'lime', icon: 'bi-box-seam' },
   RECEIVED: { color: 'green', icon: 'bi-bag-check' },
   COMPLETED: { color: 'green', icon: 'bi-patch-check-fill' },
@@ -29,9 +31,11 @@ const statusMeta = {
 }
 
 // Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper)
-const FLOW = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'COMPLETED']
+// Thanh tiến trình kết thúc ở mốc giao hàng thành công; không vẽ thêm
+// một icon "Hoàn thành" không có thao tác tương ứng.
+const FLOW = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED']
 const stepIndex = (s) => {
-  if (s === 'RECEIVED' || s === 'COMPLETED') return FLOW.indexOf('COMPLETED')
+  if (s === 'RECEIVED' || s === 'COMPLETED') return FLOW.indexOf('DELIVERED')
   return FLOW.indexOf(s)
 }
 
@@ -49,20 +53,6 @@ const filtered = computed(() => {
 })
 
 const toggle = (id) => { expanded.value = expanded.value === id ? null : id }
-
-const handleReceived = async (order) => {
-  if (order.serverId) {
-    try {
-      await api.put(`/orders/${order.serverId}/receive`)
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Không thể xác nhận đã nhận hàng.' })
-      return
-    }
-  }
-  const r = confirmReceived(order.id)
-  if (r?.ok === false) { notify({ type: 'error', message: r.message }); return }
-  notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${order.id} hoàn tất. Cảm ơn bạn!` })
-}
 
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
 
@@ -99,6 +89,62 @@ const isBankTransfer = (o) => {
   return false
 }
 
+const isLostDelivery = (o) => {
+  if (!o || o.status !== 'CANCELLED') return false
+  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
+  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${o.cancelReason || ''} ${historyText}`.toLowerCase()
+  return text.includes('lost_in_transit') || text.includes('mất hàng') || text.includes('thất lạc') || text.includes('lost')
+}
+
+const isAccidentDelivery = (o) => {
+  if (!o) return false
+  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
+  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${historyText}`.toLowerCase()
+  return text.includes('delivery_accident') || text.includes('tai nạn') || text.includes('trục trặc') || text.includes('sự cố vận chuyển') || text.includes('va chạm')
+}
+
+const historyStatusKeys = (o) => (o?.history || []).map((h) => mapStatusToKey(h.status))
+const hasDeliveryIssue = (o) => {
+  if (!o) return false
+  const keys = historyStatusKeys(o)
+  return ['DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)
+    || keys.includes('DELIVERY_FAILED')
+    || keys.includes('WAREHOUSE_RETURN')
+}
+
+const deliveryIssueMessage = (o) => {
+  if (!o) return ''
+  if (isLostDelivery(o)) {
+    return isBankTransfer(o)
+      ? 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Vui lòng liên hệ shop để được hoàn tiền.'
+      : 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Shop rất tiếc vì sự cố này.'
+  }
+  if (o.status === 'WAREHOUSE_RETURN') {
+    return isAccidentDelivery(o)
+      ? 'Đơn hàng gặp trục trặc trong quá trình vận chuyển. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
+      : 'Đơn hàng chưa giao thành công vì chưa liên hệ được người nhận. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
+  }
+  if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Đơn hàng đang được shop giao lại. Vui lòng để ý điện thoại để nhận hàng.'
+  if (hasDeliveryIssue(o) && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) return 'Đơn hàng đã được giao lại thành công.'
+  if (o.status === 'DELIVERY_FAILED') return 'Đơn hàng giao chưa thành công. Shop đang xử lý hướng giao lại hoặc hỗ trợ bạn trong mục Trả hàng.'
+  return ''
+}
+
+const deliveryIssueSteps = (o) => {
+  if (!o || !hasDeliveryIssue(o)) return []
+  const historyKeys = historyStatusKeys(o)
+  const failed = o.status === 'DELIVERY_FAILED'
+    || historyKeys.includes('DELIVERY_FAILED')
+    || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
+  const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
+  const steps = [{ label: 'Đang giao hàng', icon: 'bi-truck' }]
+  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'bi-exclamation-triangle' })
+  if (returned) steps.push({ label: 'Đã về kho', icon: 'bi-box-seam' })
+  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'bi-truck' })
+  if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'bi-box-seam' })
+  return steps
+}
+
 const isWaitingTransfer = (o) => {
   return isBankTransfer(o) && o.status === 'PENDING' && o.payment_status === 'Chưa thanh toán' && !['CANCELLED', 'RETURNED'].includes(o.status)
 }
@@ -125,24 +171,24 @@ const handlePay = (o) => {
 const confirmPaid = async () => {
   if (payModal.serverId) {
     try {
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
     } catch(error) {
-      notify({ type: 'error', message: error.message || 'Không thể báo thanh toán. Vui lòng thử lại.' })
+      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
     }
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
-    order.payment_status = 'Chờ thanh toán'
+    order.payment_status = 'Đã thanh toán'
     saveOrders()
   }
   payModal.open = false
-  notify({ type: 'success', title: 'Xác nhận thành công', message: 'Cảm ơn bạn. Cửa hàng sẽ kiểm tra và xác nhận thanh toán.' })
+  notify({ type: 'success', title: 'Thanh toán đã được ghi nhận', message: 'Đơn hàng đã sẵn sàng để cửa hàng xác nhận và xử lý.' })
 }
 
 const closePayModal = () => { payModal.open = false }
 
-const goReturn = (order) => { router.push({ name: 'return-order', params: { orderId: order.id } }) }
+const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
@@ -193,7 +239,7 @@ const openChangeAddress = async (order) => {
     })
     return
   }
-  if (['SHIPPING', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
+  if (['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
     notify({
       type: 'warning',
       title: 'Không thể thay đổi',
@@ -355,14 +401,33 @@ const confirmUpdateAddress = async () => {
 }
 
 let pollTimer = null
+let lastHidden = 0
+
+async function syncOrders() {
+  await loadOrders()
+  runAutoCancel()
+}
+
+function onVisibilityChange() {
+  if (!document.hidden) {
+    if (Date.now() - lastHidden > 4000) syncOrders()
+  } else {
+    lastHidden = Date.now()
+  }
+}
+
 onMounted(async () => {
   await loadOrders()
   runAutoCancel()
   isLoading.value = false
   await Promise.all([loadSavedAddresses(), fetchProvinces()])
-  pollTimer = setInterval(loadOrders, 8000)
+  pollTimer = setInterval(syncOrders, 6000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
-onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <template>
@@ -439,7 +504,18 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
           </div>
 
           <!-- Thanh tiến trình trạng thái -->
-          <div v-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
+          <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
+            <i class="bi bi-truck"></i>
+            <span><strong>Giao hàng thất bại</strong><small>Đã hủy</small></span>
+          </div>
+          <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps">
+            <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="{ current: i === deliveryIssueSteps(o).length - 1 }">
+              <span class="oc-step-dot"><i class="bi" :class="st.icon"></i></span>
+              <small>{{ st.label }}</small>
+              <span v-if="i < deliveryIssueSteps(o).length - 1" class="oc-issue-line"></span>
+            </div>
+          </div>
+          <div v-else-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
             <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED') }">
               <span class="oc-step-dot"><i class="bi" :class="statusMeta[st]?.icon"></i></span>
               <small>{{ ORDER_STATUS[st] }}</small>
@@ -449,8 +525,13 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <i class="bi" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}
           </div>
 
+          <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o) }">
+            <i class="bi" :class="isLostDelivery(o) ? 'bi-exclamation-triangle' : 'bi-info-circle'"></i>
+            <span>{{ deliveryIssueMessage(o) }}</span>
+          </div>
+
           <!-- Auto-cancel reason -->
-          <div v-if="o.status === 'CANCELLED' && o.cancelReason" class="oc-cancel">
+          <div v-if="o.status === 'CANCELLED' && o.cancelReason && !isLostDelivery(o)" class="oc-cancel">
             <i class="bi bi-exclamation-triangle"></i> {{ o.cancelReason }}
           </div>
 
@@ -464,15 +545,15 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <i class="bi bi-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
           </div>
           <div v-else-if="isBankTransfer(o) && o.payment_status === 'Chờ thanh toán'" class="oc-hold" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;">
-            <i class="bi bi-hourglass-split"></i> Đã báo thanh toán. Đang chờ cửa hàng xác nhận.
+            <i class="bi bi-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
           </div>
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
-            <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="['DELIVERED','RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)">Yêu cầu trả hàng</button>
+            <button v-if="['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
+            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 
@@ -630,7 +711,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
           <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" style="width: 200px; height: 200px; object-fit: contain;" />
           <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng hoặc MoMo. Sau khi thanh toán thành công, ấn nút bên dưới để thông báo cho chúng tôi.</p>
+          <p class="text-secondary small mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
           <div class="d-flex flex-column gap-2">
             <button class="btn-sg" style="background: #ea580c" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
             <button class="btn-sg-outline w-100" @click="closePayModal">ĐÓNG</button>
@@ -721,10 +802,21 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px rgba(10,10,10,.2); }
 .oc-step small { font-size: .68rem; color: var(--sg-muted); font-weight: 700; line-height: 1.1; }
 .oc-step.done small { color: var(--sg-ink); }
+.oc-issue-steps { display: flex; align-items: flex-start; gap: 0; margin-top: 16px; padding: 12px 10px 8px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; }
+.oc-issue-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; color: #92400e; }
+.oc-issue-step .oc-step-dot { background: #fff; border-color: #fbbf24; color: #b45309; }
+.oc-issue-step.current .oc-step-dot { background: #b45309; border-color: #b45309; color: #fff; box-shadow: 0 0 0 4px rgba(180,83,9,.16); }
+.oc-issue-step small { max-width: 110px; font-size: .68rem; font-weight: 700; line-height: 1.1; }
+.oc-issue-line { position: absolute; top: 15px; left: calc(50% + 16px); width: calc(100% - 32px); height: 3px; background: #fbbf24; }
 .oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
 .oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
+.oc-status-flat.amber { background: #fef3c7; color: #92400e; }
 .oc-status-flat.gray { background: #e5e7eb; color: #374151; }
-@media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small { display: none; } }
+.lost-delivery-status span { display: inline-flex; flex-direction: column; gap: 2px; }
+.lost-delivery-status small { font-size: .7rem; font-weight: 700; }
+.oc-delivery-note { margin-top: 10px; display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #1e40af; font-size: .78rem; line-height: 1.45; }
+.oc-delivery-note.danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
+@media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
 .modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 22px; }
 .suc-enter-active { transition: opacity .3s; }

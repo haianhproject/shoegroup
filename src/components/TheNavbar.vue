@@ -3,13 +3,12 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   cartState, cartItems, cartCount, cartSubtotal,
-  formatCurrency, showMiniCart, hideMiniCart, removeFromCart,
+  formatCurrency, showDrawer, hideDrawer,
 } from '../stores/cartStore'
 import { isAuthenticated, currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from './BrandLogo.vue'
-import { API_BASE_URL } from "../services/apiClient";
-import { categories as mockCategories } from '../data/mockData'
+import { API_BASE_URL, api } from "../services/apiClient";
 
 const router = useRouter()
 const route = useRoute()
@@ -32,19 +31,22 @@ const fetchNotifications = async () => {
     const notifs = []
     
     // Fetch coupons (vouchers)
-    const resCoupons = await fetch(`${API_BASE_URL}/discounts`)
-    if (resCoupons.ok) {
-      const coupons = await resCoupons.json()
+    const coupons = await api.get('/discounts')
+    if (Array.isArray(coupons)) {
       coupons.forEach(c => {
-        if (c.IsActive) {
-          const discountStr = (c.DiscountType === 'Phần trăm' || c.DiscountType === 'percent')
-             ? `${c.DiscountValue || c.DiscountPercent}%` 
-             : formatCurrency(c.DiscountValue || c.MaxDiscountAmount);
-          const expDate = new Date(c.ExpiryDate).toLocaleDateString('vi-VN');
-          const dateAdded = new Date(c.CreatedAt || c.StartDate || Date.now());
+        const active = c.IsActive ?? c.active
+        if (active !== false && active !== 0 && active !== '0') {
+          const type = c.DiscountType ?? c.discount_type ?? ''
+          const value = c.DiscountValue ?? c.value ?? c.DiscountPercent ?? c.percent ?? 0
+          const discountStr = (type === 'Phần trăm' || String(type).toLowerCase() === 'percent' || String(type).toLowerCase() === 'phan tram')
+             ? `${value}%`
+             : formatCurrency(value || c.MaxDiscountAmount || c.max_discount);
+          const expiry = c.ExpiryDate ?? c.expiry
+          const expDate = expiry ? new Date(expiry).toLocaleDateString('vi-VN') : '—';
+          const dateAdded = new Date(c.CreatedAt ?? c.created_at ?? c.StartDate ?? c.start_date ?? Date.now());
           notifs.push({
             type: 'voucher',
-            message: `Voucher mới: ${c.CouponCode} giảm ${discountStr} (HSD: ${expDate})`,
+            message: `Voucher mới: ${c.CouponCode ?? c.code ?? ''} giảm ${discountStr} (HSD: ${expDate})`,
             date: dateAdded.toLocaleString('vi-VN'),
             timestamp: dateAdded.getTime(),
             link: '/products?center=true'
@@ -54,19 +56,19 @@ const fetchNotifications = async () => {
     }
 
     // Fetch notifications if authenticated
-    if (isAuthenticated.value && currentUser.value?.id) {
-      const resNotifs = await fetch(`${API_BASE_URL}/customers/${currentUser.value.id}/notifications`)
-      if (resNotifs.ok) {
-        const dbNotifs = await resNotifs.json()
+    const userId = currentUser.value?.id_user ?? currentUser.value?.id ?? currentUser.value?.UserID
+    if (isAuthenticated.value && userId) {
+      const dbNotifs = await api.get(`/customers/${userId}/notifications`)
+      if (Array.isArray(dbNotifs)) {
         dbNotifs.forEach(n => {
-          const dateAdded = new Date(n.created_at || Date.now());
+          const dateAdded = new Date(n.created_at ?? n.CreatedAt ?? Date.now());
           notifs.push({
-            type: n.type?.toLowerCase() || 'order',
-            message: n.message,
+            type: (n.type ?? n.Type)?.toLowerCase() || 'order',
+            message: n.message ?? n.Message ?? n.title ?? n.Title ?? '',
             date: dateAdded.toLocaleString('vi-VN'),
             timestamp: dateAdded.getTime(),
-            link: n.type === 'order' || n.type === 'Order' ? '/orders?center=true' : '/products?center=true',
-            isRead: n.is_read
+            link: ['order', 'Order'].includes(n.type ?? n.Type) ? '/orders?center=true' : '/products?center=true',
+            isRead: n.is_read ?? n.IsRead
           })
         })
       }
@@ -114,8 +116,8 @@ const goToNotif = (n) => {
 
 const goCategory = (id) => router.push({ path: '/products', query: { category: id } })
 
-// Menu danh mục dùng cùng query `category` với các thẻ danh mục trên trang
-// chủ. Khi API chưa chạy, dữ liệu mẫu vẫn giúp menu có thể dùng được.
+// Menu danh mục lấy trực tiếp từ CSDL qua API. Không dùng dữ liệu mẫu ở đây,
+// vì như vậy các môn không tồn tại trong CSDL vẫn bị hiển thị trên navbar.
 const menuCategories = ref([])
 const isCategoryMenuOpen = ref(false)
 const fetchMenuCategories = async () => {
@@ -125,11 +127,12 @@ const fetchMenuCategories = async () => {
     const data = await response.json()
     if (!Array.isArray(data)) throw new Error('Danh mục không hợp lệ')
     menuCategories.value = data
-      .filter((c) => c.active !== false && c.active !== 0 && c.active !== '0' && c.name)
+      .filter((c) => c.id != null && c.active !== false && c.active !== 0 && c.active !== '0' && c.name)
       .filter((c) => !['giày nam', 'tất cả'].includes(c.name.trim().toLowerCase()))
       .map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
   } catch {
-    menuCategories.value = mockCategories.filter((c) => !['giày nam', 'tất cả'].includes(c.category_name.toLowerCase()))
+    // API lỗi thì để menu rỗng, tuyệt đối không tự chèn danh mục mẫu.
+    menuCategories.value = []
   }
 }
 const toggleCategoryMenu = () => {
@@ -160,9 +163,7 @@ const submitSearch = () => {
 
 watch(() => route.query.search, (s) => { searchQuery.value = s || '' }, { immediate: true })
 
-let hideTimeout = null
-const handleMouseEnter = () => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null } showMiniCart() }
-const handleMouseLeave = () => { hideTimeout = setTimeout(() => hideMiniCart(), 300) }
+const openCartDrawer = () => showDrawer()
 
 const scrolled = ref(false)
 const onScroll = () => { scrolled.value = window.scrollY > 8 }
@@ -171,7 +172,9 @@ let notifPollInterval = null
 onMounted(() => { 
   fetchNotifications()
   fetchMenuCategories()
-  notifPollInterval = setInterval(fetchNotifications, 5000)
+  // Đồng bộ vừa đủ nhanh nhưng không tạo hàng chục request/phút khi để mở
+  // navbar lâu; request GET vẫn không ảnh hưởng quota API ghi.
+  notifPollInterval = setInterval(fetchNotifications, 30000)
   window.addEventListener('scroll', onScroll) 
 })
 onUnmounted(() => {
@@ -256,53 +259,12 @@ onUnmounted(() => {
             <i class="bi" :class="searchOpen ? 'bi-x-lg' : 'bi-search'"></i>
           </button>
 
-          <!-- Cart + mini popover -->
-          <div class="sg-cart-wrap" @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave">
-            <router-link to="/cart" class="sg-icon-btn" @click="hideMiniCart">
+          <!-- Cart: mở drawer thay vì chuyển trang (không làm mất trang nền) -->
+          <div class="sg-cart-wrap">
+            <button class="sg-icon-btn" @click="openCartDrawer" aria-label="Giỏ hàng">
               <i class="bi bi-bag"></i>
               <span v-if="cartCount > 0" class="sg-cart-badge">{{ cartCount }}</span>
-            </router-link>
-
-            <transition name="mc">
-              <div v-if="cartState.isMiniCartOpen" class="mini-cart" @click.stop>
-                <div class="mc-header">
-                  <span class="mc-title">Giỏ hàng</span>
-                  <span class="mc-count">{{ cartCount }} sản phẩm</span>
-                </div>
-                <div v-if="miniCartItems.length === 0" class="mc-empty">
-                  <i class="bi bi-bag-x"></i>
-                  <p>Giỏ hàng đang trống.</p>
-                </div>
-                <div v-else class="mc-body">
-                  <div v-for="item in miniCartItems" :key="item.id_product_detail" class="mc-item">
-                    <router-link :to="`/product/${item.id_product}`" class="mc-img" @click="hideMiniCart">
-                      <img :src="item.color?.image || item.product?.image_url" :alt="item.product?.product_name">
-                    </router-link>
-                    <div class="mc-info">
-                      <router-link :to="`/product/${item.id_product}`" class="mc-name" @click="hideMiniCart">
-                        {{ item.product?.product_name }}
-                      </router-link>
-                      <div class="mc-attrs">
-                        <span v-if="item.size?.size_name" class="mc-tag">Size {{ item.size.size_name }}</span>
-                        <span v-if="item.color?.color_label" class="mc-tag">{{ item.color.color_label }}</span>
-                      </div>
-                      <p class="mc-price">{{ item.quantity }} × {{ formatCurrency(item.unitPrice) }}</p>
-                    </div>
-                    <button class="mc-remove" @click="removeFromCart(item.id_product_detail)"><i class="bi bi-x"></i></button>
-                  </div>
-                  <div v-if="cartItems.length > 3" class="mc-more">Và {{ cartItems.length - 3 }} sản phẩm khác…</div>
-                  <div class="mc-divider"></div>
-                  <div class="mc-subtotal">
-                    <span>Tạm tính</span>
-                    <span class="mc-subtotal-value">{{ formatCurrency(cartSubtotal) }}</span>
-                  </div>
-                  <div class="mc-actions">
-                    <router-link to="/cart" class="mc-btn mc-btn--outline" @click="hideMiniCart">Xem giỏ hàng</router-link>
-                    <router-link to="/checkout" class="mc-btn mc-btn--primary" @click="hideMiniCart">Thanh toán</router-link>
-                  </div>
-                </div>
-              </div>
-            </transition>
+            </button>
           </div>
 
           <!-- Account -->

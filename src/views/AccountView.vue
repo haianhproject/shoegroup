@@ -1,10 +1,11 @@
-<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+﻿<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { currentUser, updateProfile, logout } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import { formatCurrency } from '../stores/cartStore'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
+import { api } from '../services/apiClient'
 import MyOrders from './MyOrders.vue'
 
 const route = useRoute()
@@ -13,7 +14,7 @@ const tab = ref(['orders', 'address', 'profile', 'coupons'].includes(route.query
 
 onMounted(async () => {
   if (route.query.tab === 'orders') tab.value = 'orders'
-  await Promise.all([fetchProvinces(), loadAddresses()])
+  await Promise.all([fetchProvinces(), loadAddresses(), fetchUserCoupons()])
 })
 
 const setTab = (t) => {
@@ -23,50 +24,122 @@ const setTab = (t) => {
 
 const handleLogout = () => {
   logout()
-  notify({ type: 'success', title: 'Đã đăng xuất', message: 'Hẹn gặp lại bạn!' })
+  notify({ type: 'success', title: 'Da dang xuat', message: 'Hen gap lai ban!' })
   router.push('/')
 }
 
 const profile = reactive({
   full_name: currentUser.value?.full_name || '',
-  email: currentUser.value?.email || '',
+  email: currentUser.value?.email || currentUser.value?.username || '',
   phone: currentUser.value?.phone || '',
+  avatar_url: currentUser.value?.avatar_url || currentUser.value?.AvatarURL || '',
 })
 const savingProfile = ref(false)
+const avatarInput = ref(null)
+const MAX_AVATAR_BYTES = 1.5 * 1024 * 1024
 
-const saveProfile = async () => {
-  savingProfile.value = true
-  const r = await updateProfile({
-    id: currentUser.value?.id_user || currentUser.value?.id,
-    email: profile.email,
-    full_name: profile.full_name,
-    phone: profile.phone
+const profileInitials = computed(() => (String(profile.full_name || '').trim() || 'K')
+  .split(/\s+/)
+  .map(word => word.charAt(0))
+  .slice(-2)
+  .join('')
+  .toUpperCase())
+
+// Đồng bộ dữ liệu hồ sơ khi đăng nhập/khôi phục phiên thay đổi.
+watch(currentUser, (user) => {
+  if (!user || savingProfile.value) return
+  Object.assign(profile, {
+    full_name: user.full_name || user.name || '',
+    email: user.email || user.username || '',
+    phone: user.phone || '',
+    avatar_url: user.avatar_url || user.AvatarURL || '',
   })
-  savingProfile.value = false
-  if (r?.ok === false) { notify({ type: 'error', message: r.message || 'Không thể cập nhật.' }); return }
-  notify({ type: 'success', title: 'Đã lưu', message: 'Thông tin cá nhân đã cập nhật.' })
+})
+
+const chooseAvatar = () => avatarInput.value?.click()
+
+const onAvatarSelected = (event) => {
+  const file = event.target?.files?.[0]
+  // Cho phép chọn lại đúng tệp vừa xóa/chọn trước đó.
+  if (event.target) event.target.value = ''
+  if (!file) return
+  if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(file.type)) {
+    notify({ type: 'error', message: 'Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.' })
+    return
+  }
+  if (file.size > MAX_AVATAR_BYTES) {
+    notify({ type: 'error', message: 'Ảnh phải nhỏ hơn 1,5 MB.' })
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+    if (!dataUrl || dataUrl.length > 2200000) {
+      notify({ type: 'error', message: 'Không thể đọc ảnh hoặc ảnh quá lớn.' })
+      return
+    }
+    profile.avatar_url = dataUrl
+  }
+  reader.onerror = () => notify({ type: 'error', message: 'Không thể đọc tệp ảnh.' })
+  reader.readAsDataURL(file)
 }
 
-/* ---- API ĐỊA CHỈ & TÌM KIẾM NHANH ---- */
+const removeAvatar = () => {
+  profile.avatar_url = ''
+}
+
+const saveProfile = async () => {
+  if (savingProfile.value) return
+  const fullName = String(profile.full_name || '').trim()
+  const phone = String(profile.phone || '').trim()
+  if (!fullName) {
+    notify({ type: 'error', message: 'Vui lòng nhập họ tên.' })
+    return
+  }
+  savingProfile.value = true
+  try {
+    const r = await updateProfile({
+      id: currentUser.value?.id_user || currentUser.value?.id,
+      email: profile.email,
+      full_name: fullName,
+      phone,
+      avatar_url: profile.avatar_url || null,
+    })
+    if (r?.ok === false) {
+      notify({ type: 'error', message: r.message || 'Không thể cập nhật.' })
+      return
+    }
+    if (r?.user) {
+      Object.assign(profile, {
+        full_name: r.user.full_name || profile.full_name,
+        email: r.user.email || profile.email,
+        phone: r.user.phone || '',
+        avatar_url: r.user.avatar_url || '',
+      })
+    }
+    notify({ type: 'success', title: 'Đã lưu', message: 'Thông tin cá nhân và avatar đã cập nhật.' })
+  } catch (error) {
+    notify({ type: 'error', message: error?.message || 'Không thể cập nhật.' })
+  } finally {
+    savingProfile.value = false
+  }
+}
+
 const provinces = ref([])
 const communes = ref([])
 const loadingCommunes = ref(false)
 const addressSaving = ref(false)
-
-// State tìm kiếm & Dropdown
 const searchProvince = ref('')
 const searchCommune = ref('')
 const showProvinceDropdown = ref(false)
 const showCommuneDropdown = ref(false)
 
-// Lọc Tỉnh/Thành phố theo từ khóa gõ vào 🔍
 const filteredProvinces = computed(() => {
   if (!searchProvince.value) return provinces.value
   const kw = searchProvince.value.toLowerCase().trim()
   return provinces.value.filter(p => p.name.toLowerCase().includes(kw))
 })
 
-// Lọc Phường/Xã theo từ khóa gõ vào 🔍
 const filteredCommunes = computed(() => {
   if (!searchCommune.value) return communes.value
   const kw = searchCommune.value.toLowerCase().trim()
@@ -78,7 +151,7 @@ const fetchProvinces = async () => {
     provinces.value = await vietnamAddressApi.provinces()
   } catch (error) {
     provinces.value = []
-    notify({ type: 'error', message: error.message || 'Không tải được danh sách Tỉnh/Thành.' })
+    notify({ type: 'error', message: error.message || 'Khong tai duoc danh sach Tinh/Thanh.' })
   }
 }
 
@@ -87,19 +160,17 @@ const selectProvince = async (p) => {
   modal.provinceName = p.name
   searchProvince.value = p.name
   showProvinceDropdown.value = false
-
   modal.communeId = ''
   modal.communeName = ''
   searchCommune.value = ''
   communes.value = []
-
   loadingCommunes.value = true
   try {
     const rows = await vietnamAddressApi.wards(p.code)
     if (String(modal.provinceId) === String(p.code)) communes.value = rows
   } catch (error) {
     if (String(modal.provinceId) === String(p.code)) communes.value = []
-    notify({ type: 'error', message: error.message || 'Không tải được danh sách Phường/Xã.' })
+    notify({ type: 'error', message: error.message || 'Khong tai duoc danh sach Phuong/Xa.' })
   } finally {
     if (String(modal.provinceId) === String(p.code)) loadingCommunes.value = false
   }
@@ -112,7 +183,6 @@ const selectCommune = (c) => {
   showCommuneDropdown.value = false
 }
 
-/* ---- Sổ địa chỉ theo tài khoản (lưu trong UserAddresses) ---- */
 const addresses = ref([])
 const loadingAddresses = ref(false)
 
@@ -122,7 +192,7 @@ const loadAddresses = async () => {
     addresses.value = await addressBookApi.list()
   } catch (error) {
     addresses.value = []
-    notify({ type: 'error', message: error.message || 'Không tải được sổ địa chỉ.' })
+    notify({ type: 'error', message: error.message || 'Khong tai duoc so dia chi.' })
   } finally {
     loadingAddresses.value = false
   }
@@ -168,7 +238,6 @@ const openEdit = async (a) => {
   showCommuneDropdown.value = false
   searchProvince.value = a.provinceName || a.province || ''
   searchCommune.value = a.communeName || a.ward || ''
-
   const matchedProvince = provinces.value.find((p) => p.name === (a.provinceName || a.province))
   Object.assign(modal, {
     open: true,
@@ -182,14 +251,13 @@ const openEdit = async (a) => {
     line: a.line || '',
     isDefault: a.isDefault
   })
-
   if (modal.provinceId) {
     loadingCommunes.value = true
     try {
       communes.value = await vietnamAddressApi.wards(modal.provinceId)
     } catch (error) {
       communes.value = []
-      notify({ type: 'error', message: error.message || 'Không tải được danh sách Phường/Xã.' })
+      notify({ type: 'error', message: error.message || 'Khong tai duoc danh sach Phuong/Xa.' })
     } finally {
       loadingCommunes.value = false
     }
@@ -199,7 +267,6 @@ const openEdit = async (a) => {
 
 const closeModal = () => { modal.open = false }
 
-// BỘ LỌC PHONE NGHIÊM NGẶT
 const isValidPhone = (phone) => {
   const p = String(phone || '').trim()
   if (!/^0(?:3|5|7|8|9)[0-9]{8}$/.test(p)) return false
@@ -210,22 +277,18 @@ const isValidPhone = (phone) => {
 const saveAddr = async () => {
   if (addressSaving.value) return
   const cleanPhone = String(modal.phone).trim()
-
   if (!modal.recipient.trim()) {
-    notify({ type: 'error', message: 'Vui lòng nhập tên người nhận.' })
+    notify({ type: 'error', message: 'Vui long nhap ten nguoi nhan.' })
     return
   }
-
   if (!isValidPhone(cleanPhone)) {
-    notify({ type: 'error', title: 'SĐT không hợp lệ', message: 'Vui lòng nhập đúng 10 số, đúng nhà mạng Việt Nam và không dùng chuỗi số ảo.' })
+    notify({ type: 'error', title: 'SDT khong hop le', message: 'Vui long nhap dung 10 so, dung nha mang Viet Nam.' })
     return
   }
-
   if (!modal.provinceId || !modal.communeId || !modal.line.trim()) {
-    notify({ type: 'error', message: 'Vui lòng chọn Tỉnh/Thành, Phường/Xã và nhập số nhà.' })
+    notify({ type: 'error', message: 'Vui long chon Tinh/Thanh, Phuong/Xa va nhap so nha.' })
     return
   }
-
   const payload = {
     recipient: modal.recipient.trim(),
     phone: cleanPhone,
@@ -234,7 +297,6 @@ const saveAddr = async () => {
     line: modal.line.trim(),
     isDefault: modal.isDefault,
   }
-
   addressSaving.value = true
   try {
     const savedAddress = modal.editId
@@ -245,9 +307,9 @@ const saveAddr = async () => {
       .map(address => savedAddress.isDefault ? { ...address, isDefault: false } : address)
     addresses.value = [savedAddress, ...others].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
     closeModal()
-    notify({ type: 'success', title: 'Thành công', message: 'Đã lưu địa chỉ vào sổ.' })
+    notify({ type: 'success', title: 'Thanh cong', message: 'Da luu dia chi vao so.' })
   } catch (error) {
-    notify({ type: 'error', message: error.message || 'Không thể lưu địa chỉ.' })
+    notify({ type: 'error', message: error.message || 'Khong the luu dia chi.' })
   } finally {
     addressSaving.value = false
   }
@@ -264,9 +326,9 @@ const deleteAddr = async (id) => {
       remaining.forEach(address => { address.isDefault = Number(address.id) === newestId })
     }
     addresses.value = remaining.sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
-    notify({ type: 'info', message: 'Đã xóa địa chỉ.' })
+    notify({ type: 'info', message: 'Da xoa dia chi.' })
   } catch (error) {
-    notify({ type: 'error', message: error.message || 'Không thể xóa địa chỉ.' })
+    notify({ type: 'error', message: error.message || 'Khong the xoa dia chi.' })
   } finally {
     addressSaving.value = false
   }
@@ -280,26 +342,71 @@ const setDefault = async (id) => {
     addresses.value = addresses.value
       .map(address => address.id === id ? savedAddress : { ...address, isDefault: false })
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
-    notify({ type: 'success', message: 'Đã đặt làm địa chỉ mặc định.' })
+    notify({ type: 'success', message: 'Da dat lam dia chi mac dinh.' })
   } catch (error) {
-    notify({ type: 'error', message: error.message || 'Không thể đổi địa chỉ mặc định.' })
+    notify({ type: 'error', message: error.message || 'Khong the doi dia chi mac dinh.' })
   } finally {
     addressSaving.value = false
   }
 }
 
-const initials = computed(() => (profile.full_name || 'U').split(' ').map((w) => w[0]).slice(-2).join('').toUpperCase())
+const userCoupons = ref([])
+const loadingCoupons = ref(false)
 
-const userCoupons = ref([
-  { code: 'WELCOME30', discount: '-30%', desc: 'Giảm 30% cho thành viên mới', icon: 'bi-gift-fill', minOrder: '500.000đ', expire: '31/12/2026', used: false, expired: false },
-  { code: 'FREESHIP', discount: 'Free Ship', desc: 'Miễn phí vận chuyển toàn quốc', icon: 'bi-truck', minOrder: '300.000đ', expire: '31/08/2026', used: false, expired: false },
-  { code: 'SUMMER20', discount: '-20%', desc: 'Ưu đãi mùa hè 2026', icon: 'bi-sun-fill', minOrder: '400.000đ', expire: '30/09/2026', used: false, expired: false },
-  { code: 'FLASH50K', discount: '-50.000đ', desc: 'Flash sale cuối tuần', icon: 'bi-ticket-perforated-fill', minOrder: '800.000đ', expire: '15/07/2026', used: true, expired: false },
-  { code: 'NEWYEAR', discount: '-15%', desc: 'Chào năm mới 2026', icon: 'bi-stars', minOrder: '0đ', expire: '31/01/2026', used: false, expired: true },
-])
+const fetchUserCoupons = async () => {
+  loadingCoupons.value = true
+  try {
+    const list = await api.get('/discounts')
+    const now = new Date()
+    now.setHours(0,0,0,0)
+    userCoupons.value = (Array.isArray(list) ? list : []).map((c) => {
+      const code = c.code ?? c.CouponCode ?? ''
+      const name = c.name ?? c.CouponName ?? c.description ?? ''
+      const dtype = String(c.discount_type ?? c.DiscountType ?? '').toLowerCase()
+      const val = Number(c.value ?? c.DiscountValue ?? c.percent ?? c.DiscountPercent ?? 0)
+      const minOrderVal = Number(c.min_order ?? c.MinOrderAmount ?? 0)
+      const expiryRaw = c.expiry ?? c.ExpiryDate ?? c.Expiry ?? ''
+      let expireText = '—'
+      let expired = false
+      if (expiryRaw) {
+        const d = new Date(expiryRaw)
+        if (!isNaN(d.getTime())) {
+          expireText = d.toLocaleDateString('vi-VN')
+          const ed = new Date(d); ed.setHours(23,59,59,999)
+          expired = ed < new Date()
+        }
+      }
+      const used = Number(c.used ?? c.UsedCount ?? 0) >= Number(c.limit ?? c.UsageLimit ?? 999999) && Number(c.limit ?? 0) > 0
+      const active = c.active !== 0 && c.active !== false && c.active !== '0' && c.IsActive !== 0
+      const isExpired = expired || active === false
+      let discount = ''
+      if (dtype.includes('phan tram') || dtype.includes('percent')) discount = `-${val}%`
+      else if (val) discount = `-${formatCurrency(val)}`
+      else discount = name || code
+      let icon = 'bi-ticket-perforated-fill'
+      if (code.toLowerCase().includes('ship') || name.toLowerCase().includes('ship')) icon = 'bi-truck'
+      else if (dtype.includes('phan tram') || dtype.includes('percent')) icon = 'bi-percent'
+      else icon = 'bi-gift-fill'
+      return {
+        code,
+        discount: discount || '-',
+        desc: name || c.description || 'Ma giam gia',
+        icon,
+        minOrder: minOrderVal ? formatCurrency(minOrderVal) : '0d',
+        expire: expireText,
+        used: used && !isExpired,
+        expired: isExpired,
+      }
+    }).filter(c => c.code)
+  } catch (_) {
+    userCoupons.value = []
+  } finally {
+    loadingCoupons.value = false
+  }
+}
 
 const copyCoupon = (code) => {
-  navigator.clipboard.writeText(code).then(() => notify({ type: 'success', title: 'Đã sao chép!', message: code }))
+  navigator.clipboard.writeText(code).then(() => notify({ type: 'success', title: 'Da sao chep!', message: code }))
 }
 </script>
 
@@ -310,7 +417,10 @@ const copyCoupon = (code) => {
         <!-- Sidebar -->
         <div class="col-lg-3">
           <div class="sg-card acc-side">
-            <div class="acc-avatar">{{ initials }}</div>
+            <div class="acc-avatar" :class="{ 'has-image': profile.avatar_url }">
+              <img v-if="profile.avatar_url" :src="profile.avatar_url" alt="Avatar" class="acc-avatar-img">
+              <span v-else>{{ profileInitials }}</span>
+            </div>
             <h6 class="fw-bold mb-0">{{ profile.full_name || 'Khách hàng' }}</h6>
             <p class="text-muted small">{{ profile.email }}</p>
             <nav class="acc-nav">
@@ -328,6 +438,18 @@ const copyCoupon = (code) => {
           <div v-if="tab === 'profile'" class="sg-card acc-block">
             <div class="sg-title-bar mb-2"></div>
             <h5 class="fw-bold">Thông tin cá nhân</h5>
+            <div class="profile-avatar-editor">
+              <div class="acc-avatar profile-avatar-preview" :class="{ 'has-image': profile.avatar_url }">
+                <img v-if="profile.avatar_url" :src="profile.avatar_url" alt="Ảnh đại diện" class="acc-avatar-img">
+                <span v-else>{{ profileInitials }}</span>
+              </div>
+              <div class="profile-avatar-actions">
+                <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden @change="onAvatarSelected">
+                <button type="button" class="btn-sg btn-sg-compact" :disabled="savingProfile" @click="chooseAvatar">Chọn ảnh</button>
+                <button v-if="profile.avatar_url" type="button" class="btn-sg btn-sg-compact btn-sg-light" :disabled="savingProfile" @click="removeAvatar">Xóa ảnh</button>
+                <small>JPG, PNG, WEBP hoặc GIF · tối đa 1,5 MB · bấm “Lưu thay đổi” để lưu</small>
+              </div>
+            </div>
             <div class="row g-3 mt-1">
               <div class="col-md-6"><label class="co-label">Họ tên</label><input v-model="profile.full_name" class="sg-input w-100" placeholder="Nhập họ và tên"></div>
               <div class="col-md-6"><label class="co-label">Số điện thoại</label><input v-model="profile.phone" class="sg-input w-100" placeholder="Nhập số điện thoại"></div>
@@ -381,8 +503,10 @@ const copyCoupon = (code) => {
           <div v-else-if="tab === 'coupons'" class="sg-card acc-block">
             <div class="sg-title-bar mb-2"></div>
             <h5 class="fw-bold">Mã giảm giá của tôi</h5>
-            <p class="text-secondary mb-3">Danh sách mã giảm giá đang có hiệu lực hoặc đã dùng.</p>
-            <div class="coupon-grid">
+            <p class="text-secondary mb-3">Mã lấy trực tiếp từ cơ sở dữ liệu — đồng bộ với quản lý khuyến mãi.</p>
+            <div v-if="loadingCoupons" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải mã giảm giá…</div>
+            <div v-else-if="userCoupons.length === 0" class="text-center py-4 text-muted">Chưa có mã giảm giá khả dụng.</div>
+            <div v-else class="coupon-grid">
               <div v-for="c in userCoupons" :key="c.code" class="coupon-card" :class="{ used: c.used, expired: c.expired }">
                 <div class="coupon-left">
                   <div class="coupon-icon"><i class="bi" :class="c.icon"></i></div>
@@ -411,7 +535,7 @@ const copyCoupon = (code) => {
       </div>
     </div>
 
-    <!-- MODAL ĐỊA CHỈ (CÓ TÌM KIẾM TỈNH/XÃ) -->
+    <!-- MODAL DIA CHI -->
     <transition name="suc">
       <div v-if="modal.open" class="modal-overlay" @click.self="closeModal">
         <div class="sg-card modal-box">
@@ -419,7 +543,6 @@ const copyCoupon = (code) => {
             <h5 class="fw-bold mb-0">{{ modal.editId ? 'Cập nhật địa chỉ' : 'Thêm địa chỉ mới' }}</h5>
             <button class="btn-close-modal" @click="closeModal"><i class="bi bi-x-lg"></i></button>
           </div>
-
           <div class="row g-3">
             <div class="col-md-6">
               <label class="co-label">Tên người nhận <span class="text-danger">*</span></label>
@@ -427,86 +550,34 @@ const copyCoupon = (code) => {
             </div>
             <div class="col-md-6">
               <label class="co-label">Số điện thoại <span class="text-danger">*</span></label>
-              <input
-                v-model="modal.phone"
-                class="sg-input w-100"
-                maxlength="10"
-                placeholder="Ví dụ: 0901234567"
-                @input="modal.phone = modal.phone.replace(/[^0-9]/g, '')"
-              >
+              <input v-model="modal.phone" class="sg-input w-100" maxlength="10" placeholder="Ví dụ: 0901234567" @input="modal.phone = modal.phone.replace(/[^0-9]/g, '')">
             </div>
-
-            <!-- Tỉnh / Thành phố (Có tìm kiếm) -->
             <div class="col-md-6 position-relative">
               <label class="co-label">Tỉnh / Thành phố <span class="text-danger">*</span></label>
               <div class="search-input-wrapper">
-                <input
-                  type="text"
-                  v-model="searchProvince"
-                  class="sg-input w-100 pe-4"
-                  placeholder="🔍 Nhập để tìm Tỉnh/TP..."
-                  @focus="showProvinceDropdown = true"
-                  @blur="showProvinceDropdown = false"
-                  @input="showProvinceDropdown = true; modal.provinceId = ''"
-                />
+                <input type="text" v-model="searchProvince" class="sg-input w-100 pe-4" placeholder="Nhập để tìm Tỉnh/TP..." @focus="showProvinceDropdown = true" @blur="showProvinceDropdown = false" @input="showProvinceDropdown = true; modal.provinceId = ''" />
                 <i class="bi bi-chevron-down select-arrow"></i>
               </div>
-
-              <!-- Dropdown Tỉnh/TP -->
               <ul v-if="showProvinceDropdown" class="dropdown-search-list">
-                <li
-                  v-for="p in filteredProvinces"
-                  :key="p.code"
-                  :class="{ selected: String(modal.provinceId) === String(p.code) }"
-                  @mousedown.prevent="selectProvince(p)"
-                >
-                  {{ p.name }}
-                </li>
-                <li v-if="filteredProvinces.length === 0" class="no-result">
-                  ❌ Không tìm thấy tỉnh/thành phù hợp
-                </li>
+                <li v-for="p in filteredProvinces" :key="p.code" :class="{ selected: String(modal.provinceId) === String(p.code) }" @mousedown.prevent="selectProvince(p)">{{ p.name }}</li>
+                <li v-if="filteredProvinces.length === 0" class="no-result">❌ Không tìm thấy tỉnh/thành phù hợp</li>
               </ul>
             </div>
-
-            <!-- Phường / Xã (Có tìm kiếm) -->
             <div class="col-md-6 position-relative">
               <label class="co-label">Phường / Xã <span class="text-danger">*</span></label>
               <div class="search-input-wrapper">
-                <input
-                  type="text"
-                  v-model="searchCommune"
-                  class="sg-input w-100 pe-4"
-                  :disabled="!modal.provinceId || loadingCommunes"
-                  :placeholder="loadingCommunes ? '⏳ Đang tải dữ liệu...' : '🔍 Nhập để tìm Phường/Xã...'"
-                  @focus="showCommuneDropdown = true"
-                  @blur="showCommuneDropdown = false"
-                  @input="showCommuneDropdown = true; modal.communeId = ''"
-                />
+                <input type="text" v-model="searchCommune" class="sg-input w-100 pe-4" :disabled="!modal.provinceId || loadingCommunes" :placeholder="loadingCommunes ? 'Đang tải dữ liệu...' : 'Nhập để tìm Phường/Xã...'" @focus="showCommuneDropdown = true" @blur="showCommuneDropdown = false" @input="showCommuneDropdown = true; modal.communeId = ''" />
                 <i class="bi bi-chevron-down select-arrow"></i>
               </div>
-
-              <!-- Dropdown Phường/Xã -->
               <ul v-if="showCommuneDropdown && modal.provinceId" class="dropdown-search-list">
-                <li
-                  v-for="w in filteredCommunes"
-                  :key="w.code"
-                  :class="{ selected: String(modal.communeId) === String(w.code) }"
-                  @mousedown.prevent="selectCommune(w)"
-                >
-                  {{ w.name }}
-                </li>
-                <li v-if="filteredCommunes.length === 0 && !loadingCommunes" class="no-result">
-                  ❌ Không tìm thấy phường/xã phù hợp
-                </li>
+                <li v-for="w in filteredCommunes" :key="w.code" :class="{ selected: String(modal.communeId) === String(w.code) }" @mousedown.prevent="selectCommune(w)">{{ w.name }}</li>
+                <li v-if="filteredCommunes.length === 0 && !loadingCommunes" class="no-result">❌ Không tìm thấy phường/xã phù hợp</li>
               </ul>
             </div>
-
-            <!-- Địa chỉ cụ thể -->
             <div class="col-12">
               <label class="co-label">Số nhà, ngõ, tên đường <span class="text-danger">*</span></label>
               <input v-model="modal.line" class="sg-input w-100" placeholder="Ví dụ: Số 123 Đường Cầu Giấy">
             </div>
-
             <div class="col-12">
               <label class="check-row">
                 <input type="checkbox" v-model="modal.isDefault" :disabled="editingDefaultAddress">
@@ -514,7 +585,6 @@ const copyCoupon = (code) => {
               </label>
             </div>
           </div>
-
           <div class="d-flex gap-2 mt-4 justify-content-end">
             <button class="btn-sg-outline" @click="closeModal">Hủy bỏ</button>
             <button class="btn-sg" :disabled="addressSaving" @click="saveAddr">
@@ -529,12 +599,22 @@ const copyCoupon = (code) => {
 
 <style scoped>
 .account-page { background: var(--sg-canvas); min-height: 100vh; }
+.account-page .sg-card { border-radius: 16px; }
 .acc-side { padding: 24px; text-align: center; position: sticky; top: 90px; }
-.acc-avatar { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; background: #0A0A0A; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.5rem; }
+.acc-avatar { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; overflow: hidden; background: #0A0A0A; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.5rem; flex-shrink: 0; }
+.acc-avatar-img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.profile-avatar-editor { display: flex; align-items: center; gap: 18px; margin: 18px 0 8px; padding: 16px; border: 1px solid var(--sg-line); border-radius: 12px; background: #fafafa; }
+.profile-avatar-preview { width: 88px; height: 88px; margin: 0; font-size: 1.7rem; }
+.profile-avatar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.profile-avatar-actions small { flex-basis: 100%; color: var(--sg-muted); font-size: .76rem; }
+.btn-sg-compact { padding: 9px 16px; font-size: .78rem; }
+.btn-sg-light { background: #fff; color: var(--sg-ink); border-color: var(--sg-line); }
+.btn-sg-light:hover { background: #f3f4f6; }
 .acc-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; text-align: left; }
-.acc-nav button, .acc-nav a { border: 0; background: transparent; padding: .7rem 1rem; border-radius: 4px; font-weight: 700; color: var(--sg-ink-2); text-decoration: none; display: flex; align-items: center; gap: 10px; transition: .2s; }
-.acc-nav button:hover, .acc-nav a:hover { background: #f5f5f5; color: #0A0A0A; }
-.acc-nav .active { background: #0A0A0A; color: #fff; }
+.acc-nav button, .acc-nav a { width: 100%; border: 0; background: transparent; padding: .7rem 1rem; border-radius: var(--sg-r); font: inherit; font-weight: 700; color: var(--sg-ink-2); text-decoration: none; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; transition: background-color .2s ease, color .2s ease, transform .2s ease; }
+.acc-nav button:hover, .acc-nav a:hover { background: #f5f5f5; color: #0A0A0A; transform: translateX(2px); }
+.acc-nav button.active, .acc-nav button.active:hover { background: #0A0A0A; color: #fff; transform: none; }
+.acc-nav button.active i { color: #fff; }
 .acc-logout { color: #ef4444 !important; margin-top: 6px; }
 .acc-logout:hover { background: #fee2e2 !important; }
 .acc-content { min-height: 80vh; }
@@ -544,73 +624,36 @@ const copyCoupon = (code) => {
 .check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check-row input { width: 17px; height: 17px; accent-color: #0A0A0A; cursor: pointer; }
 .addr-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.addr-card { display: flex; gap: 12px; border: 1.5px solid var(--sg-line); border-radius: 6px; padding: 16px; transition: .2s; background: #fff; }
+.addr-card { display: flex; gap: 12px; border: 1.5px solid var(--sg-line); border-radius: var(--sg-r); padding: 16px; transition: .2s; background: #fff; }
 .addr-card.def { border-color: #0A0A0A; background: #fafafa; }
 .recipient-name { font-size: 1rem; color: #0A0A0A; }
 .addr-detail-text { font-size: .88rem; line-height: 1.4; }
-.sg-chip-default { background: #0A0A0A; color: #fff; font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: 4px; display: inline-flex; align-items: center; }
+.sg-chip-default { background: #0A0A0A; color: #fff; font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: var(--sg-r); display: inline-flex; align-items: center; }
 .addr-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; justify-content: center; min-width: 100px; }
 .link-btn { border: 0; background: transparent; font-weight: 700; font-size: .82rem; color: #0A0A0A; padding: 0; cursor: pointer; }
 .link-btn.set-def-btn { color: #2563eb; }
 .link-btn.danger { color: #D4001A; }
 .link-btn:hover { text-decoration: underline; }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,10,10,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: 8px; background: #fff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+.modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: var(--sg-r-lg); background: #fff; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
 .btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; padding: 4px; }
 .btn-close-modal:hover { color: #0A0A0A; }
 .suc-enter-active { transition: opacity .3s; } .suc-enter-from { opacity: 0; }
-
-/* Styles cho Dropdown tìm kiếm thông minh */
 .position-relative { position: relative; }
 .search-input-wrapper { position: relative; display: flex; align-items: center; }
 .search-input-wrapper input { width: 100%; }
 .select-arrow { position: absolute; right: 12px; pointer-events: none; font-size: 0.75rem; color: #888; }
-.dropdown-search-list {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
-  list-style: none;
-  padding: 4px 0;
-  margin: 0;
-}
-.dropdown-search-list li {
-  padding: 8px 14px;
-  font-size: 0.88rem;
-  color: #1a1a1a;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.dropdown-search-list li:hover {
-  background: #f1f5f9;
-  font-weight: 600;
-}
-.dropdown-search-list li.selected {
-  background: #0A0A0A;
-  color: #ffffff;
-  font-weight: 700;
-}
-.dropdown-search-list .no-result {
-  color: #94a3b8;
-  font-size: 0.82rem;
-  text-align: center;
-  padding: 12px;
-  cursor: default;
-}
-
+.dropdown-search-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #ffffff; border: 1px solid #d1d5db; border-radius: var(--sg-r); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15); z-index: 9999; list-style: none; padding: 4px 0; margin: 0; }
+.dropdown-search-list li { padding: 8px 14px; font-size: 0.88rem; color: #1a1a1a; cursor: pointer; transition: background 0.15s ease; }
+.dropdown-search-list li:hover { background: #f1f5f9; font-weight: 600; }
+.dropdown-search-list li.selected { background: #0A0A0A; color: #ffffff; font-weight: 700; }
+.dropdown-search-list .no-result { color: #94a3b8; font-size: 0.82rem; text-align: center; padding: 12px; cursor: default; }
 .coupon-grid { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
-.coupon-card { display: flex; gap: 0; border: 1px solid var(--sg-line); border-radius: 6px; overflow: hidden; background: #fff; transition: .2s; position: relative; }
+.coupon-card { display: flex; gap: 0; border: 1px solid var(--sg-line); border-radius: var(--sg-r); overflow: hidden; background: #fff; transition: .2s; position: relative; }
 .coupon-card:not(.used):not(.expired):hover { border-color: #0A0A0A; box-shadow: var(--sg-shadow-sm); }
 .coupon-card.used { opacity: .65; }
 .coupon-card.expired { opacity: .5; }
-.coupon-left { background: #D4001A; width: 70px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; }
+.coupon-left { background: #0A0A0A; width: 70px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; }
 .coupon-card.used .coupon-left { background: #6b7280; }
 .coupon-card.expired .coupon-left { background: #e5e5e5; }
 .coupon-icon { color: #fff; font-size: 1.6rem; }
@@ -620,14 +663,22 @@ const copyCoupon = (code) => {
 .coupon-desc { font-size: .88rem; color: var(--sg-ink-2); margin: 4px 0; }
 .coupon-meta { display: flex; gap: 12px; flex-wrap: wrap; }
 .coupon-meta span { font-size: .76rem; color: var(--sg-muted); }
-.coupon-exp { color: #D4001A; font-weight: 600; }
+.coupon-exp { color: #0A0A0A; font-weight: 600; }
 .coupon-right { padding: 14px 16px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; min-width: 120px; }
-.coupon-discount { font-size: 1.4rem; font-weight: 900; color: #D4001A; }
+.coupon-discount { font-size: 1.4rem; font-weight: 900; color: #0A0A0A; }
 .coupon-card.used .coupon-discount, .coupon-card.expired .coupon-discount { color: var(--sg-muted); }
-.coupon-status-tag { font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: 4px; }
-.coupon-status-tag.active { background: #D4001A; color: #fff; }
+.coupon-status-tag { font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: var(--sg-r); }
+.coupon-status-tag.active { background: #0A0A0A; color: #fff; }
 .coupon-status-tag.used { background: #e5e5e5; color: #666; }
 .coupon-status-tag.expired { background: #e5e5e5; color: #999; }
-.coupon-copy { border: 1px solid #0A0A0A; background: transparent; color: #0A0A0A; border-radius: 4px; padding: .3rem .8rem; font-size: .78rem; font-weight: 700; transition: .2s; }
+.coupon-copy { border: 1px solid #0A0A0A; background: transparent; color: #0A0A0A; border-radius: var(--sg-r); padding: .3rem .8rem; font-size: .78rem; font-weight: 700; transition: .2s; }
 .coupon-copy:hover { background: #0A0A0A; color: #fff; }
+@media (max-width: 767.98px) {
+  .acc-side { position: static; }
+  .profile-avatar-editor { align-items: flex-start; }
+}
+@media (max-width: 420px) {
+  .profile-avatar-editor { flex-direction: column; }
+  .profile-avatar-actions { width: 100%; }
+}
 </style>

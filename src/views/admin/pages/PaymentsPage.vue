@@ -8,16 +8,28 @@ import {
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
-  formatDate, formatPrice,
+  formatDate, formatPrice, notify, apiErrors
 } from '../adminStore'
 
 const queueView = ref('ACTIVE')
 
+// FIFO: hàng đợi xử lý ưu tiên đơn đặt TRƯỚC lên đầu (cũ nhất → mới nhất)
+// Tab "Tất cả" vẫn giữ mới nhất lên đầu cho tiện tra cứu
+function sortFIFO(list) {
+  return [...list].sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : (Number(a.id) || 0)
+    const tb = b.created_at ? new Date(b.created_at).getTime() : (Number(b.id) || 0)
+    if (ta !== tb) return ta - tb  // cũ nhất lên đầu
+    return (Number(a.id) || 0) - (Number(b.id) || 0)
+  })
+}
+
 const displayedOrders = computed(() => {
   if (queueView.value === 'ALL') return paymentChannelOrders.value
-  return paymentChannelOrders.value.filter((order) =>
-    !['Đã hủy', 'Đã nhận hàng', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Hoàn tất'].includes(order.status)
+  const active = paymentChannelOrders.value.filter((order) =>
+    !['Đã hủy', 'Đã nhận hàng', 'Đã giao hàng thành công', 'Yêu cầu trả hàng', 'Đã hoàn tất trả hàng', 'Về kho', 'Hoàn tất'].includes(order.status)
   )
+  return sortFIFO(active)
 })
 
 const actionableCount = computed(() => displayedOrders.value.filter((order) =>
@@ -30,16 +42,10 @@ function queueNumber(order, index) {
 }
 
 function isTransfer(order) {
-  return getPaymentMethodPill(order?.payment_method).key === 'BANK_TRANSFER'
+  return getPaymentMethodPill(order?.payment_method).code === 'Chuyển khoản'
 }
 
-function dueLabel(order) {
-  if (!order?.payment_due_at) return 'Theo hạn trên đơn'
-  const due = new Date(order.payment_due_at)
-  if (Number.isNaN(due.getTime())) return 'Theo hạn trên đơn'
-  const overdue = due.getTime() < Date.now() && getPaymentStatusPill(order).label !== 'Đã thanh toán'
-  return `${overdue ? 'Quá hạn · ' : ''}${formatDate(due)}`
-}
+
 
 const transitionConfirm = reactive({
   open: false,
@@ -74,9 +80,21 @@ async function confirmTransition() {
     transitionConfirm.open = false
     transitionConfirm.order = null
     transitionConfirm.action = null
+  } catch (e) {
+    notify("Lỗi: " + e.message, "error")
   } finally {
     transitionConfirm.busy = false
   }
+}
+
+async function chooseFailureResolution(option) {
+  const menuAction = transitionConfirm.action
+  if (!menuAction || !Array.isArray(menuAction.menu) || transitionConfirm.busy) return
+  transitionConfirm.action = option
+  await confirmTransition()
+  // Nếu API từ chối (ví dụ hết tồn kho khi giao lại), giữ menu để quản lý
+  // chọn lại nguyên nhân thay vì biến thành một trạng thái trung gian.
+  if (transitionConfirm.open) transitionConfirm.action = menuAction
 }
 
 function transitionMessage() {
@@ -85,6 +103,18 @@ function transitionMessage() {
   if (!order || !action) return ''
   if (action.markPaid) {
     return `Bạn chắc chắn muốn chuyển trạng thái thanh toán của đơn #${order.id} sang “Đã thanh toán”?`
+  }
+  if (action.key === 'return_warehouse') {
+    return `Xác nhận khách không nghe máy/không nhận hàng ở đơn #${order.id}? Đơn sẽ được đưa về kho và dự kiến giao lại vào ngày gần nhất.`
+  }
+  if (action.key === 'delivery_failed_menu') {
+    return `Chọn lý do giao hàng thất bại cho đơn #${order.id}. Hệ thống sẽ chốt và cập nhật đúng nhánh ngay sau khi bạn chọn.`
+  }
+  if (action.key === 'delivery_accident') {
+    return `Xác nhận đơn #${order.id} giao thất bại do tai nạn hoặc trục trặc vận chuyển? Đơn sẽ được sắp xếp giao lại vào ngày gần nhất.`
+  }
+  if (action.key === 'lost_delivery_cancel') {
+    return `Xác nhận đơn #${order.id} bị thất lạc khi vận chuyển? Đơn sẽ bị hủy, không ghi doanh thu và không cộng lại tồn kho.`
   }
   return `Bạn chắc chắn muốn chuyển đơn #${order.id} từ “${order.status}” sang “${action.next}”?`
 }
@@ -100,6 +130,9 @@ function transitionMessage() {
         <div>
           <p class="admin-eyebrow mb-2">Vận hành bán hàng</p>
           <h5 class="fw-bold mb-2 text-dark">Hàng đợi thanh toán</h5>
+          <p v-if="apiErrors.length" class="text-warning-emphasis small mb-0">
+            Hàng đợi vẫn hiển thị; một số dữ liệu phụ đang tạm thời chưa đồng bộ.
+          </p>
         </div>
         <span class="badge bg-dark text-white px-3 py-2" style="border-radius:3px;" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
       </div>
@@ -148,7 +181,6 @@ function transitionMessage() {
                 <th>Đơn hàng</th>
                 <th>Phương thức</th>
                 <th>Thanh toán</th>
-                <th>Hạn thanh toán</th>
                 <th>Trạng thái đơn</th>
                 <th class="text-end">Tổng tiền</th>
                 <th class="text-end">Thao tác</th>
@@ -163,6 +195,7 @@ function transitionMessage() {
                   <div class="d-flex align-items-center gap-2">
                     <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
                     <span v-if="ord.address_changed" class="badge bg-danger text-white" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
+                    <span v-if="ord.stock_issue_status === 'NEEDS_REVIEW'" class="badge bg-warning text-dark" style="font-size:0.65rem;">Cần xử lý tồn kho</span>
                   </div>
                   <div class="text-secondary" style="font-size:0.78rem;">
                     <span v-text="ord.handled_by || ord.customer_name || 'Khách lẻ'"></span>
@@ -179,9 +212,6 @@ function transitionMessage() {
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                     :class="getPaymentStatusPill(ord).cls"
                     v-text="getPaymentStatusPill(ord).label"></span>
-                </td>
-                <td>
-                  <span class="small" :class="isTransfer(ord) ? 'text-dark fw-medium' : 'text-secondary'">{{ isTransfer(ord) ? dueLabel(ord) : 'Thu khi giao' }}</span>
                 </td>
                 <td>
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"
@@ -297,6 +327,12 @@ function transitionMessage() {
               </div>
             </div>
 
+            <div v-if="orderDetail.order.stock_issue_status === 'NEEDS_REVIEW'" class="alert alert-warning py-2 px-3 small mb-3">
+              <strong>Cần xử lý tồn kho.</strong>
+              <span class="d-block mt-1">{{ orderDetail.order.stock_issue_reason || 'Kiểm tra lại biến thể trước khi tiếp tục xử lý.' }}</span>
+              <span class="d-block mt-1">Nếu hủy đơn, hệ thống chỉ hoàn kho một lần.</span>
+            </div>
+
             <div class="mb-3 pb-3 border-bottom">
               <p class="text-secondary mb-2" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Tiến trình đơn hàng</p>
               <div class="d-grid gap-2">
@@ -330,7 +366,22 @@ function transitionMessage() {
         <div class="bg-white border border-dark p-4 w-100" style="max-width:440px;border-radius:4px;box-shadow:0 18px 48px rgba(0,0,0,0.2);">
           <h6 id="transition-confirm-title" class="fw-bold text-dark mb-2">Xác nhận chuyển trạng thái</h6>
           <p class="text-secondary small mb-4" v-text="transitionMessage()"></p>
-          <div class="d-flex justify-content-end gap-2">
+          <div v-if="transitionConfirm.action?.menu" class="d-grid gap-2 mb-3">
+            <button
+              v-for="option in transitionConfirm.action.menu"
+              :key="option.key"
+              type="button"
+              class="btn btn-sm fw-medium text-start"
+              style="border-radius:4px;"
+              :class="option.class"
+              :disabled="transitionConfirm.busy"
+              @click="chooseFailureResolution(option)"
+            >{{ option.text }}</button>
+            <div class="d-flex justify-content-end mt-1">
+              <button type="button" class="btn btn-sm btn-white border border-dark text-dark px-3" :disabled="transitionConfirm.busy" @click="closeTransitionConfirm">Hủy bỏ</button>
+            </div>
+          </div>
+          <div v-if="!transitionConfirm.action?.menu" class="d-flex justify-content-end gap-2">
             <button
               type="button"
               class="btn btn-sm btn-white border border-dark text-dark px-3"
