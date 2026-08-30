@@ -355,6 +355,7 @@ export function buildOrderStatusData() {
     "Chờ xác nhận": "#f59e0b",
     "Đã xác nhận": "#0ea5e9",
     "Đang vận chuyển": "#6366f1",
+    "Giao hàng thất bại": "#dc2626",
     "Đã giao hàng thành công": "#10b981",
     "Đã hủy": "#ef4444",
   };
@@ -528,6 +529,7 @@ export const orderStatuses = [
   "Chờ xác nhận",
   "Đã xác nhận",
   "Đang vận chuyển",
+  "Giao hàng thất bại",
   "Đã giao hàng thành công",
   "Đã nhận hàng",
   "Đã hủy",
@@ -549,6 +551,7 @@ export function getStatusBadgeClass(status) {
       "Chờ xác nhận": "bg-light text-secondary border",
       "Đã xác nhận": "bg-secondary-subtle text-dark",
       "Đang vận chuyển": "bg-secondary-subtle text-dark",
+      "Giao hàng thất bại": "bg-danger-subtle text-danger-emphasis",
       "Đã giao hàng thành công": "bg-dark text-white",
       "Đã hủy": "bg-light text-danger border",
     }[status] || "bg-light text-secondary border"
@@ -621,7 +624,7 @@ export function getOrderActions(o) {
   const acts = [];
   if (method === "Chuyển khoản") {
     if (!paid) {
-      return [
+      const unpaidActions = [
         {
           key: "wait_bank",
           text: "Chờ khách chuyển khoản",
@@ -641,6 +644,14 @@ export function getOrderActions(o) {
           isCancel: true,
         },
       ];
+      if (o.status === "Đang vận chuyển") unpaidActions.splice(2, 0, {
+        key: "delivery_failed",
+        text: "Giao hàng thất bại",
+        next: "Giao hàng thất bại",
+        reason: "Không giao được hàng / khách chưa nhận được kiện.",
+        class: "btn-outline-danger",
+      });
+      return unpaidActions;
     }
     if (o.status === "Chờ xác nhận")
       acts.push({
@@ -656,13 +667,21 @@ export function getOrderActions(o) {
         next: "Đang vận chuyển",
         class: "btn-dark text-white",
       });
-    else if (o.status === "Đang vận chuyển")
+    else if (o.status === "Đang vận chuyển") {
       acts.push({
         key: "complete",
         text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
         class: "btn-dark text-white",
       });
+      acts.push({
+        key: "delivery_failed",
+        text: "Giao hàng thất bại",
+        next: "Giao hàng thất bại",
+        reason: "Không giao được hàng / khách chưa nhận được kiện.",
+        class: "btn-outline-danger",
+      });
+    }
     // Đơn chuyển khoản đã thanh toán vẫn có thể cần hủy (hết hàng,
     // khách yêu cầu...). API sẽ hoàn tiền nếu giao dịch đã được ghi nhận.
     acts.push({
@@ -674,6 +693,17 @@ export function getOrderActions(o) {
     return acts;
   }
   // COD (và các phương thức khác)
+  // Môi trường này không kết nối shipper thật: quản lý được phép ghi nhận
+  // đã thu COD thủ công ở mọi mốc đơn còn đang xử lý, sau đó mới tiếp tục
+  // mô phỏng giao thành công hoặc ghi nhận giao thất bại.
+  if (method === "Thu hộ" && !paid && o.status !== "Giao hàng thất bại") {
+    acts.push({
+      key: "cod_paid",
+      text: "Xác nhận đã thu COD (thủ công)",
+      markPaid: true,
+      class: "btn-dark text-white",
+    });
+  }
   if (o.status === "Chờ xác nhận")
     acts.push({
       key: "confirm",
@@ -689,20 +719,27 @@ export function getOrderActions(o) {
       class: "btn-dark text-white",
     });
   else if (o.status === "Đang vận chuyển") {
-    if (method === "Thu hộ" && !paid)
-      acts.push({
-        key: "cod_paid",
-        text: "Khách đã thanh toán (thu COD)",
-        markPaid: true,
-        class: "btn-dark text-white",
-      });
-    else
-      acts.push({
-        key: "complete",
-        text: "Giao hàng thành công",
-        next: "Đã giao hàng thành công",
-        class: "btn-dark text-white",
-      });
+    acts.push({
+      key: "complete",
+      text: "Giao hàng thành công",
+      next: "Đã giao hàng thành công",
+      class: "btn-dark text-white",
+    });
+    acts.push({
+      key: "delivery_failed",
+      text: "Giao hàng thất bại",
+      next: "Giao hàng thất bại",
+      reason: "Không giao được hàng / khách chưa nhận được kiện.",
+      class: "btn-outline-danger",
+    });
+  } else if (o.status === "Giao hàng thất bại") {
+    acts.push({
+      key: "cancel_failed_delivery",
+      text: "Hủy đơn & hoàn kho",
+      class: "btn-outline-danger",
+      isCancel: true,
+    });
+    return acts;
   }
   
   acts.push({
@@ -748,7 +785,7 @@ export async function runOrderAction(o, act) {
     const res = await apiWrite("/orders/" + o.id + "/status", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: act.next }),
+      body: JSON.stringify({ status: act.next, ...(act.reason ? { reason: act.reason } : {}) }),
     });
 
     if (!res.ok) {
@@ -776,6 +813,8 @@ export async function runOrderAction(o, act) {
 
 export const cancelReasons = [
   "Hết hàng",
+  "Lỗi tồn kho cần xử lý",
+  "Giao hàng thất bại / khách chưa nhận được hàng",
   "Khách yêu cầu hủy",
   "Sai thông tin đơn",
   "Không liên hệ được khách",
@@ -1034,6 +1073,10 @@ export function getOrderStatusPill(o) {
       label: "Đang giao",
       cls: "bg-light text-dark border",
     },
+    "Giao hàng thất bại": {
+      label: "Giao thất bại",
+      cls: "bg-danger-subtle text-danger-emphasis",
+    },
     "Đã xác nhận": {
       label: "Đã xác nhận",
       cls: "bg-light text-dark border",
@@ -1093,6 +1136,8 @@ export function buildOrderHistory(o) {
   };
   const created = o.date;
   const paid = effectivePaymentStatus(o) === "Đã thanh toán";
+  const deliveryFailed = normalizeStatusText(o.status) === "giao hang that bai"
+    || hist.some((h) => normalizeStatusText(h.status) === "giao hang that bai");
   const order = [
     "Chờ xác nhận",
     "Đã xác nhận",
@@ -1120,6 +1165,12 @@ export function buildOrderHistory(o) {
       done: rank >= 1,
       date: findDate(["Đã xác nhận"]),
     });
+    if (deliveryFailed) steps.push({
+      label: "Giao hàng thất bại",
+      icon: "bi-exclamation-triangle",
+      done: true,
+      date: findDate(["Giao hàng thất bại"]),
+    });
     steps.push({
       label: "Đã giao hàng",
       icon: "bi-box-seam",
@@ -1145,6 +1196,12 @@ export function buildOrderHistory(o) {
       icon: "bi-truck",
       done: rank >= 2,
       date: findDate(["Đang vận chuyển"]),
+    });
+    if (deliveryFailed) steps.push({
+      label: "Giao hàng thất bại",
+      icon: "bi-exclamation-triangle",
+      done: true,
+      date: findDate(["Giao hàng thất bại"]),
     });
     steps.push({
       label: "Thanh toán (COD)",
@@ -1405,7 +1462,8 @@ export const returnNote = ref("");
 // Loại trả hàng: "CUSTOMER" = khách yêu cầu (cần duyệt); "DIRECT" = trả trực tiếp tại quầy (hoàn tất ngay)
 export const returnType = ref("CUSTOMER");
 export function getReturnTypeLabel(t) {
-  if (["NOT_RECEIVED", "not_received", "Chưa nhận được hàng"].includes(t))
+  const normalized = normalizeStatusText(t).replace(/[_-]+/g, " ");
+  if (["not received", "chua nhan duoc hang", "delivery failed", "delivery failure", "giao hang that bai"].includes(normalized))
     return "Chưa nhận được hàng";
   return t === "DIRECT" || t === "Trực tiếp"
     ? "Trả trực tiếp tại quầy"
@@ -1441,7 +1499,7 @@ export function searchReturnOrder() {
   }
   // Đơn đã giao/đã nhận tạo yêu cầu trả hàng; đơn đang vận chuyển có thể
   // tạo case riêng "chưa nhận được hàng" để cửa hàng kiểm tra giao vận.
-  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển"].includes(ord.status)) {
+  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển", "Giao hàng thất bại"].includes(ord.status)) {
     returnFoundOrder.value = null;
     returnItems.value = [];
     notify(
@@ -1490,15 +1548,17 @@ export function resetReturnForm() {
 export async function submitReturn() {
   const ord = returnFoundOrder.value;
   if (!ord) return;
+  // Báo chưa nhận là sự cố theo cả kiện hàng; quản lý không cần chọn từng
+  // dòng sản phẩm (API sẽ tự lấy toàn bộ chi tiết đơn nếu items rỗng).
+  const notReceived = ["Đang vận chuyển", "Giao hàng thất bại"].includes(ord.status);
   const items = returnItems.value.filter((it) => Number(it.return_qty) > 0);
-  if (items.length === 0) {
+  if (items.length === 0 && !notReceived) {
     notify("Chọn ít nhất 1 sản phẩm để trả", "error");
     return;
   }
   const direct = returnType.value === "DIRECT";
   // Trả trực tiếp tại quầy (khách mua trực tiếp): hoàn tất ngay, không cần duyệt.
   // Trả theo yêu cầu khách hàng (đơn online): tạo yêu cầu, chờ duyệt rồi hoàn tất.
-  const notReceived = ord.status === "Đang vận chuyển";
   const status = direct ? "Hoàn tất" : "Chờ xử lý";
   const payload = {
     order_id: ord.id,
@@ -1507,7 +1567,9 @@ export async function submitReturn() {
     reason:
       returnNote.value ||
       (direct ? "Khách trả trực tiếp tại quầy" : "Khách yêu cầu trả hàng"),
-    refund_amount: returnRefundTotal.value,
+    // Để trống khi báo mất cả kiện: backend sẽ tự tính theo toàn bộ dòng
+    // hàng, tránh gửi số 0 khiến khoản hoàn bị ghi nhận thiếu.
+    refund_amount: notReceived && items.length === 0 ? undefined : returnRefundTotal.value,
     status,
     items: items.map((it) => ({
       order_detail_id: it.order_detail_id,

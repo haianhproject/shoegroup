@@ -21,6 +21,7 @@ const statusMeta = {
   PENDING: { color: 'amber', icon: 'bi-hourglass-split' },
   CONFIRMED: { color: 'blue', icon: 'bi-check2-circle' },
   SHIPPING: { color: 'cyan', icon: 'bi-truck' },
+  DELIVERY_FAILED: { color: 'red', icon: 'bi-truck' },
   DELIVERED: { color: 'lime', icon: 'bi-box-seam' },
   RECEIVED: { color: 'green', icon: 'bi-bag-check' },
   COMPLETED: { color: 'green', icon: 'bi-patch-check-fill' },
@@ -179,7 +180,7 @@ const openChangeAddress = async (order) => {
     })
     return
   }
-  if (['SHIPPING', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
+  if (['SHIPPING', 'DELIVERY_FAILED', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
     notify({
       type: 'warning',
       title: 'Không thể thay đổi',
@@ -444,7 +445,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Thanh tiến trình trạng thái -->
-          <div v-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
+          <div v-if="!['CANCELLED','RETURNED','DELIVERY_FAILED'].includes(o.status)" class="oc-steps">
             <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED') }">
               <span class="oc-step-dot"><i class="bi" :class="statusMeta[st]?.icon"></i></span>
               <small>{{ ORDER_STATUS[st] }}</small>
@@ -476,7 +477,7 @@ onUnmounted(() => {
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
-            <button v-if="o.status === 'SHIPPING'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu hỗ trợ giao / trả hàng</button>
+            <button v-if="['SHIPPING', 'DELIVERY_FAILED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
             <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>

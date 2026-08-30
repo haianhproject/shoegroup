@@ -417,14 +417,19 @@ function normalizeOrderStatus(value) {
 const ORDER_STATUS_TRANSITIONS = {
   "cho xac nhan": new Set(["cho xac nhan", "da xac nhan", "da huy"]),
   "da xac nhan": new Set(["da xac nhan", "dang van chuyen", "da huy"]),
-  "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "da huy"]),
+  // Không có shipper thật trong môi trường mô phỏng nên quản lý có thể
+  // ghi nhận cả giao thành công lẫn giao thất bại từ mốc đang vận chuyển.
+  "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
+  "giao hang that bai": new Set(["giao hang that bai", "yeu cau tra hang", "da huy"]),
   "da giao hang thanh cong": new Set(["da giao hang thanh cong", "da nhan hang", "yeu cau tra hang"]),
   "da nhan hang": new Set(["da nhan hang", "yeu cau tra hang"]),
   "yeu cau tra hang": new Set(["yeu cau tra hang", "da nhan hang"]),
   "da huy": new Set(["da huy"]),
   "cho xu ly": new Set(["cho xu ly", "cho xac nhan", "da xac nhan", "da huy"]),
   "pending": new Set(["pending", "cho xac nhan", "da xac nhan", "da huy"]),
-  "dang giao": new Set(["dang giao", "da giao hang thanh cong", "da huy"]),
+  "dang giao": new Set(["dang giao", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
+  "shipped": new Set(["shipped", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
+  "shipping": new Set(["shipping", "da giao hang thanh cong", "giao hang that bai", "da huy"]),
   "delivered": new Set(["delivered", "da nhan hang", "yeu cau tra hang"]),
   "received": new Set(["received", "yeu cau tra hang"]),
 };
@@ -434,6 +439,8 @@ const ORDER_STATUS_ALIASES = {
   "confirmed": "Đã xác nhận", "da xac nhan": "Đã xác nhận", "dang lay hang": "Đã xác nhận",
   "dang chuan bi hang": "Đã xác nhận", "processing": "Đã xác nhận", "picking": "Đã xác nhận",
   "dang van chuyen": "Đang vận chuyển", "dang giao": "Đang vận chuyển", "shipped": "Đang vận chuyển",
+  "giao hang that bai": "Giao hàng thất bại", "khong giao duoc hang": "Giao hàng thất bại",
+  "delivery failed": "Giao hàng thất bại", "delivery_failure": "Giao hàng thất bại", "failed_delivery": "Giao hàng thất bại", "deliveryfailed": "Giao hàng thất bại",
   "da giao": "Đã giao hàng thành công", "da giao hang thanh cong": "Đã giao hàng thành công", "delivered": "Đã giao hàng thành công",
   "da nhan hang": "Đã nhận hàng", "received": "Đã nhận hàng", "yeu cau tra hang": "Yêu cầu trả hàng",
   "da hoan tat tra hang": "Đã hoàn tất trả hàng", "da huy": "Đã hủy", "cancelled": "Đã hủy", "canceled": "Đã hủy",
@@ -1521,7 +1528,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
       const cancellableByAdmin = new Set([
         "cho xac nhan", "cho xu ly", "pending", "da xac nhan", "confirmed",
         "dang lay hang", "dang chuan bi hang", "processing", "picking",
-        "dang van chuyen", "dang giao", "shipped",
+        "dang van chuyen", "dang giao", "shipped", "giao hang that bai",
       ]);
       if (!cancellableByAdmin.has(normalizedCurrentStatus)) {
         await transaction.rollback();
@@ -1571,7 +1578,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
           PaymentConfirmedAt = CASE WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
           DeliveredDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(DeliveredDate,GETDATE()) ELSE DeliveredDate END,
           RevenueEligibleDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(RevenueEligibleDate,DATEADD(day,14,GETDATE())) ELSE RevenueEligibleDate END,
-          AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
+          AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Giao hàng thất bại', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
           UpdatedAt=GETDATE()
         WHERE OrderID = @id`,
       );
@@ -1624,10 +1631,14 @@ app.put("/api/orders/:id/payment", async (req, res) => {
       // hoàn tất thanh toán của khách. Không bắt nhân viên bấm xác nhận lần 2.
       customerTransferConfirmation = true;
     } else {
-      if (["da huy", "hoan tien"].includes(normalizeOrderStatus(order.Status)) && normalizedRequested === "da thanh toan") throw Object.assign(new Error("Don da ket thuc khong the ghi nhan thanh toan moi."), { statusCode: 409 });
-      if (isCodPayment(order.PaymentMethod) && normalizedRequested === "da thanh toan" && !["da giao hang thanh cong", "da nhan hang", "da hoan tat tra hang"].includes(normalizeOrderStatus(order.Status))) {
-        throw Object.assign(new Error("COD chi duoc xac nhan da thanh toan khi da giao hang."), { statusCode: 409 });
+      const terminalOrder = ["da huy", "da hoan tat tra hang"].includes(normalizeOrderStatus(order.Status));
+      const terminalPayment = ["hoan tien", "da huy"].includes(currentPayment);
+      if ((terminalOrder || terminalPayment) && normalizedRequested === "da thanh toan") {
+        throw Object.assign(new Error("Đơn đã kết thúc hoặc đã hoàn tiền, không thể ghi nhận thanh toán mới."), { statusCode: 409 });
       }
+      // COD được xác nhận thủ công trong màn quản lý vì dự án không kết nối
+      // shipper thật. Khi giao thành công, endpoint trạng thái vẫn tự ghi
+      // nhận COD như trước; thao tác này chỉ bỏ chặn bước mô phỏng thu tiền.
     }
     if (customerTransferConfirmation) {
       paymentStatus = "Đã thanh toán";
@@ -2333,8 +2344,12 @@ function isNotReceivedReturn(value) {
     "not received",
     "chua nhan duoc hang",
     "khong nhan duoc hang",
+    "khong giao duoc hang",
+    "giao hang that bai",
     "delivery issue",
     "delivery failed",
+    "delivery failure",
+    "failed delivery",
   ]).has(normalizeReturnType(value));
 }
 
@@ -2353,6 +2368,7 @@ function restoreStatusAfterReturn(row) {
     || ["da giao", "da giao hang thanh cong", "delivered"].includes(status);
   if (delivered) return "Đã giao hàng thành công";
 
+  if (["giao hang that bai", "delivery failed", "delivery failure", "failed delivery", "delivery_failure"].includes(status)) return "Giao hàng thất bại";
   const shipping = ["dang van chuyen", "dang giao", "shipped", "shipping"].includes(status);
   if (shipping || isNotReceivedReturn(row && row.ReturnType)) return "Đang vận chuyển";
 
@@ -2541,7 +2557,9 @@ app.post("/api/returns", async (req, res) => {
     if (!isAdmin && Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc tra don hang nay."), { statusCode: 403 });
     const normalizedOrderStatus = normalizeOrderStatus(order.Status);
     const deliveredStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"]);
-    const notReceivedStatuses = new Set([...deliveredStatuses, "dang van chuyen", "dang giao", "shipped", "shipping"]);
+    // Đã xác nhận nhận hàng thì không thể đồng thời báo "chưa nhận".
+    // Trường hợp đang giao/giao thất bại vẫn được mở case hỗ trợ giao vận.
+    const notReceivedStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "dang van chuyen", "dang giao", "shipped", "shipping", "giao hang that bai", "delivery failed"]);
     if (notReceived ? !notReceivedStatuses.has(normalizedOrderStatus) : !deliveredStatuses.has(normalizedOrderStatus)) {
       throw Object.assign(new Error(notReceived
         ? "Don hang chua o trang thai co the bao chua nhan duoc hang."

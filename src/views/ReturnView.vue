@@ -14,10 +14,14 @@ const isLoading = ref(true)
 const submitted = ref(false)
 const submittedNotReceived = ref(false)
 const API = API_BASE_URL
-const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['SHIPPING', 'DELIVERED', 'RECEIVED'].includes(item.status)))
+const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['SHIPPING', 'DELIVERY_FAILED', 'DELIVERED', 'RECEIVED'].includes(item.status)))
 const requestMode = ref(route.query.type === 'NOT_RECEIVED' ? 'NOT_RECEIVED' : 'RETURN')
 const isNotReceived = computed(() => requestMode.value === 'NOT_RECEIVED')
-const canChooseRequestMode = computed(() => Boolean(order.value))
+const canReportNotReceivedStatus = (status) => ['SHIPPING', 'DELIVERY_FAILED', 'DELIVERED'].includes(status)
+const canProductReturnStatus = (status) => ['DELIVERED', 'RECEIVED'].includes(status)
+const canReportNotReceived = computed(() => canReportNotReceivedStatus(order.value?.status))
+const canRequestProductReturn = computed(() => canProductReturnStatus(order.value?.status))
+const canChooseRequestMode = computed(() => Boolean(order.value) && (canReportNotReceived.value || canRequestProductReturn.value))
 const isPaymentRecorded = computed(() => ['Đã thanh toán', 'Chờ thanh toán'].includes(String(order.value?.payment_status || '')))
 
 const form = reactive({
@@ -43,7 +47,9 @@ const useOrder = (selected) => {
   order.value = selected || null
   submittedNotReceived.value = false
   form.items = selected ? (selected.items || []).map((item) => ({ ...item, checked: true, return_qty: Number(item.quantity) || 1, condition: 'UNOPENED' })) : []
-  if (selected?.status === 'SHIPPING' || route.query.type === 'NOT_RECEIVED') {
+  const autoNotReceived = ['SHIPPING', 'DELIVERY_FAILED'].includes(selected?.status)
+    || (route.query.type === 'NOT_RECEIVED' && selected?.status === 'DELIVERED')
+  if (autoNotReceived) {
     requestMode.value = 'NOT_RECEIVED'
     form.method = 'NOT_RECEIVED'
     form.reasonCode = 'NOT_RECEIVED'
@@ -55,6 +61,14 @@ const useOrder = (selected) => {
 }
 
 const setRequestMode = (mode) => {
+  if (mode === 'NOT_RECEIVED' && !canReportNotReceived.value) {
+    notify({ type: 'warning', message: 'Đơn đã xác nhận nhận hàng nên không thể báo chưa nhận hàng.' })
+    return
+  }
+  if (mode !== 'NOT_RECEIVED' && !canRequestProductReturn.value) {
+    notify({ type: 'warning', message: 'Đơn chưa giao thành công nên chưa thể tạo yêu cầu trả sản phẩm.' })
+    return
+  }
   requestMode.value = mode === 'NOT_RECEIVED' ? 'NOT_RECEIVED' : 'RETURN'
   if (requestMode.value === 'NOT_RECEIVED') {
     form.method = 'NOT_RECEIVED'
@@ -132,7 +146,7 @@ onMounted(fetchData)
       <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
       <div v-else-if="!order" class="sg-card rt-picker">
         <h5>Chọn đơn hàng cần trả</h5>
-        <p class="text-secondary">Đơn đã giao/đã nhận đủ điều kiện trả hàng. Nếu đơn đang vận chuyển nhưng bạn chưa nhận được, hãy chọn để báo sự cố giao hàng.</p>
+        <p class="text-secondary">Đơn đã giao/đã nhận đủ điều kiện trả hàng. Đơn đang giao hoặc giao thất bại có thể báo chưa nhận hàng để cửa hàng kiểm tra.</p>
         <div v-if="returnableOrders.length" class="picker-list">
           <button v-for="item in returnableOrders" :key="item.id" type="button" class="picker-row" @click="selectOrder(item)">
             <span><strong>#{{ item.serverId || item.id }}</strong><small>{{ item.date }}</small></span>
@@ -152,12 +166,12 @@ onMounted(fetchData)
           <p class="request-mode-subtitle">Chọn một loại yêu cầu để cửa hàng xử lý đúng quy trình.</p>
         </div>
         <div class="request-mode-grid">
-          <button type="button" class="request-mode-option" :class="{ active: requestMode === 'RETURN' }" @click="setRequestMode('RETURN')">
+          <button v-if="canRequestProductReturn" type="button" class="request-mode-option" :class="{ active: requestMode === 'RETURN' }" @click="setRequestMode('RETURN')">
             <span class="request-mode-icon"><i class="bi bi-arrow-return-left"></i></span>
             <span><strong>Trả / đổi sản phẩm</strong><small>Sản phẩm lỗi, sai hàng hoặc không vừa</small></span>
             <i class="bi bi-check-circle-fill request-mode-check"></i>
           </button>
-          <button type="button" class="request-mode-option" :class="{ active: requestMode === 'NOT_RECEIVED' }" @click="setRequestMode('NOT_RECEIVED')">
+          <button v-if="canReportNotReceived" type="button" class="request-mode-option" :class="{ active: requestMode === 'NOT_RECEIVED' }" @click="setRequestMode('NOT_RECEIVED')">
             <span class="request-mode-icon"><i class="bi bi-truck"></i></span>
             <span><strong>Chưa nhận được hàng</strong><small>Đơn báo giao nhưng bạn chưa nhận kiện</small></span>
             <i class="bi bi-check-circle-fill request-mode-check"></i>

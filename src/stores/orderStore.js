@@ -20,6 +20,7 @@ export const ORDER_STATUS = {
   PENDING: "Chờ xử lý",
   CONFIRMED: "Đã xác nhận",
   SHIPPING: "Đang giao",
+  DELIVERY_FAILED: "Giao hàng thất bại",
   DELIVERED: "Đã giao",
   RECEIVED: "Đã nhận hàng",
   COMPLETED: "Hoàn thành",
@@ -302,6 +303,7 @@ export const mapStatusToKey = (status) => {
   if (n.includes("tra hang") || n.includes("hoan tien") || n.includes("return")) return "RETURNED";
   if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
   if (n.includes("hoan thanh") || n.includes("complete")) return "COMPLETED";
+  if (n.includes("giao hang that bai") || n.includes("khong giao duoc hang") || n.includes("delivery failed") || n.includes("delivery failure") || n.includes("delivery_failure")) return "DELIVERY_FAILED";
   if (n.includes("da giao") || n.includes("giao hang thanh cong") || n.includes("deliver")) return "DELIVERED";
   if (n.includes("van chuyen") || n.includes("dang giao") || n.includes("ship")) return "SHIPPING";
   if (n.includes("chuan bi") || n.includes("lay hang") || n.includes("process") || n.includes("picking")) return "CONFIRMED";
