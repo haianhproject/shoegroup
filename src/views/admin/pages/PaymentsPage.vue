@@ -5,6 +5,7 @@ import {
   paymentChannel, paymentSearch,
   paymentChannelOrders, paymentChannelCount, paymentTotalCount, countOrdersByChannel,
   getPaymentMethodPill, getPaymentStatusPill, getOrderStatusPill,
+  getOrderResolutionReason,
   getOrderChannel, getTrackingCode, getShipperCode,
   orderDetail, openOrderDetail, closeOrderDetail,
   buildOrderHistory, printInvoice, getOrderActions, runOrderAction,
@@ -43,6 +44,16 @@ function queueNumber(order, index) {
 
 function isTransfer(order) {
   return getPaymentMethodPill(order?.payment_method).code === 'Chuyển khoản'
+}
+
+function isCancelledOrder(order) {
+  const status = String(order?.status || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .trim()
+    .toLowerCase()
+  return ['da huy', 'cancelled', 'canceled'].includes(status) || /(^|\s)huy(\s|$)/.test(status)
 }
 
 
@@ -217,6 +228,10 @@ function transitionMessage() {
                   <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                     :class="getOrderStatusPill(ord).cls"
                     v-text="getOrderStatusPill(ord).label"></span>
+                  <div v-if="getOrderResolutionReason(ord)" class="order-reason-inline">
+                    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                    <span v-text="getOrderResolutionReason(ord)"></span>
+                  </div>
                 </td>
                 <td class="text-end fw-bold text-dark small" v-text="formatPrice(ord.total)"></td>
                 <td class="text-end">
@@ -327,6 +342,14 @@ function transitionMessage() {
               </div>
             </div>
 
+            <div v-if="getOrderResolutionReason(orderDetail.order)" class="order-reason-alert" :class="isCancelledOrder(orderDetail.order) ? 'cancel' : 'failure'">
+              <strong>
+                <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+                <span v-text="isCancelledOrder(orderDetail.order) ? 'Lý do hủy đơn' : 'Lý do giao thất bại'"></span>
+              </strong>
+              <span v-text="getOrderResolutionReason(orderDetail.order)"></span>
+            </div>
+
             <div v-if="orderDetail.order.stock_issue_status === 'NEEDS_REVIEW'" class="alert alert-warning py-2 px-3 small mb-3">
               <strong>Cần xử lý tồn kho.</strong>
               <span class="d-block mt-1">{{ orderDetail.order.stock_issue_reason || 'Kiểm tra lại biến thể trước khi tiếp tục xử lý.' }}</span>
@@ -422,4 +445,26 @@ table td { border-color: #edf0f2; }
 /* Làm mỏng viền bảng */
 .queue-next td { background-color: #fafafa; }
 .badge { font-weight: 600; padding: 4px 8px; }
+
+.order-reason-inline {
+  max-width: 250px;
+  margin-top: 4px;
+  color: #991b1b;
+  font-size: .72rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+.order-reason-alert {
+  margin-bottom: 1rem;
+  padding: .7rem .8rem;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: .8rem;
+  line-height: 1.4;
+}
+.order-reason-alert strong,
+.order-reason-alert span { display: block; }
+.order-reason-alert strong { margin-bottom: 3px; }
+.order-reason-alert.cancel { background: #fff1f2; color: #991b1b; border-color: #fecdd3; }
+.order-reason-alert.failure { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 </style>

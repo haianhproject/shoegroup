@@ -19,6 +19,7 @@ const router = createRouter({
     { path: "/forgot-password", name: "forgot-password", component: () => import("../views/ForgotPasswordView.vue") },
     { path: "/reset-password", name: "reset-password", component: () => import("../views/ResetPasswordView.vue") },
     { path: "/account", name: "account", component: () => import("../views/AccountView.vue"), meta: { requiresAuth: true } },
+    { path: "/wallet", name: "wallet", component: () => import("../views/WalletView.vue"), meta: { requiresAuth: true } },
     { path: "/orders", name: "orders", component: () => import("../views/MyOrders.vue"), meta: { requiresAuth: true } },
     { path: "/returns", name: "returns", component: () => import("../views/ReturnView.vue"), meta: { requiresAuth: true } },
     { path: "/returns/:orderId", name: "return-order", component: () => import("../views/ReturnView.vue"), meta: { requiresAuth: true } },

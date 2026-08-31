@@ -174,8 +174,10 @@ export const getDisplayName = computed(() => {
   );
 });
 export function handleLogout() {
+  if (typeof window !== "undefined" && !window.confirm("Bạn có chắc muốn đăng xuất khỏi ShoeGroup không?")) return false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
+  return true;
 }
 
 /* ---------------- BADGE COUNTS ---------------- */
@@ -849,10 +851,14 @@ export async function runOrderAction(o, act) {
     o._history.push({
       status: act.next,
       date: new Date().toISOString(),
-      note: "Cập nhật bởi " + getDisplayName.value,
+      // Lưu nguyên nhân vào timeline tại thời điểm thao tác. Trước đây mọi
+      // nhánh đều ghi cùng một câu "Cập nhật bởi..." nên đơn giao thất bại
+      // hoặc bị hủy nhìn lại không biết vì sao.
+      note: act.reason || "Cập nhật bởi " + getDisplayName.value,
     });
-    
-    notify("Đơn #" + o.id + ": " + prev + " → " + act.next, "success");
+
+    const reasonSuffix = act.reason ? " — " + act.reason : "";
+    notify("Đơn #" + o.id + ": " + prev + " → " + act.next + reasonSuffix, act.next === "Đã hủy" ? "warning" : "success");
   }
 }
 
@@ -872,6 +878,7 @@ export function openCancelModal(ord) {
 }
 export async function submitCancelOrder() {
   const ord = cancelModal.order;
+  cancelModal.reason = String(cancelModal.reason || "").trim().slice(0, 500);
   if (!ord || !cancelModal.reason) return;
   
   try {
@@ -1103,6 +1110,39 @@ export function getPaymentStatusPill(o) {
 }
 
 // Pill trạng thái đơn (rút gọn theo hình mẫu)
+export function canonicalAdminOrderStatus(value) {
+  const raw = String(value || "").trim();
+  const normalized = normalizeStatusText(raw);
+  return {
+    "cho xu ly": "Chờ xác nhận",
+    "cho xac nhan": "Chờ xác nhận",
+    "pending": "Chờ xác nhận",
+    "da xac nhan": "Đã xác nhận",
+    "confirmed": "Đã xác nhận",
+    "dang van chuyen": "Đang vận chuyển",
+    "dang giao": "Đang vận chuyển",
+    "shipping": "Đang vận chuyển",
+    "shipped": "Đang vận chuyển",
+    "giao hang that bai": "Giao hàng thất bại",
+    "khong giao duoc hang": "Giao hàng thất bại",
+    "delivery failed": "Giao hàng thất bại",
+    "delivery failure": "Giao hàng thất bại",
+    "ve kho": "Về kho",
+    "returned to warehouse": "Về kho",
+    "warehouse return": "Về kho",
+    "da giao": "Đã giao hàng thành công",
+    "da giao hang thanh cong": "Đã giao hàng thành công",
+    "delivered": "Đã giao hàng thành công",
+    "da nhan hang": "Đã nhận hàng",
+    "received": "Đã nhận hàng",
+    "huy": "Đã hủy",
+    "huy don": "Đã hủy",
+    "da huy": "Đã hủy",
+    "cancelled": "Đã hủy",
+    "canceled": "Đã hủy",
+  }[normalized] || raw || "Chờ xác nhận";
+}
+
 export function getOrderStatusPill(o) {
   const map = {
     "Đã nhận hàng": {
@@ -1135,12 +1175,63 @@ export function getOrderStatusPill(o) {
     },
     "Đã hủy": { label: "Đã hủy", cls: "bg-light text-danger border" },
   };
-  return (
-    map[o.status] || {
-      label: o.status || "—",
-      cls: "bg-light text-secondary border",
-    }
-  );
+  if (map[o?.status]) return map[o.status];
+  return map[canonicalAdminOrderStatus(o?.status)] || {
+    label: o?.status || "—",
+    cls: "bg-light text-secondary border",
+  };
+}
+
+/*
+ * Lý do giải quyết đơn (hủy/giao thất bại) dùng chung cho danh sách và chi
+ * tiết. Dữ liệu lịch sử cũ có thể chưa được chép vào Orders.CancelReason, vì
+ * vậy ưu tiên cả ghi chú trong timeline và StockIssueReason trước khi báo
+ * rõ rằng đơn cũ không có dữ liệu, tuyệt đối không tự đoán một lý do mới.
+ */
+export function getOrderResolutionReason(o) {
+  if (!o) return "";
+
+  const statusKey = normalizeStatusText(o.status);
+  const issueKey = String(o.stock_issue_status || "").trim().toUpperCase();
+  const cancelled = ["da huy", "cancelled", "canceled"].includes(statusKey)
+    || /(^|\s)huy(\s|$)/.test(statusKey);
+  const failed = [
+    "giao hang that bai", "khong giao duoc hang", "delivery failed",
+    "delivery failure", "failed delivery", "ve kho",
+    "returned to warehouse", "warehouse return",
+  ].includes(statusKey)
+    || ["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT", "LOST_IN_TRANSIT"].includes(issueKey);
+  if (!cancelled && !failed) return "";
+
+  const isGeneric = (value) => {
+    const text = String(value || "").trim();
+    return !text
+      || /^cập nhật (bởi|trạng thái)/i.test(text)
+      || /^(đơn\s*(hàng\s*)?(bị\s*)?hủy|cancel(?:led|ed)?)\.?$/i.test(text);
+  };
+  const history = Array.isArray(o._history) ? o._history : [];
+  const targetStatuses = cancelled
+    ? ["da huy", "huy", "huy don", "cancelled", "canceled"]
+    : ["giao hang that bai", "khong giao duoc hang", "delivery failed", "delivery failure", "failed delivery", "ve kho", "returned to warehouse", "warehouse return"];
+  const historyReason = [...history]
+    .reverse()
+    .filter((item) => targetStatuses.includes(normalizeStatusText(item?.status)))
+    .map((item) => item?.note ?? item?.Note ?? "")
+    .find((value) => !isGeneric(value));
+  const directReason = (cancelled
+    ? [o.cancel_reason, o.stock_issue_reason]
+    : [o.stock_issue_reason, o.cancel_reason]
+  ).map((value) => String(value || "").trim()).find((value) => !isGeneric(value));
+  if (directReason) return directReason;
+  if (historyReason) return String(historyReason).trim();
+
+  // Các mã sự cố được hệ thống tạo mới luôn có lý do chuẩn để đơn cũ cũng
+  // hiển thị được thông báo dễ hiểu nếu chỉ còn mã trạng thái trong DB.
+  if (issueKey === "LOST_IN_TRANSIT") return "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.";
+  if (issueKey === "DELIVERY_ACCIDENT") return "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại.";
+  if (issueKey === "RETURNED_TO_WAREHOUSE") return "Khách không bắt máy / không nhận hàng, kiện đã về kho.";
+  if (issueKey === "DELIVERY_FAILED") return "Giao hàng thất bại, cần kiểm tra lại hành trình vận chuyển.";
+  return cancelled ? "Đơn cũ chưa lưu lý do hủy." : "Chưa có ghi chú nguyên nhân giao thất bại.";
 }
 
 // Mã vận đơn & mã lấy hàng shipper
@@ -1545,17 +1636,18 @@ export const completedReturnsRefundInRange = computed(() => {
 export function searchReturnOrder() {
   const raw = returnSearchCode.value.trim();
   if (!raw) {
-    notify("Vui lòng nhập mã hóa đơn", "error");
+    notify("Vui lòng nhập mã đơn hoặc mã vận đơn", "error");
     return;
   }
-  const code = raw.replace(/^#/, "").replace(/^HD/i, "");
-  const up = raw.toUpperCase();
+  const compactRaw = raw.replace(/^#/, "").replace(/[\s-]+/g, "");
+  const code = compactRaw.replace(/^HD/i, "");
+  const up = compactRaw.toUpperCase();
   const ord = db.orders.find(
     (o) =>
       String(o.id) === code ||
-      String(o.id) === raw ||
+      String(o.id) === compactRaw ||
       "HD" + o.id === up ||
-      getTrackingCode(o).toUpperCase() === up,
+      String(getTrackingCode(o)).replace(/[\s-]+/g, "").toUpperCase() === up,
   );
   if (!ord) {
     returnFoundOrder.value = null;
@@ -2004,7 +2096,7 @@ export async function savePosCustomer() {
     return;
   }
   // Validate SĐT VN nếu có nhập
-  if (ph && !/^(0[3|5|7|8|9])[0-9]{8}$/.test(ph)) {
+  if (ph && !/^0(?:3|5|7|8|9)[0-9]{8}$/.test(ph)) {
     notify("Số điện thoại không hợp lệ (10 số, bắt đầu 03/05/07/08/09)", "error");
     return;
   }
@@ -3394,7 +3486,7 @@ export function mapOrder(o) {
     // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
     date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
-    status: o.Status ?? o.status ?? "Chờ xác nhận",
+    status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
     customer_name: o.CustomerName ?? o.customer_name ?? "Khách lẻ",
     customer_phone: o.CustomerPhone ?? o.customer_phone ?? "",
     customer_address: o.ShippingAddress ?? o.customer_address ?? "",
@@ -3685,6 +3777,8 @@ async function loadAllData(isBackground) {
       id: r.ReturnID ?? r.id,
       order_id: r.OrderID ?? r.order_id,
       return_type: r.ReturnType ?? r.return_type ?? "Trả hàng",
+      payment_method: r.PaymentMethod ?? r.payment_method ?? "COD",
+      payment_status: r.PaymentStatus ?? r.payment_status ?? "Chưa thanh toán",
       reason: r.Reason ?? r.reason ?? "",
       refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
       status: r.Status ?? r.status ?? "Chờ xử lý",
@@ -3693,6 +3787,7 @@ async function loadAllData(isBackground) {
       inspection_note: r.InspectionNote ?? r.inspection_note ?? "",
       resolution_note: r.ResolutionNote ?? r.resolution_note ?? "",
       restocked_at: r.RestockedAt ?? r.restocked_at ?? null,
+      wallet_credited_at: r.WalletCreditedAt ?? r.wallet_credited_at ?? null,
     }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,

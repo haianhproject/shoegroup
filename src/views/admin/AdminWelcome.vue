@@ -60,8 +60,7 @@ function goToStore() {
 }
 
 function onLogoutClick() {
-  handleLogout()
-  router.push('/login')
+  if (handleLogout()) router.push('/login')
 }
 </script>
 

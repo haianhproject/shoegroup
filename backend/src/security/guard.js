@@ -64,6 +64,9 @@ const POLICIES = [
   ["GET", /^\/api\/customers\/\d+\/notifications$/, "CUSTOMER"],
   ["PUT", /^\/api\/accounts\/\d+$/, "CUSTOMER"], // tu cap nhat thong tin ca nhan
   ["GET", /^\/api\/returns$/, "CUSTOMER"],
+  ["GET", /^\/api\/wallet$/, "CUSTOMER"],
+  ["GET", /^\/api\/wallet\/transactions$/, "CUSTOMER"],
+  ["POST", /^\/api\/wallet\/withdrawals$/, "CUSTOMER"],
   ["GET", /^\/api\/orders$/, "ADMIN"],
 
   // ===== Chi Admin =====

@@ -22,7 +22,14 @@ const setTab = (t) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+const logoutConfirmOpen = ref(false)
+
+const requestLogout = () => {
+  logoutConfirmOpen.value = true
+}
+
 const handleLogout = () => {
+  logoutConfirmOpen.value = false
   logout()
   notify({ type: 'success', title: 'Da dang xuat', message: 'Hen gap lai ban!' })
   router.push('/')
@@ -428,7 +435,8 @@ const copyCoupon = (code) => {
               <button :class="{ active: tab === 'address' }" @click="setTab('address')"><i class="bi bi-geo-alt"></i> Sổ địa chỉ</button>
               <button :class="{ active: tab === 'orders' }" @click="setTab('orders')"><i class="bi bi-box-seam"></i> Đơn hàng của tôi</button>
               <button :class="{ active: tab === 'coupons' }" @click="setTab('coupons')"><i class="bi bi-ticket-perforated"></i> Mã giảm giá</button>
-              <button class="acc-logout" @click="handleLogout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</button>
+              <router-link to="/wallet" class="acc-wallet-link"><i class="bi bi-wallet2"></i> Ví ShoeGroup</router-link>
+              <button class="acc-logout" @click="requestLogout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</button>
             </nav>
           </div>
         </div>
@@ -594,6 +602,20 @@ const copyCoupon = (code) => {
         </div>
       </div>
     </transition>
+
+    <transition name="suc">
+      <div v-if="logoutConfirmOpen" class="modal-overlay" @click.self="logoutConfirmOpen = false">
+        <div class="sg-card logout-confirm-box" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title">
+          <div class="logout-confirm-icon"><i class="bi bi-box-arrow-right"></i></div>
+          <h5 id="logout-confirm-title" class="fw-bold mb-2">Bạn muốn đăng xuất?</h5>
+          <p class="text-secondary mb-4">Phiên đăng nhập hiện tại sẽ được kết thúc trên thiết bị này.</p>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn-sg-outline" @click="logoutConfirmOpen = false">Ở lại</button>
+            <button type="button" class="btn-sg btn-danger-confirm" @click="handleLogout">Đăng xuất</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -615,6 +637,9 @@ const copyCoupon = (code) => {
 .acc-nav button:hover, .acc-nav a:hover { background: #f5f5f5; color: #0A0A0A; transform: translateX(2px); }
 .acc-nav button.active, .acc-nav button.active:hover { background: #0A0A0A; color: #fff; transform: none; }
 .acc-nav button.active i { color: #fff; }
+.acc-wallet-link { color: var(--sg-ink-2); }
+.acc-wallet-link.router-link-active { background: #0A0A0A; color: #fff; }
+.acc-wallet-link.router-link-active i { color: #fff; }
 .acc-logout { color: #ef4444 !important; margin-top: 6px; }
 .acc-logout:hover { background: #fee2e2 !important; }
 .acc-content { min-height: 80vh; }
@@ -638,6 +663,10 @@ const copyCoupon = (code) => {
 .modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: var(--sg-r-lg); background: #fff; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
 .btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; padding: 4px; }
 .btn-close-modal:hover { color: #0A0A0A; }
+.logout-confirm-box { max-width: 430px; width: 100%; padding: 28px; border-radius: var(--sg-r-lg); background: #fff; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,.12); }
+.logout-confirm-icon { width: 52px; height: 52px; margin: 0 auto 14px; display: grid; place-items: center; border-radius: 50%; background: #fee2e2; color: #b91c1c; font-size: 1.35rem; }
+.btn-danger-confirm { background: #b91c1c; border-color: #b91c1c; }
+.btn-danger-confirm:hover { background: #991b1b; border-color: #991b1b; }
 .suc-enter-active { transition: opacity .3s; } .suc-enter-from { opacity: 0; }
 .position-relative { position: relative; }
 .search-input-wrapper { position: relative; display: flex; align-items: center; }
