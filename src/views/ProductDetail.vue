@@ -7,7 +7,7 @@ import {
   showDrawer
 } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
-import { API_BASE_URL } from '../services/apiClient'
+import { api } from '../services/apiClient'
 
 const route = useRoute()
 
@@ -43,8 +43,6 @@ const discountLabel = computed(() => {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(rounded)
 })
 
-const API = API_BASE_URL
-
 // ============================================================
 // FETCH PRODUCT
 // ============================================================
@@ -53,10 +51,17 @@ const fetchData = async () => {
   const id = Number(route.params.id)
 
   isLoading.value = true
+  product.value = null
+  variants.value = []
+  colorList.value = []
+  sizeList.value = []
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    isLoading.value = false
+    return
+  }
 
   try {
-    const rp = await fetch(`${API}/products`)
-    const dp = await rp.json()
+    const dp = await api.get('/products')
 
     const raw = Array.isArray(dp)
       ? dp.find((p) => Number(p.id) === id)

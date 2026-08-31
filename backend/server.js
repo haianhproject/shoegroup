@@ -8,6 +8,21 @@ const config = require("./src/security/env");
 const jwtHelper = require("./src/security/jwt");
 const passwordHelper = require("./src/security/password");
 const {
+  text: validateText,
+  positiveInt,
+  nonNegativeInt,
+  nonNegativeNumber,
+  booleanValue,
+  validateEmail,
+  validatePhone,
+  validateCatalogPayload,
+  validateProductPayload,
+  validateCouponPayload,
+  validateVariantDiscountPayload,
+  HEX_RE,
+  SLUG_RE,
+} = require("./src/validation");
+const {
   attachUser,
   policyGuard,
   createRateLimiter,
@@ -21,6 +36,18 @@ const createOptimizedRoutes = require("./src/routes/optimized.routes");
 const app = express();
 app.disable("x-powered-by");
 const PORT = config.port; // [TOI UU] doc tu bien moi truong PORT
+
+const sendValidationError = (res, result) =>
+  res.status(400).json({ success: false, message: result?.message || "Dữ liệu không hợp lệ." });
+
+const parseRouteId = (res, value, label = "ID") => {
+  const id = positiveInt(value);
+  if (!id) {
+    sendValidationError(res, { message: `${label} không hợp lệ.` });
+    return null;
+  }
+  return id;
+};
 
 app.use(cors(corsOptions)); // [TOI UU] chi cho phep origin trong CORS_ORIGINS
 app.use(securityHeaders); // [TOI UU] header bao mat (thay helmet)
@@ -202,9 +229,12 @@ mailTransporter.verify((err) => {
  * ========================================================================= */
 app.post("/api/login", loginLimiter, async (req, res) => {
   try {
-    // [TOI UU] Kiem tra du lieu TRUOC khi cho ket noi DB -> tra ve 400 dung chuan
-    const { email, password } = req.body || {};
-    if (!email || !password)
+    // Kiểm tra và chuẩn hóa trước khi truy cập DB; không để chuỗi trắng hoặc
+    // payload kiểu object lọt xuống lớp SQL/hash.
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const email = validateEmail(body.email);
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || !password || password.length > 256)
       return res
         .status(400)
         .json({ success: false, message: "Thieu email hoac mat khau" });
@@ -212,7 +242,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
     const r = await pool
       .request()
-      .input("e", sql.VarChar, String(email).trim().toLowerCase())
+      .input("e", sql.VarChar, email)
       .query(
         "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id, PasswordHash as password_hash FROM Users WHERE LOWER(Email)=@e AND IsActive=1",
       );
@@ -269,15 +299,16 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 /* [TOI UU][BAO MAT] Dang ky: bam mat khau bang scrypt truoc khi luu. */
 app.post("/api/register", async (req, res) => {
   try {
-    const { fullName, email, password } = req.body || {};
-    if (!fullName || !email || !password)
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const fullName = validateText(body.fullName, 100);
+    const email = validateEmail(body.email);
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!fullName || fullName.length < 2 || !email || !password)
       return res
         .status(400)
         .json({ success: false, message: "Vui long nhap day du thong tin." });
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email)))
-      return res
-        .status(400)
-        .json({ success: false, message: "Email khong hop le." });
+    if (String(body.fullName ?? "").trim().length > 100)
+      return res.status(400).json({ success: false, message: "Ho ten khong duoc dai qua 100 ky tu." });
     const strength = passwordHelper.checkStrength(password);
     if (!strength.ok)
       return res
@@ -285,7 +316,7 @@ app.post("/api/register", async (req, res) => {
         .json({ success: false, message: strength.message });
 
     await poolConnect;
-    const mail = String(email).trim().toLowerCase();
+    const mail = email;
     const check = await pool
       .request()
       .input("e", sql.VarChar, mail)
@@ -782,7 +813,7 @@ app.post("/api/addresses", async (req, res) => {
 
 app.put("/api/addresses/:id", async (req, res) => {
   const userId = Number(req.auth && req.auth.sub);
-  const addressId = Number(req.params.id);
+  const addressId = positiveInt(req.params.id);
   if (!userId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -859,7 +890,7 @@ app.put("/api/addresses/:id", async (req, res) => {
 
 app.delete("/api/addresses/:id", async (req, res) => {
   const userId = Number(req.auth && req.auth.sub);
-  const addressId = Number(req.params.id);
+  const addressId = positiveInt(req.params.id);
   if (!userId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -947,6 +978,53 @@ app.post("/api/orders", async (req, res) => {
     const items = b.items ?? b.products ?? [];
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Don hang khong co san pham." });
+    }
+    if (items.length > 200 || items.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+      return res.status(400).json({ success: false, message: "Danh sach san pham trong don khong hop le." });
+    }
+    // POS là luồng admin nhưng vẫn phải chặn giá âm/NaN, số lượng quá lớn và
+    // chuỗi vượt kích thước cột trước khi mở transaction.
+    for (const item of items) {
+      const quantity = nonNegativeInt(item.quantity ?? 1, { max: 1000000, defaultValue: 1 });
+      const productId = positiveInt(item.productId ?? item.product_id);
+      const rawVariantId = item.productVariantId ?? item.product_variant_id ?? item.variant_id ?? null;
+      const variantId = rawVariantId === null || rawVariantId === "" ? null : positiveInt(rawVariantId);
+      if (!quantity || !productId || (rawVariantId !== null && rawVariantId !== "" && !variantId)) {
+        return res.status(400).json({ success: false, message: "San pham, bien the hoac so luong trong don khong hop le." });
+      }
+      if (isAdminOrder) {
+        const price = nonNegativeNumber(item.price ?? item.unitPrice, { max: 1e12, defaultValue: null });
+        if (price === null) return res.status(400).json({ success: false, message: "Gia san pham trong don khong hop le." });
+      }
+    }
+    totalAmount = nonNegativeNumber(totalAmount, { max: 1e12, defaultValue: null });
+    shippingFee = nonNegativeNumber(shippingFee, { max: 1e12, defaultValue: 0 });
+    discountAmount = nonNegativeNumber(discountAmount, { max: 1e12, defaultValue: 0 });
+    if (totalAmount === null || shippingFee === null || discountAmount === null) {
+      return res.status(400).json({ success: false, message: "So tien don hang khong hop le." });
+    }
+    customerName = validateText(customerName, 100) || "Khach le";
+    customerPhone = validateText(customerPhone, 20).replace(/\s+/g, "");
+    shippingAddress = validateText(shippingAddress, 500);
+    if (customerPhone && !/^[0-9+(). -]{7,20}$/.test(customerPhone)) {
+      return res.status(400).json({ success: false, message: "So dien thoai khach hang khong hop le." });
+    }
+    if (isAdminOrder) {
+      const normalizedPayment = normalizeOrderStatus(paymentMethod);
+      if (normalizedPayment.includes("tien mat") || normalizedPayment.includes("cod") || normalizedPayment.includes("nhan hang")) {
+        paymentMethod = "Tiền mặt";
+      } else if (normalizedPayment.includes("chuyen khoan") || normalizedPayment.includes("bank")) {
+        paymentMethod = "Chuyển khoản";
+      } else {
+        return res.status(400).json({ success: false, message: "Phuong thuc thanh toan khong hop le." });
+      }
+      const normalizedStatus = normalizeOrderStatus(status);
+      if (!Object.prototype.hasOwnProperty.call(ORDER_STATUS_ALIASES, normalizedStatus)) {
+        return res.status(400).json({ success: false, message: "Trang thai don hang khong hop le." });
+      }
+      const canonicalStatus = canonicalOrderStatus(status);
+      status = canonicalStatus;
+      handledBy = validateText(handledBy, 50) || "Quầy";
     }
     if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
       return res.status(400).json({ success: false, message: "Tai khoan dat hang khong hop le." });
@@ -1360,8 +1438,8 @@ app.post("/api/orders", async (req, res) => {
 // Khach chi duoc doi dia chi cua chinh minh truoc khi don bat dau giao.
 app.put("/api/orders/:id/address", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const orderId = Number(req.params.id);
-  const addressId = Number(req.body && req.body.addressId);
+  const orderId = positiveInt(req.params.id);
+  const addressId = positiveInt(req.body && req.body.addressId);
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -1602,11 +1680,23 @@ app.get("/api/orders", async (req, res) => {
       console.log(e.message);
     }
 
-    let orders = rOrders.recordset.map((o) => {
-      o.products = details.filter((d) => d.OrderID === o.id);
-      o.history = histories.filter((h) => h.OrderID === o.id);
-      return o;
-    });
+    const detailsByOrder = new Map();
+    for (const detail of details) {
+      const key = String(detail.OrderID);
+      if (!detailsByOrder.has(key)) detailsByOrder.set(key, []);
+      detailsByOrder.get(key).push(detail);
+    }
+    const historiesByOrder = new Map();
+    for (const history of histories) {
+      const key = String(history.OrderID);
+      if (!historiesByOrder.has(key)) historiesByOrder.set(key, []);
+      historiesByOrder.get(key).push(history);
+    }
+    const orders = rOrders.recordset.map((o) => ({
+      ...o,
+      products: detailsByOrder.get(String(o.id)) || [],
+      history: historiesByOrder.get(String(o.id)) || [],
+    }));
 
     res.json(orders);
   } catch (e) {
@@ -1617,9 +1707,10 @@ app.get("/api/orders", async (req, res) => {
 // Admin cap nhat luong don; khach hang chi duoc huy don cua chinh minh.
 app.put("/api/orders/:id/status", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const orderId = Number(req.params.id);
-  const newStatus = cleanAddressText(req.body && req.body.status, 50);
-  const reason = cleanAddressText(req.body && req.body.reason, 500);
+  const orderId = positiveInt(req.params.id);
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const newStatus = typeof body.status === "string" ? cleanAddressText(body.status, 50) : "";
+  const reason = typeof body.reason === "string" ? cleanAddressText(body.reason, 500) : "";
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -1830,8 +1921,11 @@ app.put("/api/orders/:id/status", async (req, res) => {
 // Cập nhật trạng thái thanh toán từ khu quản trị.
 app.put("/api/orders/:id/payment", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const orderId = Number(req.params.id);
-  const requestedPaymentStatus = cleanAddressText(req.body && req.body.payment_status, 30) || "Chưa thanh toán";
+  const orderId = positiveInt(req.params.id);
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const requestedPaymentStatus = typeof body.payment_status === "string"
+    ? (cleanAddressText(body.payment_status, 30) || "Chưa thanh toán")
+    : "Chưa thanh toán";
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -1934,13 +2028,26 @@ app.get("/api/products", async (req, res) => {
       `SELECT ProductID as product_id, ColorName as color, ImageURL as image, IsPrimary as is_primary
        FROM ProductImages`,
     );
-    const imgByKey = {};
+    const imgByKey = new Map();
     for (const img of ir.recordset) {
-      const key = img.product_id + "::" + (img.color || "");
-      if (!imgByKey[key] || img.is_primary) imgByKey[key] = img.image;
+      const key = `${img.product_id}::${img.color || ""}`;
+      if (!imgByKey.has(key) || img.is_primary) imgByKey.set(key, img.image);
+    }
+    const variantsByProduct = new Map();
+    for (const variant of vr.recordset) {
+      const key = String(variant.product_id);
+      if (!variantsByProduct.has(key)) variantsByProduct.set(key, []);
+      variantsByProduct.get(key).push(variant);
+    }
+    const imagesByProduct = new Map();
+    for (const img of ir.recordset) {
+      const key = String(img.product_id);
+      if (!imagesByProduct.has(key)) imagesByProduct.set(key, []);
+      imagesByProduct.get(key).push(img);
     }
     for (const p of products) {
-      const vs = vr.recordset.filter((v) => v.product_id === p.id);
+      const vs = variantsByProduct.get(String(p.id)) || [];
+      const productImages = imagesByProduct.get(String(p.id)) || [];
       p.variants = vs;
       p.sizes = [...new Set(vs.map((v) => v.size).filter(Boolean))];
       // FIX: tra ve tong ton kho de trang POS / Thong ke khong con hien so luong = 0
@@ -1961,14 +2068,14 @@ app.get("/api/products", async (req, res) => {
         if (!colorMap[v.color])
           colorMap[v.color] = { name: v.color, hex: v.hex || "", image: "" };
       }
-      for (const img of ir.recordset) {
+      for (const img of productImages) {
         if (img.product_id !== p.id || !img.color) continue;
         if (!colorMap[img.color])
           colorMap[img.color] = { name: img.color, hex: "", image: "" };
       }
       for (const cn of Object.keys(colorMap)) {
         const key = p.id + "::" + cn;
-        if (imgByKey[key]) colorMap[cn].image = imgByKey[key];
+        if (imgByKey.has(key)) colorMap[cn].image = imgByKey.get(key);
       }
       p.colors = Object.values(colorMap);
     }
@@ -1998,8 +2105,9 @@ async function upsertVariants(productId, variants) {
       found = await pool
         .request()
         .input("id", sql.Int, variantId)
+        .input("pid", sql.Int, productId)
         .query(
-          "SELECT ProductVariantID FROM ProductVariants WHERE ProductVariantID=@id",
+          "SELECT ProductVariantID FROM ProductVariants WHERE ProductVariantID=@id AND ProductID=@pid",
         );
     } else if (sku) {
       found = await pool
@@ -2126,7 +2234,20 @@ function bindProduct(request, b) {
 app.post("/api/products", async (req, res) => {
   try {
     await poolConnect;
-    const b = req.body || {};
+    const validation = validateProductPayload(req.body, { requireVariants: true });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const b = {
+      ...req.body,
+      name: validation.value.name,
+      price: validation.value.price,
+      sale_price: validation.value.salePrice,
+      active: validation.value.active,
+      is_featured: validation.value.featured,
+      parent_sku: validation.value.parentSku,
+      description: validation.value.description,
+      image_url: validation.value.imageUrl,
+      colors: validation.value.colors,
+    };
     let r = await bindProduct(pool.request(), b).query(`
       INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
       OUTPUT INSERTED.ProductID
@@ -2144,18 +2265,36 @@ app.post("/api/products", async (req, res) => {
 app.put("/api/products/:id", async (req, res) => {
   try {
     await poolConnect;
-    const b = req.body || {};
-    await bindProduct(pool.request().input("id", sql.Int, req.params.id), b)
+    const id = parseRouteId(res, req.params.id, "ProductID");
+    if (!id) return;
+    const validation = validateProductPayload(req.body, { requireVariants: false });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const b = {
+      ...req.body,
+      name: validation.value.name,
+      price: validation.value.price,
+      sale_price: validation.value.salePrice,
+      active: validation.value.active,
+      is_featured: validation.value.featured,
+      parent_sku: validation.value.parentSku,
+      description: validation.value.description,
+      image_url: validation.value.imageUrl,
+      colors: validation.value.colors,
+    };
+    const update = await bindProduct(pool.request().input("id", sql.Int, id), b)
       .query(`
       UPDATE Products SET ProductName=@n, BasePrice=@p, SalePrice=@sp, CategoryID=@c, BrandID=@br, CollectionID=@col,
         MaterialID=@mid, ImageURL=@img, Description=@desc,
         ParentSKU=@psku, IsFeatured=@feat, IsActive=@a WHERE ProductID=@id
     `);
-    await upsertVariants(Number(req.params.id), b.variants);
-    await upsertProductImages(Number(req.params.id), b.colors);
+    if (Number(update.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm." });
+    }
+    if (Array.isArray(req.body?.variants)) await upsertVariants(id, validation.value.variants);
+    if (Array.isArray(req.body?.colors)) await upsertProductImages(id, b.colors);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
 app.delete("/api/products/:id", async (req, res) => {
@@ -2164,13 +2303,17 @@ app.delete("/api/products/:id", async (req, res) => {
   const soft = !hard;
   try {
     await poolConnect;
-    const id = Number(req.params.id);
+    const id = parseRouteId(res, req.params.id, "ProductID");
+    if (!id) return;
     if (soft) {
       // XOA MEM: chi an san pham, giu nguyen toan bo du lieu
-      await pool
+      const result = await pool
         .request()
         .input("id", sql.Int, id)
         .query("UPDATE Products SET IsActive = 0 WHERE ProductID=@id");
+      if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm." });
+      }
       return res.json({ success: true, mode: "soft" });
     }
     // XOA CUNG: xoa that su khoi CSDL, an toan khoa ngoai (CO THE ANH HUONG DOANH THU)
@@ -2188,7 +2331,10 @@ app.delete("/api/products/:id", async (req, res) => {
       );
       await run("DELETE FROM ProductImages WHERE ProductID=@id");
       await run("DELETE FROM ProductVariants WHERE ProductID=@id");
-      await run("DELETE FROM Products WHERE ProductID=@id");
+      const deleted = await run("DELETE FROM Products WHERE ProductID=@id");
+      if (Number(deleted.rowsAffected?.[0] || 0) !== 1) {
+        throw Object.assign(new Error("Không tìm thấy sản phẩm."), { statusCode: 404 });
+      }
       await tx.commit();
       res.json({ success: true, mode: "hard" });
     } catch (err) {
@@ -2196,16 +2342,21 @@ app.delete("/api/products/:id", async (req, res) => {
       throw err;
     }
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
 app.put("/api/products/:id/restore", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "ProductID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Products SET IsActive = 1 WHERE ProductID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy sản phẩm." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2252,11 +2403,12 @@ app.get("/api/accounts", async (req, res) => {
 app.post("/api/accounts", async (req, res) => {
   try {
     await poolConnect;
-    const email = String(req.body.username ?? req.body.email ?? "").trim().toLowerCase();
-    const name = cleanAddressText(req.body.name, 100);
-    const plainPassword = String(req.body.password ?? "");
-    const roleId = Number(req.body.role_id);
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !name || plainPassword.length < 6 || ![1, 2, 3].includes(roleId)) {
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const email = validateEmail(body.username ?? body.email);
+    const name = validateText(body.name, 100);
+    const plainPassword = typeof body.password === "string" ? body.password : "";
+    const roleId = positiveInt(body.role_id, { max: 2 });
+    if (!email || !name || String(body.name ?? "").trim().length > 100 || plainPassword.length < 6 || plainPassword.length > 256 || !roleId) {
       return res.status(400).json({ success: false, message: "Email, ho ten, mat khau (toi thieu 6 ky tu) hoac vai tro khong hop le." });
     }
     const passwordHash = await passwordHelper.hash(plainPassword);
@@ -2278,31 +2430,43 @@ app.post("/api/accounts", async (req, res) => {
 app.put("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
-    const b = req.body || {};
+    const id = parseRouteId(res, req.params.id, "UserID");
+    if (!id) return;
+    const b = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
     const isAdmin = req.auth && req.auth.role === "Admin";
     if (!isAdmin && (b.role_id !== undefined || b.active !== undefined)) {
       return res.status(403).json({ success: false, message: "Khach hang khong duoc thay doi vai tro hoac trang thai tai khoan." });
     }
     // Chi cap nhat nhung truong duoc gui len -> tranh ghi de/xoa nham
     // (vi du doi vai tro thi khong lam mat Phone/Address/Email cu).
-    let rq = pool.request().input("id", sql.Int, req.params.id);
+    let rq = pool.request().input("id", sql.Int, id);
     const sets = [];
     if (b.username !== undefined) {
-      const email = String(b.username || "").trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ success: false, message: "Email khong hop le." });
+      const email = validateEmail(b.username);
+      if (!email) return res.status(400).json({ success: false, message: "Email khong hop le." });
+      rq = rq.input("e", sql.VarChar, email);
+      sets.push("Email=@e");
+    }
+    if (b.email !== undefined && b.username === undefined) {
+      const email = validateEmail(b.email);
+      if (!email) return res.status(400).json({ success: false, message: "Email khong hop le." });
       rq = rq.input("e", sql.VarChar, email);
       sets.push("Email=@e");
     }
     if (b.name !== undefined) {
-      rq = rq.input("n", sql.NVarChar, b.name);
+      const name = validateText(b.name, 100);
+      if (!name || String(b.name).trim().length > 100) return res.status(400).json({ success: false, message: "Ho ten khong hop le." });
+      rq = rq.input("n", sql.NVarChar, name);
       sets.push("FullName=@n");
     }
     if (b.phone !== undefined) {
-      rq = rq.input("ph", sql.VarChar, b.phone || "");
+      const phone = validatePhone(b.phone);
+      if (phone === null) return res.status(400).json({ success: false, message: "So dien thoai khong hop le." });
+      rq = rq.input("ph", sql.VarChar, phone);
       sets.push("Phone=@ph");
     }
     if (b.address !== undefined) {
-      rq = rq.input("ad", sql.NVarChar, b.address || "");
+      rq = rq.input("ad", sql.NVarChar, validateText(b.address, 500));
       sets.push("Address=@ad");
     }
     if (b.avatar_url !== undefined || b.avatarUrl !== undefined) {
@@ -2320,11 +2484,15 @@ app.put("/api/accounts/:id", async (req, res) => {
       sets.push("AvatarURL=@avatar");
     }
     if (b.role_id !== undefined && b.role_id !== null && b.role_id !== "") {
-      rq = rq.input("r", sql.Int, parseInt(b.role_id) || 1);
+      const roleId = positiveInt(b.role_id, { max: 2 });
+      if (!roleId) return res.status(400).json({ success: false, message: "Vai tro khong hop le." });
+      rq = rq.input("r", sql.Int, roleId);
       sets.push("RoleID=@r");
     }
     if (b.active !== undefined) {
-      rq = rq.input("act", sql.Bit, b.active === false ? 0 : 1);
+      const active = booleanValue(b.active, true);
+      if (active === null) return res.status(400).json({ success: false, message: "Trang thai tai khoan khong hop le." });
+      rq = rq.input("act", sql.Bit, active ? 1 : 0);
       sets.push("IsActive=@act");
     }
     if (
@@ -2332,15 +2500,18 @@ app.put("/api/accounts/:id", async (req, res) => {
       b.password !== null &&
       String(b.password).trim() !== ""
     ) {
-      if (String(b.password).length < 6) return res.status(400).json({ success: false, message: "Mat khau moi phai co it nhat 6 ky tu." });
+      if (typeof b.password !== "string" || b.password.length < 6 || b.password.length > 256) return res.status(400).json({ success: false, message: "Mat khau moi phai co 6-256 ky tu." });
       rq = rq.input("pw", sql.VarChar, await passwordHelper.hash(String(b.password)));
       sets.push("PasswordHash=@pw");
       sets.push("LastPasswordChangedAt=GETDATE()");
     }
     if (sets.length === 0) return res.json({ success: true });
-    await rq.query("UPDATE Users SET " + sets.join(", ") + ", UpdatedAt=GETDATE() WHERE UserID=@id");
+    const update = await rq.query("UPDATE Users SET " + sets.join(", ") + ", UpdatedAt=GETDATE() WHERE UserID=@id");
+    if (Number(update.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
+    }
     const updated = await pool.request()
-      .input("uid", sql.Int, req.params.id)
+      .input("uid", sql.Int, id)
       .query("SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id FROM Users WHERE UserID=@uid");
     res.json({ success: true, user: updated.recordset[0] || null });
   } catch (e) {
@@ -2351,10 +2522,15 @@ app.put("/api/accounts/:id", async (req, res) => {
 app.delete("/api/accounts/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "UserID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Users SET IsActive=0, UpdatedAt=GETDATE() WHERE UserID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2378,11 +2554,14 @@ app.get("/api/categories", async (req, res) => {
 app.post("/api/categories", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const sport = validateText(req.body.sport, 50) || null;
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("sp", sql.NVarChar, req.body.sport || null)
-      .input("a", sql.Bit, req.body.active)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("sp", sql.NVarChar, sport)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "INSERT INTO Categories (CategoryName, Sport, IsActive) VALUES (@n, @sp, @a)",
       );
@@ -2395,15 +2574,23 @@ app.post("/api/categories", async (req, res) => {
 app.put("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "CategoryID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const sport = validateText(req.body.sport, 50) || null;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("sp", sql.NVarChar, req.body.sport || null)
-      .input("a", sql.Bit, req.body.active)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("sp", sql.NVarChar, sport)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Categories SET CategoryName=@n, Sport=@sp, IsActive=@a WHERE CategoryID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy danh mục." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2413,10 +2600,15 @@ app.put("/api/categories/:id", async (req, res) => {
 app.delete("/api/categories/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "CategoryID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("DELETE FROM Categories WHERE CategoryID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy danh mục." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2440,12 +2632,17 @@ app.get("/api/brands", async (req, res) => {
 app.post("/api/brands", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const logo = validateText(req.body.logo_url, 2200000);
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("l", sql.VarChar(sql.MAX), req.body.logo_url || "")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("l", sql.VarChar(sql.MAX), logo)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "INSERT INTO Brands (BrandName, LogoURL, SortOrder, IsActive) VALUES (@n, @l, @so, @a)",
       );
@@ -2457,16 +2654,26 @@ app.post("/api/brands", async (req, res) => {
 app.put("/api/brands/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "BrandID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const logo = validateText(req.body.logo_url, 2200000);
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("l", sql.VarChar(sql.MAX), req.body.logo_url || "")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("l", sql.VarChar(sql.MAX), logo)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Brands SET BrandName=@n, LogoURL=@l, SortOrder=@so, IsActive=@a WHERE BrandID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy thương hiệu." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2475,10 +2682,15 @@ app.put("/api/brands/:id", async (req, res) => {
 app.delete("/api/brands/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "BrandID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Brands SET IsActive = 0 WHERE BrandID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy thương hiệu." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2502,10 +2714,12 @@ app.get("/api/materials", async (req, res) => {
 app.post("/api/materials", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("a", sql.Bit, validation.value.active)
       .query("INSERT INTO Materials (MaterialName, IsActive) VALUES (@n, @a)");
     res.json({ success: true });
   } catch (e) {
@@ -2515,14 +2729,21 @@ app.post("/api/materials", async (req, res) => {
 app.put("/api/materials/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "MaterialID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 100 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Materials SET MaterialName=@n, IsActive=@a WHERE MaterialID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy chất liệu." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2531,10 +2752,15 @@ app.put("/api/materials/:id", async (req, res) => {
 app.delete("/api/materials/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "MaterialID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Materials SET IsActive = 0 WHERE MaterialID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy chất liệu." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2574,6 +2800,54 @@ const RETURN_TRANSITIONS = {
 function normalizeReturnType(value) {
   return normalizeOrderStatus(value).replace(/[\s_-]+/g, " ").trim();
 }
+
+// Chuẩn hóa loại yêu cầu trả hàng từ cả giao diện mới và các client cũ.
+// Lưu một tập giá trị hữu hạn giúp tránh dữ liệu rác và bảo đảm các nhánh
+// xử lý (đặc biệt "chưa nhận hàng"/"gửi bưu cục") luôn nhận đúng loại.
+function canonicalReturnType(value) {
+  const normalized = normalizeReturnType(value || "customer");
+  const aliases = {
+    customer: "CUSTOMER",
+    return: "CUSTOMER",
+    refund: "CUSTOMER",
+    direct: "DIRECT",
+    "in store": "DIRECT",
+    "truc tiep": "DIRECT",
+    "tra truc tiep tai quay": "DIRECT",
+    shipper: "SHIPPER",
+    courier: "SHIPPER",
+    "shipper tu lay": "SHIPPER",
+    "post office": "POST_OFFICE",
+    "buu cuc": "POST_OFFICE",
+    "gui tai buu cuc": "POST_OFFICE",
+    "tra theo yeu cau khach hang": "CUSTOMER",
+    "not received": "NOT_RECEIVED",
+    "chua nhan duoc hang": "NOT_RECEIVED",
+    "khong nhan duoc hang": "NOT_RECEIVED",
+    "delivery issue": "NOT_RECEIVED",
+    "delivery failed": "NOT_RECEIVED",
+    "delivery failure": "NOT_RECEIVED",
+    "failed delivery": "NOT_RECEIVED",
+    "khong giao duoc hang": "NOT_RECEIVED",
+    "giao hang that bai": "NOT_RECEIVED",
+    "ve kho": "NOT_RECEIVED",
+  };
+  return aliases[normalized] || null;
+}
+
+const comparableReturnText = (value, maxLength = 255) => {
+  if (value && typeof value === "object") {
+    value = value.size_name ?? value.sizeName ?? value.name ?? value.label
+      ?? value.color_label ?? value.colorName ?? value.color_name;
+  }
+  return normalizeOrderStatus(cleanAddressText(value, maxLength));
+};
+
+const parseOptionalPositiveId = (value, label) => {
+  if (value === undefined || value === null || value === "") return { ok: true, value: null };
+  const parsed = positiveInt(value);
+  return parsed ? { ok: true, value: parsed } : { ok: false, message: `${label} không hợp lệ.` };
+};
 
 function isNotReceivedReturn(value) {
   return new Set([
@@ -2761,13 +3035,33 @@ app.get("/api/returns", async (req, res) => {
 app.post("/api/returns", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
   const isAdmin = req.auth && req.auth.role === "Admin";
-  const b = req.body || {};
-  const orderId = Number(b.order_id ?? b.orderId);
+  const b = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const orderId = positiveInt(b.order_id ?? b.orderId);
   if (!authenticatedUserId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ success: false, message: "Don hang khong hop le." });
-  const returnType = cleanAddressText(b.return_type ?? b.returnType, 20) || "CUSTOMER";
-  const notReceived = isNotReceivedReturn(returnType);
-  const items = Array.isArray(b.items) ? b.items : [];
+  if (!orderId) return res.status(400).json({ success: false, message: "Don hang khong hop le." });
+  const returnType = canonicalReturnType(b.return_type ?? b.returnType);
+  if (!returnType) return res.status(400).json({ success: false, message: "Loai yeu cau tra hang khong hop le." });
+  const notReceived = returnType === "NOT_RECEIVED";
+  if (b.items !== undefined && !Array.isArray(b.items)) return res.status(400).json({ success: false, message: "Danh sach san pham tra hang khong hop le." });
+  const rawItems = Array.isArray(b.items) ? b.items : [];
+  if (rawItems.length > 200) return res.status(400).json({ success: false, message: "Moi yeu cau chi duoc tra toi da 200 dong san pham." });
+  const items = rawItems.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const orderDetailId = positiveInt(item.order_detail_id ?? item.orderDetailId);
+    const productId = positiveInt(item.product_id ?? item.productId ?? item.id_product ?? item.product?.id_product);
+    const quantity = nonNegativeInt(item.quantity ?? item.return_qty, { max: 1000000, defaultValue: null });
+    return {
+      order_detail_id: orderDetailId,
+      product_id: productId,
+      quantity,
+      size: comparableReturnText(item.size, 100),
+      color: comparableReturnText(item.color, 100),
+      condition: cleanAddressText(item.condition, 30),
+      reason: cleanAddressText(item.reason, 500),
+    };
+  });
+  if (items.some((item) => !item)) return res.status(400).json({ success: false, message: "Dong san pham tra hang khong hop le." });
+  if (items.some((item) => !item.quantity || item.quantity < 1)) return res.status(400).json({ success: false, message: "So luong san pham tra phai la so nguyen duong." });
   // Báo chưa nhận được hàng áp dụng cho cả kiện, nên API không bắt buộc
   // client phải gửi danh sách sản phẩm (frontend sẽ tự điền nếu có).
   if (!items.length && !notReceived) return res.status(400).json({ success: false, message: "Vui long chon san pham va so luong can tra." });
@@ -2776,10 +3070,12 @@ app.post("/api/returns", async (req, res) => {
   if (!reason) return res.status(400).json({ success: false, message: "Vui long nhap ly do tra hang." });
   const requestedStatus = canonicalReturnStatus(b.status || "Chờ xử lý");
   const initialStatus = isAdmin && requestedStatus ? requestedStatus : "Chờ xử lý";
-  const requestedRefund = Number(b.refund_amount ?? b.refundAmount);
-  const postOfficeId = notReceived ? null : (Number(b.post_office_id ?? b.postOfficeId) || null);
+  const requestedRefund = nonNegativeNumber(b.refund_amount ?? b.refundAmount, { max: 1e12, defaultValue: null });
+  const parsedPostOffice = parseOptionalPositiveId(b.post_office_id ?? b.postOfficeId, "Buu cuc");
+  if (!parsedPostOffice.ok) return res.status(400).json({ success: false, message: parsedPostOffice.message });
+  const postOfficeId = notReceived ? null : parsedPostOffice.value;
   let returnAddress = notReceived ? "" : cleanAddressText(b.return_address, 500);
-  if (["post_office", "post office"].includes(normalizeReturnType(returnType)) && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
+  if (returnType === "POST_OFFICE" && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
 
   await poolConnect;
   const transaction = new sql.Transaction(pool);
@@ -2826,6 +3122,7 @@ app.post("/api/returns", async (req, res) => {
       FROM OrderDetails od LEFT JOIN Products p ON p.ProductID=od.ProductID
       WHERE od.OrderID=@oid
     `);
+    if (!detailResult.recordset.length) throw Object.assign(new Error("Don hang khong co san pham de tra."), { statusCode: 409 });
     // Nếu client không gửi items cho case chưa nhận hàng, coi toàn bộ dòng
     // hàng của đơn là một kiện thất lạc để vẫn tính đúng khoản cần hoàn (nếu
     // khách đã thanh toán) và hiển thị đầy đủ chi tiết cho quản trị viên.
@@ -2850,16 +3147,21 @@ app.post("/api/returns", async (req, res) => {
     const selected = new Map();
     const selectedMeta = new Map();
     for (const item of effectiveItems) {
-      const quantity = Number(item.quantity ?? item.return_qty);
-      if (!Number.isInteger(quantity) || quantity <= 0) continue;
-      let detail = detailsById.get(Number(item.order_detail_id ?? item.orderDetailId));
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1000000) {
+        throw Object.assign(new Error("So luong san pham tra khong hop le."), { statusCode: 400 });
+      }
+      let detail = item.order_detail_id ? detailsById.get(Number(item.order_detail_id)) : null;
       if (!detail) {
         detail = detailResult.recordset.find((candidate) =>
-          Number(candidate.ProductID) === Number(item.product_id ?? item.productId) &&
-          String(candidate.Size || "") === String(item.size || "") &&
-          String(candidate.Color || "") === String(item.color || ""));
+          Number(candidate.ProductID) === Number(item.product_id) &&
+          comparableReturnText(candidate.Size, 100) === item.size &&
+          comparableReturnText(candidate.Color, 100) === item.color);
       }
       if (!detail) throw Object.assign(new Error("San pham tra hang khong thuoc don hang."), { statusCode: 400 });
+      if (item.product_id && Number(detail.ProductID) !== Number(item.product_id)) {
+        throw Object.assign(new Error("San pham tra hang khong khop voi don hang."), { statusCode: 400 });
+      }
       const max = Number(detail.Quantity || 0) - (alreadyReturned.get(Number(detail.OrderDetailID)) || 0);
       const next = (selected.get(Number(detail.OrderDetailID)) || 0) + quantity;
       if (next > max) throw Object.assign(new Error(`So luong tra vuot qua so luong da mua (${detail.ProductName}).`), { statusCode: 409 });
@@ -2890,9 +3192,10 @@ app.post("/api/returns", async (req, res) => {
         .input("cond", sql.NVarChar(30), cleanAddressText(item.condition, 30) || null)
         .query("INSERT INTO ReturnDetails (ReturnID, OrderDetailID, Quantity, Reason, Condition) VALUES (@rid,@odid,@q,@rsn,@cond)");
     }
-    await new sql.Request(transaction).input("oid", sql.Int, orderId).input("uid", sql.Int, authenticatedUserId).query(`
+    const orderUpdate = await new sql.Request(transaction).input("oid", sql.Int, orderId).input("uid", sql.Int, authenticatedUserId).query(`
       UPDATE Orders SET Status=N'Yêu cầu trả hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid;
     `);
+    if (!orderUpdate.rowsAffected?.[0]) throw Object.assign(new Error("Khong cap nhat duoc trang thai don hang."), { statusCode: 409 });
     await insertOrderHistory(transaction, orderId, order.Status, "Yêu cầu trả hàng", `[RETURN_CREATED] #${returnId} ${reason}`, authenticatedUserId);
     const insertedReturn = { ReturnID: returnId, OrderID: orderId, ReturnType: returnType, RefundAmount: refundAmount, Status: initialStatus };
     if (isAdmin && ["Đã hoàn tiền", "Đã hoàn tất"].includes(initialStatus)) {
@@ -2907,7 +3210,7 @@ app.post("/api/returns", async (req, res) => {
 });
 
 app.put("/api/returns/:id/status", async (req, res) => {
-  const returnId = Number(req.params.id);
+  const returnId = positiveInt(req.params.id);
   const changedBy = Number(req.auth && req.auth.sub);
   const requestedStatus = canonicalReturnStatus(req.body && req.body.status);
   if (!Number.isInteger(returnId) || returnId <= 0 || !requestedStatus) return res.status(400).json({ success: false, message: "Yeu cau hoac trang thai tra hang khong hop le." });
@@ -3003,12 +3306,18 @@ app.get("/api/colors", async (req, res) => {
 app.post("/api/colors", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 50 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const hex = validateText(req.body.hex, 20) || "#000000";
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (!HEX_RE.test(hex)) return sendValidationError(res, { message: "Mã màu HEX không hợp lệ." });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("h", sql.VarChar, req.body.hex || "#000000")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("h", sql.VarChar, hex)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "INSERT INTO Colors (ColorName, ColorHex, SortOrder, IsActive) VALUES (@n, @h, @so, @a)",
       );
@@ -3020,16 +3329,27 @@ app.post("/api/colors", async (req, res) => {
 app.put("/api/colors/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "ColorID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 50 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const hex = validateText(req.body.hex, 20) || "#000000";
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (!HEX_RE.test(hex)) return sendValidationError(res, { message: "Mã màu HEX không hợp lệ." });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("h", sql.VarChar, req.body.hex || "#000000")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("h", sql.VarChar, hex)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Colors SET ColorName=@n, ColorHex=@h, SortOrder=@so, IsActive=@a WHERE ColorID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy màu sắc." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3038,10 +3358,15 @@ app.put("/api/colors/:id", async (req, res) => {
 app.delete("/api/colors/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "ColorID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Colors SET IsActive = 0 WHERE ColorID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy màu sắc." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3065,12 +3390,17 @@ app.get("/api/sizes", async (req, res) => {
 app.post("/api/sizes", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 20 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const standard = validateText(req.body.standard, 20);
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("s", sql.VarChar, req.body.standard || "")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("s", sql.VarChar, standard)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "INSERT INTO Sizes (SizeName, SizeStandard, SortOrder, IsActive) VALUES (@n, @s, @so, @a)",
       );
@@ -3082,16 +3412,26 @@ app.post("/api/sizes", async (req, res) => {
 app.put("/api/sizes/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "SizeID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 20 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const standard = validateText(req.body.standard, 20);
+    const sortOrder = nonNegativeInt(req.body.sort_order, { max: 1000000, defaultValue: 0 });
+    if (sortOrder === null) return sendValidationError(res, { message: "Thứ tự phải là số nguyên không âm." });
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("s", sql.VarChar, req.body.standard || "")
-      .input("so", sql.Int, req.body.sort_order || 0)
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("s", sql.VarChar, standard)
+      .input("so", sql.Int, sortOrder)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Sizes SET SizeName=@n, SizeStandard=@s, SortOrder=@so, IsActive=@a WHERE SizeID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy kích thước." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3100,10 +3440,15 @@ app.put("/api/sizes/:id", async (req, res) => {
 app.delete("/api/sizes/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "SizeID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Sizes SET IsActive = 0 WHERE SizeID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy kích thước." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3127,12 +3472,22 @@ app.get("/api/collections", async (req, res) => {
 app.post("/api/collections", async (req, res) => {
   try {
     await poolConnect;
+    const validation = validateCatalogPayload(req.body, { nameMax: 150 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const brandId = req.body.brand_id === undefined || req.body.brand_id === null || req.body.brand_id === ""
+      ? null
+      : positiveInt(req.body.brand_id);
+    const slug = validateText(req.body.slug, 150);
+    if (req.body.brand_id !== undefined && req.body.brand_id !== null && req.body.brand_id !== "" && !brandId) {
+      return sendValidationError(res, { message: "Thương hiệu không hợp lệ." });
+    }
+    if (slug && !SLUG_RE.test(slug)) return sendValidationError(res, { message: "Slug chỉ gồm chữ thường, số và dấu gạch ngang." });
     await pool
       .request()
-      .input("n", sql.NVarChar, req.body.name)
-      .input("b", sql.Int, req.body.brand_id || null)
-      .input("s", sql.VarChar, req.body.slug || "")
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("b", sql.Int, brandId)
+      .input("s", sql.VarChar, slug)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "INSERT INTO Collections (CollectionName, BrandID, Slug, IsActive) VALUES (@n, @b, @s, @a)",
       );
@@ -3144,16 +3499,31 @@ app.post("/api/collections", async (req, res) => {
 app.put("/api/collections/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "CollectionID");
+    if (!id) return;
+    const validation = validateCatalogPayload(req.body, { nameMax: 150 });
+    if (!validation.ok) return sendValidationError(res, validation);
+    const brandId = req.body.brand_id === undefined || req.body.brand_id === null || req.body.brand_id === ""
+      ? null
+      : positiveInt(req.body.brand_id);
+    const slug = validateText(req.body.slug, 150);
+    if (req.body.brand_id !== undefined && req.body.brand_id !== null && req.body.brand_id !== "" && !brandId) {
+      return sendValidationError(res, { message: "Thương hiệu không hợp lệ." });
+    }
+    if (slug && !SLUG_RE.test(slug)) return sendValidationError(res, { message: "Slug chỉ gồm chữ thường, số và dấu gạch ngang." });
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
-      .input("n", sql.NVarChar, req.body.name)
-      .input("b", sql.Int, req.body.brand_id || null)
-      .input("s", sql.VarChar, req.body.slug || "")
-      .input("a", sql.Bit, req.body.active !== false)
+      .input("id", sql.Int, id)
+      .input("n", sql.NVarChar, validation.value.name)
+      .input("b", sql.Int, brandId)
+      .input("s", sql.VarChar, slug)
+      .input("a", sql.Bit, validation.value.active)
       .query(
         "UPDATE Collections SET CollectionName=@n, BrandID=@b, Slug=@s, IsActive=@a WHERE CollectionID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bộ sưu tập." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3162,10 +3532,15 @@ app.put("/api/collections/:id", async (req, res) => {
 app.delete("/api/collections/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "CollectionID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("UPDATE Collections SET IsActive = 0 WHERE CollectionID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bộ sưu tập." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3206,15 +3581,20 @@ app.get("/api/inventory", async (req, res) => {
 app.put("/api/inventory/:id", async (req, res) => {
   try {
     await poolConnect;
-    let stock = Number(req.body.stock);
-    if (isNaN(stock) || stock < 0) stock = 0; // khong cho ton kho am
-    await pool
+    const id = parseRouteId(res, req.params.id, "ProductVariantID");
+    if (!id) return;
+    const stock = nonNegativeInt(req.body.stock, { max: 1000000 });
+    if (stock === null) return sendValidationError(res, { message: "Tồn kho phải là số nguyên không âm." });
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .input("s", sql.Int, stock)
       .query(
         "UPDATE ProductVariants SET StockQuantity=@s WHERE ProductVariantID=@id",
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy biến thể sản phẩm." });
+    }
     res.json({ success: true, stock });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3227,8 +3607,10 @@ app.put("/api/inventory/:id", async (req, res) => {
 app.get("/api/inventory/alerts", async (req, res) => {
   try {
     await poolConnect;
-    let threshold = Number(req.query.threshold);
-    if (isNaN(threshold) || threshold < 0) threshold = 10;
+    const threshold = req.query.threshold === undefined
+      ? 10
+      : nonNegativeInt(req.query.threshold, { max: 1000000 });
+    if (threshold === null) return sendValidationError(res, { message: "Ngưỡng tồn kho phải là số nguyên không âm." });
 
     const r = await pool.request().input("th", sql.Int, threshold).query(`
       SELECT v.ProductVariantID as id, v.ProductID as product_id,
@@ -3266,31 +3648,153 @@ app.get("/api/inventory/alerts", async (req, res) => {
   }
 });
 
-// ================= API GIAM GIA BIEN THE (an toan - tra rong neu chua co bang) =================
+// ================= API GIAM GIA BIEN THE =================
 app.get("/api/variantDiscounts", async (req, res) => {
-  res.json([]);
+  try {
+    await poolConnect;
+    const result = await pool.request().query(`
+      SELECT vd.VariantDiscountID as id, vd.ProductVariantID as variant_id,
+             vd.ProductID as product_id, vd.ColorName as color, vd.ColorHex as color_hex,
+             CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
+                  THEN N'Theo phần trăm' ELSE N'Cố định' END as discount_type,
+             vd.DiscountValue as value, vd.DiscountPercent as [percent],
+             vd.MaxDiscountAmount as max_discount, vd.Quantity as quantity,
+             vd.UsedCount as used, vd.StartDate as start_date, vd.EndDate as end_date,
+             vd.Reason as reason, vd.IsActive as active, vd.Description as [description],
+             p.ProductName as product_name, v.Size as size
+      FROM VariantDiscounts vd
+      LEFT JOIN Products p ON p.ProductID=vd.ProductID
+      LEFT JOIN ProductVariants v ON v.ProductVariantID=vd.ProductVariantID
+      ORDER BY vd.VariantDiscountID DESC
+    `);
+    res.json(result.recordset);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/variantDiscounts", async (req, res) => {
+  try {
+    const validation = validateVariantDiscountPayload(req.body);
+    if (!validation.ok) return sendValidationError(res, validation);
+    const d = validation.value;
+    await poolConnect;
+    const variant = await pool.request()
+      .input("vid", sql.Int, d.variantId)
+      .input("pid", sql.Int, d.productId)
+      .query("SELECT TOP 1 ProductID, ColorName, ColorHex FROM ProductVariants WHERE ProductVariantID=@vid AND ProductID=@pid");
+    if (!variant.recordset.length) {
+      return res.status(400).json({ success: false, message: "Biến thể không thuộc sản phẩm đã chọn." });
+    }
+    const duplicate = await pool.request().input("vid", sql.Int, d.variantId).query(
+      "SELECT TOP 1 VariantDiscountID FROM VariantDiscounts WHERE ProductVariantID=@vid AND IsActive=1",
+    );
+    if (duplicate.recordset.length) {
+      return res.status(409).json({ success: false, message: "Biến thể này đã có giảm giá đang hoạt động." });
+    }
+    const row = variant.recordset[0];
+    const result = await pool.request()
+      .input("vid", sql.Int, d.variantId)
+      .input("pid", sql.Int, d.productId)
+      .input("cn", sql.NVarChar(50), d.colorName || row.ColorName || null)
+      .input("ch", sql.VarChar(20), d.colorHex || row.ColorHex || null)
+      .input("dt", sql.NVarChar(20), d.type === "percent" ? "Theo phần trăm" : "Cố định")
+      .input("dv", sql.Decimal(18, 2), d.value)
+      .input("dp", sql.Int, d.percent)
+      .input("md", sql.Decimal(18, 2), d.maxDiscount)
+      .input("q", sql.Int, d.quantity)
+      .input("sd", sql.DateTime, d.startDate || null)
+      .input("ed", sql.DateTime, d.endDate || null)
+      .input("reason", sql.NVarChar(100), d.reason || null)
+      .input("active", sql.Bit, d.active)
+      .input("description", sql.NVarChar(500), d.description || null)
+      .query(`
+        INSERT INTO VariantDiscounts
+          (ProductVariantID, ProductID, ColorName, ColorHex, DiscountType, DiscountValue,
+           DiscountPercent, MaxDiscountAmount, Quantity, UsedCount, StartDate, EndDate,
+           Reason, IsActive, Description, CreatedAt)
+        OUTPUT inserted.VariantDiscountID as id
+        VALUES (@vid,@pid,@cn,@ch,@dt,@dv,@dp,@md,@q,0,@sd,@ed,@reason,@active,@description,GETDATE())
+      `);
+    res.status(201).json({ success: true, id: result.recordset[0]?.id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/variantDiscounts/:id", async (req, res) => {
+  try {
+    const id = parseRouteId(res, req.params.id, "VariantDiscountID");
+    if (!id) return;
+    const validation = validateVariantDiscountPayload(req.body);
+    if (!validation.ok) return sendValidationError(res, validation);
+    const d = validation.value;
+    await poolConnect;
+    const variant = await pool.request()
+      .input("vid", sql.Int, d.variantId)
+      .input("pid", sql.Int, d.productId)
+      .query("SELECT TOP 1 ProductID, ColorName, ColorHex FROM ProductVariants WHERE ProductVariantID=@vid AND ProductID=@pid");
+    if (!variant.recordset.length) {
+      return res.status(400).json({ success: false, message: "Biến thể không thuộc sản phẩm đã chọn." });
+    }
+    const duplicate = await pool.request()
+      .input("vid", sql.Int, d.variantId)
+      .input("id", sql.Int, id)
+      .query("SELECT TOP 1 VariantDiscountID FROM VariantDiscounts WHERE ProductVariantID=@vid AND IsActive=1 AND VariantDiscountID<>@id");
+    if (duplicate.recordset.length) {
+      return res.status(409).json({ success: false, message: "Biến thể này đã có giảm giá đang hoạt động." });
+    }
+    const row = variant.recordset[0];
+    const result = await pool.request()
+      .input("id", sql.Int, id)
+      .input("vid", sql.Int, d.variantId)
+      .input("pid", sql.Int, d.productId)
+      .input("cn", sql.NVarChar(50), d.colorName || row.ColorName || null)
+      .input("ch", sql.VarChar(20), d.colorHex || row.ColorHex || null)
+      .input("dt", sql.NVarChar(20), d.type === "percent" ? "Theo phần trăm" : "Cố định")
+      .input("dv", sql.Decimal(18, 2), d.value)
+      .input("dp", sql.Int, d.percent)
+      .input("md", sql.Decimal(18, 2), d.maxDiscount)
+      .input("q", sql.Int, d.quantity)
+      .input("sd", sql.DateTime, d.startDate || null)
+      .input("ed", sql.DateTime, d.endDate || null)
+      .input("reason", sql.NVarChar(100), d.reason || null)
+      .input("active", sql.Bit, d.active)
+      .input("description", sql.NVarChar(500), d.description || null)
+      .query(`
+        UPDATE VariantDiscounts SET ProductVariantID=@vid, ProductID=@pid, ColorName=@cn,
+          ColorHex=@ch, DiscountType=@dt, DiscountValue=@dv, DiscountPercent=@dp,
+          MaxDiscountAmount=@md, Quantity=@q, StartDate=@sd, EndDate=@ed,
+          Reason=@reason, IsActive=@active, Description=@description
+        WHERE VariantDiscountID=@id
+      `);
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giảm giá biến thể." });
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/variantDiscounts/:id", async (req, res) => {
+  try {
+    const id = parseRouteId(res, req.params.id, "VariantDiscountID");
+    if (!id) return;
+    await poolConnect;
+    const result = await pool.request().input("id", sql.Int, id).query(
+      "UPDATE VariantDiscounts SET IsActive=0 WHERE VariantDiscountID=@id",
+    );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giảm giá biến thể." });
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ---------------- KHUYEN MAI (Coupons) ----------------
-// Doc CA PascalCase (frontend hien tai) lan lowercase (ban cu) de khong con lech ten truong.
-function readCoupon(b) {
-  b = b || {};
-  return {
-    code: b.CouponCode ?? b.code ?? null,
-    name: b.CouponName ?? b.name ?? "",
-    dtype: b.DiscountType ?? b.discount_type ?? "Phan tram",
-    dvalue: b.DiscountValue ?? b.value ?? 0,
-    percent: b.DiscountPercent ?? b.percent ?? 0,
-    minOrder: b.MinOrderAmount ?? b.min_order ?? 0,
-    maxDisc: b.MaxDiscountAmount ?? b.max_discount ?? 0,
-    limit: b.UsageLimit ?? b.limit ?? 0,
-    startDate: b.StartDate ?? b.start_date ?? null,
-    expiry: b.ExpiryDate ?? b.expiry ?? null,
-    desc: b.Description ?? b.description ?? "",
-    active: (b.IsActive ?? b.active) !== false,
-  };
-}
-
 app.get("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
@@ -3314,20 +3818,23 @@ app.get("/api/discounts", async (req, res) => {
 app.post("/api/discounts", async (req, res) => {
   try {
     await poolConnect;
-    const c = readCoupon(req.body);
+    const validation = validateCouponPayload(req.body);
+    if (!validation.ok) return sendValidationError(res, validation);
+    const c = validation.value;
+    const storedType = c.type === "percent" ? "Phần trăm" : c.type === "fixed" ? "Cố định" : "freeship";
     await pool
       .request()
       .input("c", sql.VarChar, c.code)
       .input("nm", sql.NVarChar, c.name)
-      .input("dt", sql.NVarChar, c.dtype)
-      .input("dv", sql.Decimal(18, 0), c.dvalue)
+      .input("dt", sql.NVarChar, storedType)
+      .input("dv", sql.Decimal(18, 0), c.value)
       .input("p", sql.Int, c.percent)
       .input("mo", sql.Decimal(18, 0), c.minOrder)
-      .input("md", sql.Decimal(18, 0), c.maxDisc)
+      .input("md", sql.Decimal(18, 0), c.maxDiscount)
       .input("l", sql.Int, c.limit)
-      .input("sd", sql.DateTime, c.startDate)
+      .input("sd", sql.DateTime, c.startDate || null)
       .input("e", sql.DateTime, c.expiry)
-      .input("desc", sql.NVarChar, c.desc)
+      .input("desc", sql.NVarChar, c.description)
       .input("a", sql.Bit, c.active)
       .query(
         `INSERT INTO Coupons (CouponCode, CouponName, DiscountType, DiscountValue, DiscountPercent, MinOrderAmount, MaxDiscountAmount, UsageLimit, StartDate, ExpiryDate, Description, IsActive)
@@ -3342,27 +3849,35 @@ app.post("/api/discounts", async (req, res) => {
 app.put("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
-    const c = readCoupon(req.body);
-    await pool
+    const id = parseRouteId(res, req.params.id, "CouponID");
+    if (!id) return;
+    const validation = validateCouponPayload(req.body);
+    if (!validation.ok) return sendValidationError(res, validation);
+    const c = validation.value;
+    const storedType = c.type === "percent" ? "Phần trăm" : c.type === "fixed" ? "Cố định" : "freeship";
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .input("c", sql.VarChar, c.code)
       .input("nm", sql.NVarChar, c.name)
-      .input("dt", sql.NVarChar, c.dtype)
-      .input("dv", sql.Decimal(18, 0), c.dvalue)
+      .input("dt", sql.NVarChar, storedType)
+      .input("dv", sql.Decimal(18, 0), c.value)
       .input("p", sql.Int, c.percent)
       .input("mo", sql.Decimal(18, 0), c.minOrder)
-      .input("md", sql.Decimal(18, 0), c.maxDisc)
+      .input("md", sql.Decimal(18, 0), c.maxDiscount)
       .input("l", sql.Int, c.limit)
-      .input("sd", sql.DateTime, c.startDate)
+      .input("sd", sql.DateTime, c.startDate || null)
       .input("e", sql.DateTime, c.expiry)
-      .input("desc", sql.NVarChar, c.desc)
+      .input("desc", sql.NVarChar, c.description)
       .input("a", sql.Bit, c.active)
       .query(
         `UPDATE Coupons SET CouponCode=@c, CouponName=@nm, DiscountType=@dt, DiscountValue=@dv,
            DiscountPercent=@p, MinOrderAmount=@mo, MaxDiscountAmount=@md, UsageLimit=@l,
            StartDate=@sd, ExpiryDate=@e, Description=@desc, IsActive=@a WHERE CouponID=@id`,
       );
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy mã giảm giá." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3372,10 +3887,15 @@ app.put("/api/discounts/:id", async (req, res) => {
 app.delete("/api/discounts/:id", async (req, res) => {
   try {
     await poolConnect;
-    await pool
+    const id = parseRouteId(res, req.params.id, "CouponID");
+    if (!id) return;
+    const result = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query("DELETE FROM Coupons WHERE CouponID=@id");
+    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy mã giảm giá." });
+    }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3419,14 +3939,22 @@ app.get("/api/customers", async (req, res) => {
 app.post("/api/customers", async (req, res) => {
   try {
     await poolConnect;
-    const b = req.body || {};
-    const fullName = b.FullName ?? b.name ?? b.full_name ?? "Khach le";
-    const phone = b.Phone ?? b.phone ?? "";
-    const email =
-      b.Email ?? b.email ?? "pos" + (phone || Date.now()) + "@walkin.local";
-    const password = b.PasswordHash ?? b.password ?? "POS_WALK_IN";
-    const address = b.Address ?? b.address ?? "";
-    const source = b.Source ?? b.source ?? "POS";
+    const b = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const fullName = validateText(b.FullName ?? b.name ?? b.full_name ?? "Khach le", 100);
+    const rawPhone = b.Phone ?? b.phone ?? "";
+    const phone = validatePhone(rawPhone);
+    if (!fullName || String(b.FullName ?? b.name ?? b.full_name ?? "Khach le").trim().length > 100 || phone === null) {
+      return res.status(400).json({ success: false, message: "Họ tên hoặc số điện thoại không hợp lệ." });
+    }
+    const explicitEmail = b.Email ?? b.email;
+    const email = explicitEmail
+      ? validateEmail(explicitEmail)
+      : `pos${phone || Date.now()}@walkin.local`;
+    if (!email) return res.status(400).json({ success: false, message: "Email không hợp lệ." });
+    const password = typeof (b.PasswordHash ?? b.password) === "string" ? (b.PasswordHash ?? b.password) : "POS_WALK_IN";
+    if (password.length < 6 || password.length > 256) return res.status(400).json({ success: false, message: "Mật khẩu không hợp lệ." });
+    const address = validateText(b.Address ?? b.address, 500);
+    const source = validateText(b.Source ?? b.source ?? "POS", 50);
 
     // Neu email da ton tai -> tra lai UserID cu, khong tao trung
     let check = await pool
@@ -3461,10 +3989,12 @@ app.post("/api/customers", async (req, res) => {
 
 app.get("/api/customers/:id/orders", async (req, res) => {
   try {
+    const id = parseRouteId(res, req.params.id, "UserID");
+    if (!id) return;
     await poolConnect;
     let rOrders = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+      .input("id", sql.Int, id)
       .query(
         `SELECT OrderID as id, UserID as user_id, TotalAmount as total,
                 CONVERT(varchar, OrderDate, 103) + ' ' + CONVERT(varchar, OrderDate, 108) as date,
@@ -3504,7 +4034,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
     try {
       let rDetails = await pool
         .request()
-        .input("id", sql.Int, req.params.id)
+        .input("id", sql.Int, id)
         .query(
           `SELECT od.OrderID, od.OrderDetailID as order_detail_id, od.ProductID as product_id, od.ProductVariantID as variant_id,
                   COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
@@ -3523,7 +4053,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
     try {
       const historyResult = await pool
         .request()
-        .input("id", sql.Int, req.params.id)
+        .input("id", sql.Int, id)
         .query(`
           SELECT h.OrderID, h.NewStatus AS status, h.ChangedAt AS date, ISNULL(h.Note,N'') AS note
           FROM OrderStatusHistory h
@@ -3536,11 +4066,23 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       console.log(e.message);
     }
 
-    let orders = rOrders.recordset.map((o) => {
-      o.products = details.filter((d) => d.OrderID === o.id);
-      o.history = histories.filter((h) => h.OrderID === o.id);
-      return o;
-    });
+    const detailsByOrder = new Map();
+    for (const detail of details) {
+      const key = String(detail.OrderID);
+      if (!detailsByOrder.has(key)) detailsByOrder.set(key, []);
+      detailsByOrder.get(key).push(detail);
+    }
+    const historiesByOrder = new Map();
+    for (const history of histories) {
+      const key = String(history.OrderID);
+      if (!historiesByOrder.has(key)) historiesByOrder.set(key, []);
+      historiesByOrder.get(key).push(history);
+    }
+    const orders = rOrders.recordset.map((o) => ({
+      ...o,
+      products: detailsByOrder.get(String(o.id)) || [],
+      history: historiesByOrder.get(String(o.id)) || [],
+    }));
     res.json(orders);
   } catch (e) {
     res.status(500).json([]);
@@ -3549,10 +4091,12 @@ app.get("/api/customers/:id/orders", async (req, res) => {
 
 app.get("/api/customers/:id/notifications", async (req, res) => {
   try {
+    const id = parseRouteId(res, req.params.id, "UserID");
+    if (!id) return;
     await poolConnect;
     let rNotifs = await pool
       .request()
-      .input("id", sql.Int, req.params.id)
+        .input("id", sql.Int, id)
       .query(
         `SELECT NotificationID as id, Title as title, Message as message, Type as type, RelatedID as related_id, IsRead as is_read, CreatedAt as created_at
          FROM Notifications 
@@ -3569,12 +4113,13 @@ app.get("/api/chart-data", async (req, res) => {
   try {
     await poolConnect;
 
-    const year = req.query.year
-      ? parseInt(req.query.year)
-      : new Date().getFullYear();
-    const month = req.query.month
-      ? parseInt(req.query.month)
-      : new Date().getMonth() + 1;
+    const year = req.query.year === undefined
+      ? new Date().getFullYear()
+      : positiveInt(req.query.year, { max: 9999 });
+    const month = req.query.month === undefined
+      ? new Date().getMonth() + 1
+      : positiveInt(req.query.month, { max: 12 });
+    if (!year || !month) return sendValidationError(res, { message: "Năm hoặc tháng không hợp lệ." });
 
     let r = await pool
       .request()
@@ -3851,17 +4396,17 @@ app.post("/api/shipping/quote", async (req, res) => {
     // Không cần chặn báo giá nếu DB đang khởi động; calculateShippingQuote sẽ
     // tự dùng bảng giá dự phòng khi chưa truy cập được ShippingMethods.
     try { await poolConnect; } catch (_) {}
-    const body = req.body || {};
-    const methodCode = String(body.methodCode ?? body.method_code ?? "STANDARD").trim().toUpperCase();
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const methodCode = validateText(body.methodCode ?? body.method_code ?? "STANDARD", 20).toUpperCase();
     if (methodCode !== "STANDARD") {
       return res.status(400).json({ success: false, message: "Phương thức vận chuyển không hợp lệ." });
     }
     const quote = await calculateShippingQuote({
       methodCode,
-      province: body.province ?? body.provinceName ?? body.city ?? "",
-      district: body.district ?? "",
-      ward: body.ward ?? body.commune ?? body.communeName ?? "",
-      address: body.address ?? body.addressLine ?? body.shippingAddress ?? "",
+      province: validateText(body.province ?? body.provinceName ?? body.city, 100),
+      district: validateText(body.district, 100),
+      ward: validateText(body.ward ?? body.commune ?? body.communeName, 100),
+      address: validateText(body.address ?? body.addressLine ?? body.shippingAddress, 500),
     });
     res.json({ success: true, ...quote });
   } catch (e) {
@@ -3872,7 +4417,7 @@ app.post("/api/shipping/quote", async (req, res) => {
 // 3) Khach xac nhan "Da nhan hang" (giong Shopee) - giu 14 ngay truoc khi tinh doanh thu
 app.put("/api/orders/:id/receive", async (req, res) => {
   const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const orderId = Number(req.params.id);
+  const orderId = positiveInt(req.params.id);
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
   }
@@ -4035,7 +4580,8 @@ setTimeout(runAutoCancelJob, 5000);
 app.post("/api/auth/forgot-password", async (req, res) => {
   try {
     await poolConnect;
-    const email = (req.body && req.body.email) || "";
+    const email = validateEmail(req.body && req.body.email);
+    if (!email) return res.status(400).json({ success: false, message: "Email khong hop le." });
     const r = await pool
       .request()
       .input("e", sql.VarChar, email)
@@ -4109,8 +4655,14 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 app.post("/api/auth/reset-password", async (req, res) => {
   try {
     await poolConnect;
-    const token = (req.body && req.body.token) || "";
-    const newPassword = (req.body && req.body.newPassword) || "";
+    const token = typeof (req.body && req.body.token) === "string" ? req.body.token.trim() : "";
+    const newPassword = typeof (req.body && req.body.newPassword) === "string" ? req.body.newPassword : "";
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      return res.status(400).json({ success: false, message: "Token khong hop le." });
+    }
+    if (newPassword.length < 6 || newPassword.length > 256) {
+      return res.status(400).json({ success: false, message: "Mat khau moi phai co 6-256 ky tu." });
+    }
     const r = await pool
       .request()
       .input("t", sql.VarChar, token)

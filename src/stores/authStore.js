@@ -1,6 +1,6 @@
 import { computed, reactive } from "vue";
 /* [TOI UU] Lay dia chi API tu .env + luu token JWT */
-import { API_BASE_URL, api, setToken, clearToken } from "../services/apiClient";
+import { api, setToken, clearToken } from "../services/apiClient";
 
 /* =====================================================================
    authStore - có cơ chế bảo mật cookie / phiên theo trình duyệt
@@ -106,39 +106,29 @@ export const getCurrentUser = () => authState.currentUser;
 
 export const login = async ({ email, password }) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
+    const data = await api.post("/login", { email, password });
     if (data.success) {
       authState.currentUser = data.user;
       saveCurrentUser(data.user);
       return { ok: true, message: "\u0110\u0103ng nh\u1eadp th\u00e0nh c\u00f4ng.", user: data.user };
     }
     return { ok: false, message: data.message || "\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i." };
-  } catch {
-    return { ok: false, message: "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
   }
 };
 
 export const register = async ({ fullName, email, password }) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, email, password }),
-    });
-    const data = await res.json();
+    const data = await api.post("/register", { fullName, email, password });
     if (data.success) {
       authState.currentUser = data.user;
       saveCurrentUser(data.user);
       return { ok: true, message: "\u0110\u0103ng k\u00fd th\u00e0nh c\u00f4ng.", user: data.user };
     }
     return { ok: false, message: data.message || "\u0110\u0103ng k\u00fd th\u1ea5t b\u1ea1i." };
-  } catch {
-    return { ok: false, message: "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
   }
 };
 
@@ -177,27 +167,17 @@ export const updateProfile = async (data) => {
 /* Yêu cầu đặt lại mật khẩu (gửi email) */
 export const requestPasswordReset = async (email) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
+    const data = await api.post("/auth/forgot-password", { email });
     return { ok: !!data.success, message: data.message };
-  } catch {
-    return { ok: false, message: "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i \u0111\u1ebfn m\u00e1y ch\u1ee7." };
   }
 };
 
 /* Đặt lại mật khẩu bằng token nhận từ email */
 export const resetPassword = async ({ token, newPassword }) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, newPassword }),
-    });
-    const data = await res.json();
+    const data = await api.post("/auth/reset-password", { token, newPassword });
     return {
       ok: !!data.success,
       message:
@@ -206,7 +186,7 @@ export const resetPassword = async ({ token, newPassword }) => {
           ? "Đặt lại mật khẩu thành công."
           : "Token không hợp lệ hoặc đã hết hạn."),
     };
-  } catch {
-    return { ok: false, message: "Không thể kết nối đến máy chủ." };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Không thể kết nối đến máy chủ." };
   }
 };

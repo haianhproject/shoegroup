@@ -6,7 +6,7 @@ import {
   products as mockProducts, categories as mockCats,
   colors as mockColors, sizes as mockSizes, materials as mockMaterials, sports as mockSports,
 } from '../data/mockData'
-import { API_BASE_URL } from "../services/apiClient";
+import { api } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -37,16 +37,12 @@ const showFiltersMobile = ref(false)
 const pageSize = 8
 const currentPage = ref(1)
 
-const API = API_BASE_URL
-
 const fetchAll = async () => {
   try {
-    const [rp, rc, rcol, rs, rm] = await Promise.all([
-      fetch(`${API}/products`), fetch(`${API}/categories`),
-      fetch(`${API}/colors`), fetch(`${API}/sizes`), fetch(`${API}/materials`),
+    const [dp, dc, dcol, ds, dm] = await Promise.all([
+      api.get('/products'), api.get('/categories'),
+      api.get('/colors'), api.get('/sizes'), api.get('/materials'),
     ])
-    const dp = await rp.json()
-    const dc = await rc.json()
     const catSportMap = {}
     dc.forEach((c) => { catSportMap[c.id] = c.sport })
     products.value = dp.filter((p) => p.active).map((p) => ({
@@ -61,9 +57,9 @@ const fetchAll = async () => {
       variants: p.variants || [], colors: p.colors || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
     categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
-    colors.value = (await rcol.json()).map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
-    sizes.value = (await rs.json()).map((s) => ({ id_size: s.id, size_name: String(s.name) }))
-    materials.value = (await rm.json()).map((m) => ({ id_material: m.id, material_name: m.name }))
+    colors.value = dcol.map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
+    sizes.value = ds.map((s) => ({ id_size: s.id, size_name: String(s.name) }))
+    materials.value = dm.map((m) => ({ id_material: m.id, material_name: m.name }))
     sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
   } catch (e) {
     console.error("Lỗi khi lấy dữ liệu bộ lọc từ DB:", e)

@@ -33,6 +33,24 @@ const getUserId = (user) => {
   return `user_${String(id).trim()}`;
 };
 
+const sanitizeCartItem = (item) => {
+  if (!item || typeof item !== "object") return null;
+  const productId = Number(item.id_product ?? item.product_id ?? item.product?.id_product);
+  const quantity = Number(item.quantity);
+  const unitPrice = Number(item.unitPrice ?? item.price ?? item.product?.price);
+  if (!Number.isSafeInteger(productId) || productId <= 0) return null;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000) return null;
+  if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1e12) return null;
+  const variantRaw = item.variant_id;
+  const variantId = variantRaw === null || variantRaw === undefined || String(variantRaw).trim() === ""
+    ? null
+    : Number(variantRaw);
+  if (variantId !== null && (!Number.isSafeInteger(variantId) || variantId <= 0)) return null;
+  const detailId = String(item.id_product_detail ?? `${productId}_${variantId ?? "default"}`).trim();
+  if (!detailId || detailId.length > 300) return null;
+  return { ...item, id_product: productId, variant_id: variantId, id_product_detail: detailId, quantity, unitPrice };
+};
+
 // ============================================================
 // LOAD TẤT CẢ GIỎ
 // ============================================================
@@ -97,7 +115,7 @@ const loadCartForUser = (user) => {
     return [];
   }
 
-  return carts[userKey];
+  return carts[userKey].map(sanitizeCartItem).filter(Boolean);
 };
 
 // ============================================================
@@ -467,6 +485,10 @@ export const addToCart = (payload) => {
     product.id_product ??
     product.id ??
     product.ProductID;
+  const normalizedProductId = Number(productId);
+  if (!Number.isSafeInteger(normalizedProductId) || normalizedProductId <= 0) {
+    return { ok: false, message: "Mã sản phẩm không hợp lệ." };
+  }
 
   // ----------------------------------------------------------
   // PRODUCT NAME
@@ -493,6 +515,9 @@ export const addToCart = (payload) => {
     product.SalePrice ??
     0,
   );
+  if (!Number.isFinite(basePrice) || basePrice < 0 || !Number.isFinite(salePrice) || salePrice < 0 || (salePrice > 0 && salePrice > basePrice)) {
+    return { ok: false, message: "Giá sản phẩm không hợp lệ." };
+  }
 
   const productPrice =
     salePrice > 0
@@ -548,6 +573,12 @@ export const addToCart = (payload) => {
     product.variant_id ??
     product.id_variant ??
     null;
+  const numericVariantId = normalizedVariantId === null || normalizedVariantId === undefined || String(normalizedVariantId).trim() === ""
+    ? null
+    : Number(normalizedVariantId);
+  if (numericVariantId !== null && (!Number.isSafeInteger(numericVariantId) || numericVariantId <= 0)) {
+    return { ok: false, message: "Mã biến thể không hợp lệ." };
+  }
 
   // ----------------------------------------------------------
   // ATTRIBUTES
@@ -660,10 +691,9 @@ export const addToCart = (payload) => {
   // ==========================================================
 
   const detailId =
-    normalizedVariantId !== null &&
-    normalizedVariantId !== undefined
-      ? `${productId}_variant_${normalizedVariantId}`
-      : `${productId}_${String(sizeName)}_${String(colorName)}`;
+    numericVariantId !== null
+      ? `${normalizedProductId}_variant_${numericVariantId}`
+      : `${normalizedProductId}_${String(sizeName)}_${String(colorName)}`;
 
   // ==========================================================
   // TÌM ITEM ĐÃ CÓ
@@ -765,16 +795,16 @@ export const addToCart = (payload) => {
 
     // Product
     id_product:
-      productId,
+      normalizedProductId,
 
     // Variant thật
     variant_id:
-      normalizedVariantId,
+      numericVariantId,
 
     // Product snapshot
     product: {
       id_product:
-        productId,
+        normalizedProductId,
 
       product_name:
         productName,
