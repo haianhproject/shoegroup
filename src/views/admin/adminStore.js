@@ -103,7 +103,7 @@ export async function api(path, options) {
       let detail = "";
       try {
         const body = await res.json();
-        detail = body && body.error ? " - " + body.error : "";
+        detail = body && (body.message || body.error) ? " - " + (body.message || body.error) : "";
       } catch (e) {}
       throw new Error("HTTP " + res.status + detail);
     }
@@ -2413,13 +2413,19 @@ export async function saveProduct() {
     notify("Vui lòng nhập tên sản phẩm", "error");
     return;
   }
-  if (Number(productForm.price) < 0) {
+  const basePrice = Number(productForm.price);
+  const salePrice = Number(productForm.sale_price || 0);
+  if (!Number.isFinite(basePrice) || basePrice < 0) {
     notify("Giá bán không được nhỏ hơn 0", "error");
     return;
   }
+  if (!Number.isFinite(salePrice) || salePrice < 0) {
+    notify("Giá khuyến mãi không hợp lệ", "error");
+    return;
+  }
   if (
-    Number(productForm.sale_price) > 0 &&
-    Number(productForm.sale_price) > Number(productForm.price)
+    salePrice > 0 &&
+    salePrice > basePrice
   ) {
     notify("Giá khuyến mãi phải nhỏ hơn hoặc bằng giá bán", "error");
     return;
@@ -2702,20 +2708,33 @@ export function closeDiscountForm() {
 }
 export async function saveDiscount() {
   const d = discountModal.data;
-  if (!d.code) {
-    notify("Vui lòng nhập mã giảm giá", "error");
+  const code = String(d.code || "").trim().toUpperCase();
+  const name = String(d.name || "").trim();
+  const val = Number(d.value);
+  const minOrder = Number(d.min_order || 0);
+  const maxDiscount = Number(d.max_discount || 0);
+  const usageLimit = Number(d.quantity || 0);
+  if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
+    notify("Mã giảm giá phải gồm 2-50 ký tự chữ/số/-/_", "error");
     return;
   }
-  const val = Number(d.value) || 0;
+  if (!name || name.length > 200 || !Number.isFinite(val) || val <= 0 || (d.discount_type === "Phần trăm" && val > 100)) {
+    notify("Tên hoặc giá trị mã giảm giá không hợp lệ", "error");
+    return;
+  }
+  if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || !Number.isSafeInteger(usageLimit) || usageLimit < 0) {
+    notify("Điều kiện mã giảm giá không hợp lệ", "error");
+    return;
+  }
   const payload = {
-    CouponCode: d.code,
-    CouponName: d.name,
+    CouponCode: code,
+    CouponName: name,
     DiscountType: d.discount_type,
     DiscountValue: val,
     DiscountPercent: d.discount_type === "Phần trăm" ? val : 0,
-    MinOrderAmount: Number(d.min_order) || 0,
-    MaxDiscountAmount: Number(d.max_discount) || 0,
-    UsageLimit: Number(d.quantity) || 0,
+    MinOrderAmount: minOrder,
+    MaxDiscountAmount: maxDiscount,
+    UsageLimit: usageLimit,
     StartDate: d.start_date || null,
     ExpiryDate: d.expiry || null,
     Description: d.description || "",
@@ -2755,7 +2774,7 @@ export const variantReasons = [
 ];
 export const variantDiscountSearch = ref("");
 export const variantStatusFilter = ref("Tất cả");
-export const variantReasonFilter = ref("Tất c��");
+export const variantReasonFilter = ref("Tất cả");
 
 function productImage(pid) {
   const p = db.products.find((x) => String(x.id) === String(pid));
@@ -2875,28 +2894,32 @@ export function closeVariantDiscountForm() {
 }
 export async function saveVariantDiscount() {
   const d = variantDiscountModal.data;
-  if (!d.variant_id) {
-    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
-    return;
-  }
-  if (!d.value) {
-    notify("Vui lòng nhập giá trị giảm", "error");
-    return;
-  }
+  const variantId = Number(d.variant_id);
   const info = variantColorOptions.value.find(
     (o) => String(o.variant_id) === String(d.variant_id),
   );
-  const val = Number(d.value) || 0;
+  const productId = Number(info ? info.product_id : d.product_id);
+  const val = Number(d.value);
+  const maxDiscount = Number(d.max_discount || 0);
+  const quantity = Number(d.quantity || 0);
+  if (!Number.isSafeInteger(variantId) || variantId <= 0 || !Number.isSafeInteger(productId) || productId <= 0) {
+    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
+    return;
+  }
+  if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && val > 100) || !Number.isFinite(maxDiscount) || maxDiscount < 0 || !Number.isSafeInteger(quantity) || quantity < 0) {
+    notify("Giá trị giảm, mức tối đa hoặc số lượng không hợp lệ", "error");
+    return;
+  }
   const payload = {
-    ProductVariantID: d.variant_id,
-    ProductID: info ? info.product_id : d.product_id,
+    ProductVariantID: variantId,
+    ProductID: productId,
     ColorName: info ? info.color : d.color,
     ColorHex: info ? info.color_hex : d.color_hex,
     DiscountType: d.discount_type,
     DiscountValue: val,
     DiscountPercent: d.discount_type === "Theo phần trăm" ? val : 0,
-    MaxDiscountAmount: Number(d.max_discount) || 0,
-    Quantity: Number(d.quantity) || 0,
+    MaxDiscountAmount: maxDiscount,
+    Quantity: quantity,
     StartDate: d.start_date || null,
     EndDate: d.end_date || null,
     Reason: d.reason || "",

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ShoeCard from '../components/ShoeCard.vue'
 import { products as mockProducts, categories as mockCats } from '../data/mockData'
-import { API_BASE_URL } from "../services/apiClient";
+import { api } from "../services/apiClient";
 import banner1 from '../../img/banner1.png'
 import banner2 from '../../img/banner2.png'
 import banner3 from '../../img/banner3.png'
@@ -270,12 +270,10 @@ const isActiveRecord = (value) => value !== false && value !== 0 && value !== '0
 
 const fetchData = async () => {
   try {
-    const [resProd, resCat] = await Promise.all([
-      fetch(`${API_BASE_URL}/products`),
-      fetch(`${API_BASE_URL}/categories`),
+    const [dataProd, dataCat] = await Promise.all([
+      api.get('/products'),
+      api.get('/categories'),
     ])
-    const dataProd = await resProd.json()
-    const dataCat = await resCat.json()
     if (!Array.isArray(dataProd) || !Array.isArray(dataCat)) throw new Error('Dữ liệu sản phẩm/danh mục không hợp lệ')
     products.value = dataProd.filter((p) => isActiveRecord(p.active)).map((p) => ({
       id_product: p.id, product_name: p.name, price: p.price, sale_price: p.sale_price,

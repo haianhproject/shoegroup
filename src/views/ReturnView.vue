@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ordersByCurrentUser, loadOrders, formatCurrency, requestReturn } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { postOffices as mockPO } from '../data/mockData'
-import { API_BASE_URL } from "../services/apiClient";
+import { api } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -14,7 +14,6 @@ const isLoading = ref(true)
 const isSubmitting = ref(false)
 const submitted = ref(false)
 const submittedNotReceived = ref(false)
-const API = API_BASE_URL
 const returnableOrders = computed(() => ordersByCurrentUser.value.filter((item) => ['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN', 'DELIVERED', 'RECEIVED'].includes(item.status)))
 const requestMode = ref(route.query.type === 'NOT_RECEIVED' ? 'NOT_RECEIVED' : 'RETURN')
 const isNotReceived = computed(() => requestMode.value === 'NOT_RECEIVED')
@@ -89,8 +88,9 @@ const fetchData = async () => {
   const rawId = String(route.params.orderId || '')
   const id = Number(rawId)
   try {
-    const r = await fetch(`${API}/postoffices`)
-    postOffices.value = (await r.json()).map((p) => ({ id: p.PostOfficeID || p.id, name: p.Name || p.name, address: p.Address || p.address, phone: p.Phone || p.phone }))
+    const data = await api.get('/postoffices')
+    if (!Array.isArray(data)) throw new Error('Dữ liệu bưu cục không hợp lệ')
+    postOffices.value = data.map((p) => ({ id: p.PostOfficeID || p.id, name: p.Name || p.name, address: p.Address || p.address, phone: p.Phone || p.phone }))
   } catch { postOffices.value = mockPO }
   await loadOrders()
   useOrder(ordersByCurrentUser.value.find((o) => String(o.id) === rawId || (Number.isFinite(id) && Number(o.serverId) === id)) || null)
@@ -166,7 +166,8 @@ onMounted(fetchData)
       </div>
 
       <!-- Hai trường hợp dùng chung một luồng yêu cầu; khách chọn loại sự cố
-           tại đây thay vì phải có nút "Đã nhận/Chưa nhận" rời rạc ở Đơn hàng. -->
+           tại đây thay vì phải có nút "Đã nhận/Chưa nhận" rời rạc ở Đơn hàng.
+           Thẻ này là nhánh độc lập với form bên dưới để cả hai cùng hiển thị. -->
       <div v-if="order && !submitted && canChooseRequestMode" class="sg-card request-mode-card">
         <div>
           <h6 class="request-mode-title">Bạn cần hỗ trợ trường hợp nào?</h6>
@@ -187,7 +188,7 @@ onMounted(fetchData)
       </div>
 
       <!-- Success -->
-      <div v-else-if="submitted" class="sg-card rt-success">
+      <div v-if="submitted" class="sg-card rt-success">
         <div class="suc-check">OK</div>
         <h3>{{ submittedNotReceived ? 'Báo chưa nhận được hàng đã được ghi nhận' : 'Yêu cầu trả hàng đã được ghi nhận' }}</h3>
         <p class="text-secondary">{{ submittedNotReceived ? 'Cửa hàng sẽ kiểm tra hành trình và phản hồi về đơn hàng.' : 'Vui lòng lưu lại mã vận đơn để theo dõi.' }}</p>
@@ -207,7 +208,7 @@ onMounted(fetchData)
         <router-link to="/orders" class="btn-sg mt-2">Về đơn hàng</router-link>
       </div>
 
-      <div v-else-if="order" class="row g-4 mt-1">
+      <div v-else-if="order && !submitted && canChooseRequestMode" class="row g-4 mt-1">
         <div class="col-lg-7">
           <!-- Method -->
           <div v-if="!isNotReceived" class="sg-card rt-block">
@@ -291,6 +292,12 @@ onMounted(fetchData)
             </button>
           </div>
         </div>
+      </div>
+
+      <div v-else-if="order && !submitted" class="sg-card rt-picker">
+        <h5>Đơn hàng chưa đủ điều kiện trả</h5>
+        <p class="text-secondary mb-0">Chỉ đơn đã giao thành công mới có thể trả sản phẩm; đơn đang giao có thể báo chưa nhận hàng.</p>
+        <router-link to="/orders" class="btn-sg mt-3">Về đơn hàng</router-link>
       </div>
     </div>
   </div>
