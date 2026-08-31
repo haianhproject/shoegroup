@@ -22,7 +22,14 @@ const canProductReturnStatus = (status) => ['DELIVERED', 'RECEIVED'].includes(st
 const canReportNotReceived = computed(() => canReportNotReceivedStatus(order.value?.status))
 const canRequestProductReturn = computed(() => canProductReturnStatus(order.value?.status))
 const canChooseRequestMode = computed(() => Boolean(order.value) && (canReportNotReceived.value || canRequestProductReturn.value))
-const isPaymentRecorded = computed(() => ['Đã thanh toán', 'Chờ thanh toán'].includes(String(order.value?.payment_status || '')))
+const paymentMethodText = computed(() => String(order.value?.paymentMethod?.name || order.value?.payment_method || 'COD'))
+const paymentStatusText = computed(() => String(order.value?.payment_status || ''))
+const isBankTransfer = computed(() => {
+  const key = paymentMethodText.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return key.includes('chuyen khoan') || key.includes('bank') || key.includes('momo') || key.includes('vnpay')
+})
+const isPaymentRecorded = computed(() => ['Đã thanh toán', 'Chờ thanh toán', 'Hoàn tiền'].includes(paymentStatusText.value))
+const refundEligible = computed(() => !isNotReceived.value || (isBankTransfer.value && isPaymentRecorded.value))
 
 const form = reactive({
   method: 'SHIPPER',       // SHIPPER = shipper tự lấy | POST_OFFICE = gửi tại bưu cục
@@ -280,11 +287,14 @@ onMounted(fetchData)
           <div class="sg-card rt-summary">
             <h6 class="fw-bold mb-3">Thông tin hoàn trả</h6>
             <div class="sum-row"><span>Mã đơn gốc</span><strong>#{{ order.id }}</strong></div>
+            <div class="sum-row"><span>Thanh toán</span><strong>{{ paymentMethodText }}</strong></div>
             <div class="sum-row"><span>Hình thức</span><strong>{{ isNotReceived ? 'Báo chưa nhận được hàng' : (form.method === 'SHIPPER' ? 'Shipper tự lấy' : 'Gửi bưu cục') }}</strong></div>
             <div class="sum-row" v-if="form.method === 'POST_OFFICE' && selectedPO"><span>Bưu cục</span><strong>{{ selectedPO.name }}</strong></div>
             <hr>
-            <div class="sum-row total"><span>{{ isNotReceived && !isPaymentRecorded ? 'Số tiền cần hoàn (nếu đã thu)' : 'Hoàn tiền dự kiến' }}</span><strong>{{ formatCurrency(refundAmount) }}</strong></div>
-            <div v-if="isNotReceived" class="rt-note">Không cần gửi trả hàng. Yêu cầu sẽ được chuyển cho cửa hàng kiểm tra hành trình giao.</div>
+            <div class="sum-row total"><span>{{ isNotReceived ? (refundEligible ? 'Hoàn về Ví ShoeGroup' : 'Không hoàn tiền COD') : 'Hoàn tiền dự kiến' }}</span><strong>{{ formatCurrency(refundEligible ? refundAmount : 0) }}</strong></div>
+            <div v-if="isNotReceived" class="rt-note">
+              Không cần gửi trả hàng. {{ refundEligible ? 'Khoản hoàn sẽ được cộng vào Ví ShoeGroup sau khi xử lý.' : 'Đơn COD chưa thu tiền nên không phát sinh khoản hoàn.' }}
+            </div>
             <div v-else class="rt-note">Mã vận đơn sẽ được cấp sau khi gửi yêu cầu. Vui lòng ghi mã vận đơn và mã đơn lên kiện hàng.</div>
             <button class="btn-sg w-100 mt-3" :disabled="isSubmitting" @click="submit">
               <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>

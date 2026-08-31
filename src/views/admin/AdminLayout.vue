@@ -163,8 +163,7 @@ function go(navigate) {
   if (window.innerWidth < 768) isNavOpen.value = false;
 }
 function onLogout() {
-  handleLogout();
-  router.push("/login");
+  if (handleLogout()) router.push("/login");
 }
 
 // Interval 30s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)

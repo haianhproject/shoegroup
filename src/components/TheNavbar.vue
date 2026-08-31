@@ -96,6 +96,8 @@ const closeNotifOnClickOutside = (e) => {
   }
 }
 
+const isAdminUser = computed(() => currentUser.value?.role === 'Admin' || currentUser.value?.role_id === 1 || currentUser.value?.RoleID === 1)
+
 onMounted(() => {
   document.addEventListener('click', closeNotifOnClickOutside);
 })
@@ -250,6 +252,7 @@ onUnmounted(() => {
           </div>
 
           <router-link to="/contact" class="sg-catlink" active-class="active">Liên hệ</router-link>
+          <router-link v-if="isAuthenticated && !isAdminUser" to="/wallet" class="sg-catlink" active-class="active"><i class="bi bi-wallet2 me-1"></i>Ví ShoeGroup</router-link>
         </nav>
 
         <!-- Action icons -->
@@ -304,6 +307,7 @@ onUnmounted(() => {
         <router-link to="/about" class="sg-catlink">Giới thiệu</router-link>
         <button class="sg-catlink" @click="toggleNotif">Thông báo</button>
         <router-link to="/contact" class="sg-catlink">Liên hệ</router-link>
+        <router-link v-if="isAuthenticated && !isAdminUser" to="/wallet" class="sg-catlink"><i class="bi bi-wallet2 me-1"></i>Ví ShoeGroup</router-link>
       </div>
     </div>
   </header>
