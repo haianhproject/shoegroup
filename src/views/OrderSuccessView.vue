@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { orderState, formatCurrency } from '../stores/orderStore'
 import ShoeCard from '../components/ShoeCard.vue'
 import { products as mockProducts } from '../data/mockData'
-import { API_BASE_URL } from "../services/apiClient";
+import { api } from "../services/apiClient";
 
 const route = useRoute()
 const router = useRouter()
@@ -16,8 +16,8 @@ const isLoadingSuggested = ref(true)
 
 const fetchSuggested = async () => {
   try {
-    const res = await fetch(`${API_BASE_URL}/products`)
-    const data = await res.json()
+    const data = await api.get('/products')
+    if (!Array.isArray(data)) throw new Error('Dữ liệu sản phẩm không hợp lệ')
     suggested.value = data
       .filter((p) => p.active)
       .slice(0, 4)

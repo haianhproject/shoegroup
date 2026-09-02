@@ -86,7 +86,7 @@ const submit = async () => {
 }
 .auth-logo-text { font-family: "Inter", sans-serif; font-size: 1.25rem; }
 .auth-logo-text .logo-shoe { color: #0A0A0A; }
-.auth-logo-text .logo-group { color: #D4001A; }
+.auth-logo-text .logo-group { color: #0A0A0A; }
 .auth-title {
   font-weight: 700;
   font-size: 1.75rem;
@@ -171,7 +171,7 @@ const submit = async () => {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.auth-foot a:hover { color: #D4001A; }
+.auth-foot a:hover { color: #666; }
 
 @media (max-width: 520px) {
   .auth-page { padding: 24px 20px; }

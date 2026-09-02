@@ -70,7 +70,8 @@ export const collections = [
   { id_collection: 3, collection_name: "Urban Street" },
 ];
 
-/* Phương thức vận chuyển: [0]=Thường */
+/* Phương thức vận chuyển dùng khi API chưa sẵn sàng. Giá cuối cùng vẫn
+   được tính lại ở máy chủ theo địa chỉ, không tin số tiền từ trình duyệt. */
 export const shippingMethods = [
   {
     code: "STANDARD",
@@ -78,12 +79,14 @@ export const shippingMethods = [
     basePrice: 30000,
     pricePerKm: 0,
     eta: "2 - 3 ngày",
-    desc: "Giá cố định, áp dụng toàn quốc.",
+    originCity: "Hai Bà Trưng, Hà Nội",
+    desc: "Giao tiết kiệm, tính theo khu vực nhận hàng.",
   },
 ];
 
-/* Khoảng cách ước lượng từ Hà Nội (km) theo tỉnh/thành (key viết thường) */
+/* Khoảng cách ước lượng từ kho Hai Bà Trưng, Hà Nội (km) theo tỉnh/thành (key viết thường) */
 export const distanceFromHanoi = {
+  "hai bà trưng": 5,
   "hà nội": 8,
   "hanoi": 8,
   "bắc ninh": 35,
@@ -130,7 +133,7 @@ export const products = [
     id_product: 1, id_brand: 1, id_category: 1,
     product_name: "Nike Air Zoom Pegasus 40", price: 2899000,
     description: "Giày chạy bộ chuyên nghiệp, siêu nhẹ và thoáng khí, hoàn trả năng lượng cao.",
-    image_url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=700&q=80",
+    image_url: "/img/banner2.png",
     brand_name: "Nike", category_name: "Chạy bộ", sport: "Running",
     material_name: "Lưới Flyknit", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
     collection_name: "Pro Athlete",
@@ -139,7 +142,7 @@ export const products = [
     id_product: 2, id_brand: 2, id_category: 1,
     product_name: "Adidas Ultraboost 22", price: 3499000,
     description: "Giày chạy bộ êm ái với đệm Boost trứng danh, ôm chân chắc chắn.",
-    image_url: "https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=700&q=80",
+    image_url: "/img/banner2.png",
     brand_name: "Adidas", category_name: "Chạy bộ", sport: "Running",
     material_name: "Primeknit", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
     collection_name: "Summer 2026",
@@ -148,7 +151,7 @@ export const products = [
     id_product: 3, id_brand: 3, id_category: 2,
     product_name: "Puma RS-X3 Puzzle", price: 2199000,
     description: "Thiết kế retro pha lẫn hiện đại, phong cách đường phố cực chất.",
-    image_url: "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=700&q=80",
+    image_url: "/img/banner1.png",
     brand_name: "Puma", category_name: "Sneakers", sport: "Lifestyle",
     material_name: "Da tổng hợp", sole_name: "Cao su non-marking", cushioning_name: "Puma Nitro",
     collection_name: "Urban Street",
@@ -157,7 +160,7 @@ export const products = [
     id_product: 4, id_brand: 1, id_category: 3,
     product_name: "Nike LeBron 21", price: 4299000,
     description: "Giày bóng rổ có túi khí bảo vệ chấn thương, bám sân tốt.",
-    image_url: "https://images.unsplash.com/photo-1552346154-21d32810aba3?w=700&q=80",
+    image_url: "/img/banner1.png",
     brand_name: "Nike", category_name: "Bóng rổ", sport: "Basketball",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
     collection_name: "Pro Athlete",
@@ -166,7 +169,7 @@ export const products = [
     id_product: 5, id_brand: 4, id_category: 6,
     product_name: "New Balance Fresh Foam X", price: 2699000,
     description: "Giày tập gym ổn định, đệm Fresh Foam êm ái cho buổi tập dài.",
-    image_url: "https://images.unsplash.com/photo-1539185441755-769473a23570?w=700&q=80",
+    image_url: "/img/banner2.png",
     brand_name: "New Balance", category_name: "Tập Gym", sport: "Training",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su non-marking", cushioning_name: "Fresh Foam",
     collection_name: "Summer 2026",
@@ -175,7 +178,7 @@ export const products = [
     id_product: 6, id_brand: 2, id_category: 4,
     product_name: "Adidas Predator Edge", price: 3199000,
     description: "Giày bóng đá bám sân cỏ, kiểm soát bóng chính xác.",
-    image_url: "https://images.unsplash.com/photo-1511886929837-354d827aae26?w=700&q=80",
+    image_url: "/img/banner3.png",
     brand_name: "Adidas", category_name: "Bóng đá", sport: "Football",
     material_name: "Da tổng hợp", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
     collection_name: "Pro Athlete",

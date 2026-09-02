@@ -7,7 +7,7 @@
     - Các modal & toast dùng chung nằm ở đây để phủ lên mọi trang
 -->
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import BrandLogo from "../../components/BrandLogo.vue";
 import {
@@ -158,16 +158,54 @@ const sections = [
 
 const activeTabTitle = computed(() => route.meta.title || "Bảng Điều Khiển");
 
-function go(path) {
-  router.push(path);
+function go(navigate) {
+  navigate();
   if (window.innerWidth < 768) isNavOpen.value = false;
 }
 function onLogout() {
-  handleLogout();
-  router.push("/login");
+  if (handleLogout()) router.push("/login");
 }
 
-onMounted(fetchAllData);
+// Interval 30s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)
+// để không tạo tải SQL dồn dập khi mở khu quản trị trong thời gian dài.
+const POLL_INTERVAL = 30_000;
+let pollTimer = null;
+const isRefreshing = ref(false);
+let lastFocused = Date.now();
+
+async function refresh() {
+  if (isRefreshing.value) return;
+  isRefreshing.value = true;
+  try { await fetchAllData(true); } finally { isRefreshing.value = false; }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(refresh, POLL_INTERVAL);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// Khi tab lấy lại focus (sau khi bị ẩn) → refresh ngay lập tức
+function onVisibilityChange() {
+  if (!document.hidden) {
+    const gap = Date.now() - lastFocused;
+    if (gap > 5000) refresh();
+  } else {
+    lastFocused = Date.now();
+  }
+}
+
+onMounted(async () => {
+  await fetchAllData();
+  startPolling();
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+onUnmounted(() => {
+  stopPolling();
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 </script>
 
 <template>
@@ -189,7 +227,7 @@ onMounted(fetchAllData);
       >
         <div class="d-flex align-items-center gap-2">
           <BrandLogo :size="36" :radius="4" />
-          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span style="color:#D4001A">GROUP</span></h3>
+          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span class="text-white">GROUP</span></h3>
         </div>
       </div>
 
@@ -210,14 +248,15 @@ onMounted(fetchAllData);
             v-slot="{ isActive, navigate }"
           >
             <button
-              @click="go(item.to)"
+              type="button"
+              @click="go(navigate)"
               class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
               :class="isActive ? 'active-nav text-white' : 'text-secondary'"
             >
-              <span
-                ><i class="bi me-3 fs-6" :class="item.icon"></i>
-                <span v-text="item.label"></span
-              ></span>
+              <span class="d-flex align-items-center text-start">
+                <i class="bi me-2 fs-6" :class="item.icon" style="min-width: 20px;"></i>
+                <span v-text="item.label" class="lh-sm"></span>
+              </span>
               <span
                 v-if="item.badge && item.badge() > 0"
                 class="badge rounded-1 shadow-sm"
@@ -244,7 +283,7 @@ onMounted(fetchAllData);
 
     <!-- ============ MAIN ============ -->
     <main
-      class="flex-grow-1 transition-main d-flex flex-column bg-light-gray"
+      class="flex-grow-1 transition-main d-flex flex-column bg-light-gray position-relative"
       :style="{ marginLeft: isNavOpen ? '260px' : '0' }"
     >
       <header
@@ -253,11 +292,12 @@ onMounted(fetchAllData);
       >
         <div class="d-flex align-items-center gap-3">
           <button
-            class="btn btn-light border-0 rounded-circle d-flex align-items-center justify-content-center text-dark bg-light-gray"
-            style="width: 40px; height: 40px"
+            class="btn btn-light border d-flex align-items-center justify-content-center text-dark bg-light-gray"
+            style="width: 40px; height: 40px; border-radius: 4px;"
             @click="isNavOpen = !isNavOpen"
+            title="Toggle Menu"
           >
-            <i class="bi bi-list fs-5"></i>
+            <i class="bi bi-list fs-4"></i>
           </button>
           <h2
             class="h5 mb-0 fw-bold text-dark d-none d-md-block tracking-wide"
@@ -265,6 +305,11 @@ onMounted(fetchAllData);
           ></h2>
         </div>
         <div class="d-flex align-items-center gap-3">
+          <!-- Real-time indicator -->
+          <div class="d-flex align-items-center gap-2 d-none d-md-flex">
+            <span class="d-inline-block" style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite;" title="Tự động đồng bộ với hệ thống"></span>
+            <span class="text-secondary" style="font-size:0.72rem;">Dữ liệu trực tiếp</span>
+          </div>
           <div
             class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border"
             style="width: 40px; height: 40px"
@@ -277,15 +322,24 @@ onMounted(fetchAllData);
 
       <div
         v-if="isLoading"
-        class="d-flex flex-column justify-content-center align-items-center h-100 flex-grow-1"
+        class="position-absolute start-0 end-0 bottom-0 d-flex flex-column justify-content-center align-items-center"
+        style="top: 72px; z-index: 20; background: rgba(245, 246, 248, 0.96)"
       >
         <div class="spinner-border text-dark mb-3"></div>
         <p class="fw-medium text-secondary">Đang nạp dữ liệu từ CSDL...</p>
       </div>
 
-      <div v-else class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light">
-        <!-- Mỗi trang con được render tại đây -->
-        <router-view />
+      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light w-100 mx-auto" style="max-width: 1440px;">
+        <!-- Chỉ chuyển mượt vùng nội dung; sidebar/header quản lý giữ nguyên. -->
+        <router-view v-slot="{ Component, route }">
+          <div class="position-relative w-100">
+            <Transition name="admin-page">
+              <div :key="route.fullPath" class="admin-page-wrapper w-100">
+                <component :is="Component" />
+              </div>
+            </Transition>
+          </div>
+        </router-view>
       </div>
     </main>
 
@@ -348,10 +402,11 @@ onMounted(fetchAllData);
             Đóng</button
           ><button
             @click="submitCancelOrder"
-            :disabled="!cancelModal.reason"
+            :disabled="!cancelModal.reason || cancelModal.busy"
             class="btn btn-danger rounded-2 fw-bold"
           >
-            Xác nhận hủy
+            <span v-if="cancelModal.busy" class="spinner-border spinner-border-sm me-1"></span>
+            <span v-text="cancelModal.busy ? 'Đang hủy...' : 'Xác nhận hủy'"></span>
           </button>
         </div>
       </div>
@@ -798,7 +853,7 @@ onMounted(fetchAllData);
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #dc2626;
+  background: #0A0A0A;
   margin-top: 4px;
 }
 .timeline-line {
@@ -854,6 +909,17 @@ onMounted(fetchAllData);
   border-left-color: #333333;
   color: #333333;
 }
+.admin-page-enter-active,
+.admin-page-leave-active {
+  transition: opacity .2s ease, transform .2s ease;
+}
+.admin-page-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.admin-page-enter-from { opacity: 0; transform: translateY(6px); }
+.admin-page-leave-to { opacity: 0; transform: translateY(-3px); }
 .fade-in-scale {
   animation: fadeInScale 0.25s ease;
 }
@@ -866,6 +932,10 @@ onMounted(fetchAllData);
     opacity: 1;
     transform: scale(1);
   }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
 }
 </style>
 

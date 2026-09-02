@@ -11,7 +11,7 @@ import BrandLogo from './BrandLogo.vue'
           <div class="col-lg-4">
             <router-link to="/" class="footer-logo">
               <span style="display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <img src="/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; display: block; max-height: 50px;" />
+                <img src="/img/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; display: block; max-height: 50px;" />
               </span>
               <span class="footer-logo-text">
                 <span class="logo-shoe">shoe</span><span class="logo-group">group</span>
@@ -81,10 +81,11 @@ import BrandLogo from './BrandLogo.vue'
 <style scoped>
 /* ====== Footer shell ====== */
 .sg-footer {
-  background: #0A0A0A;
-  color: rgba(255, 255, 255, 0.6);
+  background: #f5f5f5;
+  color: #555;
   margin-top: auto;
   position: relative;
+  border-top: 1px solid #e5e5e5;
 }
 
 .footer-body {
@@ -107,15 +108,15 @@ import BrandLogo from './BrandLogo.vue'
   line-height: 1;
   text-transform: uppercase;
 }
-.logo-shoe  { color: #fff; }
-.logo-group { color: #D4001A; }
+.logo-shoe  { color: #0A0A0A; }
+.logo-group { color: #0A0A0A; }
 
 .footer-desc {
   font-size: 0.88rem;
   line-height: 1.7;
   max-width: 310px;
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.45);
+  color: #777;
 }
 
 /* ====== Trust badges ====== */
@@ -131,11 +132,11 @@ import BrandLogo from './BrandLogo.vue'
   gap: 10px;
   font-size: 0.82rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
+  color: #444;
 }
 .f-badge i {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: #888;
   flex-shrink: 0;
   width: 20px;
   text-align: center;
@@ -151,9 +152,9 @@ import BrandLogo from './BrandLogo.vue'
   width: 36px;
   height: 36px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
+  background: #e8e8e8;
+  border: 1px solid #ddd;
+  color: #555;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,14 +163,15 @@ import BrandLogo from './BrandLogo.vue'
   text-decoration: none;
 }
 .footer-social a:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: #0A0A0A;
   color: #fff;
+  border-color: #0A0A0A;
 }
 
 /* ====== Headings ====== */
 .footer-heading {
-  color: #fff;
-  font-weight: 600;
+  color: #0A0A0A;
+  font-weight: 700;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -186,14 +188,14 @@ import BrandLogo from './BrandLogo.vue'
   gap: 12px;
 }
 .footer-links li a {
-  color: rgba(255, 255, 255, 0.5);
+  color: #666;
   text-decoration: none;
   font-size: 0.88rem;
   font-weight: 400;
   transition: color 0.2s ease;
 }
 .footer-links li a:hover {
-  color: #fff;
+  color: #0A0A0A;
 }
 
 /* ====== Contact list ====== */
@@ -211,26 +213,26 @@ import BrandLogo from './BrandLogo.vue'
   align-items: flex-start;
   font-size: 0.86rem;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.5);
+  color: #666;
 }
 .footer-contact li i {
-  color: rgba(255, 255, 255, 0.35);
+  color: #999;
   font-size: 0.88rem;
   margin-top: 2px;
   flex-shrink: 0;
 }
 .footer-contact li a {
-  color: rgba(255, 255, 255, 0.5);
+  color: #666;
   text-decoration: none;
   transition: color 0.2s ease;
 }
 .footer-contact li a:hover {
-  color: #fff;
+  color: #0A0A0A;
 }
 
 /* ====== Bottom bar ====== */
 .footer-bottom {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid #e0e0e0;
   margin-top: 48px;
   padding: 20px 0;
   display: flex;
@@ -239,16 +241,16 @@ import BrandLogo from './BrandLogo.vue'
   font-size: 0.8rem;
   gap: 12px;
   flex-wrap: wrap;
-  color: rgba(255, 255, 255, 0.3);
+  color: #999;
 }
 .footer-bottom-right {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: rgba(255, 255, 255, 0.3);
+  color: #999;
 }
 .footer-brand-tag {
-  color: rgba(255, 255, 255, 0.5);
+  color: #666;
   font-weight: 600;
   font-size: 0.8rem;
 }

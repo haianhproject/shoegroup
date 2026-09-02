@@ -1,11 +1,7 @@
 <!-- Trang: Quan Ly Tai Khoan (hien tat ca vai tro + nut phan quyen) -->
 <script setup>
 import { ref, computed } from 'vue'
-import { db, openForm, getRoleBadgeClass, roleName, deleteItem } from '../adminStore'
-import { API_BASE_URL } from "../../../services/apiClient";
-
-// Cung base URL voi store (backend Express chay o cong 5000)
-const API = API_BASE_URL
+import { db, openForm, getRoleBadgeClass, roleName, deleteItem, apiWrite } from '../adminStore'
 
 const search = ref('')
 const roleMsg = ref('')
@@ -50,12 +46,12 @@ async function changeRole(a, value) {
   a.role_id = newRole // cap nhat lac quan -> giao dien doi nhom ngay
   savingId.value = a.id
   try {
-    const res = await fetch(API + '/accounts/' + a.id, {
+    const res = await apiWrite('/accounts/' + a.id, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role_id: newRole }),
     })
-    if (!res.ok) throw new Error('fail')
+    if (!res.ok) throw new Error(res.data?.message || 'fail')
     roleMsgOk.value = true
     roleMsg.value = 'Da doi vai tro cho ' + (a.name || a.username || 'tai khoan') + ' thanh ' + roleName(newRole)
   } catch (e) {

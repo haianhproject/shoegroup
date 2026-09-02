@@ -37,12 +37,33 @@
 
 html { scroll-behavior: smooth; }
 
+/* Chuyển trang dùng chung cho toàn bộ router-view. Một transition duy nhất
+   giúp các nav không bị trang mờ lâu, trang đổi ngay lập tức không đồng bộ. */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity .24s ease, transform .24s ease;
+}
+.page-enter-from { opacity: 0; transform: translateY(8px); }
+.page-leave-to { opacity: 0; transform: translateY(-4px); }
+
 body {
   background-color: #fff;
   color: var(--sg-ink);
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
+}
+
+/* ---- Typography nhất quán ---- */
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--sg-ink);
+}
+p, span, li, td, th, label, input, select, textarea, button {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 /* ---------- Utilities ---------- */
@@ -61,7 +82,7 @@ body {
   border: 1px solid var(--sg-ink);
   font-weight: 700;
   letter-spacing: 0.08em;
-  border-radius: 0px;
+  border-radius: var(--sg-r);
   padding: 14px 32px;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -81,7 +102,7 @@ body {
   color: #fff;
   border: none;
   font-weight: 700;
-  border-radius: 0px;
+  border-radius: var(--sg-r);
   padding: 14px 32px;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -99,7 +120,7 @@ body {
   color: #fff;
   border: 1px solid rgba(255,255,255,0.5);
   font-weight: 600;
-  border-radius: 0px;
+  border-radius: var(--sg-r);
   padding: 13px 32px;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -118,7 +139,7 @@ body {
   color: var(--sg-ink);
   border: 1px solid var(--sg-ink);
   font-weight: 700;
-  border-radius: 0px;
+  border-radius: var(--sg-r);
   padding: 13px 32px;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -135,7 +156,7 @@ body {
 .sg-card {
   background: #fff;
   border: 1px solid var(--sg-line);
-  border-radius: 0px;
+  border-radius: var(--sg-r-lg);
   transition: border-color 0.2s ease;
 }
 
@@ -156,7 +177,7 @@ body {
 /* Inputs */
 .sg-input {
   border: 1px solid var(--sg-line);
-  border-radius: 4px;
+  border-radius: var(--sg-r);
   padding: 12px 16px;
   background: #fff;
   font-weight: 500;
@@ -200,5 +221,5 @@ body {
 }
 
 /* Gradient text helper */
-.sg-gradient-text { color: var(--sg-red); }
+.sg-gradient-text { color: var(--sg-ink); font-weight: 900; }
 

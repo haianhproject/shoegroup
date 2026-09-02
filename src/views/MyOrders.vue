@@ -3,10 +3,11 @@ import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, confirmReceived, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders
+  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
-import { api } from "../services/apiClient";
+import { api } from "../services/apiClient"
+import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 
 const router = useRouter()
 const search = ref('')
@@ -20,6 +21,8 @@ const statusMeta = {
   PENDING: { color: 'amber', icon: 'bi-hourglass-split' },
   CONFIRMED: { color: 'blue', icon: 'bi-check2-circle' },
   SHIPPING: { color: 'cyan', icon: 'bi-truck' },
+  DELIVERY_FAILED: { color: 'red', icon: 'bi-truck' },
+  WAREHOUSE_RETURN: { color: 'amber', icon: 'bi-box-seam' },
   DELIVERED: { color: 'lime', icon: 'bi-box-seam' },
   RECEIVED: { color: 'green', icon: 'bi-bag-check' },
   COMPLETED: { color: 'green', icon: 'bi-patch-check-fill' },
@@ -27,10 +30,12 @@ const statusMeta = {
   RETURNED: { color: 'gray', icon: 'bi-arrow-return-left' },
 }
 
-// Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper).
-const FLOW = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'COMPLETED']
+// Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper)
+// Thanh tiến trình kết thúc ở mốc giao hàng thành công; không vẽ thêm
+// một icon "Hoàn thành" không có thao tác tương ứng.
+const FLOW = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED']
 const stepIndex = (s) => {
-  if (s === 'RECEIVED' || s === 'COMPLETED') return FLOW.indexOf('COMPLETED')
+  if (s === 'RECEIVED' || s === 'COMPLETED') return FLOW.indexOf('DELIVERED')
   return FLOW.indexOf(s)
 }
 
@@ -38,22 +43,17 @@ const filtered = computed(() => {
   let list = [...ordersByCurrentUser.value]
   if (statusFilter.value !== 'ALL') list = list.filter((o) => o.status === statusFilter.value)
   const q = search.value.trim().toLowerCase()
-  if (q) list = list.filter((o) => (o.items || []).some((it) => (it.product_name || it.product?.product_name || '').toLowerCase().includes(q)) || String(o.id).includes(q))
+  if (q) {
+    list = list.filter((o) =>
+      (o.items || []).some((it) => (it.product_name || it.product?.product_name || '').toLowerCase().includes(q)) ||
+      String(o.id).includes(q)
+    )
+  }
   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 })
 
 const toggle = (id) => { expanded.value = expanded.value === id ? null : id }
 
-const handleReceived = async (order) => {
-  const r = confirmReceived(order.id)
-  if (r?.ok === false) { notify({ type: 'error', message: r.message }); return }
-  if (order.serverId) {
-    try {
-      await api.put(`/orders/${order.serverId}/status`, { status: 'Đã nhận hàng' })
-    } catch (e) { /* offline */ }
-  }
-  notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${order.id} hoàn tất. Cảm ơn bạn!` })
-}
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
 
 const handleCancel = (order) => {
@@ -67,39 +67,98 @@ const closeCancelModal = () => { cancelModal.open = false }
 
 const submitCancel = async () => {
   const reason = cancelModal.reason.trim() || 'Khách hàng hủy đơn.'
-  cancelOrder(cancelModal.orderId, reason)
-  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
   if (cancelModal.serverId) {
     try {
       await api.put(`/orders/${cancelModal.serverId}/status`, { status: 'Đã hủy', reason })
-    } catch (e) { /* offline */ }
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Không thể hủy đơn ở trạng thái hiện tại.' })
+      return
+    }
   }
+  cancelOrder(cancelModal.orderId, reason)
+  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
   closeCancelModal()
 }
 
 const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0 })
 
 const isBankTransfer = (o) => {
-  if (o.paymentMethod?.code === 'BANK' || o.paymentMethod?.code === 'MOMO') return true;
-  if (typeof o.paymentMethod === 'string' && (o.paymentMethod.toLowerCase().includes('chuyển khoản') || o.paymentMethod.toLowerCase().includes('momo') || o.paymentMethod.toLowerCase().includes('bank'))) return true;
-  if (o.paymentMethod?.name && (o.paymentMethod.name.toLowerCase().includes('chuyển khoản') || o.paymentMethod.name.toLowerCase().includes('momo') || o.paymentMethod.name.toLowerCase().includes('bank'))) return true;
-  return false;
+  if (o.paymentMethod?.code === 'BANK' || o.paymentMethod?.code === 'MOMO') return true
+  if (typeof o.paymentMethod === 'string' && (o.paymentMethod.toLowerCase().includes('chuyển khoản') || o.paymentMethod.toLowerCase().includes('momo') || o.paymentMethod.toLowerCase().includes('bank'))) return true
+  if (o.paymentMethod?.name && (o.paymentMethod.name.toLowerCase().includes('chuyển khoản') || o.paymentMethod.name.toLowerCase().includes('momo') || o.paymentMethod.name.toLowerCase().includes('bank'))) return true
+  return false
+}
+
+const isLostDelivery = (o) => {
+  if (!o || o.status !== 'CANCELLED') return false
+  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
+  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${o.cancelReason || ''} ${historyText}`.toLowerCase()
+  return text.includes('lost_in_transit') || text.includes('mất hàng') || text.includes('thất lạc') || text.includes('lost')
+}
+
+const isAccidentDelivery = (o) => {
+  if (!o) return false
+  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
+  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${historyText}`.toLowerCase()
+  return text.includes('delivery_accident') || text.includes('tai nạn') || text.includes('trục trặc') || text.includes('sự cố vận chuyển') || text.includes('va chạm')
+}
+
+const historyStatusKeys = (o) => (o?.history || []).map((h) => mapStatusToKey(h.status))
+const hasDeliveryIssue = (o) => {
+  if (!o) return false
+  const keys = historyStatusKeys(o)
+  return ['DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)
+    || keys.includes('DELIVERY_FAILED')
+    || keys.includes('WAREHOUSE_RETURN')
+}
+
+const deliveryIssueMessage = (o) => {
+  if (!o) return ''
+  if (isLostDelivery(o)) {
+    return isBankTransfer(o)
+      ? 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Vui lòng liên hệ shop để được hoàn tiền.'
+      : 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Shop rất tiếc vì sự cố này.'
+  }
+  if (o.status === 'WAREHOUSE_RETURN') {
+    return isAccidentDelivery(o)
+      ? 'Đơn hàng gặp trục trặc trong quá trình vận chuyển. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
+      : 'Đơn hàng chưa giao thành công vì chưa liên hệ được người nhận. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
+  }
+  if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Đơn hàng đang được shop giao lại. Vui lòng để ý điện thoại để nhận hàng.'
+  if (hasDeliveryIssue(o) && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) return 'Đơn hàng đã được giao lại thành công.'
+  if (o.status === 'DELIVERY_FAILED') return 'Đơn hàng giao chưa thành công. Shop đang xử lý hướng giao lại hoặc hỗ trợ bạn trong mục Trả hàng.'
+  return ''
+}
+
+const deliveryIssueSteps = (o) => {
+  if (!o || !hasDeliveryIssue(o)) return []
+  const historyKeys = historyStatusKeys(o)
+  const failed = o.status === 'DELIVERY_FAILED'
+    || historyKeys.includes('DELIVERY_FAILED')
+    || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
+  const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
+  const steps = [{ label: 'Đang giao hàng', icon: 'bi-truck' }]
+  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'bi-exclamation-triangle' })
+  if (returned) steps.push({ label: 'Đã về kho', icon: 'bi-box-seam' })
+  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'bi-truck' })
+  if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'bi-box-seam' })
+  return steps
 }
 
 const isWaitingTransfer = (o) => {
-  return isBankTransfer(o) && o.status === 'PENDING' && o.payment_status === 'Chưa thanh toán' && !['CANCELLED', 'RETURNED'].includes(o.status);
+  return isBankTransfer(o) && o.status === 'PENDING' && o.payment_status === 'Chưa thanh toán' && !['CANCELLED', 'RETURNED'].includes(o.status)
 }
 
 const timeRemaining = (o) => {
-  const createdTime = new Date(o.createdAt).getTime();
-  const twelveHours = 12 * 60 * 60 * 1000;
-  const deadline = createdTime + twelveHours;
-  const now = Date.now();
-  if (now > deadline) return 'Hết hạn';
-  const diff = deadline - now;
-  const h = Math.floor(diff / (1000 * 60 * 60));
-  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${h}h ${m}p`;
+  const createdTime = new Date(o.createdAt).getTime()
+  const deadlineFromServer = o.paymentDueAt ? new Date(o.paymentDueAt).getTime() : NaN
+  const deadline = Number.isFinite(deadlineFromServer) ? deadlineFromServer : createdTime + 24 * 60 * 60 * 1000
+  const now = Date.now()
+  if (now > deadline) return 'Hết hạn'
+  const diff = deadline - now
+  const h = Math.floor(diff / (1000 * 60 * 60))
+  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+  return `${h}h ${m}p`
 }
 
 const handlePay = (o) => {
@@ -112,26 +171,263 @@ const handlePay = (o) => {
 const confirmPaid = async () => {
   if (payModal.serverId) {
     try {
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
-    } catch(e) {}
+      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+    } catch(error) {
+      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
+      return
+    }
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
-    order.payment_status = 'Chờ thanh toán'
+    order.payment_status = 'Đã thanh toán'
     saveOrders()
   }
   payModal.open = false
-  notify({ type: 'success', title: 'Xác nhận thành công', message: 'Cảm ơn bạn. Cửa hàng sẽ kiểm tra và xác nhận thanh toán.' })
+  notify({ type: 'success', title: 'Thanh toán đã được ghi nhận', message: 'Đơn hàng đã sẵn sàng để cửa hàng xác nhận và xử lý.' })
 }
 
 const closePayModal = () => { payModal.open = false }
 
-const goReturn = (order) => { window.open('https://zalo.me/0123456789', '_blank') }
+const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
+/* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
+const savedAddresses = ref([])
+const changeAddrModal = reactive({
+  open: false,
+  order: null,
+  selectedAddrId: null,
+  updating: false,
+  showAddNew: false,
+  newRecipient: '',
+  newPhone: '',
+  newProvince: '',
+  newWard: '',
+  newLine: '',
+  newIsDefault: false,
+  adding: false,
+})
+
+const selectedAddressIsCurrent = computed(() => {
+  const orderAddressId = Number(changeAddrModal.order?.addressId)
+  const selectedId = Number(changeAddrModal.selectedAddrId)
+  return Number.isInteger(orderAddressId) && orderAddressId > 0 && orderAddressId === selectedId
+})
+
+const isValidPhone = (phone) => {
+  const value = String(phone || '').trim()
+  return /^0(?:3|5|7|8|9)[0-9]{8}$/.test(value) && !/(\d)\1{5,}/.test(value)
+}
+
+const loadSavedAddresses = async () => {
+  try {
+    savedAddresses.value = await addressBookApi.list()
+    return true
+  } catch (error) {
+    savedAddresses.value = []
+    notify({ type: 'error', message: error.message || 'Không tải được sổ địa chỉ.' })
+    return false
+  }
+}
+
+const openChangeAddress = async (order) => {
+  if (order.addressChanged) {
+    notify({
+      type: 'warning',
+      title: 'Đã hết lượt đổi địa chỉ',
+      message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.'
+    })
+    return
+  }
+  if (['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
+    notify({
+      type: 'warning',
+      title: 'Không thể thay đổi',
+      message: 'Đơn hàng đang giao hoặc đã kết thúc nên không thể đổi địa chỉ nhận hàng.'
+    })
+    return
+  }
+
+  if (!await loadSavedAddresses()) return
+  changeAddrModal.order = order
+  changeAddrModal.showAddNew = false
+  changeAddrModal.newRecipient = ''
+  changeAddrModal.newPhone = ''
+  changeAddrModal.newProvince = ''
+  changeAddrModal.newWard = ''
+  changeAddrModal.newLine = ''
+  changeAddrModal.newIsDefault = false
+
+  if (savedAddresses.value.length > 0) {
+    const current = savedAddresses.value.find(a => Number(a.id) === Number(order.addressId))
+    const matchingSnapshot = savedAddresses.value.find(a => formatAddress(a) === order.shippingAddress)
+    const selected = current || matchingSnapshot || savedAddresses.value.find(a => a.isDefault) || savedAddresses.value[0]
+    changeAddrModal.selectedAddrId = selected.id
+  } else {
+    changeAddrModal.selectedAddrId = null
+    changeAddrModal.showAddNew = true
+  }
+
+  changeAddrModal.open = true
+}
+
+const provinces = ref([])
+const wards = ref([])
+
+const fetchProvinces = async () => {
+  try {
+    provinces.value = await vietnamAddressApi.provinces()
+  } catch (error) {
+    provinces.value = []
+    notify({ type: 'error', message: error.message || 'Không tải được danh sách Tỉnh/Thành.' })
+  }
+}
+
+const onProvinceChange = async () => {
+  changeAddrModal.newWard = ''
+  wards.value = []
+  const target = provinces.value.find(p => p.name === changeAddrModal.newProvince)
+  if (target) {
+    const requestedProvince = changeAddrModal.newProvince
+    try {
+      const rows = await vietnamAddressApi.wards(target.code)
+      if (changeAddrModal.newProvince === requestedProvince) wards.value = rows
+    } catch (error) {
+      if (changeAddrModal.newProvince === requestedProvince) wards.value = []
+      notify({ type: 'error', message: error.message || 'Không tải được danh sách Phường/Xã.' })
+    }
+  }
+}
+
+const saveNewAddrQuick = async () => {
+  const m = changeAddrModal
+  if (m.adding) return
+  if (!m.newRecipient.trim() || !m.newPhone.trim() || !m.newProvince || !m.newWard || !m.newLine.trim()) {
+    notify({ type: 'error', message: 'Vui lòng điền đủ thông tin địa chỉ mới.' })
+    return
+  }
+  if (!isValidPhone(m.newPhone)) {
+    notify({ type: 'error', message: 'Số điện thoại nhận hàng không hợp lệ.' })
+    return
+  }
+
+  m.adding = true
+  try {
+    const newAddress = await addressBookApi.create({
+      recipient: m.newRecipient.trim(),
+      phone: m.newPhone.trim(),
+      province: m.newProvince,
+      ward: m.newWard,
+      line: m.newLine.trim(),
+      isDefault: m.newIsDefault,
+    })
+    const others = savedAddresses.value
+      .filter(address => address.id !== newAddress.id)
+      .map(address => newAddress.isDefault ? { ...address, isDefault: false } : address)
+    savedAddresses.value = [newAddress, ...others].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+    changeAddrModal.selectedAddrId = newAddress.id
+    changeAddrModal.showAddNew = false
+    notify({ type: 'success', message: 'Đã thêm địa chỉ vào sổ và chọn cho đơn này.' })
+  } catch (error) {
+    notify({ type: 'error', message: error.message || 'Không thể thêm địa chỉ.' })
+  } finally {
+    m.adding = false
+  }
+}
+
+const confirmUpdateAddress = async () => {
+  const liveOrder = orderState.orders.find(o => o.id === changeAddrModal.order?.id)
+  if (changeAddrModal.order?.addressChanged || liveOrder?.addressChanged) {
+    notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.' })
+    changeAddrModal.open = false
+    return
+  }
+  const targetAddr = savedAddresses.value.find(a => a.id === changeAddrModal.selectedAddrId)
+  if (!targetAddr) {
+    notify({ type: 'error', message: 'Vui lòng chọn một địa chỉ từ sổ địa chỉ.' })
+    return
+  }
+  if (selectedAddressIsCurrent.value) {
+    notify({ type: 'info', message: 'Đây đã là địa chỉ nhận hàng hiện tại của đơn.' })
+    return
+  }
+
+  changeAddrModal.updating = true
+  const orderId = changeAddrModal.order.id
+  const serverId = changeAddrModal.order.serverId
+  const newFullAddr = formatAddress(targetAddr)
+
+  try {
+    let updatedShippingAddress = newFullAddr
+    let addressWasChanged = true
+    if (serverId) {
+      const updated = await api.put(`/orders/${serverId}/address`, { addressId: targetAddr.id })
+      updatedShippingAddress = updated?.shippingAddress || updatedShippingAddress
+      addressWasChanged = updated?.unchanged !== true
+    }
+
+    const localOrder = orderState.orders.find(o => o.id === orderId)
+    if (localOrder) {
+      localOrder.shippingAddress = updatedShippingAddress
+      localOrder.addressId = targetAddr.id
+      localOrder.addressChanged = addressWasChanged || Boolean(localOrder.addressChanged)
+      localOrder.customer = {
+        ...localOrder.customer,
+        fullName: targetAddr.recipient,
+        phone: targetAddr.phone,
+        address: targetAddr.line,
+        province: targetAddr.province
+      }
+      saveOrders()
+    }
+
+    notify({ type: 'success', title: 'Thành công', message: 'Đã đổi địa chỉ nhận đơn hàng thành công!' })
+    changeAddrModal.open = false
+  } catch (e) {
+    if (e?.status === 409 && e?.data?.code === 'ADDRESS_CHANGE_LIMIT_REACHED') {
+      const localOrder = orderState.orders.find(o => o.id === orderId)
+      if (localOrder) {
+        localOrder.addressChanged = true
+        saveOrders()
+      }
+      changeAddrModal.open = false
+      notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Địa chỉ của đơn này đã được đổi một lần trước đó.' })
+    } else {
+      notify({ type: 'error', message: e.message || 'Không thể cập nhật địa chỉ lúc này. Vui lòng thử lại.' })
+    }
+  } finally {
+    changeAddrModal.updating = false
+  }
+}
+
 let pollTimer = null
-onMounted(async () => { await loadOrders(); runAutoCancel(); isLoading.value = false; pollTimer = setInterval(loadOrders, 8000) })
-onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
+let lastHidden = 0
+
+async function syncOrders() {
+  await loadOrders()
+  runAutoCancel()
+}
+
+function onVisibilityChange() {
+  if (!document.hidden) {
+    if (Date.now() - lastHidden > 4000) syncOrders()
+  } else {
+    lastHidden = Date.now()
+  }
+}
+
+onMounted(async () => {
+  await loadOrders()
+  runAutoCancel()
+  isLoading.value = false
+  await Promise.all([loadSavedAddresses(), fetchProvinces()])
+  pollTimer = setInterval(syncOrders, 6000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <template>
@@ -181,8 +477,45 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <span class="oc-count">{{ (o.items || []).length }} sản phẩm</span>
           </div>
 
+          <!-- Thông tin địa chỉ nhận & Nút đổi địa chỉ -->
+          <div class="addr-box-brief my-3 p-3 rounded d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <div class="fw-bold small text-dark">
+                <i class="bi bi-geo-alt-fill text-danger me-1"></i>Địa chỉ nhận hàng:
+                <span v-if="o.addressChanged" class="badge bg-danger text-white ms-2">Đã đổi địa chỉ</span>
+              </div>
+              <div class="small text-secondary mt-1">
+                <strong>{{ o.customer?.fullName }}</strong> ({{ o.customer?.phone }}) -
+                <span>{{ o.shippingAddress || `${o.customer?.address}, ${o.customer?.province}` }}</span>
+              </div>
+            </div>
+            <div>
+              <button
+                v-if="['PENDING', 'CONFIRMED'].includes(o.status) && !o.addressChanged"
+                class="btn-change-addr"
+                @click.stop="openChangeAddress(o)"
+              >
+                <i class="bi bi-pencil-square me-1"></i>Đổi sổ địa chỉ
+              </button>
+              <span v-else-if="!o.addressChanged" class="badge bg-secondary text-white py-2 px-3 small">
+                <i class="bi bi-lock-fill me-1"></i>Khóa đổi địa chỉ
+              </span>
+            </div>
+          </div>
+
           <!-- Thanh tiến trình trạng thái -->
-          <div v-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
+          <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
+            <i class="bi bi-truck"></i>
+            <span><strong>Giao hàng thất bại</strong><small>Đã hủy</small></span>
+          </div>
+          <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps">
+            <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="{ current: i === deliveryIssueSteps(o).length - 1 }">
+              <span class="oc-step-dot"><i class="bi" :class="st.icon"></i></span>
+              <small>{{ st.label }}</small>
+              <span v-if="i < deliveryIssueSteps(o).length - 1" class="oc-issue-line"></span>
+            </div>
+          </div>
+          <div v-else-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
             <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED') }">
               <span class="oc-step-dot"><i class="bi" :class="statusMeta[st]?.icon"></i></span>
               <small>{{ ORDER_STATUS[st] }}</small>
@@ -192,8 +525,13 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <i class="bi" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}
           </div>
 
+          <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o) }">
+            <i class="bi" :class="isLostDelivery(o) ? 'bi-exclamation-triangle' : 'bi-info-circle'"></i>
+            <span>{{ deliveryIssueMessage(o) }}</span>
+          </div>
+
           <!-- Auto-cancel reason -->
-          <div v-if="o.status === 'CANCELLED' && o.cancelReason" class="oc-cancel">
+          <div v-if="o.status === 'CANCELLED' && o.cancelReason && !isLostDelivery(o)" class="oc-cancel">
             <i class="bi bi-exclamation-triangle"></i> {{ o.cancelReason }}
           </div>
 
@@ -207,15 +545,15 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
             <i class="bi bi-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
           </div>
           <div v-else-if="isBankTransfer(o) && o.payment_status === 'Chờ thanh toán'" class="oc-hold" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;">
-            <i class="bi bi-hourglass-split"></i> Đã báo thanh toán. Đang chờ cửa hàng xác nhận.
+            <i class="bi bi-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
           </div>
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
-            <button v-if="o.status === 'DELIVERED'" class="btn-sg" @click.stop="handleReceived(o)"><i class="bi bi-bag-check me-1"></i>Đã nhận hàng</button>
-            <button v-if="o.status === 'RECEIVED'" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-chat-dots me-1"></i>Liên hệ shop</button>
+            <button v-if="['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
+            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
           </div>
 
@@ -236,17 +574,119 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
                 <div class="oc-line-price">{{ formatCurrency(it.subtotal || it.unitPrice * it.quantity) }}</div>
               </div>
               <div class="oc-meta">
-                <div><span>Giao đến</span><strong>{{ o.customer?.address }}, {{ o.customer?.province }}</strong></div>
-                <div><span>Vận chuyển</span><strong>{{ o.shippingMethod?.name }} ({{ o.shippingMethod?.eta }})</strong></div>
-                <div><span>Thanh toán</span><strong>{{ o.paymentMethod?.name }}</strong></div>
+                <div><span>Giao đến</span><strong>{{ o.shippingAddress || `${o.customer?.address}, ${o.customer?.province}` }}</strong></div>
+                <div>
+                  <span>Vận chuyển</span>
+                  <strong>{{ o.shippingMethod?.name || o.shippingMethod || '—' }}<template v-if="o.shippingMethod?.eta"> ({{ o.shippingMethod.eta }})</template></strong>
+                </div>
+                <div><span>Thanh toán</span><strong>{{ o.paymentMethod?.name || o.paymentMethod || '—' }}</strong></div>
                 <div><span>Phí giao</span><strong>{{ formatCurrency(o.shippingFee) }}</strong></div>
               </div>
-
             </div>
           </transition>
         </div>
       </div>
     </div>
+
+    <!-- Modal Đổi Sổ Địa Chỉ Nhận Hàng -->
+    <transition name="suc">
+      <div v-if="changeAddrModal.open" class="modal-overlay" @click.self="changeAddrModal.open = false">
+        <div class="sg-card modal-box">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Đổi địa chỉ nhận đơn #{{ changeAddrModal.order?.id }}</h5>
+            <button class="btn-close-modal" @click="changeAddrModal.open = false"><i class="bi bi-x-lg"></i></button>
+          </div>
+
+          <div v-if="!changeAddrModal.showAddNew">
+            <label class="co-label mb-2">Chọn địa chỉ từ Sổ địa chỉ của bạn:</label>
+            <div class="d-flex flex-column gap-2 mb-3 max-h-addr">
+              <label
+                v-for="a in savedAddresses"
+                :key="a.id"
+                class="addr-radio-card"
+                :class="{ active: changeAddrModal.selectedAddrId === a.id }"
+              >
+                <input type="radio" v-model="changeAddrModal.selectedAddrId" :value="a.id" name="order_addr_sel">
+                <div class="flex-grow-1 ms-2">
+                  <div class="d-flex align-items-center gap-2">
+                    <strong class="small">{{ a.recipient }}</strong>
+                    <span class="text-muted small">| {{ a.phone }}</span>
+                    <span v-if="a.isDefault" class="badge bg-dark" style="font-size: 0.65rem;">Mặc định</span>
+                  </div>
+                  <div class="text-secondary smaller mt-1">
+                    {{ formatAddress(a) }}
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+              <button class="btn-add-quick" @click="changeAddrModal.showAddNew = true">
+                <i class="bi bi-plus-lg me-1"></i>Thêm địa chỉ mới khác
+              </button>
+              <div class="d-flex gap-2">
+                <button class="btn-sg-outline" @click="changeAddrModal.open = false">Hủy</button>
+                <button class="btn-sg" :disabled="changeAddrModal.updating || selectedAddressIsCurrent" @click="confirmUpdateAddress">
+                  <span v-if="changeAddrModal.updating">Đang cập nhật...</span>
+                  <span v-else-if="selectedAddressIsCurrent"><i class="bi bi-check2 me-1"></i>Địa chỉ hiện tại</span>
+                  <span v-else><i class="bi bi-check2 me-1"></i>Xác nhận đổi</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Form Thêm Địa Chỉ Mới Trực Tiếp -->
+          <div v-else>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="co-label">Người nhận <span class="text-danger">*</span></label>
+                <input v-model="changeAddrModal.newRecipient" class="sg-input w-100" placeholder="Tên người nhận">
+              </div>
+              <div class="col-md-6">
+                <label class="co-label">Số điện thoại <span class="text-danger">*</span></label>
+                <input v-model="changeAddrModal.newPhone" class="sg-input w-100" placeholder="Số điện thoại">
+              </div>
+
+              <div class="col-md-6">
+                <label class="co-label">Tỉnh / Thành phố <span class="text-danger">*</span></label>
+                <select v-model="changeAddrModal.newProvince" class="sg-input sg-select w-100" @change="onProvinceChange">
+                  <option value="" disabled>-- Chọn Tỉnh/TP --</option>
+                  <option v-for="p in provinces" :key="p.code" :value="p.name">{{ p.name }}</option>
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label class="co-label">Phường / Xã <span class="text-danger">*</span></label>
+                <select v-model="changeAddrModal.newWard" class="sg-input sg-select w-100" :disabled="!changeAddrModal.newProvince">
+                  <option value="" disabled>-- Chọn Phường/Xã --</option>
+                  <option v-for="w in wards" :key="w.code" :value="w.name">{{ w.name }}</option>
+                </select>
+              </div>
+
+              <div class="col-12">
+                <label class="co-label">Số nhà, tên đường <span class="text-danger">*</span></label>
+                <input v-model="changeAddrModal.newLine" class="sg-input w-100" placeholder="Số 123 Đường Cầu Giấy...">
+              </div>
+
+              <div class="col-12">
+                <label class="check-row">
+                  <input type="checkbox" v-model="changeAddrModal.newIsDefault">
+                  <span class="fw-semibold small">Đặt làm địa chỉ mặc định tài khoản</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+              <button class="btn-sg-outline" @click="changeAddrModal.showAddNew = false">Quay lại danh sách</button>
+              <button class="btn-sg" :disabled="changeAddrModal.adding" @click="saveNewAddrQuick">
+                <i class="bi bi-save me-1"></i>{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </transition>
 
     <!-- Cancel Order Modal -->
     <transition name="suc">
@@ -271,7 +711,7 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
           <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" style="width: 200px; height: 200px; object-fit: contain;" />
           <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng hoặc MoMo. Sau khi thanh toán thành công, ấn nút bên dưới để thông báo cho chúng tôi.</p>
+          <p class="text-secondary small mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
           <div class="d-flex flex-column gap-2">
             <button class="btn-sg" style="background: #ea580c" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
             <button class="btn-sg-outline w-100" @click="closePayModal">ĐÓNG</button>
@@ -319,6 +759,11 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-count { margin-left: auto; font-size: .82rem; color: var(--sg-muted); }
 .oc-cancel { margin-top: 12px; background: #fff; border: 1px solid #D4001A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #D4001A; }
 .oc-hold { margin-top: 12px; background: #fff; border: 1px solid #0A0A0A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #0A0A0A; }
+
+.addr-box-brief { background: #f8fafc; border: 1px solid #e2e8f0; }
+.btn-change-addr { border: 1px solid #0A0A0A; background: #fff; color: #0A0A0A; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.btn-change-addr:hover { background: #0A0A0A; color: #fff; }
+
 .oc-detail { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--sg-line); }
 .oc-line { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .oc-line-img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
@@ -332,6 +777,19 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 .btn-cancel-outline { color: #b91c1c; border-color: #fecaca; }
 .btn-cancel-outline:hover { background: #fff5f5; color: #b91c1c; border-color: #ef4444; }
+
+.co-label { font-weight: 700; font-size: 0.82rem; color: #333; }
+.max-h-addr { max-height: 240px; overflow-y: auto; }
+.addr-radio-card { display: flex; align-items: center; border: 1.5px solid var(--sg-line); border-radius: 6px; padding: 10px 14px; cursor: pointer; transition: 0.2s; background: #fff; }
+.addr-radio-card.active { border-color: #0a0a0a; background: #fafafa; }
+.addr-radio-card input { accent-color: #0a0a0a; }
+
+.btn-add-quick { border: 0; background: transparent; color: #D4001A; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+.btn-add-quick:hover { text-decoration: underline; }
+.check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: #0a0a0a; }
+
+.btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; }
 .exp-enter-active, .exp-leave-active { transition: all .3s ease; overflow: hidden; }
 .exp-enter-from, .exp-leave-to { opacity: 0; max-height: 0; }
 .exp-enter-to, .exp-leave-from { opacity: 1; max-height: 1200px; }
@@ -344,12 +802,23 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 .oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px rgba(10,10,10,.2); }
 .oc-step small { font-size: .68rem; color: var(--sg-muted); font-weight: 700; line-height: 1.1; }
 .oc-step.done small { color: var(--sg-ink); }
+.oc-issue-steps { display: flex; align-items: flex-start; gap: 0; margin-top: 16px; padding: 12px 10px 8px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; }
+.oc-issue-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; color: #92400e; }
+.oc-issue-step .oc-step-dot { background: #fff; border-color: #fbbf24; color: #b45309; }
+.oc-issue-step.current .oc-step-dot { background: #b45309; border-color: #b45309; color: #fff; box-shadow: 0 0 0 4px rgba(180,83,9,.16); }
+.oc-issue-step small { max-width: 110px; font-size: .68rem; font-weight: 700; line-height: 1.1; }
+.oc-issue-line { position: absolute; top: 15px; left: calc(50% + 16px); width: calc(100% - 32px); height: 3px; background: #fbbf24; }
 .oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
 .oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
+.oc-status-flat.amber { background: #fef3c7; color: #92400e; }
 .oc-status-flat.gray { background: #e5e7eb; color: #374151; }
-@media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small { display: none; } }
+.lost-delivery-status span { display: inline-flex; flex-direction: column; gap: 2px; }
+.lost-delivery-status small { font-size: .7rem; font-weight: 700; }
+.oc-delivery-note { margin-top: 10px; display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #1e40af; font-size: .78rem; line-height: 1.45; }
+.oc-delivery-note.danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
+@media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.modal-box { max-width: 520px; width: 100%; padding: 28px; border-radius: 22px; }
+.modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 22px; }
 .suc-enter-active { transition: opacity .3s; }
 .suc-enter-from { opacity: 0; }
 </style>

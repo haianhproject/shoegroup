@@ -22,7 +22,7 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
 
         <div class="promo-hero">
           <span class="sg-chip promo-chip"><i class="bi bi-stars"></i> ƯU ĐÃI ĐẶC BIỆT</span>
-          <h3 class="promo-title">Chào mừng đến với <span class="sg-gradient-text">ShoeGroup</span></h3>
+          <h3 class="promo-title">Chào mừng đến với <strong>ShoeGroup</strong></h3>
           <p class="promo-sub">Bộ sưu tập giày thể thao nam 2026 — bứt phá từng bước chạy.</p>
         </div>
 
@@ -38,7 +38,7 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
             <div class="deal-badge warm"><i class="bi bi-truck"></i></div>
             <div>
               <div class="deal-h">Miễn phí giao hàng tiêu chuẩn</div>
-              <div class="deal-p">Cho mọi đơn hàng từ 2.000.000đ. Giao hỏa tốc 24h nội thành Hà Nội.</div>
+              <div class="deal-p">Cho mọi đơn hàng từ 2.000.000đ.</div>
             </div>
           </div>
           <div class="deal">

@@ -17,9 +17,12 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
   const router = express.Router();
 
   const toInt = (v, def, min, max) => {
-    const n = parseInt(v, 10);
-    if (Number.isNaN(n)) return def;
-    return Math.min(Math.max(n, min), max);
+    if (v === undefined || v === null || String(v).trim() === "") return def;
+    const raw = String(v).trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < min || n > max) return null;
+    return n;
   };
 
   router.get("/api/health", async (_req, res) => {
@@ -43,10 +46,12 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       await poolConnect;
       const page = toInt(req.query.page, 1, 1, 100000);
       const limit = toInt(req.query.limit, 12, 1, 100);
+      if (page === null || limit === null) return res.status(400).json({ success: false, message: "Phân trang không hợp lệ." });
       const offset = (page - 1) * limit;
       const search = (req.query.q || "").toString().slice(0, 100);
       const categoryId = req.query.categoryId ? toInt(req.query.categoryId, 0, 0, 1e9) : null;
       const brandId = req.query.brandId ? toInt(req.query.brandId, 0, 0, 1e9) : null;
+      if (categoryId === null || brandId === null) return res.status(400).json({ success: false, message: "Bộ lọc danh mục/thương hiệu không hợp lệ." });
       const sortMap = {
         newest: "p.CreatedAt DESC, p.ProductID DESC",
         price_asc: "ISNULL(p.SalePrice, p.BasePrice) ASC",
@@ -103,6 +108,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
     try {
       await poolConnect;
       const limit = toInt(req.query.limit, 8, 1, 40);
+      if (limit === null) return res.status(400).json({ success: false, message: "Giới hạn sản phẩm không hợp lệ." });
       const r = await pool.request().input("limit", sql.Int, limit).query(`
         SELECT TOP (@limit) p.ProductID AS id, p.ProductName AS name, p.BasePrice AS price,
                p.SalePrice AS sale_price, p.ImageURL AS image_url, b.BrandName AS brand
@@ -122,6 +128,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       await poolConnect;
       const page = toInt(req.query.page, 1, 1, 100000);
       const limit = toInt(req.query.limit, 20, 1, 100);
+      if (page === null || limit === null) return res.status(400).json({ success: false, message: "Phân trang không hợp lệ." });
       const offset = (page - 1) * limit;
       const isAdmin = req.auth && req.auth.role === "Admin";
       // Khach hang chi thay don cua chinh minh
@@ -130,6 +137,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
           ? toInt(req.query.userId, 0, 0, 1e9)
           : null
         : Number(req.auth?.sub) || -1;
+      if (userId === null) return res.status(400).json({ success: false, message: "UserID không hợp lệ." });
       const statusCode = (req.query.statusCode || "").toString().slice(0, 30) || null;
 
       const hasStatusCode = await pool.request().query(`
@@ -156,12 +164,16 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                o.TotalAmount AS total, o.ShippingFee AS shippingFee,
                o.DiscountAmount AS discount, o.PaymentMethod AS paymentMethod,
                ISNULL(o.PaymentStatus, N'Chua thanh toan') AS payment_status,
+               o.PaymentDueAt AS payment_due_at,
+               o.PaymentConfirmedAt AS payment_confirmed_at,
                ${useCode ? "o.StatusCode AS status_code," : ""}
                ISNULL(o.Status, N'Chờ xác nhận') AS status,
                ISNULL(o.CancelReason, '') AS cancel_reason,
                o.OrderDate AS order_date,
                CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) AS date,
-               (SELECT od.OrderDetailID AS id, COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
+               (SELECT od.OrderDetailID AS id, od.OrderDetailID AS order_detail_id,
+                       od.ProductID AS product_id, od.ProductVariantID AS variant_id,
+                       COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
                        COALESCE(p.ImageURL, od.ImageURLSnapshot, '') AS image,
                        od.Quantity AS quantity, od.UnitPrice AS price,
                        ISNULL(od.Size,'') AS size, ISNULL(od.Color, N'') AS color

@@ -20,6 +20,8 @@ export const ORDER_STATUS = {
   PENDING: "Chờ xử lý",
   CONFIRMED: "Đã xác nhận",
   SHIPPING: "Đang giao",
+  DELIVERY_FAILED: "Giao hàng thất bại",
+  WAREHOUSE_RETURN: "Về kho",
   DELIVERED: "Đã giao",
   RECEIVED: "Đã nhận hàng",
   COMPLETED: "Hoàn thành",
@@ -193,19 +195,47 @@ export const daysUntilRevenue = (order) => {
 };
 
 /* Tạo yêu cầu trả hàng (shipper tự lấy / gửi bưu cục) */
-export const requestReturn = (orderId, payload) => {
+export const requestReturn = async (orderId, payload) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
-  o.status = "RETURNED";
-  o.returnInfo = {
-    method: payload.method,
-    postOffice: payload.postOffice || null,
-    reason: payload.reason,
-    trackingCode: payload.trackingCode,
-    refundAmount: payload.refundAmount,
-    items: payload.items,
-    createdAt: Date.now(),
-  };
+  const remoteId = Number(o.serverId || orderId);
+  if (!Number.isInteger(remoteId) || remoteId <= 0) return { ok: false, message: "Đơn hàng chưa đồng bộ với máy chủ, vui lòng tải lại trang." };
+  try {
+    const { api } = await import("../services/apiClient");
+    const result = await api.post("/returns", {
+      order_id: remoteId,
+      return_type: payload.method || "CUSTOMER",
+      post_office_id: payload.postOffice?.id || null,
+      tracking_number: payload.trackingCode || "",
+      reason: payload.reason,
+      refund_amount: payload.refundAmount,
+      items: (payload.items || []).map((item) => ({
+        order_detail_id: item.order_detail_id || item.orderDetailId || null,
+        product_id: item.product_id || item.id_product || item.product?.id_product || null,
+        productId: item.productId || null,
+        size: item.size?.size_name || item.size || "",
+        color: item.color?.color_label || item.color?.color_name || item.color || "",
+        quantity: item.return_qty || item.quantity,
+        condition: item.condition || "",
+        reason: item.reason || payload.reason,
+      })),
+    });
+    o.status = "RETURNED";
+    o.returnInfo = {
+      method: payload.method,
+      notReceived: payload.method === "NOT_RECEIVED",
+      postOffice: payload.postOffice || null,
+      reason: payload.reason,
+      trackingCode: payload.trackingCode,
+      refundAmount: result?.RefundAmount ?? payload.refundAmount,
+      items: payload.items,
+      returnId: result?.ReturnID || null,
+      status: result?.Status || "Chờ xử lý",
+      createdAt: Date.now(),
+    };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Không thể tạo yêu cầu trả hàng." };
+  }
   saveOrders();
   return { ok: true, order: o };
 };
@@ -215,11 +245,27 @@ export const removeOrder = (orderId) => {
   if (index !== -1) { orderState.orders.splice(index, 1); saveOrders(); }
 };
 
+// Chỉ đánh dấu hoàn tiền khi đơn thực sự đã thu tiền. Đơn COD đang chờ xử lý
+// chưa thu tiền phải giữ trạng thái "Đã hủy"; trước đây mọi đơn đều bị gắn
+// "Hoàn tiền", khiến giao diện và báo cáo doanh thu sai.
+const localPaymentKey = (value) => String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/gi, "d")
+  .toLowerCase()
+  .trim()
+  .replace(/\s+/g, " ");
+
+const orderWasPaid = (order) => {
+  const paymentKey = localPaymentKey(order?.payment_status ?? order?.PaymentStatus);
+  return ["da thanh toan", "cho thanh toan", "hoan tien"].includes(paymentKey);
+};
+
 export const cancelOrder = (orderId, reason) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "CANCELLED";
-  o.payment_status = "Hoàn tiền";
+  o.payment_status = orderWasPaid(o) ? "Hoàn tiền" : "Đã hủy";
   o.cancelReason = reason || "Khách hàng hủy đơn.";
   saveOrders();
 };
@@ -233,31 +279,71 @@ export const setServerId = (localId, serverId) => {
 import { API_BASE_URL } from "../services/apiClient";
 const API_BASE = API_BASE_URL;
 
-/* Ánh xạ trạng thái tiếng Việt (server/Admin) -> KEY nội bộ */
-const SERVER_STATUS_TO_KEY = {
-  "Chờ xác nhận": "PENDING",
-  "Chờ xử lý": "PENDING",
-  "Đã xác nhận": "CONFIRMED",
-  "Đang vận chuyển": "SHIPPING",
-  "Đang giao": "SHIPPING",
-  "Đã giao hàng thành công": "DELIVERED",
-  "Đã giao": "DELIVERED",
-  "Đã nhận hàng": "RECEIVED",
-  "Đã hủy": "CANCELLED",
+/* Chuẩn hóa chuỗi tiếng Việt để so khớp trạng thái không lỗi */
+export const normalizeStatusText = (str) => {
+  if (!str) return "";
+  return String(str)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 };
 
-/* Trạng thái do KHÁCH quyết định -> không để server ghi đè */
-const CLIENT_TERMINAL = ["RECEIVED", "COMPLETED", "RETURNED"];
+/* Ánh xạ trạng thái từ Server (DB SQL / Admin) sang KEY nội bộ (PENDING, CONFIRMED, ...) */
+export const mapStatusToKey = (status) => {
+  if (!status) return "PENDING";
+  const raw = String(status).trim();
+  if (ORDER_STATUS[raw]) return raw;
 
-/* Anh xa 1 don tu server (GET /api/orders) sang shape dung o trang khach */
-const mapServerOrder = (s) => {
-  const key = SERVER_STATUS_TO_KEY[s.status] || "PENDING";
+  const n = normalizeStatusText(raw);
+
+  if (n.includes("huy") || n.includes("cancel")) return "CANCELLED";
+  if (n.includes("tra hang") || n.includes("hoan tien") || n.includes("return")) return "RETURNED";
+  if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
+  if (n.includes("hoan thanh") || n.includes("complete")) return "COMPLETED";
+  if (n.includes("giao hang that bai") || n.includes("khong giao duoc hang") || n.includes("delivery failed") || n.includes("delivery failure") || n.includes("delivery_failure")) return "DELIVERY_FAILED";
+  if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
+  if (n.includes("da giao") || n.includes("giao hang thanh cong") || n.includes("deliver")) return "DELIVERED";
+  if (n.includes("van chuyen") || n.includes("dang giao") || n.includes("ship")) return "SHIPPING";
+  if (n.includes("chuan bi") || n.includes("lay hang") || n.includes("process") || n.includes("picking")) return "CONFIRMED";
+  if (n.includes("da xac nhan") || n.includes("confirm")) return "CONFIRMED";
+  if (n.includes("cho xac nhan") || n.includes("cho xu ly") || n.includes("pending")) return "PENDING";
+
+  return "PENDING";
+};
+
+/* Trạng thái do KHÁCH quyết định -> không bị server ghi đè lùi.
+   RETURNED không nằm trong danh sách này vì yêu cầu trả hàng có thể bị
+   từ chối/hủy và đơn cần quay lại SHIPPING hoặc RECEIVED. */
+const CLIENT_TERMINAL = ["RECEIVED", "COMPLETED"];
+
+/* Ánh xạ 1 đơn từ server (GET /api/customers/:id/orders) sang shape dùng ở trang khách */
+export const mapServerOrder = (s) => {
+  const key = mapStatusToKey(s.status);
   let createdAt = Date.now();
-  if (s.date) {
+  if (s.created_at) {
+    const d = new Date(s.created_at);
+    if (!isNaN(d)) createdAt = d.getTime();
+  } else if (s.date) {
     const m = String(s.date).match(/(\d{2})\/(\d{2})\/(\d{4})[ T]?(\d{2})?:?(\d{2})?:?(\d{2})?/);
     if (m) createdAt = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
     else { const d = new Date(s.date); if (!isNaN(d)) createdAt = d.getTime(); }
   }
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const deliveredDate = toTimestamp(s.delivered_date ?? s.DeliveredDate);
+  const receivedConfirmedDate = toTimestamp(s.received_confirmed_date ?? s.ReceivedConfirmedDate);
+  const revenueEligibleDate = toTimestamp(s.revenue_eligible_date ?? s.RevenueEligibleDate);
+  const paymentDueAt = s.payment_due_at || s.PaymentDueAt || null;
+  const paymentConfirmedAt = s.payment_confirmed_at || s.PaymentConfirmedAt || null;
+  const rawCounted = s.is_counted_as_revenue ?? s.IsCountedAsRevenue;
+  const isCountedAsRevenue = rawCounted === true || rawCounted === 1 || rawCounted === "1" || String(rawCounted).toLowerCase() === "true";
   return {
     id: "SV" + s.id,
     serverId: s.id,
@@ -265,14 +351,25 @@ const mapServerOrder = (s) => {
     createdAt,
     date: s.date || "",
     status: key,
-    autoCancelDeadline: null,
-    deliveredDate: key === "DELIVERED" ? createdAt : null,
-    receivedConfirmedDate: null,
-    revenueEligibleDate: null,
-    isCountedAsRevenue: false,
+    autoCancelDeadline: toTimestamp(s.auto_cancel_deadline ?? s.AutoCancelDeadline),
+    deliveredDate: deliveredDate || (key === "DELIVERED" ? createdAt : null),
+    receivedConfirmedDate,
+    revenueEligibleDate,
+    isCountedAsRevenue,
+    stockIssueStatus: s.stock_issue_status ?? s.StockIssueStatus ?? null,
+    stockIssueReason: s.stock_issue_reason ?? s.StockIssueReason ?? "",
+    stockRestoredAt: toTimestamp(s.stock_restored_at ?? s.StockRestoredAt),
+    history: (s.history || s.OrderStatusHistory || []).map((h) => ({
+      status: h.status ?? h.Status ?? h.NewStatus ?? "",
+      date: h.date ?? h.ChangedAt ?? null,
+      note: h.note ?? h.Note ?? "",
+    })),
     autoCancelled: false,
     cancelReason: s.cancel_reason || "",
     fromServer: true,
+    shippingAddress: s.shipping_address || s.customer_address || "",
+    addressId: s.address_id ?? null,
+    addressChanged: Boolean(s.address_changed),
     customer: {
       fullName: s.customer_name || "",
       phone: s.customer_phone || "",
@@ -280,6 +377,9 @@ const mapServerOrder = (s) => {
       address: s.customer_address || "",
     },
     items: (s.products || []).map((d) => ({
+      order_detail_id: d.order_detail_id ?? d.OrderDetailID ?? null,
+      product_id: d.product_id ?? d.ProductID ?? null,
+      product_variant_id: d.variant_id ?? d.ProductVariantID ?? null,
       product_name: d.name || "",
       image_url: d.image || "",
       size: { size_name: d.size || "" },
@@ -292,8 +392,19 @@ const mapServerOrder = (s) => {
     shippingFee: s.shippingFee ?? 0,
     discount: s.discount ?? 0,
     total: s.total ?? 0,
-    shippingMethod: "",
-    paymentMethod: s.payment_method || "COD",
+    shippingMethod: {
+      code: s.shipping_method_code || "",
+      name: s.shipping_method || "Theo đơn hàng",
+      eta: s.shipping_eta || "",
+    },
+    paymentMethod: {
+      code: s.payment_method_code || "",
+      name: s.payment_method || "COD",
+    },
+    payment_status: s.payment_status || s.PaymentStatus || "Chưa thanh toán",
+    paymentDueAt,
+    paymentConfirmedAt,
+    tracking_code: s.tracking_code || s.TrackingNumber || "",
     note: s.note || "",
   };
 };
@@ -301,66 +412,167 @@ const mapServerOrder = (s) => {
 /* Đồng bộ trạng thái từ server (Admin cập nhật) về đơn của khách */
 export const syncFromServer = async () => {
   const user = getCurrentUser();
-  if (!user) return; // Only sync if logged in
+  if (!user) return;
 
   const uid = user.id_user || user.id || user.UserID;
+  if (!uid) return;
+
   let list = [];
   try {
     const { api } = await import("../services/apiClient");
     list = await api.get(`/customers/${uid}/orders`);
-  } catch {
+  } catch (err) {
+    console.warn("Lỗi syncFromServer:", err);
     return;
   }
   if (!Array.isArray(list)) return;
 
-  const withServer = orderState.orders.filter((o) => o.serverId);
-  const byId = {};
-  list.forEach((s) => { byId[s.id] = s; });
   let changed = false;
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
-  // 1. Update existing orders
-  let toRemove = [];
-  withServer.forEach((o) => {
-    const s = byId[o.serverId];
-    if (!s) {
-      toRemove.push(o.id);
-      return;
-    }
-    const key = SERVER_STATUS_TO_KEY[s.status];
-    if (!key || CLIENT_TERMINAL.includes(o.status)) return;
-    if (o.status !== key) {
+  // 1. Cập nhật các đơn đã tồn tại trong local storage
+  orderState.orders.forEach((o) => {
+    const s = list.find((item) => String(item.id) === String(o.serverId));
+    if (!s) return;
+
+    const key = mapStatusToKey(s.status);
+    // Cập nhật trạng thái
+    // Cho phép server đẩy các trạng thái kết thúc/đổi trả lên ngay cả khi
+    // local vừa lưu "Đã nhận hàng"; chỉ giữ terminal local trước một bản
+    // ghi server cũ hơn (DELIVERED/PENDING).
+    const serverAuthoritative = ["RETURNED", "CANCELLED", "COMPLETED"].includes(key);
+    if (o.status !== key && (!CLIENT_TERMINAL.includes(o.status) || serverAuthoritative)) {
       o.status = key;
       if (key === "DELIVERED" && !o.deliveredDate) {
         o.deliveredDate = Date.now();
         o.autoCancelDeadline = null;
       }
-      if (key === "CANCELLED") o.cancelReason = s.cancel_reason || o.cancelReason || "Đơn bị hủy.";
+      if (key === "CANCELLED") {
+        o.cancelReason = s.cancel_reason || o.cancelReason || "Đơn bị hủy.";
+      }
       changed = true;
     }
-    if (o.payment_status !== s.payment_status) {
+
+    // Yêu cầu trả hàng bị từ chối/hủy sẽ trả đơn về trạng thái giao/nhận;
+    // xóa cờ local để người mua có thể gửi yêu cầu mới đúng điều kiện.
+    if (key !== "RETURNED" && o.returnInfo) {
+      delete o.returnInfo;
+      changed = true;
+    }
+
+    if (s.payment_status && o.payment_status !== s.payment_status) {
       o.payment_status = s.payment_status;
       changed = true;
     }
-    if (s.payment_method && typeof o.paymentMethod === 'object' && o.paymentMethod.name !== s.payment_method) {
-      o.paymentMethod.name = s.payment_method;
+
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_status") || Object.prototype.hasOwnProperty.call(s, "StockIssueStatus")) {
+      const serverIssueStatus = s.stock_issue_status ?? s.StockIssueStatus ?? null;
+      if ((o.stockIssueStatus ?? null) !== (serverIssueStatus ?? null)) {
+        o.stockIssueStatus = serverIssueStatus;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_reason") || Object.prototype.hasOwnProperty.call(s, "StockIssueReason")) {
+      const serverIssueReason = s.stock_issue_reason ?? s.StockIssueReason ?? "";
+      if ((o.stockIssueReason ?? "") !== serverIssueReason) {
+        o.stockIssueReason = serverIssueReason;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_restored_at") || Object.prototype.hasOwnProperty.call(s, "StockRestoredAt")) {
+      const serverRestoredAt = toTimestamp(s.stock_restored_at ?? s.StockRestoredAt);
+      if ((o.stockRestoredAt ?? null) !== (serverRestoredAt ?? null)) {
+        o.stockRestoredAt = serverRestoredAt;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "history") || Object.prototype.hasOwnProperty.call(s, "OrderStatusHistory")) {
+      const serverHistory = (s.history || s.OrderStatusHistory || []).map((h) => ({
+        status: h.status ?? h.Status ?? h.NewStatus ?? "",
+        date: h.date ?? h.ChangedAt ?? null,
+        note: h.note ?? h.Note ?? "",
+      }));
+      if (JSON.stringify(o.history || []) !== JSON.stringify(serverHistory)) {
+        o.history = serverHistory;
+        changed = true;
+      }
+    }
+
+    const serverAddress = s.shipping_address || s.customer_address || "";
+    if (serverAddress && o.shippingAddress !== serverAddress) {
+      o.shippingAddress = serverAddress;
       changed = true;
-    } else if (s.payment_method && typeof o.paymentMethod === 'string' && o.paymentMethod !== s.payment_method) {
-      o.paymentMethod = s.payment_method;
+    }
+    const serverAddressId = s.address_id ?? null;
+    if ((o.addressId ?? null) !== serverAddressId) {
+      o.addressId = serverAddressId;
       changed = true;
+    }
+
+    const hasField = (...names) => names.some((name) => Object.prototype.hasOwnProperty.call(s, name));
+    const dateFields = [
+      ["deliveredDate", ["delivered_date", "DeliveredDate"]],
+      ["receivedConfirmedDate", ["received_confirmed_date", "ReceivedConfirmedDate"]],
+      ["revenueEligibleDate", ["revenue_eligible_date", "RevenueEligibleDate"]],
+      ["autoCancelDeadline", ["auto_cancel_deadline", "AutoCancelDeadline"]],
+    ];
+    dateFields.forEach(([field, names]) => {
+      if (!hasField(...names)) return;
+      const value = toTimestamp(s[names[0]] ?? s[names[1]]);
+      if ((o[field] ?? null) !== (value ?? null)) {
+        o[field] = value;
+        changed = true;
+      }
+    });
+    if (hasField("is_counted_as_revenue", "IsCountedAsRevenue")) {
+      const rawCounted = s.is_counted_as_revenue ?? s.IsCountedAsRevenue;
+      const serverCounted = rawCounted === true || rawCounted === 1 || rawCounted === "1" || String(rawCounted).toLowerCase() === "true";
+      if (Boolean(o.isCountedAsRevenue) !== serverCounted) {
+        o.isCountedAsRevenue = serverCounted;
+        changed = true;
+      }
+    }
+    if (hasField("payment_due_at", "PaymentDueAt")) {
+      const serverPaymentDue = s.payment_due_at ?? s.PaymentDueAt ?? null;
+      if ((o.paymentDueAt ?? null) !== (serverPaymentDue ?? null)) {
+        o.paymentDueAt = serverPaymentDue;
+        changed = true;
+      }
+    }
+    if (hasField("payment_confirmed_at", "PaymentConfirmedAt")) {
+      const serverPaymentConfirmed = s.payment_confirmed_at ?? s.PaymentConfirmedAt ?? null;
+      if ((o.paymentConfirmedAt ?? null) !== (serverPaymentConfirmed ?? null)) {
+        o.paymentConfirmedAt = serverPaymentConfirmed;
+        changed = true;
+      }
+    }
+    if (hasField("tracking_code", "TrackingNumber")) {
+      const serverTracking = s.tracking_code ?? s.TrackingNumber ?? "";
+      if ((o.tracking_code ?? "") !== serverTracking) {
+        o.tracking_code = serverTracking;
+        changed = true;
+      }
     }
   });
 
-  // 2. Fetch remote orders missing locally
-  const known = new Set(orderState.orders.map((o) => o.serverId).filter(Boolean));
-  list.forEach((s) => {
-    if (known.has(s.id)) return;
-    try { orderState.orders.push(mapServerOrder(s)); changed = true; } catch (e) {}
-  });
+  // 2. Thêm các đơn từ server về local nếu chưa có
+  const existingServerIds = new Set(
+    orderState.orders.map((o) => (o.serverId != null ? String(o.serverId) : null)).filter(Boolean)
+  );
 
-  if (toRemove.length > 0) {
-    orderState.orders = orderState.orders.filter(o => !toRemove.includes(o.id));
-    changed = true;
-  }
+  list.forEach((s) => {
+    if (!s || s.id == null) return;
+    if (existingServerIds.has(String(s.id))) return;
+    try {
+      orderState.orders.push(mapServerOrder(s));
+      existingServerIds.add(String(s.id));
+      changed = true;
+    } catch (e) {}
+  });
 
   if (changed) saveOrders();
 };

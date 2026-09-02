@@ -17,6 +17,7 @@ import { ref, reactive, computed } from "vue";
 import { currentUser, logout } from "@/stores/authStore";
 
 import { API_BASE_URL, getToken } from "../../services/apiClient";
+import { normalizeStatusText } from "@/stores/orderStore";
 export const API = API_BASE_URL;
 export const LOW_STOCK_THRESHOLD = 10;
 
@@ -39,6 +40,8 @@ export const db = reactive({
   colors: [],
   sizes: [],
   materials: [],
+  soles: [],
+  cushionings: [],
   reviews: [],
 });
 
@@ -100,7 +103,7 @@ export async function api(path, options) {
       let detail = "";
       try {
         const body = await res.json();
-        detail = body && body.error ? " - " + body.error : "";
+        detail = body && (body.message || body.error) ? " - " + (body.message || body.error) : "";
       } catch (e) {}
       throw new Error("HTTP " + res.status + detail);
     }
@@ -171,11 +174,22 @@ export const getDisplayName = computed(() => {
   );
 });
 export function handleLogout() {
+  if (typeof window !== "undefined" && !window.confirm("Bạn có chắc muốn đăng xuất khỏi ShoeGroup không?")) return false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
+  return true;
 }
 
 /* ---------------- BADGE COUNTS ---------------- */
+// Chuyển khoản online đã được khách xác nhận ở checkout thì coi là đã thanh toán
+// ngay cả với dữ liệu cũ còn lưu trạng thái "Chờ thanh toán".
+export function isPaymentSettled(o) {
+  const status = normalizeStatusText(o?.payment_status || "");
+  if (["da thanh toan", "hoan tien"].includes(status)) return true;
+  // Đơn bán tại quầy thu tiền mặt được thanh toán ngay khi tạo đơn.
+  if (getPaymentMethodPill(o?.payment_method).code === "Tiền mặt") return true;
+  return status === "cho thanh toan" && getPaymentMethodPill(o?.payment_method).code === "Chuyển khoản";
+}
 export const pendingOrdersCount = computed(
   () => db.orders.filter((o) => o.status === "Chờ xác nhận").length,
 );
@@ -183,7 +197,7 @@ export const unpaidCount = computed(
   () =>
     db.orders.filter(
       (o) =>
-        (o.payment_status || "Chưa thanh toán") !== "Đã thanh toán" &&
+        !isPaymentSettled(o) &&
         o.status !== "Đã hủy",
     ).length,
 );
@@ -198,7 +212,7 @@ export const lowStockCount = computed(
 export const incompleteOrdersCount = computed(
   () =>
     db.orders.filter(
-      (o) => o.status !== "Đã giao hàng thành công" && o.status !== "Đã nhận hàng" && o.status !== "Đã hủy",
+      (o) => !["Đã giao hàng thành công", "Đã nhận hàng", "Đã hủy", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng", "Về kho"].includes(o.status),
     ).length,
 );
 /* Số sản phẩm hết hàng (tổng tồn kho = 0) */
@@ -343,6 +357,8 @@ export function buildOrderStatusData() {
     "Chờ xác nhận": "#f59e0b",
     "Đã xác nhận": "#0ea5e9",
     "Đang vận chuyển": "#6366f1",
+    "Giao hàng thất bại": "#dc2626",
+    "Về kho": "#f59e0b",
     "Đã giao hàng thành công": "#10b981",
     "Đã hủy": "#ef4444",
   };
@@ -516,6 +532,8 @@ export const orderStatuses = [
   "Chờ xác nhận",
   "Đã xác nhận",
   "Đang vận chuyển",
+  "Giao hàng thất bại",
+  "Về kho",
   "Đã giao hàng thành công",
   "Đã nhận hàng",
   "Đã hủy",
@@ -537,6 +555,8 @@ export function getStatusBadgeClass(status) {
       "Chờ xác nhận": "bg-light text-secondary border",
       "Đã xác nhận": "bg-secondary-subtle text-dark",
       "Đang vận chuyển": "bg-secondary-subtle text-dark",
+      "Giao hàng thất bại": "bg-danger-subtle text-danger-emphasis",
+      "Về kho": "bg-warning-subtle text-warning-emphasis",
       "Đã giao hàng thành công": "bg-dark text-white",
       "Đã hủy": "bg-light text-danger border",
     }[status] || "bg-light text-secondary border"
@@ -574,6 +594,18 @@ export async function processOrderFlow(ord) {
   const action = orderFlow[ord.status];
   if (!action) return;
   const prev = ord.status;
+  
+  const res = await apiWrite("/orders/" + ord.id + "/status", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: action.next }),
+  });
+  
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Lỗi cập nhật trạng thái đơn.";
+     throw new Error(msg);
+  }
+
   ord.status = action.next;
   ord._history = ord._history || [];
   ord._history.push({
@@ -581,49 +613,100 @@ export async function processOrderFlow(ord) {
     date: new Date().toISOString(),
     note: "Cập nhật bởi " + getDisplayName.value,
   });
-  await api("/orders/" + ord.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: action.next }),
-  });
+  
   notify("Đơn #" + ord.id + ": " + prev + " → " + action.next, "success");
 }
 
 // Máy trạng thái đơn theo phương thức thanh toán.
-// - Chuyển khoản: khách phải chuyển khoản TRƯỚC (ở trang khách hàng) mới được xác nhận & hoàn thành đơn.
-// - COD: xác nhận → giao → THU TIỀN (gần cuối) → hoàn thành đơn.
+// - Chuyển khoản: checkout ghi nhận thanh toán ngay sau khi khách xác nhận,
+//   nên admin chỉ xử lý trạng thái đơn, không bấm xác nhận thanh toán lần hai.
+// - COD: xác nhận → giao; chuyển giao thành công sẽ tự ghi nhận đã thu tiền.
+export function getDeliveryFailureOptions() {
+  return [
+    {
+      key: "return_warehouse",
+      text: "Khách chưa bắt máy / chưa nhận hàng",
+      next: "Về kho",
+      reason: "Khách không bắt máy / không nhận hàng, kiện đã về kho.",
+      class: "btn-dark text-white",
+    },
+    {
+      key: "delivery_accident",
+      text: "Tai nạn / trục trặc vận chuyển",
+      next: "Về kho",
+      reason: "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại vào ngày gần nhất.",
+      class: "btn-outline-dark",
+    },
+    {
+      key: "lost_delivery_cancel",
+      text: "Thất lạc hàng khi vận chuyển",
+      next: "Đã hủy",
+      reason: "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.",
+      class: "btn-outline-danger",
+    },
+  ];
+}
+
 export function getOrderActions(o) {
-  if (!o || o.status === "Đã hủy" || o.status === "Đã giao hàng thành công" || o.status === "Đã nhận hàng")
-    return [];
+  if (!o) return [];
   const method = getPaymentMethodPill(o.payment_method).code;
-  const paid = (o.payment_status || "") === "Đã thanh toán";
+  const paid = isPaymentSettled(o);
+  if (["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
+    return [];
   const acts = [];
-  if (method === "BANK_TRANSFER") {
+  const preShipping = ["Chờ xác nhận", "Đã xác nhận"].includes(o.status);
+  if (o.status === "Về kho") {
+    if (method === "Chuyển khoản" && !paid) return [{
+      key: "wait_bank",
+      text: "Chờ khách chuyển khoản",
+      locked: true,
+      class: "btn-light text-dark border",
+    }];
+    return [{
+      key: "reship",
+      text: "Giao lại đơn hàng",
+      next: "Đang vận chuyển",
+      reason: "Shop đã sắp xếp giao lại đơn hàng vào ngày gần nhất.",
+      class: "btn-dark text-white",
+    }];
+  }
+  // Sau khi giao thất bại phải tách rõ hai hướng xử lý: khách không nghe
+  // máy thì hàng quay về kho; thất lạc thì hủy nhưng không cộng lại tồn.
+  if (o.status === "Giao hàng thất bại") return [{
+    key: "delivery_failed_menu",
+    text: "Giao hàng thất bại",
+    menu: getDeliveryFailureOptions(),
+    class: "btn-outline-danger",
+  }];
+  if (method === "Chuyển khoản") {
     if (!paid) {
-      if (o.payment_status === "Chờ thanh toán") {
-        return [
-          {
-            key: "bank_paid",
-            text: "Xác nhận đã nhận tiền",
-            markPaid: true,
-            class: "btn-primary text-white",
-          }
-        ];
-      }
-      return [
+      const unpaidActions = [
         {
           key: "wait_bank",
           text: "Chờ khách chuyển khoản",
           locked: true,
-          class: "btn-light text-secondary border",
+          class: "btn-light text-dark border",
         },
         {
           key: "bank_paid",
-          text: "Đã nhận tiền (Thủ công)",
+          text: "Khách đã thanh toán (Thủ công)",
           markPaid: true,
-          class: "btn-outline-primary ms-2",
-        }
+          class: "btn-outline-dark ms-2",
+        },
       ];
+      if (o.status === "Đang vận chuyển") unpaidActions.splice(2, 0, {
+        key: "delivery_failed_menu",
+        text: "Giao hàng thất bại",
+        menu: getDeliveryFailureOptions(),
+        class: "btn-outline-danger",
+      });
+      if (preShipping) unpaidActions.push({
+        key: "cancel",
+        text: "Hủy đơn",
+        class: "btn-outline-danger mt-2",
+        isCancel: true,
+      });
+      return unpaidActions;
     }
     if (o.status === "Chờ xác nhận")
       acts.push({
@@ -632,16 +715,36 @@ export function getOrderActions(o) {
         next: "Đã xác nhận",
         class: "btn-dark text-white",
       });
-    else
+    else if (o.status === "Đã xác nhận")
+      acts.push({
+        key: "ship",
+        text: "Giao vận chuyển",
+        next: "Đang vận chuyển",
+        class: "btn-dark text-white",
+      });
+    else if (o.status === "Đang vận chuyển") {
       acts.push({
         key: "complete",
         text: "Giao hàng thành công",
         next: "Đã giao hàng thành công",
-        class: "btn-info text-white",
+        class: "btn-dark text-white",
       });
+      acts.push({
+        key: "delivery_failed_menu",
+        text: "Giao hàng thất bại",
+        menu: getDeliveryFailureOptions(),
+        class: "btn-outline-danger",
+      });
+    }
+    if (preShipping) acts.push({
+      key: "cancel",
+      text: "Hủy đơn",
+      class: "btn-outline-danger mt-2",
+      isCancel: true,
+    });
     return acts;
   }
-  // COD (và các phương thức khác)
+  // COD chỉ được thu tự động khi chuyển sang giao thành công.
   if (o.status === "Chờ xác nhận")
     acts.push({
       key: "confirm",
@@ -654,26 +757,23 @@ export function getOrderActions(o) {
       key: "ship",
       text: "Giao vận chuyển",
       next: "Đang vận chuyển",
-      class: "btn-primary text-white",
+      class: "btn-dark text-white",
     });
   else if (o.status === "Đang vận chuyển") {
-    if (method === "COD" && !paid)
-      acts.push({
-        key: "cod_paid",
-        text: "Thanh toán thành công (thu COD)",
-        markPaid: true,
-        class: "btn-warning text-dark",
-      });
-    else
-      acts.push({
-        key: "complete",
-        text: "Giao hàng thành công",
-        next: "Đã giao hàng thành công",
-        class: "btn-info text-white",
-      });
+    acts.push({
+      key: "complete",
+      text: "Giao hàng thành công",
+      next: "Đã giao hàng thành công",
+      class: "btn-dark text-white",
+    });
+    acts.push({
+      key: "delivery_failed_menu",
+      text: "Giao hàng thất bại",
+      menu: getDeliveryFailureOptions(),
+      class: "btn-outline-danger",
+    });
   }
-  
-  acts.push({
+  if (preShipping) acts.push({
     key: "cancel",
     text: "Hủy đơn",
     class: "btn-outline-danger mt-2",
@@ -688,7 +788,19 @@ export async function runOrderAction(o, act) {
     return;
   }
   if (act.markPaid) {
-    const isCOD = getPaymentMethodPill(o.payment_method).code === "COD";
+    const isCOD = getPaymentMethodPill(o.payment_method).code === "Thu hộ";
+    
+    const res = await apiWrite("/orders/" + o.id + "/payment", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment_status: "Đã thanh toán" }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi xác nhận thanh toán.";
+       throw new Error(msg);
+    }
+
     o.payment_status = "Đã thanh toán";
     o._history = o._history || [];
     o._history.push({
@@ -696,39 +808,63 @@ export async function runOrderAction(o, act) {
       date: new Date().toISOString(),
       note: isCOD ? "Thu tiền COD" : "Xác nhận chuyển khoản",
     });
-    await api("/orders/" + o.id + "/payment", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment_status: "Đã thanh toán" }),
-    });
+    
     notify("Đơn #" + o.id + (isCOD ? ": đã thu tiền COD" : ": đã xác nhận chuyển khoản"), "success");
     return;
   }
   if (act.next) {
+    const res = await apiWrite("/orders/" + o.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: act.next, ...(act.reason ? { reason: act.reason } : {}) }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi cập nhật trạng thái.";
+       throw new Error(msg);
+    }
+
     const prev = o.status;
     o.status = act.next;
     if (
       act.next === "Đã giao hàng thành công" &&
-      getPaymentMethodPill(o.payment_method).code === "COD"
+      getPaymentMethodPill(o.payment_method).code === "Thu hộ"
     )
       o.payment_status = "Đã thanh toán";
+    if (act.next === "Đã hủy") {
+      o.payment_status = isPaymentSettled(o) ? "Hoàn tiền" : "Đã hủy";
+      o.cancel_reason = act.reason || o.cancel_reason;
+      if (act.reason && /mất hàng|thất lạc|lost/i.test(act.reason)) {
+        o.stock_issue_status = "LOST_IN_TRANSIT";
+        o.stock_issue_reason = act.reason;
+      }
+    }
+    if (act.next === "Về kho") o.stock_restored_at = new Date().toISOString();
+    if (act.next === "Đang vận chuyển" && prev === "Về kho") {
+      o.stock_restored_at = null;
+      if (["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT"].includes(o.stock_issue_status)) {
+        o.stock_issue_status = null;
+        o.stock_issue_reason = "";
+      }
+    }
     o._history = o._history || [];
     o._history.push({
       status: act.next,
       date: new Date().toISOString(),
-      note: "Cập nhật bởi " + getDisplayName.value,
+      // Lưu nguyên nhân vào timeline tại thời điểm thao tác. Trước đây mọi
+      // nhánh đều ghi cùng một câu "Cập nhật bởi..." nên đơn giao thất bại
+      // hoặc bị hủy nhìn lại không biết vì sao.
+      note: act.reason || "Cập nhật bởi " + getDisplayName.value,
     });
-    await api("/orders/" + o.id + "/status", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: act.next }),
-    });
-    notify("Đơn #" + o.id + ": " + prev + " → " + act.next, "success");
+
+    const reasonSuffix = act.reason ? " — " + act.reason : "";
+    notify("Đơn #" + o.id + ": " + prev + " → " + act.next + reasonSuffix, act.next === "Đã hủy" ? "warning" : "success");
   }
 }
 
 export const cancelReasons = [
   "Hết hàng",
+  "Lỗi tồn kho cần xử lý",
   "Khách yêu cầu hủy",
   "Sai thông tin đơn",
   "Không liên hệ được khách",
@@ -742,23 +878,39 @@ export function openCancelModal(ord) {
 }
 export async function submitCancelOrder() {
   const ord = cancelModal.order;
+  cancelModal.reason = String(cancelModal.reason || "").trim().slice(0, 500);
   if (!ord || !cancelModal.reason) return;
-  ord.status = "Đã hủy";
-  ord.payment_status = "Hoàn tiền";
-  ord.cancel_reason = cancelModal.reason;
-  ord._history = ord._history || [];
-  ord._history.push({
-    status: "Đã hủy",
-    date: new Date().toISOString(),
-    note: cancelModal.reason,
-  });
-  await api("/orders/" + ord.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "Đã hủy", reason: cancelModal.reason }),
-  });
-  cancelModal.open = false;
-  notify("Đã hủy đơn #" + ord.id, "warning");
+  
+  try {
+    cancelModal.busy = true;
+    const res = await apiWrite("/orders/" + ord.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Đã hủy", reason: cancelModal.reason }),
+    });
+
+    if (!res.ok) {
+       const msg = res.data && res.data.message ? res.data.message : "Lỗi hủy đơn.";
+       throw new Error(msg);
+    }
+    
+    ord.status = "Đã hủy";
+    ord.payment_status = isPaymentSettled(ord) ? "Hoàn tiền" : "Đã hủy";
+    ord.cancel_reason = cancelModal.reason;
+    ord._history = ord._history || [];
+    ord._history.push({
+      status: "Đã hủy",
+      date: new Date().toISOString(),
+      note: cancelModal.reason,
+    });
+    
+    cancelModal.open = false;
+    notify("Đã hủy đơn #" + ord.id, "warning");
+  } catch (e) {
+    notify("Lỗi khi hủy đơn: " + e.message, "error");
+  } finally {
+    cancelModal.busy = false;
+  }
 }
 
 export const timelineModal = reactive({
@@ -779,19 +931,25 @@ export function openOrderTimeline(ord) {
 export const paymentOrders = computed(() =>
   db.orders.filter(
     (o) =>
-      (o.payment_status || "Chưa thanh toán") !== "Đã thanh toán" &&
+      !isPaymentSettled(o) &&
       o.status !== "Đã hủy" &&
-      o.payment_method === "BANK_TRANSFER" &&
+      getPaymentMethodPill(o.payment_method).code === "Chuyển khoản" &&
       getOrderChannel(o) === "Online"
   ),
 );
 export async function confirmPayment(ord) {
-  ord.payment_status = "Đã thanh toán";
-  await api("/orders/" + ord.id + "/payment", {
+  const res = await apiWrite("/orders/" + ord.id + "/payment", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ payment_status: "Đã thanh toán" }),
   });
+  
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Lỗi xác nhận thanh toán.";
+     throw new Error(msg);
+  }
+
+  ord.payment_status = "Đã thanh toán";
   notify("Đã xác nhận thanh toán đơn #" + ord.id, "success");
 }
 
@@ -885,7 +1043,9 @@ export function countOrdersByChannel(ch) {
 
 // Chuẩn hóa phương thức thanh toán -> nhãn pill (BANK_TRANSFER / COD / CASH / UNKNOWN)
 export function getPaymentMethodPill(pm) {
-  const s = (pm || "").toLowerCase();
+  const s = typeof pm === "string"
+    ? pm.toLowerCase()
+    : String(pm?.name ?? pm?.label ?? pm?.code ?? "").toLowerCase();
   if (s.includes("cod") || s.includes("nhận hàng") || s.includes("thu hộ"))
     return { code: "Thu hộ", cls: "bg-dark text-white" };
   if (
@@ -896,29 +1056,29 @@ export function getPaymentMethodPill(pm) {
     s.includes("vnpay") ||
     s.includes("momo")
   )
-    return { code: "Chuyển khoản", cls: "bg-secondary-subtle text-dark" };
+    return { code: "Chuyển khoản", cls: "bg-light text-dark border" };
   if (s.includes("tiền mặt") || s === "cash")
     return { code: "Tiền mặt", cls: "bg-light text-dark border" };
   return { code: "Không rõ", cls: "bg-light text-secondary border" };
 }
 
 // Pill trạng thái thanh toán
-// Suy ra trạng thái thanh toán TỰ ĐỘNG (admin KHÔNG cần bấm xác nhận)
-// - Chuyển khoản / ví điện tử: coi như đã thanh toán ngay khi tạo đơn (khách quét link).
-// - Tiền mặt tại quầy (POS): đã thanh toán ngay.
+// Suy ra trạng thái thanh toán theo nghiệp vụ: sau khi khách xác nhận chuyển
+// khoản ở checkout, cả trạng thái mới và trạng thái cũ "Chờ thanh toán" đều
+// được xem là đã thanh toán; admin không cần bấm xác nhận lần hai.
 export function effectivePaymentStatus(o) {
-  if ((o.payment_status || "") === "Hoàn tiền") return "Hoàn tiền";
-  if (o.status === "Đã hủy") return "Chưa thanh toán";
+  const rawStatus = String(o?.payment_status || "");
+  if (normalizeStatusText(rawStatus) === "hoan tien") return "Hoàn tiền";
+  if (normalizeStatusText(o?.status) === "da huy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
   if (pill.code === "Tiền mặt") return "Đã thanh toán";
   if (pill.code === "Chuyển khoản") {
-    if ((o.payment_status || "") === "Đã thanh toán") return "Đã thanh toán";
-    if ((o.payment_status || "") === "Chờ thanh toán") return "Khách báo đã chuyển";
+      if (isPaymentSettled(o)) return "Đã thanh toán";
     return "Chờ chuyển khoản";
   }
   if (pill.code === "Thu hộ")
     return o.status === "Đã giao hàng thành công" ||
-      (o.payment_status || "") === "Đã thanh toán"
+      normalizeStatusText(rawStatus) === "da thanh toan"
       ? "Đã thanh toán"
       : "Chờ thu hộ";
   return o.payment_status || "Chưa thanh toán";
@@ -928,7 +1088,7 @@ export function getPaymentStatusPill(o) {
   if (st === "Đã thanh toán")
     return { label: "Đã thanh toán", cls: "bg-dark text-white" };
   if (st === "Hoàn tiền")
-    return { label: "Hoàn tiền", cls: "bg-secondary-subtle text-dark" };
+    return { label: "Hoàn tiền", cls: "bg-light text-dark border" };
   if (st === "Khách báo đã chuyển")
     return { label: "Khách báo đã chuyển", cls: "bg-dark text-white" };
   if (st === "Chờ chuyển khoản")
@@ -944,12 +1104,45 @@ export function getPaymentStatusPill(o) {
   if (st === "Chưa thanh toán")
     return {
       label: "Chưa thanh toán",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
     };
   return { label: "Không xác định", cls: "bg-light text-secondary border" };
 }
 
 // Pill trạng thái đơn (rút gọn theo hình mẫu)
+export function canonicalAdminOrderStatus(value) {
+  const raw = String(value || "").trim();
+  const normalized = normalizeStatusText(raw);
+  return {
+    "cho xu ly": "Chờ xác nhận",
+    "cho xac nhan": "Chờ xác nhận",
+    "pending": "Chờ xác nhận",
+    "da xac nhan": "Đã xác nhận",
+    "confirmed": "Đã xác nhận",
+    "dang van chuyen": "Đang vận chuyển",
+    "dang giao": "Đang vận chuyển",
+    "shipping": "Đang vận chuyển",
+    "shipped": "Đang vận chuyển",
+    "giao hang that bai": "Giao hàng thất bại",
+    "khong giao duoc hang": "Giao hàng thất bại",
+    "delivery failed": "Giao hàng thất bại",
+    "delivery failure": "Giao hàng thất bại",
+    "ve kho": "Về kho",
+    "returned to warehouse": "Về kho",
+    "warehouse return": "Về kho",
+    "da giao": "Đã giao hàng thành công",
+    "da giao hang thanh cong": "Đã giao hàng thành công",
+    "delivered": "Đã giao hàng thành công",
+    "da nhan hang": "Đã nhận hàng",
+    "received": "Đã nhận hàng",
+    "huy": "Đã hủy",
+    "huy don": "Đã hủy",
+    "da huy": "Đã hủy",
+    "cancelled": "Đã hủy",
+    "canceled": "Đã hủy",
+  }[normalized] || raw || "Chờ xác nhận";
+}
+
 export function getOrderStatusPill(o) {
   const map = {
     "Đã nhận hàng": {
@@ -962,11 +1155,19 @@ export function getOrderStatusPill(o) {
     },
     "Đang vận chuyển": {
       label: "Đang giao",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
+    },
+    "Giao hàng thất bại": {
+      label: "Giao thất bại",
+      cls: "bg-danger-subtle text-danger-emphasis",
+    },
+    "Về kho": {
+      label: "Về kho",
+      cls: "bg-warning-subtle text-warning-emphasis",
     },
     "Đã xác nhận": {
       label: "Đã xác nhận",
-      cls: "bg-secondary-subtle text-dark",
+      cls: "bg-light text-dark border",
     },
     "Chờ xác nhận": {
       label: "Chờ xác nhận",
@@ -974,12 +1175,63 @@ export function getOrderStatusPill(o) {
     },
     "Đã hủy": { label: "Đã hủy", cls: "bg-light text-danger border" },
   };
-  return (
-    map[o.status] || {
-      label: o.status || "—",
-      cls: "bg-light text-secondary border",
-    }
-  );
+  if (map[o?.status]) return map[o.status];
+  return map[canonicalAdminOrderStatus(o?.status)] || {
+    label: o?.status || "—",
+    cls: "bg-light text-secondary border",
+  };
+}
+
+/*
+ * Lý do giải quyết đơn (hủy/giao thất bại) dùng chung cho danh sách và chi
+ * tiết. Dữ liệu lịch sử cũ có thể chưa được chép vào Orders.CancelReason, vì
+ * vậy ưu tiên cả ghi chú trong timeline và StockIssueReason trước khi báo
+ * rõ rằng đơn cũ không có dữ liệu, tuyệt đối không tự đoán một lý do mới.
+ */
+export function getOrderResolutionReason(o) {
+  if (!o) return "";
+
+  const statusKey = normalizeStatusText(o.status);
+  const issueKey = String(o.stock_issue_status || "").trim().toUpperCase();
+  const cancelled = ["da huy", "cancelled", "canceled"].includes(statusKey)
+    || /(^|\s)huy(\s|$)/.test(statusKey);
+  const failed = [
+    "giao hang that bai", "khong giao duoc hang", "delivery failed",
+    "delivery failure", "failed delivery", "ve kho",
+    "returned to warehouse", "warehouse return",
+  ].includes(statusKey)
+    || ["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT", "LOST_IN_TRANSIT"].includes(issueKey);
+  if (!cancelled && !failed) return "";
+
+  const isGeneric = (value) => {
+    const text = String(value || "").trim();
+    return !text
+      || /^cập nhật (bởi|trạng thái)/i.test(text)
+      || /^(đơn\s*(hàng\s*)?(bị\s*)?hủy|cancel(?:led|ed)?)\.?$/i.test(text);
+  };
+  const history = Array.isArray(o._history) ? o._history : [];
+  const targetStatuses = cancelled
+    ? ["da huy", "huy", "huy don", "cancelled", "canceled"]
+    : ["giao hang that bai", "khong giao duoc hang", "delivery failed", "delivery failure", "failed delivery", "ve kho", "returned to warehouse", "warehouse return"];
+  const historyReason = [...history]
+    .reverse()
+    .filter((item) => targetStatuses.includes(normalizeStatusText(item?.status)))
+    .map((item) => item?.note ?? item?.Note ?? "")
+    .find((value) => !isGeneric(value));
+  const directReason = (cancelled
+    ? [o.cancel_reason, o.stock_issue_reason]
+    : [o.stock_issue_reason, o.cancel_reason]
+  ).map((value) => String(value || "").trim()).find((value) => !isGeneric(value));
+  if (directReason) return directReason;
+  if (historyReason) return String(historyReason).trim();
+
+  // Các mã sự cố được hệ thống tạo mới luôn có lý do chuẩn để đơn cũ cũng
+  // hiển thị được thông báo dễ hiểu nếu chỉ còn mã trạng thái trong DB.
+  if (issueKey === "LOST_IN_TRANSIT") return "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.";
+  if (issueKey === "DELIVERY_ACCIDENT") return "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại.";
+  if (issueKey === "RETURNED_TO_WAREHOUSE") return "Khách không bắt máy / không nhận hàng, kiện đã về kho.";
+  if (issueKey === "DELIVERY_FAILED") return "Giao hàng thất bại, cần kiểm tra lại hành trình vận chuyển.";
+  return cancelled ? "Đơn cũ chưa lưu lý do hủy." : "Chưa có ghi chú nguyên nhân giao thất bại.";
 }
 
 // Mã vận đơn & mã lấy hàng shipper
@@ -1021,18 +1273,26 @@ export function buildOrderHistory(o) {
     const h = hist.find((x) => statuses.includes(x.status));
     return h ? h.date : null;
   };
+  const currentKey = normalizeStatusText(o.status);
+  const hasStatus = (statuses) => {
+    const normalized = statuses.map(normalizeStatusText);
+    return normalized.includes(currentKey)
+      || hist.some((h) => normalized.includes(normalizeStatusText(h.status)));
+  };
   const created = o.date;
   const paid = effectivePaymentStatus(o) === "Đã thanh toán";
-  const order = [
-    "Chờ xác nhận",
-    "Đã xác nhận",
-    "Đang vận chuyển",
-    "Đã giao hàng thành công",
-    "Đã nhận hàng",
-  ];
-  const rank = order.indexOf(o.status);
+  const deliveryFailed = hasStatus(["Giao hàng thất bại"])
+    || ["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT", "LOST_IN_TRANSIT"].includes(String(o.stock_issue_status || "").toUpperCase());
+  const warehouseReturned = hasStatus(["Về kho"]);
+  const delivered = hasStatus(["Đã giao hàng thành công", "Đã giao", "Đã nhận hàng", "Hoàn thành"]);
+  const shipping = hasStatus(["Đang vận chuyển", "Đang giao", "Đã giao hàng thành công", "Giao hàng thất bại", "Về kho"]);
+  const confirmed = hasStatus(["Đã xác nhận", "Đang vận chuyển", "Đang giao", "Đã giao hàng thành công", "Giao hàng thất bại", "Về kho"]);
+  const redelivering = warehouseReturned && ["dang van chuyen", "dang giao", "shipping", "shipped"].includes(currentKey);
+  const lostDelivery = currentKey === "da huy"
+    && (String(o.stock_issue_status || "").toUpperCase() === "LOST_IN_TRANSIT"
+      || /mất hàng|thất lạc|lost/i.test(`${o.stock_issue_reason || ""} ${o.cancel_reason || ""}`));
   const isBank =
-    getPaymentMethodPill(o.payment_method).code === "BANK_TRANSFER";
+    getPaymentMethodPill(o.payment_method).code === "Chuyển khoản";
   const steps = [
     { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
   ];
@@ -1042,39 +1302,63 @@ export function buildOrderHistory(o) {
       label: "Chuyển khoản",
       icon: "bi-bank",
       done: paid,
-      date: paid ? findDate(["Đã thanh toán"]) || created : null,
+      date: paid ? findDate(["Đã thanh toán", "Thanh toán thành công"]) || o.payment_confirmed_at || created : null,
     });
     steps.push({
       label: "Xác nhận đơn",
       icon: "bi-check2-circle",
-      done: rank >= 1,
+      done: confirmed,
       date: findDate(["Đã xác nhận"]),
+    });
+    steps.push({
+      label: redelivering ? "Đang giao lại" : "Đang giao hàng",
+      icon: "bi-truck",
+      done: shipping,
+      date: findDate(["Đang vận chuyển", "Đang giao"]),
+    });
+    if (deliveryFailed) steps.push({
+      label: "Giao hàng thất bại",
+      icon: "bi-exclamation-triangle",
+      done: true,
+      date: findDate(["Giao hàng thất bại"]),
+    });
+    if (warehouseReturned) steps.push({
+      label: "Về kho",
+      icon: "bi-box-seam",
+      done: true,
+      date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Đã giao hàng",
       icon: "bi-box-seam",
-      done: rank >= 3,
+      done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
-    });
-    steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
-      done: rank >= 4,
-      date: findDate(["Đã nhận hàng"]),
     });
   } else {
     // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
     steps.push({
       label: "Xác nhận đơn",
       icon: "bi-check2-circle",
-      done: rank >= 1,
+      done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
-      label: "Đang giao hàng",
+      label: redelivering ? "Đang giao lại" : "Đang giao hàng",
       icon: "bi-truck",
-      done: rank >= 2,
-      date: findDate(["Đang vận chuyển"]),
+      done: shipping,
+      date: findDate(["Đang vận chuyển", "Đang giao"]),
+    });
+    if (deliveryFailed) steps.push({
+      label: "Giao hàng thất bại",
+      icon: "bi-exclamation-triangle",
+      done: true,
+      date: findDate(["Giao hàng thất bại"]),
+    });
+    if (warehouseReturned) steps.push({
+      label: "Về kho",
+      icon: "bi-box-seam",
+      done: true,
+      date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Thanh toán (COD)",
@@ -1087,16 +1371,16 @@ export function buildOrderHistory(o) {
     steps.push({
       label: "Đã giao hàng",
       icon: "bi-box-seam",
-      done: rank >= 3,
+      done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
-    steps.push({
-      label: "Hoàn thành đơn",
-      icon: "bi-bag-check",
-      done: rank >= 4,
-      date: findDate(["Đã nhận hàng"]),
-    });
   }
+  if (lostDelivery) steps.push({
+    label: "Đã hủy",
+    icon: "bi-x-circle",
+    done: true,
+    date: findDate(["Đã hủy"]),
+  });
   return steps;
 }
 
@@ -1295,20 +1579,34 @@ export function getReturnBadgeClass(status) {
   return (
     {
       "Chờ xử lý": "bg-warning-subtle text-warning-emphasis",
-      "Đã duy�����t": "bg-info-subtle text-info-emphasis",
+      "Đã tiếp nhận": "bg-info-subtle text-info-emphasis",
+      "Đang kiểm tra": "bg-primary-subtle text-primary-emphasis",
+      "Chấp nhận hoàn tiền": "bg-info-subtle text-info-emphasis",
+      "Đã hoàn tiền": "bg-success-subtle text-success-emphasis",
       "Từ chối": "bg-danger-subtle text-danger-emphasis",
-      "Hoàn tất": "badge-active",
+      "Hủy": "bg-light text-secondary border",
+      "Đã hoàn tất": "badge-active",
     }[status] || "bg-secondary-subtle text-secondary"
   );
 }
-export async function processReturn(r, status) {
-  r.status = status;
-  await api("/returns/" + r.id + "/status", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  });
-  notify("Yêu cầu trả hàng #" + r.id + ": " + status, "success");
+export async function processReturn(r, status, options = {}) {
+  try {
+    const res = await apiWrite("/returns/" + r.id + "/status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, ...options }),
+    });
+    if (!res.ok) {
+      const msg = res.data && res.data.message ? res.data.message : "Lỗi xử lý đổi trả.";
+      throw new Error(msg);
+    }
+    r.status = res.data?.status || status;
+    notify("Yêu cầu trả hàng #" + r.id + ": " + r.status, "success");
+    return true;
+  } catch (error) {
+    notify(error?.message || "Lỗi xử lý đổi trả.", "error");
+    return false;
+  }
 }
 
 /* ================================================================
@@ -1321,6 +1619,9 @@ export const returnNote = ref("");
 // Loại trả hàng: "CUSTOMER" = khách yêu cầu (cần duyệt); "DIRECT" = trả trực tiếp tại quầy (hoàn tất ngay)
 export const returnType = ref("CUSTOMER");
 export function getReturnTypeLabel(t) {
+  const normalized = normalizeStatusText(t).replace(/[_-]+/g, " ");
+  if (["not received", "chua nhan duoc hang", "delivery failed", "delivery failure", "giao hang that bai", "ve kho"].includes(normalized))
+    return "Chưa nhận được hàng";
   return t === "DIRECT" || t === "Trực tiếp"
     ? "Trả trực tiếp tại quầy"
     : "Trả theo yêu cầu khách hàng";
@@ -1329,23 +1630,24 @@ export function getReturnTypeLabel(t) {
 export const completedReturnsRefundInRange = computed(() => {
   const ids = new Set(ordersInRange.value.map((o) => String(o.id)));
   return (db.returns || [])
-    .filter((r) => r.status === "Hoàn tất" && ids.has(String(r.order_id)))
+    .filter((r) => ["Hoàn tất", "Đã hoàn tất"].includes(r.status) && ids.has(String(r.order_id)))
     .reduce((s, r) => s + (Number(r.refund_amount) || 0), 0);
 });
 export function searchReturnOrder() {
   const raw = returnSearchCode.value.trim();
   if (!raw) {
-    notify("Vui lòng nhập mã hóa đơn", "error");
+    notify("Vui lòng nhập mã đơn hoặc mã vận đơn", "error");
     return;
   }
-  const code = raw.replace(/^#/, "").replace(/^HD/i, "");
-  const up = raw.toUpperCase();
+  const compactRaw = raw.replace(/^#/, "").replace(/[\s-]+/g, "");
+  const code = compactRaw.replace(/^HD/i, "");
+  const up = compactRaw.toUpperCase();
   const ord = db.orders.find(
     (o) =>
       String(o.id) === code ||
-      String(o.id) === raw ||
+      String(o.id) === compactRaw ||
       "HD" + o.id === up ||
-      getTrackingCode(o).toUpperCase() === up,
+      String(getTrackingCode(o)).replace(/[\s-]+/g, "").toUpperCase() === up,
   );
   if (!ord) {
     returnFoundOrder.value = null;
@@ -1353,14 +1655,15 @@ export function searchReturnOrder() {
     notify("Không tìm thấy đơn hàng phù hợp", "error");
     return;
   }
-  // CHỈ cho phép trả hàng khi đơn ĐÃ giao thành công (khách đã nhận được hàng).
-  if (ord.status !== "Đã giao hàng thành công") {
+  // Đơn đã giao/đã nhận tạo yêu cầu trả hàng; đơn đang vận chuyển có thể
+  // tạo case riêng "chưa nhận được hàng" để cửa hàng kiểm tra giao vận.
+  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status)) {
     returnFoundOrder.value = null;
     returnItems.value = [];
     notify(
       "Đơn " +
         getTrackingCode(ord) +
-        " chưa giao thành công nên chưa thể tạo yêu cầu trả hàng",
+      " chưa ở trạng thái có thể tạo yêu cầu trả hàng / báo chưa nhận hàng",
       "error",
     );
     return;
@@ -1370,6 +1673,9 @@ export function searchReturnOrder() {
   returnType.value = getOrderChannel(ord) === "Offline" ? "DIRECT" : "CUSTOMER";
   returnItems.value = (ord.products || []).map((p, idx) => ({
     idx,
+    order_detail_id: p.order_detail_id ?? p.id ?? null,
+    product_id: p.product_id ?? p.ProductID ?? null,
+    variant_id: p.variant_id ?? p.product_variant_id ?? null,
     name: p.name,
     color: p.color,
     size: p.size,
@@ -1400,8 +1706,11 @@ export function resetReturnForm() {
 export async function submitReturn() {
   const ord = returnFoundOrder.value;
   if (!ord) return;
+  // Báo chưa nhận là sự cố theo cả kiện hàng; quản lý không cần chọn từng
+  // dòng sản phẩm (API sẽ tự lấy toàn bộ chi tiết đơn nếu items rỗng).
+  const notReceived = ["Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status);
   const items = returnItems.value.filter((it) => Number(it.return_qty) > 0);
-  if (items.length === 0) {
+  if (items.length === 0 && !notReceived) {
     notify("Chọn ít nhất 1 sản phẩm để trả", "error");
     return;
   }
@@ -1412,13 +1721,18 @@ export async function submitReturn() {
   const payload = {
     order_id: ord.id,
     tracking_number: getTrackingCode(ord),
-    return_type: returnType.value,
+    return_type: notReceived ? "NOT_RECEIVED" : returnType.value,
     reason:
       returnNote.value ||
       (direct ? "Khách trả trực tiếp tại quầy" : "Khách yêu cầu trả hàng"),
-    refund_amount: returnRefundTotal.value,
+    // Để trống khi báo mất cả kiện: backend sẽ tự tính theo toàn bộ dòng
+    // hàng, tránh gửi số 0 khiến khoản hoàn bị ghi nhận thiếu.
+    refund_amount: notReceived && items.length === 0 ? undefined : returnRefundTotal.value,
     status,
     items: items.map((it) => ({
+      order_detail_id: it.order_detail_id,
+      product_id: it.product_id,
+      variant_id: it.variant_id,
       name: it.name,
       color: it.color,
       size: it.size,
@@ -1434,22 +1748,32 @@ export async function submitReturn() {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    // Máy chủ có thể chưa sẵn sàng — vẫn ghi nhận cục bộ để hiển thị
+    notify("Không thể kết nối máy chủ để tạo yêu cầu trả hàng.", "error");
+    return;
+  }
+  if (!res?.ok) {
+    const message = res?.data?.message || res?.error || "Không thể tạo yêu cầu trả hàng.";
+    notify(message, "error");
+    return;
   }
   const newId =
     (res && res.data && (res.data.ReturnID || res.data.id)) ||
     "R-" + Date.now();
+  const persistedStatus = res.data?.status || (direct ? "Đã hoàn tất" : status);
   db.returns.unshift({
     id: newId,
     order_id: ord.id,
-    return_type: returnType.value,
+    return_type: payload.return_type,
     reason: payload.reason,
     refund_amount: payload.refund_amount,
-    status,
+    status: persistedStatus,
     created_at: new Date().toISOString(),
   });
+  ord.status = notReceived ? "Yêu cầu trả hàng" : (direct ? "Đã hoàn tất trả hàng" : "Yêu cầu trả hàng");
   notify(
-    direct
+      notReceived
+        ? "Đã ghi nhận báo chưa nhận được hàng cho đơn #" + ord.id
+        : direct
       ? "Đã trả hàng trực tiếp & hoàn tất cho đơn #" + ord.id
       : "Đã tạo yêu cầu trả hàng cho đơn #" + ord.id,
     "success",
@@ -1772,7 +2096,7 @@ export async function savePosCustomer() {
     return;
   }
   // Validate SĐT VN nếu có nhập
-  if (ph && !/^(0[3|5|7|8|9])[0-9]{8}$/.test(ph)) {
+  if (ph && !/^0(?:3|5|7|8|9)[0-9]{8}$/.test(ph)) {
     notify("Số điện thoại không hợp lệ (10 số, bắt đầu 03/05/07/08/09)", "error");
     return;
   }
@@ -1835,16 +2159,20 @@ async function finalizePosOrder() {
       price: c.price,
     })),
   };
-  let created = null;
-  try {
-    created = await api("/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    created = null;
+  const res = await apiWrite("/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Không thể tạo đơn hàng tại quầy.";
+     notify(msg, "error");
+     return;
   }
+  
+  const created = res.data;
+
   // Cập nhật db.inventory local ngay sau khi thanh toán thành công
   // để trang sản phẩm và kho hiển thị đúng số lượng mà không cần reload
   o.cart.forEach((c) => {
@@ -1862,8 +2190,8 @@ async function finalizePosOrder() {
   // Hiển thị đơn NGAY trên trang Xác nhận thanh toán (tab Offline) kể cả khi
   // API danh sách chưa kịp cập nhật -> tránh tình trạng "tạo đơn xong không thấy đâu".
   const newId =
-    (created && (created.OrderID || created.id || created.order_id)) ||
-    "TMP-" + Date.now();
+    (created && (created.OrderID || created.id || created.order_id || created.orderId)) ||
+    "POS-" + Date.now();
   const nowIso = new Date().toISOString();
   db.orders.unshift({
     id: newId,
@@ -2177,13 +2505,19 @@ export async function saveProduct() {
     notify("Vui lòng nhập tên sản phẩm", "error");
     return;
   }
-  if (Number(productForm.price) < 0) {
+  const basePrice = Number(productForm.price);
+  const salePrice = Number(productForm.sale_price || 0);
+  if (!Number.isFinite(basePrice) || basePrice < 0) {
     notify("Giá bán không được nhỏ hơn 0", "error");
     return;
   }
+  if (!Number.isFinite(salePrice) || salePrice < 0) {
+    notify("Giá khuyến mãi không hợp lệ", "error");
+    return;
+  }
   if (
-    Number(productForm.sale_price) > 0 &&
-    Number(productForm.sale_price) > Number(productForm.price)
+    salePrice > 0 &&
+    salePrice > basePrice
   ) {
     notify("Giá khuyến mãi phải nhỏ hơn hoặc bằng giá bán", "error");
     return;
@@ -2466,20 +2800,33 @@ export function closeDiscountForm() {
 }
 export async function saveDiscount() {
   const d = discountModal.data;
-  if (!d.code) {
-    notify("Vui lòng nhập mã giảm giá", "error");
+  const code = String(d.code || "").trim().toUpperCase();
+  const name = String(d.name || "").trim();
+  const val = Number(d.value);
+  const minOrder = Number(d.min_order || 0);
+  const maxDiscount = Number(d.max_discount || 0);
+  const usageLimit = Number(d.quantity || 0);
+  if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
+    notify("Mã giảm giá phải gồm 2-50 ký tự chữ/số/-/_", "error");
     return;
   }
-  const val = Number(d.value) || 0;
+  if (!name || name.length > 200 || !Number.isFinite(val) || val <= 0 || (d.discount_type === "Phần trăm" && val > 100)) {
+    notify("Tên hoặc giá trị mã giảm giá không hợp lệ", "error");
+    return;
+  }
+  if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || !Number.isSafeInteger(usageLimit) || usageLimit < 0) {
+    notify("Điều kiện mã giảm giá không hợp lệ", "error");
+    return;
+  }
   const payload = {
-    CouponCode: d.code,
-    CouponName: d.name,
+    CouponCode: code,
+    CouponName: name,
     DiscountType: d.discount_type,
     DiscountValue: val,
     DiscountPercent: d.discount_type === "Phần trăm" ? val : 0,
-    MinOrderAmount: Number(d.min_order) || 0,
-    MaxDiscountAmount: Number(d.max_discount) || 0,
-    UsageLimit: Number(d.quantity) || 0,
+    MinOrderAmount: minOrder,
+    MaxDiscountAmount: maxDiscount,
+    UsageLimit: usageLimit,
     StartDate: d.start_date || null,
     ExpiryDate: d.expiry || null,
     Description: d.description || "",
@@ -2519,7 +2866,7 @@ export const variantReasons = [
 ];
 export const variantDiscountSearch = ref("");
 export const variantStatusFilter = ref("Tất cả");
-export const variantReasonFilter = ref("Tất c��");
+export const variantReasonFilter = ref("Tất cả");
 
 function productImage(pid) {
   const p = db.products.find((x) => String(x.id) === String(pid));
@@ -2639,28 +2986,32 @@ export function closeVariantDiscountForm() {
 }
 export async function saveVariantDiscount() {
   const d = variantDiscountModal.data;
-  if (!d.variant_id) {
-    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
-    return;
-  }
-  if (!d.value) {
-    notify("Vui lòng nhập giá trị giảm", "error");
-    return;
-  }
+  const variantId = Number(d.variant_id);
   const info = variantColorOptions.value.find(
     (o) => String(o.variant_id) === String(d.variant_id),
   );
-  const val = Number(d.value) || 0;
+  const productId = Number(info ? info.product_id : d.product_id);
+  const val = Number(d.value);
+  const maxDiscount = Number(d.max_discount || 0);
+  const quantity = Number(d.quantity || 0);
+  if (!Number.isSafeInteger(variantId) || variantId <= 0 || !Number.isSafeInteger(productId) || productId <= 0) {
+    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
+    return;
+  }
+  if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && val > 100) || !Number.isFinite(maxDiscount) || maxDiscount < 0 || !Number.isSafeInteger(quantity) || quantity < 0) {
+    notify("Giá trị giảm, mức tối đa hoặc số lượng không hợp lệ", "error");
+    return;
+  }
   const payload = {
-    ProductVariantID: d.variant_id,
-    ProductID: info ? info.product_id : d.product_id,
+    ProductVariantID: variantId,
+    ProductID: productId,
     ColorName: info ? info.color : d.color,
     ColorHex: info ? info.color_hex : d.color_hex,
     DiscountType: d.discount_type,
     DiscountValue: val,
     DiscountPercent: d.discount_type === "Theo phần trăm" ? val : 0,
-    MaxDiscountAmount: Number(d.max_discount) || 0,
-    Quantity: Number(d.quantity) || 0,
+    MaxDiscountAmount: maxDiscount,
+    Quantity: quantity,
     StartDate: d.start_date || null,
     EndDate: d.end_date || null,
     Reason: d.reason || "",
@@ -2668,18 +3019,26 @@ export async function saveVariantDiscount() {
     Description: d.description || "",
   };
   const isEdit = !!d.id;
+  let res;
   if (isEdit)
-    await api("/variantDiscounts/" + d.id, {
+    res = await apiWrite("/variantDiscounts/" + d.id, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
   else
-    await api("/variantDiscounts", {
+    res = await apiWrite("/variantDiscounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+  if (!res.ok) {
+     const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi lưu giảm giá.";
+     notify(msg, "error");
+     return;
+  }
+  
   variantDiscountModal.open = false;
   notify(
     isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
@@ -3123,20 +3482,37 @@ export async function executeConfirm() {
 export function mapOrder(o) {
   return {
     id: o.OrderID ?? o.id,
-    date: o.OrderDate ?? o.date,
+    // Backend tra `created_at` theo ISO. Uu tien gia tri nay de JavaScript
+    // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
+    date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
-    status: o.Status ?? o.status ?? "Chờ xác nhận",
+    status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
     customer_name: o.CustomerName ?? o.customer_name ?? "Khách lẻ",
     customer_phone: o.CustomerPhone ?? o.customer_phone ?? "",
     customer_address: o.ShippingAddress ?? o.customer_address ?? "",
+    address_id: o.AddressID ?? o.address_id ?? null,
+    address_changed: Boolean(o.AddressChanged ?? o.address_changed),
     cancel_reason: o.CancelReason ?? o.cancel_reason ?? "",
     payment_status: o.PaymentStatus ?? o.payment_status ?? "Chưa thanh toán",
+    payment_due_at: o.PaymentDueAt ?? o.payment_due_at ?? null,
+    payment_confirmed_at: o.PaymentConfirmedAt ?? o.payment_confirmed_at ?? null,
+    delivered_at: o.DeliveredDate ?? o.delivered_date ?? null,
+    received_confirmed_at: o.ReceivedConfirmedDate ?? o.received_confirmed_date ?? null,
+    revenue_eligible_at: o.RevenueEligibleDate ?? o.revenue_eligible_date ?? null,
+    is_counted_as_revenue: Boolean(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
+    stock_issue_status: o.StockIssueStatus ?? o.stock_issue_status ?? null,
+    stock_issue_reason: o.StockIssueReason ?? o.stock_issue_reason ?? "",
+    stock_restored_at: o.StockRestoredAt ?? o.stock_restored_at ?? null,
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
     handled_by: o.HandledBy ?? o.handled_by ?? "",
     // Kenh ban do backend tinh san - nguon dang tin cay nhat
     channel: o.channel ?? o.Channel ?? "",
     tracking_code: o.TrackingNumber ?? o.tracking_code ?? "",
     products: (o.products || o.OrderDetails || []).map((d) => ({
+      id: d.OrderDetailID ?? d.order_detail_id ?? d.id ?? null,
+      order_detail_id: d.OrderDetailID ?? d.order_detail_id ?? d.id ?? null,
+      product_id: d.ProductID ?? d.product_id ?? null,
+      variant_id: d.ProductVariantID ?? d.variant_id ?? d.product_variant_id ?? null,
       name: d.ProductName ?? d.name ?? "",
       color: d.ColorName ?? d.color ?? "",
       size: d.Size ?? d.size ?? "",
@@ -3152,8 +3528,68 @@ export function mapOrder(o) {
     })),
   };
 }
-export async function fetchAllData() {
-  isLoading.value = true;
+
+// Smart merge: chỉ cập nhật đơn thực sự thay đổi thay vì thay toàn bộ mảng.
+// Điều này ngăn Vue re-render toàn bộ danh sách mỗi 10 giây → không còn nhấp nháy.
+function mergeOrders(existing, incoming) {
+  const incomingMap = new Map(incoming.map(o => [o.id, o]));
+  const existingMap = new Map(existing.map(o => [o.id, o]));
+
+  // Cập nhật và thêm mới
+  const merged = incoming.map(fresh => {
+    const old = existingMap.get(fresh.id);
+    if (!old) return fresh; // đơn mới → thêm vào
+    // Lịch sử từ server là nguồn chính; nếu DB cũ chưa có lịch sử thì giữ lại
+    // các mốc local vừa ghi trong cùng phiên quản trị.
+    const nextHistory = Array.isArray(fresh._history) && fresh._history.length
+      ? fresh._history
+      : (old._history || []);
+    const changed =
+      old.status !== fresh.status ||
+      old.payment_status !== fresh.payment_status ||
+      old.total !== fresh.total ||
+      old.cancel_reason !== fresh.cancel_reason ||
+      old.tracking_code !== fresh.tracking_code ||
+      old.address_changed !== fresh.address_changed ||
+      old.stock_issue_status !== fresh.stock_issue_status ||
+      old.stock_issue_reason !== fresh.stock_issue_reason ||
+      old.stock_restored_at !== fresh.stock_restored_at ||
+      JSON.stringify(old._history || []) !== JSON.stringify(nextHistory);
+    if (!changed) return old; // không đổi → giữ nguyên object cũ, Vue không re-render
+    return {
+      ...old,           // giữ isExpanded và các field UI cục bộ
+      status: fresh.status,
+      payment_status: fresh.payment_status,
+      total: fresh.total,
+      cancel_reason: fresh.cancel_reason,
+      tracking_code: fresh.tracking_code,
+      address_changed: fresh.address_changed,
+      stock_issue_status: fresh.stock_issue_status,
+      stock_issue_reason: fresh.stock_issue_reason,
+      stock_restored_at: fresh.stock_restored_at,
+      _history: nextHistory,
+      customer_name: fresh.customer_name,
+      customer_phone: fresh.customer_phone,
+      products: fresh.products,
+    };
+  });
+  return merged;
+}
+
+let fetchAllDataInFlight = null;
+
+export function fetchAllData(isBackground = false) {
+  // Nhieu component/action co the yeu cau refresh cung luc. Dung chung mot
+  // Promise de khong tao bao request SQL va khong de request cu ghi de store.
+  if (fetchAllDataInFlight) return fetchAllDataInFlight;
+  fetchAllDataInFlight = loadAllData(isBackground).finally(() => {
+    fetchAllDataInFlight = null;
+  });
+  return fetchAllDataInFlight;
+}
+
+async function loadAllData(isBackground) {
+  if (!isBackground) isLoading.value = true;
   apiErrors.value = [];
   try {
     const [
@@ -3187,10 +3623,40 @@ export async function fetchAllData() {
       api("/sizes"),
       api("/materials"),
     ]);
+    const responses = [
+      orders,
+      products,
+      categories,
+      discounts,
+      customers,
+      accounts,
+      brands,
+      collections,
+      inventory,
+      returns,
+      variantDiscounts,
+      colors,
+      sizes,
+      materials,
+    ];
+    // api() tra null khi API/SQL loi. Dung ngay truoc khi ghi store de du lieu
+    // dang hien thi khong bi bien thanh cac mang rong gia.
+    if (responses.some((value) => !Array.isArray(value))) {
+      const failed = apiErrors.value.map((item) => item.path).join(", ");
+      throw new Error(
+        "Khong tai duoc du lieu quan tri" + (failed ? ": " + failed : "."),
+      );
+    }
     // Sắp xếp theo đúng trường ngày sau khi ánh xạ (`date`).
     // Trước đây dùng `created_at` - trường KHÔNG tồn tại sau mapOrder -> so sánh NaN
     // nên danh sách đơn giữ nguyên thứ tự của API (nhiều khi cũ nhất lên đầu).
-    db.orders = sortOrdersNewestFirst((orders || []).map(mapOrder));
+    const freshOrders = sortOrdersNewestFirst((orders || []).map(mapOrder));
+    if (isBackground && db.orders.length > 0) {
+      // Smart merge: chỉ re-render dòng thực sự thay đổi, giữ ổn định giao diện
+      db.orders = sortOrdersNewestFirst(mergeOrders(db.orders, freshOrders));
+    } else {
+      db.orders = freshOrders;
+    }
     db.products = (products || []).map((p) => ({
       id: p.ProductID ?? p.id,
       name: p.ProductName ?? p.name,
@@ -3311,9 +3777,17 @@ export async function fetchAllData() {
       id: r.ReturnID ?? r.id,
       order_id: r.OrderID ?? r.order_id,
       return_type: r.ReturnType ?? r.return_type ?? "Trả hàng",
+      payment_method: r.PaymentMethod ?? r.payment_method ?? "COD",
+      payment_status: r.PaymentStatus ?? r.payment_status ?? "Chưa thanh toán",
       reason: r.Reason ?? r.reason ?? "",
       refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
       status: r.Status ?? r.status ?? "Chờ xử lý",
+      details: r.Details ?? r.details ?? [],
+      tracking_number: r.TrackingNumber ?? r.tracking_number ?? "",
+      inspection_note: r.InspectionNote ?? r.inspection_note ?? "",
+      resolution_note: r.ResolutionNote ?? r.resolution_note ?? "",
+      restocked_at: r.RestockedAt ?? r.restocked_at ?? null,
+      wallet_credited_at: r.WalletCreditedAt ?? r.wallet_credited_at ?? null,
     }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,
@@ -3352,26 +3826,18 @@ export async function fetchAllData() {
       name: m.MaterialName ?? m.name,
       active: (m.IsActive ?? m.active) !== false,
     }));
-    db.soles = (soles || []).map((s) => ({
-      id: s.SoleID ?? s.id,
-      name: s.SoleName ?? s.name,
-      active: (s.IsActive ?? s.active) !== false,
-    }));
-    db.cushionings = (cushionings || []).map((c) => ({
-      id: c.CushioningID ?? c.id,
-      name: c.CushioningName ?? c.name,
-      active: (c.IsActive ?? c.active) !== false,
-    }));
-    // Đánh giá sản phẩm (tùy chọn) — nạp riêng để không ảnh hưởng nếu API chưa có
-    const reviews = await api("/reviews");
-    db.reviews = (reviews || []).map((r) => ({
-      rating: Number(r.Rating ?? r.rating ?? r.stars ?? r.Score ?? 0),
-      product_id: r.ProductID ?? r.product_id,
-      product_name: r.ProductName ?? r.product_name ?? "",
-    }));
+    // Backend hien chua co API /soles, /cushionings va /reviews.
+    // Giu mang rong thay vi tham chieu bien chua khai bao lam dung ca lan tai.
+    db.soles = [];
+    db.cushionings = [];
+    db.reviews = [];
   } catch (err) {
     console.error("[fetchAllData] Error mapping admin data:", err);
+    notify(
+      "Không tải được dữ liệu quản trị. Vui lòng kiểm tra phiên đăng nhập và máy chủ.",
+      "error",
+    );
   } finally {
-    isLoading.value = false;
+    if (!isBackground) isLoading.value = false;
   }
 }
