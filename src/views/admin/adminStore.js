@@ -71,11 +71,11 @@ export function dismissToast(id) {
 export function toastIcon(type) {
   return (
     {
-      success: "bi-check-circle-fill",
-      error: "bi-x-circle-fill",
-      warning: "bi-exclamation-triangle-fill",
-      info: "bi-info-circle-fill",
-    }[type] || "bi-info-circle-fill"
+      success: "icon-check-circle-fill",
+      error: "icon-x-circle-fill",
+      warning: "icon-exclamation-triangle-fill",
+      info: "icon-info-circle-fill",
+    }[type] || "icon-info-circle-fill"
   );
 }
 
@@ -1294,43 +1294,43 @@ export function buildOrderHistory(o) {
   const isBank =
     getPaymentMethodPill(o.payment_method).code === "Chuyển khoản";
   const steps = [
-    { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
+    { label: "Tạo đơn hàng", icon: "icon-cart-plus", done: true, date: created },
   ];
   if (isBank) {
     // Chuyển khoản: khách thanh toán trước, rồi mới xác nhận & hoàn thành
     steps.push({
       label: "Chuyển khoản",
-      icon: "bi-bank",
+      icon: "icon-bank",
       done: paid,
       date: paid ? findDate(["Đã thanh toán", "Thanh toán thành công"]) || o.payment_confirmed_at || created : null,
     });
     steps.push({
       label: "Xác nhận đơn",
-      icon: "bi-check2-circle",
+      icon: "icon-check2-circle",
       done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
       label: redelivering ? "Đang giao lại" : "Đang giao hàng",
-      icon: "bi-truck",
+      icon: "icon-truck",
       done: shipping,
       date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
-      icon: "bi-exclamation-triangle",
+      icon: "icon-exclamation-triangle",
       done: true,
       date: findDate(["Giao hàng thất bại"]),
     });
     if (warehouseReturned) steps.push({
       label: "Về kho",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: true,
       date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Đã giao hàng",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
@@ -1338,31 +1338,31 @@ export function buildOrderHistory(o) {
     // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
     steps.push({
       label: "Xác nhận đơn",
-      icon: "bi-check2-circle",
+      icon: "icon-check2-circle",
       done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
       label: redelivering ? "Đang giao lại" : "Đang giao hàng",
-      icon: "bi-truck",
+      icon: "icon-truck",
       done: shipping,
       date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
-      icon: "bi-exclamation-triangle",
+      icon: "icon-exclamation-triangle",
       done: true,
       date: findDate(["Giao hàng thất bại"]),
     });
     if (warehouseReturned) steps.push({
       label: "Về kho",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: true,
       date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Thanh toán (COD)",
-      icon: "bi-cash-coin",
+      icon: "icon-cash-coin",
       done: paid,
       date: paid
         ? findDate(["Thanh toán thành công", "Đã giao hàng thành công"])
@@ -1370,14 +1370,14 @@ export function buildOrderHistory(o) {
     });
     steps.push({
       label: "Đã giao hàng",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
   }
   if (lostDelivery) steps.push({
     label: "Đã hủy",
-    icon: "bi-x-circle",
+    icon: "icon-x-circle",
     done: true,
     date: findDate(["Đã hủy"]),
   });

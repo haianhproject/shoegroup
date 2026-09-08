@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { orderState, formatCurrency } from '../stores/orderStore'
-import ShoeCard from '../components/ShoeCard.vue'
-import { products as mockProducts } from '../data/mockData'
+import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
+import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from "../services/apiClient";
 
 const route = useRoute()
@@ -28,7 +28,9 @@ const fetchSuggested = async () => {
         brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || 1, colors: p.colors || [], variants: p.variants || [], total_stock: p.total_stock ?? p.stock ?? null,
       }))
   } catch (e) {
-    suggested.value = mockProducts.slice(0, 4)
+    // Trang xác nhận đơn vẫn giữ đúng hợp đồng dữ liệu: khi API lỗi thì
+    // hiển thị trạng thái rỗng thay vì đưa dữ liệu sản phẩm mẫu lên UI.
+    suggested.value = []
   } finally {
     isLoadingSuggested.value = false
   }
@@ -46,13 +48,13 @@ onMounted(() => {
 
 <template>
   <div class="success-page">
-    <div v-if="order" class="container-fluid px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
+    <div v-if="order" class="w-full px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
 
       <!-- Success header -->
       <div class="suc-hero">
-        <div class="suc-icon"><i class="bi bi-check-lg"></i></div>
+        <div class="suc-icon"><i class="icon icon-check-lg"></i></div>
         <h1 class="suc-title">ĐẶT HÀNG THÀNH CÔNG</h1>
-        <p class="text-secondary mb-0">Cảm ơn bạn đã mua sắm tại ShoeGroup. Đơn hàng đang được xử lý.</p>
+        <p class="text-gray-600 mb-0">Cảm ơn bạn đã mua sắm tại ShoeGroup. Đơn hàng đang được xử lý.</p>
       </div>
 
       <!-- Order info -->
@@ -63,9 +65,9 @@ onMounted(() => {
         <div class="suc-info-row"><span>Dự kiến:</span><strong>{{ order.shippingMethod?.eta }}</strong></div>
       </div>
 
-      <div class="d-flex gap-3 mt-4 suc-actions">
-        <button class="btn-sg flex-grow-1" @click="goOrders">XEM ĐƠN HÀNG</button>
-        <button class="btn-sg-outline flex-grow-1" @click="goHome">VỀ TRANG CHỦ</button>
+      <div class="flex gap-3 mt-4 suc-actions">
+        <button class="btn-sg grow" @click="goOrders">XEM ĐƠN HÀNG</button>
+        <button class="btn-sg-outline grow" @click="goHome">VỀ TRANG CHỦ</button>
       </div>
 
       <!-- Suggested products -->
@@ -74,19 +76,19 @@ onMounted(() => {
           <div>
             <div class="sg-title-bar mb-2"></div>
             <h2 class="sec-title">Có thể bạn cũng thích</h2>
-            <p class="text-secondary mb-0">Khám phá thêm các mẫu giày nổi bật khác.</p>
+            <p class="text-gray-600 mb-0">Khám phá thêm các mẫu giày nổi bật khác.</p>
           </div>
-          <router-link to="/products" class="btn-sg-outline d-none d-md-inline-flex">Xem tất cả <i class="bi bi-arrow-right ms-1"></i></router-link>
+          <router-link to="/products" class="btn-sg-outline hidden md:inline-flex">Xem tất cả <i class="icon icon-arrow-right ml-1"></i></router-link>
         </div>
 
         <div v-if="isLoadingSuggested" class="text-center py-5">
-          <div class="spinner-border text-primary"></div>
+          <div class="sg-spinner text-gray-900"></div>
         </div>
-        <div v-else class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-4">
-          <div class="col" v-for="product in suggested" :key="product.id_product">
-            <ShoeCard :product="product" />
+        <FigmaProductGrid v-else :columns="4">
+          <div v-for="product in suggested" :key="product.id_product" class="min-w-0">
+            <FigmaProductCard :product="product" />
           </div>
-        </div>
+        </FigmaProductGrid>
       </section>
 
     </div>

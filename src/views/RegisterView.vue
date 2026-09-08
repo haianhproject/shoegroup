@@ -47,7 +47,7 @@ const submit = async () => {
         <label class="co-label">EMAIL</label>
         <div class="in-wrap"><input v-model="form.email" type="email" class="auth-input" placeholder="you@example.com"></div>
         <label class="co-label">MẬT KHẨU</label>
-        <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="ít nhất 6 ký tự"><button class="eye" @click="showPwd = !showPwd"><i class="bi" :class="showPwd ? 'bi-eye-slash' : 'bi-eye'"></i></button></div>
+        <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="ít nhất 6 ký tự"><button class="eye" @click="showPwd = !showPwd"><i class="icon" :class="showPwd ? 'icon-eye-slash' : 'icon-eye'"></i></button></div>
         <label class="co-label">XÁC NHẬN MẬT KHẨU</label>
         <div class="in-wrap"><input v-model="form.confirm" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Nhập lại mật khẩu" @keyup.enter="submit"></div>
 

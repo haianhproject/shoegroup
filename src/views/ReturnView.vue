@@ -153,14 +153,14 @@ onMounted(fetchData)
 
 <template>
   <div class="return-page">
-    <div class="container-fluid px-4 py-4">
+    <div class="w-full px-4 py-4">
       <div class="sg-title-bar mb-2"></div>
       <h1 class="rt-title">Yêu cầu trả hàng</h1>
 
-      <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+      <div v-if="isLoading" class="text-center py-5"><div class="sg-spinner text-gray-900"></div></div>
       <div v-else-if="!order" class="sg-card rt-picker">
         <h5>Chọn đơn hàng cần trả</h5>
-        <p class="text-secondary">Đơn đã giao/đã nhận đủ điều kiện trả hàng. Đơn đang giao hoặc giao thất bại có thể báo chưa nhận hàng để cửa hàng kiểm tra.</p>
+        <p class="text-gray-600">Đơn đã giao/đã nhận đủ điều kiện trả hàng. Đơn đang giao hoặc giao thất bại có thể báo chưa nhận hàng để cửa hàng kiểm tra.</p>
         <div v-if="returnableOrders.length" class="picker-list">
           <button v-for="item in returnableOrders" :key="item.id" type="button" class="picker-row" @click="selectOrder(item)">
             <span><strong>#{{ item.serverId || item.id }}</strong><small>{{ item.date }}</small></span>
@@ -182,14 +182,14 @@ onMounted(fetchData)
         </div>
         <div class="request-mode-grid">
           <button v-if="canRequestProductReturn" type="button" class="request-mode-option" :class="{ active: requestMode === 'RETURN' }" @click="setRequestMode('RETURN')">
-            <span class="request-mode-icon"><i class="bi bi-arrow-return-left"></i></span>
+            <span class="request-mode-icon"><i class="icon icon-arrow-return-left"></i></span>
             <span><strong>Trả / đổi sản phẩm</strong><small>Sản phẩm lỗi, sai hàng hoặc không vừa</small></span>
-            <i class="bi bi-check-circle-fill request-mode-check"></i>
+            <i class="icon icon-check-circle-fill request-mode-check"></i>
           </button>
           <button v-if="canReportNotReceived" type="button" class="request-mode-option" :class="{ active: requestMode === 'NOT_RECEIVED' }" @click="setRequestMode('NOT_RECEIVED')">
-            <span class="request-mode-icon"><i class="bi bi-truck"></i></span>
+            <span class="request-mode-icon"><i class="icon icon-truck"></i></span>
             <span><strong>Chưa nhận được hàng</strong><small>Đơn báo giao nhưng bạn chưa nhận kiện</small></span>
-            <i class="bi bi-check-circle-fill request-mode-check"></i>
+            <i class="icon icon-check-circle-fill request-mode-check"></i>
           </button>
         </div>
       </div>
@@ -198,25 +198,25 @@ onMounted(fetchData)
       <div v-if="submitted" class="sg-card rt-success">
         <div class="suc-check">OK</div>
         <h3>{{ submittedNotReceived ? 'Báo chưa nhận được hàng đã được ghi nhận' : 'Yêu cầu trả hàng đã được ghi nhận' }}</h3>
-        <p class="text-secondary">{{ submittedNotReceived ? 'Cửa hàng sẽ kiểm tra hành trình và phản hồi về đơn hàng.' : 'Vui lòng lưu lại mã vận đơn để theo dõi.' }}</p>
+        <p class="text-gray-600">{{ submittedNotReceived ? 'Cửa hàng sẽ kiểm tra hành trình và phản hồi về đơn hàng.' : 'Vui lòng lưu lại mã vận đơn để theo dõi.' }}</p>
         <div v-if="!submittedNotReceived" class="rt-track"><span>Mã vận đơn</span><strong>{{ form.trackingCode }}</strong></div>
         <div class="rt-guide">
           <template v-if="submittedNotReceived">
-            <p><i class="bi bi-headset"></i> Yêu cầu “chưa nhận được hàng” đã được gửi. Bạn không cần gửi lại sản phẩm; hãy giữ điện thoại để cửa hàng/đơn vị vận chuyển liên hệ.</p>
+            <p><i class="icon icon-headset"></i> Yêu cầu “chưa nhận được hàng” đã được gửi. Bạn không cần gửi lại sản phẩm; hãy giữ điện thoại để cửa hàng/đơn vị vận chuyển liên hệ.</p>
           </template>
           <template v-else-if="form.method === 'SHIPPER'">
-            <p><i class="bi bi-truck"></i> Shipper sẽ đến lấy hàng tại địa chỉ của bạn. Vui lòng đóng gói sản phẩm và ghi mã vận đơn <strong>{{ form.trackingCode }}</strong> lên kiện hàng.</p>
+            <p><i class="icon icon-truck"></i> Shipper sẽ đến lấy hàng tại địa chỉ của bạn. Vui lòng đóng gói sản phẩm và ghi mã vận đơn <strong>{{ form.trackingCode }}</strong> lên kiện hàng.</p>
           </template>
           <template v-else>
-            <p><i class="bi bi-shop"></i> Vui lòng mang hàng đến bưu cục: <strong>{{ selectedPO?.name }}</strong> — {{ selectedPO?.address }}.</p>
+            <p><i class="icon icon-shop"></i> Vui lòng mang hàng đến bưu cục: <strong>{{ selectedPO?.name }}</strong> — {{ selectedPO?.address }}.</p>
             <p>Ghi mã vận đơn <strong>{{ form.trackingCode }}</strong> và mã đơn <strong>#{{ order.id }}</strong> lên kiện hàng.</p>
           </template>
         </div>
         <router-link to="/orders" class="btn-sg mt-2">Về đơn hàng</router-link>
       </div>
 
-      <div v-else-if="order && !submitted && canChooseRequestMode" class="row g-4 mt-1">
-        <div class="col-lg-7">
+      <div v-else-if="order && !submitted && canChooseRequestMode" class="grid grid-cols-1 gap-4 mt-1 lg:grid-cols-12">
+        <div class="lg:col-span-7">
           <!-- Method -->
           <div v-if="!isNotReceived" class="sg-card rt-block">
             <h6 class="rt-h"><span class="co-num">1</span> Hình thức trả hàng</h6>
@@ -238,7 +238,7 @@ onMounted(fetchData)
               <label v-for="p in postOffices" :key="p.id" class="po-item" :class="{ active: form.postOfficeId === p.id }">
                 <input type="radio" :value="p.id" v-model="form.postOfficeId" hidden>
                 <span class="po-index">•</span>
-                <div class="flex-grow-1"><div class="po-name">{{ p.name }}</div><div class="po-addr">{{ p.address }}</div><div class="po-phone"><i class="bi bi-telephone"></i> {{ p.phone }}</div></div>
+                <div class="grow"><div class="po-name">{{ p.name }}</div><div class="po-addr">{{ p.address }}</div><div class="po-phone"><i class="icon icon-telephone"></i> {{ p.phone }}</div></div>
                 <span class="po-check">Chọn</span>
               </label>
             </div>
@@ -247,11 +247,11 @@ onMounted(fetchData)
           <div v-else class="sg-card rt-block not-received-card">
             <h6 class="rt-h"><span class="co-num">1</span> Báo chưa nhận được hàng</h6>
             <div class="not-received-note">
-              <i class="bi bi-truck"></i>
+              <i class="icon icon-truck"></i>
               <div><strong>Chưa nhận được kiện hàng</strong><p class="mb-0">Gửi thông báo để cửa hàng kiểm tra với đơn vị vận chuyển. Không cần mang sản phẩm đến bưu cục.</p></div>
             </div>
             <label class="co-label mt-3">Mô tả thêm (không bắt buộc)</label>
-            <textarea v-model="form.reason" class="sg-input w-100" rows="3" placeholder="Ví dụ: đơn đã báo giao nhưng tôi chưa nhận được hàng..."></textarea>
+            <textarea v-model="form.reason" class="sg-input w-full" rows="3" placeholder="Ví dụ: đơn đã báo giao nhưng tôi chưa nhận được hàng..."></textarea>
           </div>
 
           <!-- Items + reason -->
@@ -260,7 +260,7 @@ onMounted(fetchData)
             <div class="ret-item" v-for="(it, i) in form.items" :key="i">
               <input type="checkbox" v-model="it.checked">
               <img :src="it.image_url || it.product?.image_url">
-              <div class="flex-grow-1">
+              <div class="grow">
                 <div class="ret-name">{{ it.product_name || it.product?.product_name }}</div>
                 <div class="ret-attr">Size {{ it.size?.size_name || it.size }} · Đã mua {{ it.quantity }}</div>
                 <div v-if="it.checked" class="ret-controls">
@@ -275,17 +275,17 @@ onMounted(fetchData)
               <div class="ret-price">{{ formatCurrency(it.unitPrice * (it.checked ? it.return_qty : 0)) }}</div>
             </div>
             <label class="co-label mt-3">Lý do trả hàng</label>
-            <select v-model="form.reasonCode" class="sg-input w-100 mb-2">
+            <select v-model="form.reasonCode" class="sg-input w-full mb-2">
               <option v-for="item in returnReasons" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
-            <textarea v-model="form.reason" class="sg-input w-100" rows="3" placeholder="Mô tả lý do (sản phẩm lỗi, sai size, không đúng mô tả…)"></textarea>
+            <textarea v-model="form.reason" class="sg-input w-full" rows="3" placeholder="Mô tả lý do (sản phẩm lỗi, sai size, không đúng mô tả…)"></textarea>
           </div>
         </div>
 
         <!-- Summary -->
-        <div class="col-lg-5">
+        <div class="lg:col-span-5">
           <div class="sg-card rt-summary">
-            <h6 class="fw-bold mb-3">Thông tin hoàn trả</h6>
+            <h6 class="font-bold mb-3">Thông tin hoàn trả</h6>
             <div class="sum-row"><span>Mã đơn gốc</span><strong>#{{ order.id }}</strong></div>
             <div class="sum-row"><span>Thanh toán</span><strong>{{ paymentMethodText }}</strong></div>
             <div class="sum-row"><span>Hình thức</span><strong>{{ isNotReceived ? 'Báo chưa nhận được hàng' : (form.method === 'SHIPPER' ? 'Shipper tự lấy' : 'Gửi bưu cục') }}</strong></div>
@@ -296,8 +296,8 @@ onMounted(fetchData)
               Không cần gửi trả hàng. {{ refundEligible ? 'Khoản hoàn sẽ được cộng vào Ví ShoeGroup sau khi xử lý.' : 'Đơn COD chưa thu tiền nên không phát sinh khoản hoàn.' }}
             </div>
             <div v-else class="rt-note">Mã vận đơn sẽ được cấp sau khi gửi yêu cầu. Vui lòng ghi mã vận đơn và mã đơn lên kiện hàng.</div>
-            <button class="btn-sg w-100 mt-3" :disabled="isSubmitting" @click="submit">
-              <span v-if="isSubmitting" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            <button class="btn-sg w-full mt-3" :disabled="isSubmitting" @click="submit">
+              <span v-if="isSubmitting" class="sg-spinner sg-spinner sg-spinner-sm mr-1" aria-hidden="true"></span>
               {{ isSubmitting ? 'Đang gửi...' : (isNotReceived ? 'Báo chưa nhận được hàng' : 'Gửi yêu cầu trả hàng') }}
             </button>
           </div>
@@ -306,7 +306,7 @@ onMounted(fetchData)
 
       <div v-else-if="order && !submitted" class="sg-card rt-picker">
         <h5>Đơn hàng chưa đủ điều kiện trả</h5>
-        <p class="text-secondary mb-0">Chỉ đơn đã giao thành công mới có thể trả sản phẩm; đơn đang giao có thể báo chưa nhận hàng.</p>
+        <p class="text-gray-600 mb-0">Chỉ đơn đã giao thành công mới có thể trả sản phẩm; đơn đang giao có thể báo chưa nhận hàng.</p>
         <router-link to="/orders" class="btn-sg mt-3">Về đơn hàng</router-link>
       </div>
     </div>

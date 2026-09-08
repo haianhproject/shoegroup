@@ -1,0 +1,301 @@
+/*
+ * Shared page language for the admin content area.
+ *
+ * The individual CRUD pages intentionally keep their existing markup and
+ * database bindings.  This layer only normalises the visual primitives so a
+ * table page, a card page and a workflow page all look like one product.
+ */
+
+.admin-page-wrapper {
+  --admin-page-ink: var(--admin-ink, #17191c);
+  --admin-page-muted: var(--admin-muted, #727a84);
+  --admin-page-line: var(--admin-line, #e7e9ec);
+  --admin-page-canvas: var(--admin-canvas, #f6f7f8);
+  --admin-page-accent: var(--admin-accent, #e4583e);
+  --admin-page-accent-dark: var(--admin-accent-dark, #bf3f2b);
+  --admin-page-accent-soft: var(--admin-accent-soft, #fff0ec);
+  color: var(--admin-page-ink);
+}
+
+/* Page headings give every section the same editorial rhythm. */
+.admin-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.admin-page-head h1,
+.admin-page-head h2,
+.admin-page-head h3,
+.admin-page-head h4,
+.admin-page-head h5,
+.admin-page-head h6 {
+  margin: 0;
+  color: var(--admin-page-ink) !important;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -.035em;
+}
+.admin-page-head p { margin: 5px 0 0; color: var(--admin-page-muted) !important; font-size: .8rem; }
+.admin-page-head .btn { flex-shrink: 0; }
+
+/* White-first surfaces. Exclude controls that happen to carry bg-white. */
+.admin-page-wrapper .bg-white:not(.btn):not(.input-group-text),
+.admin-page-wrapper .admin-surface {
+  background: #fff !important;
+  border: 1px solid var(--admin-page-line) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 2px rgba(23, 25, 28, .035) !important;
+}
+.admin-page-wrapper .bg-white:not(.btn):not(.input-group-text):hover {
+  box-shadow: 0 12px 30px rgba(23, 25, 28, .065) !important;
+}
+
+/* Search fields and filters read as one compact toolbar. */
+.admin-page-wrapper .input-group.bg-white {
+  border: 1px solid var(--admin-page-line) !important;
+  border-radius: 11px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.admin-page-wrapper .input-group.bg-white .input-group-text,
+.admin-page-wrapper .input-group.bg-white .sg-input {
+  background: #fff !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.admin-page-wrapper .input-group.bg-white:focus-within {
+  border-color: var(--admin-page-accent) !important;
+  box-shadow: 0 0 0 3px rgba(228, 88, 62, .12) !important;
+}
+
+/* Buttons use one radius and one hierarchy across every CRUD page. */
+.admin-page-wrapper .btn {
+  border-radius: 10px !important;
+  font-weight: 650;
+  transition: background-color .18s ease, border-color .18s ease,
+    color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.admin-page-wrapper .btn-sm { min-height: 34px; font-size: .74rem; }
+.admin-page-wrapper .btn-dark,
+.admin-page-wrapper .btn-primary {
+  background: var(--admin-page-ink) !important;
+  border-color: var(--admin-page-ink) !important;
+  color: #fff !important;
+}
+.admin-page-wrapper .btn-dark:hover,
+.admin-page-wrapper .btn-primary:hover {
+  background: #34393f !important;
+  border-color: #34393f !important;
+  box-shadow: 0 7px 16px rgba(23, 25, 28, .14);
+  transform: translateY(-1px);
+}
+.admin-page-wrapper .btn-light,
+.admin-page-wrapper .btn-white {
+  background: #fff !important;
+  border-color: var(--admin-page-line) !important;
+  color: var(--admin-page-muted) !important;
+}
+.admin-page-wrapper .btn-light:hover,
+.admin-page-wrapper .btn-white:hover {
+  background: var(--admin-page-canvas) !important;
+  border-color: #d5d9de !important;
+  color: var(--admin-page-ink) !important;
+}
+.admin-page-wrapper .btn-outline-dark {
+  color: var(--admin-page-ink) !important;
+  border-color: var(--admin-page-ink) !important;
+  background: #fff !important;
+}
+.admin-page-wrapper .btn-outline-dark:hover {
+  background: var(--admin-page-ink) !important;
+  color: #fff !important;
+}
+.admin-page-wrapper .btn-danger,
+.admin-page-wrapper .btn-warning {
+  background: var(--admin-page-accent) !important;
+  border-color: var(--admin-page-accent) !important;
+  color: #fff !important;
+}
+.admin-page-wrapper .btn-danger:hover,
+.admin-page-wrapper .btn-warning:hover {
+  background: var(--admin-page-accent-dark) !important;
+  border-color: var(--admin-page-accent-dark) !important;
+}
+.admin-page-wrapper .btn.text-danger,
+.admin-page-wrapper .btn-light.text-danger,
+.admin-page-wrapper .btn-link.text-danger {
+  color: var(--admin-page-accent-dark) !important;
+}
+.admin-page-wrapper .btn.border-success,
+.admin-page-wrapper .btn.text-success {
+  color: #4d7a55 !important;
+  border-color: #cce3cf !important;
+}
+
+/* Form controls use the same height, border and focus ring. */
+.admin-page-wrapper .sg-input,
+.admin-page-wrapper .form-select {
+  min-height: 40px;
+  border: 1px solid var(--admin-page-line) !important;
+  border-radius: 10px !important;
+  color: var(--admin-page-ink);
+  background-color: #fff;
+  font-size: .82rem;
+}
+.admin-page-wrapper textarea.sg-input { min-height: 92px; }
+.admin-page-wrapper .sg-input:focus,
+.admin-page-wrapper .form-select:focus {
+  border-color: var(--admin-page-accent) !important;
+  box-shadow: 0 0 0 3px rgba(228, 88, 62, .14) !important;
+}
+.admin-page-wrapper .form-check-input:checked {
+  background-color: var(--admin-page-accent) !important;
+  border-color: var(--admin-page-accent) !important;
+}
+.admin-page-wrapper .form-label { color: var(--admin-page-ink); font-weight: 650 !important; }
+
+/* Tables: airy rows, quiet rules, a single hover treatment. */
+.admin-page-wrapper .table {
+  --table-bg: transparent;
+  --table-color: var(--admin-page-ink);
+  --table-border-color: var(--admin-page-line);
+  margin-bottom: 0;
+  font-size: .82rem;
+}
+.admin-page-wrapper .table > :not(caption) > * > * {
+  padding: 14px 14px;
+  border-bottom-color: var(--admin-page-line) !important;
+  background: transparent;
+  vertical-align: middle;
+}
+.admin-page-wrapper .table > thead > tr > * {
+  padding-top: 12px;
+  padding-bottom: 11px;
+  background: #fbfbfc !important;
+  color: var(--admin-page-muted) !important;
+  font-size: .66rem;
+  font-weight: 750;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.admin-page-wrapper .table > tbody > tr { transition: background-color .16s ease; }
+.admin-page-wrapper .table > tbody > tr:hover > * { background: #fffaf8 !important; }
+.admin-page-wrapper .table > tbody > tr:last-child > * { border-bottom: 0 !important; }
+.admin-page-wrapper .table-responsive { scrollbar-color: #d5d9de transparent; }
+
+/* Status chips keep a restrained palette. */
+.admin-page-wrapper .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 9px !important;
+  border-radius: 999px !important;
+  font-size: .68rem !important;
+  font-weight: 750 !important;
+  letter-spacing: .01em;
+  line-height: 1.1;
+}
+.admin-page-wrapper .badge.bg-dark,
+.admin-page-wrapper .badge.bg-black {
+  background: var(--admin-page-ink) !important;
+  color: #fff !important;
+}
+.admin-page-wrapper .badge.bg-light,
+.admin-page-wrapper .badge.bg-secondary-subtle,
+.admin-page-wrapper .badge.bg-dark-subtle {
+  background: #f0f2f4 !important;
+  border: 1px solid var(--admin-page-line) !important;
+  color: #5f6872 !important;
+}
+.admin-page-wrapper .badge.bg-danger,
+.admin-page-wrapper .badge.bg-danger-subtle,
+.admin-page-wrapper .badge.bg-danger-emphasis,
+.admin-page-wrapper .badge.bg-warning-subtle,
+.admin-page-wrapper .badge.bg-warning {
+  background: var(--admin-page-accent-soft) !important;
+  border: 1px solid #f4c1b7 !important;
+  color: var(--admin-page-accent-dark) !important;
+}
+.admin-page-wrapper .badge.bg-info-subtle,
+.admin-page-wrapper .badge.bg-primary-subtle,
+.admin-page-wrapper .badge.bg-success-subtle,
+.admin-page-wrapper .badge.bg-success {
+  background: #eff7f0 !important;
+  border: 1px solid #cce3cf !important;
+  color: #4d7a55 !important;
+}
+.admin-page-wrapper .badge-active {
+  background: #eff7f0 !important;
+  border: 1px solid #cce3cf !important;
+  color: #4d7a55 !important;
+}
+
+/* Small utility panels and alert states. */
+.admin-page-wrapper .bg-light-gray,
+.admin-page-wrapper .bg-light:not(.btn),
+.admin-page-wrapper .queue-summary {
+  background: var(--admin-page-canvas) !important;
+}
+.admin-page-wrapper .alert {
+  border-radius: 11px !important;
+  border: 1px solid var(--admin-page-line);
+  color: var(--admin-page-muted);
+}
+.admin-page-wrapper .alert-warning,
+.admin-page-wrapper .alert-danger {
+  background: var(--admin-page-accent-soft) !important;
+  border-color: #f4c1b7 !important;
+  color: var(--admin-page-accent-dark) !important;
+}
+.admin-page-wrapper hr { border-color: var(--admin-page-line); opacity: 1; }
+
+/* Product/brand/customer thumbnails have a shared quiet frame. */
+.admin-page-wrapper img.border,
+.admin-page-wrapper .color-swatch-box,
+.admin-page-wrapper .color-dot {
+  border-color: var(--admin-page-line) !important;
+}
+.admin-page-wrapper img.border { background: #fbfbfc; }
+.admin-page-wrapper .color-swatch-box { border-radius: 6px !important; }
+
+/* POS catalogue cards echo the storefront product tile without changing
+   the underlying variant data or add-to-cart behaviour. */
+.admin-page-wrapper .admin-pos-product {
+  border: 1px solid var(--admin-page-line) !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  padding: 12px !important;
+  box-shadow: 0 1px 2px rgba(23, 25, 28, .035) !important;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.admin-page-wrapper .admin-pos-product:hover {
+  border-color: var(--admin-page-accent) !important;
+  box-shadow: 0 12px 26px rgba(23, 25, 28, .09) !important;
+  transform: translateY(-2px);
+}
+.admin-page-wrapper .admin-pos-product img {
+  width: 100%;
+  aspect-ratio: 1.25;
+  height: auto !important;
+  object-fit: cover;
+  border-radius: 10px !important;
+  background: #fbfbfc;
+}
+.admin-page-wrapper .admin-pos-product .btn-dark { min-height: 34px; }
+
+/* Modals opened from a page should inherit the same surface language. */
+.admin-page-wrapper .custom-modal-box {
+  border: 1px solid var(--admin-page-line) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 24px 70px rgba(23, 25, 28, .18) !important;
+}
+
+@media (max-width: 767.98px) {
+  .admin-page-head { align-items: stretch; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+  .admin-page-head .btn { align-self: flex-start; }
+  .admin-page-wrapper .table > :not(caption) > * > * { padding: 11px 10px; }
+}

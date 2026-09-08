@@ -60,64 +60,64 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
 <template>
   <div class="fade-in">
     <!-- ===== Thanh phạm vi + xuất báo cáo ===== -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div class="flex flex-wrap justify-between items-center mb-4 gap-3">
       <div class="btn-group shadow-sm rounded-2 overflow-hidden bg-white">
-        <button v-for="r in rangeOptions" :key="r.key" @click="setRange(r.key)" class="btn btn-sm px-3 fw-medium border-0" :class="dateRange === r.key ? 'btn-dark text-white' : 'btn-white text-secondary'" v-text="r.label"></button>
+        <button v-for="r in rangeOptions" :key="r.key" @click="setRange(r.key)" class="btn btn-sm px-3 font-medium border-0" :class="dateRange === r.key ? 'btn-dark text-white' : 'btn-white text-gray-600'" v-text="r.label"></button>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge rounded-1 bg-light text-dark border fw-medium"><i class="bi bi-calendar3 me-1"></i><span v-text="rangeLabel"></span></span>
-        <button @click="exportReport" class="btn btn-dark btn-sm rounded-2 fw-bold shadow-sm px-3 d-flex align-items-center"><i class="bi bi-download me-2"></i> Xuất Báo Cáo</button>
+      <div class="flex items-center gap-2">
+        <span class="badge rounded-1 bg-gray-100 text-gray-900 border font-medium"><i class="icon icon-calendar3 mr-1"></i><span v-text="rangeLabel"></span></span>
+        <button @click="exportReport" class="btn btn-dark btn-sm rounded-2 font-bold shadow-sm px-3 flex items-center"><i class="icon icon-download mr-2"></i> Xuất Báo Cáo</button>
       </div>
     </div>
 
-    <div v-if="dateRange === 'custom'" class="d-flex flex-wrap align-items-end gap-2 mb-4 p-3 bg-white rounded-1 shadow-sm">
-      <div><label class="form-label small text-secondary mb-1">Từ ngày</label><input type="date" v-model="customRange.from" class="form-control form-control-sm rounded-2"></div>
-      <div><label class="form-label small text-secondary mb-1">Đến ngày</label><input type="date" v-model="customRange.to" class="form-control form-control-sm rounded-2"></div>
+    <div v-if="dateRange === 'custom'" class="flex flex-wrap items-end gap-2 mb-4 p-3 bg-white rounded-1 shadow-sm">
+      <div><label class="block text-sm font-medium text-sm text-gray-600 mb-1">Từ ngày</label><input type="date" v-model="customRange.from" class="sg-input sg-input rounded-2"></div>
+      <div><label class="block text-sm font-medium text-sm text-gray-600 mb-1">Đến ngày</label><input type="date" v-model="customRange.to" class="sg-input sg-input rounded-2"></div>
     </div>
 
     <!-- ===== 4 thẻ thống kê ===== -->
-    <div class="row g-4 mb-4">
-      <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
-          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-people-fill"></i></div>
-          <p class="text-secondary small mb-1 fw-medium">Tổng Tài Khoản</p><h3 class="fw-bolder mb-0 text-dark" v-text="statAccounts"></h3>
+    <div class="grid grid-cols-12 gap-4 mb-4">
+      <div class="col-span-12 sm:col-span-6 xl:col-span-3">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-full">
+          <div class="stat-icon bg-gray-900 text-white mb-3"><i class="icon icon-people-fill"></i></div>
+          <p class="text-gray-600 text-sm mb-1 font-medium">Tổng Tài Khoản</p><h3 class="font-extrabold mb-0 text-gray-900" v-text="statAccounts"></h3>
         </div>
       </div>
-      <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
-          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-box-seam-fill"></i></div>
-          <p class="text-secondary small mb-1 fw-medium">Tổng Sản Phẩm</p><h3 class="fw-bolder mb-0 text-dark" v-text="statProducts"></h3>
+      <div class="col-span-12 sm:col-span-6 xl:col-span-3">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-full">
+          <div class="stat-icon bg-gray-900 text-white mb-3"><i class="icon icon-box-seam-fill"></i></div>
+          <p class="text-gray-600 text-sm mb-1 font-medium">Tổng Sản Phẩm</p><h3 class="font-extrabold mb-0 text-gray-900" v-text="statProducts"></h3>
         </div>
       </div>
-      <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
-          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-cart-check-fill"></i></div>
-          <p class="text-secondary small mb-1 fw-medium">Tổng Đơn Hàng</p><h3 class="fw-bolder mb-0 text-dark" v-text="statOrders"></h3>
+      <div class="col-span-12 sm:col-span-6 xl:col-span-3">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-full">
+          <div class="stat-icon bg-gray-900 text-white mb-3"><i class="icon icon-cart-check-fill"></i></div>
+          <p class="text-gray-600 text-sm mb-1 font-medium">Tổng Đơn Hàng</p><h3 class="font-extrabold mb-0 text-gray-900" v-text="statOrders"></h3>
         </div>
       </div>
-      <div class="col-12 col-sm-6 col-xl-3">
-        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-100">
-          <div class="stat-icon bg-dark text-white mb-3"><i class="bi bi-cash-stack"></i></div>
-          <p class="text-secondary small mb-1 fw-medium">Tổng Doanh Thu</p><h3 class="fw-bolder mb-0 text-dark" v-text="formatPrice(statRevenue)"></h3>
+      <div class="col-span-12 sm:col-span-6 xl:col-span-3">
+        <div class="dashboard-card bg-white p-4 rounded shadow-sm h-full">
+          <div class="stat-icon bg-gray-900 text-white mb-3"><i class="icon icon-cash-stack"></i></div>
+          <p class="text-gray-600 text-sm mb-1 font-medium">Tổng Doanh Thu</p><h3 class="font-extrabold mb-0 text-gray-900" v-text="formatPrice(statRevenue)"></h3>
         </div>
       </div>
     </div>
 
     <!-- ===== Trend đơn hàng ===== -->
     <div class="bg-white p-4 rounded-1 shadow-sm mb-4">
-      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
         <div>
-          <h5 class="fw-bold mb-1 text-dark">Trend Đơn Hàng</h5>
-          <p class="text-secondary small mb-0">Số lượng đơn hàng và xu hướng biến động — <span v-text="rangeLabel"></span></p>
+          <h5 class="font-bold mb-1 text-gray-900">Trend Đơn Hàng</h5>
+          <p class="text-gray-600 text-sm mb-0">Số lượng đơn hàng và xu hướng biến động — <span v-text="rangeLabel"></span></p>
         </div>
-        <div class="d-flex align-items-center gap-3">
-          <div class="d-flex align-items-center gap-3 small text-secondary">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 text-sm text-gray-600">
             <span><span class="legend-dot" style="background:#6366f1;"></span> Đơn hàng</span>
             <span><span class="legend-dot" style="background:#f59e0b;"></span> TB 3 kỳ trước</span>
           </div>
           <div class="btn-group shadow-sm rounded-2 overflow-hidden">
-            <button @click="setTrendMode('day')" class="btn btn-sm px-3 border-0" :class="trendMode === 'day' ? 'btn-dark text-white' : 'btn-white text-secondary'">Ngày</button>
-            <button @click="setTrendMode('month')" class="btn btn-sm px-3 border-0" :class="trendMode === 'month' ? 'btn-dark text-white' : 'btn-white text-secondary'">Tháng</button>
+            <button @click="setTrendMode('day')" class="btn btn-sm px-3 border-0" :class="trendMode === 'day' ? 'btn-dark text-white' : 'btn-white text-gray-600'">Ngày</button>
+            <button @click="setTrendMode('month')" class="btn btn-sm px-3 border-0" :class="trendMode === 'month' ? 'btn-dark text-white' : 'btn-white text-gray-600'">Tháng</button>
           </div>
         </div>
       </div>
@@ -125,29 +125,29 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
     </div>
 
     <!-- ===== Đơn hàng + Thanh toán ===== -->
-    <div class="row g-4 mb-4">
-      <div class="col-12 col-xl-7">
-        <div class="bg-white p-4 rounded-1 shadow-sm h-100">
-          <h5 class="fw-bold mb-1 text-dark">Đơn Hàng</h5>
-          <p class="text-secondary small mb-4">Trạng thái, số lượng và giá trị đơn</p>
-          <div class="row g-3 align-items-center">
-            <div class="col-12 col-md-6">
-              <p class="text-secondary small fw-medium mb-2">Đơn theo trạng thái</p>
+    <div class="grid grid-cols-12 gap-4 mb-4">
+      <div class="col-span-12 xl:col-span-7">
+        <div class="bg-white p-4 rounded-1 shadow-sm h-full">
+          <h5 class="font-bold mb-1 text-gray-900">Đơn Hàng</h5>
+          <p class="text-gray-600 text-sm mb-4">Trạng thái, số lượng và giá trị đơn</p>
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-12 md:col-span-6">
+              <p class="text-gray-600 text-sm font-medium mb-2">Đơn theo trạng thái</p>
               <div style="height: 220px;"><canvas ref="statusCanvas"></canvas></div>
             </div>
-            <div class="col-12 col-md-6">
+            <div class="col-span-12 md:col-span-6">
               <div class="bg-light-gray p-3 mb-3" style="border-radius:4px;">
-                <p class="text-secondary small mb-1">Giá trị trung bình / đơn</p>
-                <h4 class="fw-bolder text-dark mb-0" v-text="formatPrice(avgOrderValue)"></h4>
+                <p class="text-gray-600 text-sm mb-1">Giá trị trung bình / đơn</p>
+                <h4 class="font-extrabold text-gray-900 mb-0" v-text="formatPrice(avgOrderValue)"></h4>
               </div>
-              <p class="text-secondary small fw-medium mb-2">Đơn gần nhất</p>
-              <table class="table table-sm align-middle mb-0 small">
-                <thead><tr class="text-secondary"><th>Ngày</th><th class="text-end">Đơn</th></tr></thead>
+              <p class="text-gray-600 text-sm font-medium mb-2">Đơn gần nhất</p>
+              <table class="table table-sm align-middle mb-0 text-sm">
+                <thead><tr class="text-gray-600"><th>Ngày</th><th class="text-end">Đơn</th></tr></thead>
                 <tbody>
-                  <tr v-if="recentOrdersByDate.length === 0"><td colspan="2" class="text-secondary text-center py-2">Chưa có đơn</td></tr>
+                  <tr v-if="recentOrdersByDate.length === 0"><td colspan="2" class="text-gray-600 text-center py-2">Chưa có đơn</td></tr>
                   <tr v-for="r in recentOrdersByDate" :key="r.date">
                     <td v-text="r.date"></td>
-                    <td class="text-end"><span class="badge bg-light text-dark border" style="border-radius:2px;" v-text="r.count"></span></td>
+                    <td class="text-end"><span class="badge bg-gray-100 text-gray-900 border" style="border-radius:2px;" v-text="r.count"></span></td>
                   </tr>
                 </tbody>
               </table>
@@ -155,42 +155,42 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-5">
-        <div class="bg-white p-4 rounded-1 shadow-sm h-100 d-flex flex-column">
-          <h5 class="fw-bold mb-1 text-dark">Thanh Toán</h5>
-          <p class="text-secondary small mb-4">Phân bổ doanh thu theo kênh &amp; phương thức</p>
+      <div class="col-span-12 xl:col-span-5">
+        <div class="bg-white p-4 rounded-1 shadow-sm h-full flex flex-col">
+          <h5 class="font-bold mb-1 text-gray-900">Thanh Toán</h5>
+          <p class="text-gray-600 text-sm mb-4">Phân bổ doanh thu theo kênh &amp; phương thức</p>
           
           <!-- Tổng Doanh Thu Header -->
           <div class="bg-light-gray p-3 mb-4 text-center border" style="border-radius:4px;">
-            <p class="text-secondary small fw-medium mb-1">Tổng Doanh Thu Lọc</p>
-            <h4 class="fw-bolder text-dark mb-0" v-text="formatPrice(paymentRevenueSummary.total)"></h4>
+            <p class="text-gray-600 text-sm font-medium mb-1">Tổng Doanh Thu Lọc</p>
+            <h4 class="font-extrabold text-gray-900 mb-0" v-text="formatPrice(paymentRevenueSummary.total)"></h4>
           </div>
 
           <!-- Bảng chia 4 cột -->
-          <div class="row g-3 flex-grow-1">
+          <div class="grid grid-cols-12 gap-3 grow">
             <!-- Thanh toán tại quầy -->
-            <div class="col-6 border-end border-light">
-              <h6 class="fw-bold text-dark mb-3 text-center border-bottom pb-2">Tại Quầy</h6>
+            <div class="col-span-6 border-r border-white">
+              <h6 class="font-bold text-gray-900 mb-3 text-center border-b pb-2">Tại Quầy</h6>
               <div class="mb-3">
-                <p class="text-secondary small mb-1">Tiền mặt</p>
-                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.posCash)"></h6>
+                <p class="text-gray-600 text-sm mb-1">Tiền mặt</p>
+                <h6 class="font-bold mb-0 text-gray-900" v-text="formatPrice(paymentRevenueSummary.posCash)"></h6>
               </div>
               <div>
-                <p class="text-secondary small mb-1">Chuyển khoản</p>
-                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.posTransfer)"></h6>
+                <p class="text-gray-600 text-sm mb-1">Chuyển khoản</p>
+                <h6 class="font-bold mb-0 text-gray-900" v-text="formatPrice(paymentRevenueSummary.posTransfer)"></h6>
               </div>
             </div>
             
             <!-- Thanh toán qua web -->
-            <div class="col-6">
-              <h6 class="fw-bold text-dark mb-3 text-center border-bottom pb-2">Qua Web</h6>
+            <div class="col-span-6">
+              <h6 class="font-bold text-gray-900 mb-3 text-center border-b pb-2">Qua Web</h6>
               <div class="mb-3">
-                <p class="text-secondary small mb-1">Thu hộ</p>
-                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.webCod)"></h6>
+                <p class="text-gray-600 text-sm mb-1">Thu hộ</p>
+                <h6 class="font-bold mb-0 text-gray-900" v-text="formatPrice(paymentRevenueSummary.webCod)"></h6>
               </div>
               <div>
-                <p class="text-secondary small mb-1">Chuyển khoản</p>
-                <h6 class="fw-bold mb-0 text-dark" v-text="formatPrice(paymentRevenueSummary.webTransfer)"></h6>
+                <p class="text-gray-600 text-sm mb-1">Chuyển khoản</p>
+                <h6 class="font-bold mb-0 text-gray-900" v-text="formatPrice(paymentRevenueSummary.webTransfer)"></h6>
               </div>
             </div>
           </div>
@@ -200,38 +200,38 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(c => { if (c) c.destro
 
     <!-- ===== Sản phẩm ===== -->
     <div class="bg-white p-4 rounded-1 shadow-sm mb-4">
-      <h5 class="fw-bold mb-1 text-dark">Sản Phẩm</h5>
-      <p class="text-secondary small mb-4">Hiệu suất bán hàng và tình trạng tồn kho</p>
-      <div class="row g-4">
-        <div class="col-12 col-lg-5">
-          <p class="text-secondary small fw-medium mb-2">Top sản phẩm bán chạy</p>
+      <h5 class="font-bold mb-1 text-gray-900">Sản Phẩm</h5>
+      <p class="text-gray-600 text-sm mb-4">Hiệu suất bán hàng và tình trạng tồn kho</p>
+      <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12 lg:col-span-5">
+          <p class="text-gray-600 text-sm font-medium mb-2">Top sản phẩm bán chạy</p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
-            <table class="table table-sm align-middle mb-0 small">
-              <thead><tr class="text-secondary"><th>Top</th><th>Sản phẩm</th><th>Brand</th><th class="text-end">Lượt bán</th></tr></thead>
+            <table class="table table-sm align-middle mb-0 text-sm">
+              <thead><tr class="text-gray-600"><th>Top</th><th>Sản phẩm</th><th>Brand</th><th class="text-end">Lượt bán</th></tr></thead>
               <tbody>
-                <tr v-if="!topProductsList || topProductsList.length === 0"><td colspan="4" class="text-secondary text-center py-2">Chưa có dữ liệu</td></tr>
+                <tr v-if="!topProductsList || topProductsList.length === 0"><td colspan="4" class="text-gray-600 text-center py-2">Chưa có dữ liệu</td></tr>
                 <tr v-for="(p, i) in topProductsList" :key="p.name">
-                  <td><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="i === 0 ? 'bg-dark text-white' : i === 1 ? 'bg-secondary text-white' : i === 2 ? 'bg-secondary-subtle text-dark' : 'bg-light text-dark border'" v-text="'Top ' + (i + 1)"></span></td>
-                  <td class="text-truncate fw-medium" style="max-width:140px;" v-text="p.name"></td>
-                  <td class="text-secondary" v-text="p.brand"></td>
-                  <td class="text-end fw-bold text-dark" v-text="p.quantity"></td>
+                  <td><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="i === 0 ? 'bg-gray-900 text-white' : i === 1 ? 'bg-secondary text-white' : i === 2 ? 'bg-secondary-subtle text-gray-900' : 'bg-gray-100 text-gray-900 border'" v-text="'Top ' + (i + 1)"></span></td>
+                  <td class="text-truncate font-medium" style="max-width:140px;" v-text="p.name"></td>
+                  <td class="text-gray-600" v-text="p.brand"></td>
+                  <td class="text-end font-bold text-gray-900" v-text="p.quantity"></td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-        <div class="col-12 col-lg-7">
-          <p class="text-secondary small fw-medium mb-2">Sản phẩm hết hàng <span class="badge bg-dark text-white" style="border-radius:2px;" v-text="lowStockCount"></span></p>
+        <div class="col-span-12 lg:col-span-7">
+          <p class="text-gray-600 text-sm font-medium mb-2">Sản phẩm hết hàng <span class="badge bg-gray-900 text-white" style="border-radius:2px;" v-text="lowStockCount"></span></p>
           <div style="max-height: 300px; overflow:auto;" class="custom-scrollbar-light">
-            <table class="table table-sm align-middle mb-0 small">
-              <thead><tr class="text-secondary"><th>Sản phẩm</th><th>Màu</th><th class="text-end">Tồn</th></tr></thead>
+            <table class="table table-sm align-middle mb-0 text-sm">
+              <thead><tr class="text-gray-600"><th>Sản phẩm</th><th>Màu</th><th class="text-end">Tồn</th></tr></thead>
               <tbody>
-                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-secondary text-center py-2">Không có sản phẩm nào hết hàng.</td></tr>
+                <tr v-if="lowStockList.length === 0"><td colspan="3" class="text-gray-600 text-center py-2">Không có sản phẩm nào hết hàng.</td></tr>
                 <tr v-for="v in lowStockList" :key="v.id">
                   <td class="text-truncate" style="max-width:140px;" v-text="v.product_name"></td>
-                  <td class="small text-secondary" v-text="v.color"></td>
-                  <td class="small text-secondary" v-text="v.size"></td>
-                  <td class="text-end"><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="'bg-secondary-subtle text-dark'" v-text="'Hết hàng'"></span></td>
+                  <td class="text-sm text-gray-600" v-text="v.color"></td>
+                  <td class="text-sm text-gray-600" v-text="v.size"></td>
+                  <td class="text-end"><span class="badge" style="border-radius:2px;font-size:0.72rem;" :class="'bg-secondary-subtle text-gray-900'" v-text="'Hết hàng'"></span></td>
                 </tr>
               </tbody>
             </table>

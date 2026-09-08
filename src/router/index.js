@@ -8,6 +8,12 @@ const router = createRouter({
     // --- ROUTE KHACH HANG ---
     { path: "/", name: "home", component: () => import("../views/HomeDisplay.vue") },
     { path: "/products", name: "products", component: () => import("../views/ProductsView.vue") },
+    // Các alias công khai này dùng cùng một trang danh sách Figma; giữ tương
+    // thích với những liên kết cũ và với URL trong design system.
+    { path: "/product", name: "product-list", component: () => import("../views/ProductsView.vue") },
+    { path: "/category", name: "category", component: () => import("../views/ProductsView.vue") },
+    { path: "/brand", name: "brand", component: () => import("../views/ProductsView.vue") },
+    { path: "/search", name: "search", component: () => import("../views/ProductsView.vue") },
     { path: "/about", name: "about", component: () => import("../views/AboutView.vue") },
     { path: "/contact", name: "contact", component: () => import("../views/ContactView.vue") },
     { path: "/product/:id", name: "ProductDetail", component: () => import("../views/ProductDetail.vue") },

@@ -644,118 +644,111 @@ const placeOrder = async () => {
 
 <template>
   <div class="checkout-page">
-    <div class="container-fluid px-4 py-5 page-container">
-      <h1 class="co-title">THANH TOÁN</h1>
-      <div class="sg-title-bar mb-5"></div>
-
+    <div class="page-container">
       <div v-if="cartCount === 0" class="empty-state">
-        <i class="bi bi-bag"></i>
+        <i class="icon icon-bag"></i>
         <h5>Không có sản phẩm để thanh toán</h5>
         <router-link to="/products" class="btn-sg mt-3">MUA SẮM NGAY</router-link>
       </div>
 
-      <div v-else class="row g-5">
-        <div class="col-lg-7">
+      <div v-else class="checkout-grid">
+        <div class="checkout-form">
+          <router-link to="/cart" class="checkout-back"><i class="icon icon-arrow-left" aria-hidden="true"></i> Quay lại giỏ hàng</router-link>
+          <h1 class="co-title">Thanh toán</h1>
+          <section class="co-block">
+            <h2 class="co-h">Liên hệ</h2>
+            <label for="checkout-email" class="co-label mt-3">Email <span class="text-[#737373] font-normal">(Không bắt buộc)</span></label>
+            <input id="checkout-email" v-model="form.email" type="email" autocomplete="email" class="sg-input w-full" :class="{ 'input-error': formErrors.email }" @blur="validateForm" placeholder="you@example.com" />
+            <div v-if="formErrors.email" class="field-error">{{ formErrors.email }}</div>
+          </section>
           <!-- 1. Giao hàng -->
           <div class="co-block">
-            <h6 class="co-h"><span class="co-num">1</span> THÔNG TIN GIAO HÀNG</h6>
+            <h2 class="co-h">Giao hàng</h2>
+            <p class="co-help">Chọn địa chỉ nhận hàng đã lưu hoặc thêm địa chỉ mới cho đơn hàng.</p>
 
             <div class="mt-4">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <label class="co-label text-primary mb-0"><i class="bi bi-journal-bookmark-fill me-1"></i>SỔ ĐỊA CHỈ NHẬN HÀNG <span class="text-danger">*</span></label>
-                <button class="btn-add-quick text-danger fw-bold border-0 bg-transparent" style="font-size: 0.85rem;" @click="openAddAddress">
-                  <i class="bi bi-plus-lg"></i> Thêm địa chỉ mới
+              <div class="flex flex-wrap justify-between items-center gap-3 mb-3">
+                <span class="co-label mb-0">Địa chỉ đã lưu</span>
+                <button type="button" class="btn-add-quick" @click="openAddAddress">
+                  <i class="icon icon-plus-lg"></i> Thêm địa chỉ mới
                 </button>
               </div>
-              <select v-model="selectedAddressId" class="sg-input w-100 bg-light fw-semibold text-dark" :disabled="addressesLoading">
-                <option v-if="addressesLoading" :value="null" disabled>Đang tải sổ địa chỉ…</option>
-                <option v-else :value="null" disabled>-- Chọn địa chỉ đã lưu trong sổ --</option>
-                <option v-for="a in savedAddresses" :key="a.id" :value="a.id">
-                  {{ a.recipient || a.fullName }} - {{ a.phone }} ({{ formatAddress(a) }}) {{ a.isDefault ? ' [Mặc định]' : '' }}
-                </option>
-              </select>
+              <p v-if="addressesLoading" class="co-help" role="status">Đang tải sổ địa chỉ…</p>
+              <div v-else class="saved-addresses">
+                <label v-for="a in savedAddresses" :key="a.id" class="saved-address" :class="{ active: selectedAddressId === a.id }">
+                  <input v-model="selectedAddressId" type="radio" name="shipping-address" :value="a.id" />
+                  <span class="min-w-0">
+                    <span class="flex flex-wrap items-center gap-2"><strong>{{ a.recipient || a.fullName }} · {{ a.phone }}</strong><span v-if="a.isDefault" class="address-default">Mặc định</span></span>
+                    <span class="block text-xs text-[#737373] mt-1">{{ formatAddress(a) }}</span>
+                  </span>
+                </label>
+              </div>
             </div>
 
             <!-- Preview địa chỉ -->
-            <div v-if="selectedAddress" class="mt-3 p-3 rounded" style="background: #f8fafc; border: 1px solid #e2e8f0;">
-                <div class="d-flex align-items-center gap-2 mb-1">
-                  <strong class="text-dark">{{ selectedAddress.recipient || selectedAddress.fullName }}</strong>
-                  <span class="text-muted">|</span>
-                  <span class="text-dark">{{ selectedAddress.phone }}</span>
-                  <span v-if="selectedAddress.isDefault" class="badge bg-dark ms-2" style="font-size: 0.65rem;">Mặc định</span>
-                </div>
-                <div class="text-secondary small">
-                  {{ formatAddress(selectedAddress) }}
-                </div>
-            </div>
-            <div v-else class="text-danger mt-2 small">Vui lòng chọn hoặc thêm địa chỉ nhận hàng.</div>
+            <div v-if="!selectedAddress && !addressesLoading" class="co-help mt-2">Vui lòng chọn hoặc thêm địa chỉ nhận hàng.</div>
 
             <!-- Email & Ghi chú -->
-            <div class="row g-4 mt-1">
-              <div class="col-md-6">
-                <label class="co-label">EMAIL <span class="text-muted fw-normal">(Không bắt buộc)</span></label>
-                <input v-model="form.email" type="email" class="sg-input w-100" :class="{ 'input-error': formErrors.email }" @blur="validateForm" placeholder="you@example.com" />
-                <div v-if="formErrors.email" class="field-error">{{ formErrors.email }}</div>
-              </div>
-
-              <div class="col-12">
-                <label class="co-label">GHI CHÚ GIAO HÀNG <span class="text-muted fw-normal">(Không bắt buộc)</span></label>
-                <textarea v-model="form.note" class="sg-input w-100" rows="2" placeholder="Ghi chú giao hàng cho shipper hoặc cửa hàng..."></textarea>
+            <div class="grid grid-cols-12 gap-4 mt-5">
+              <div class="col-span-12">
+                <label for="checkout-note" class="co-label">Ghi chú giao hàng <span class="text-[#737373] font-normal">(Không bắt buộc)</span></label>
+                <textarea id="checkout-note" v-model="form.note" class="sg-input w-full" rows="2" placeholder="Ghi chú giao hàng cho shipper hoặc cửa hàng..."></textarea>
               </div>
             </div>
 
             <!-- Bản đồ -->
             <div v-if="addressVerified" class="map-wrap mt-4">
-              <iframe :src="mapUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+              <iframe :src="mapUrl" title="Vị trí giao hàng" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
             </div>
           </div>
 
           <!-- 2. Vận chuyển -->
           <div class="co-block">
-            <h6 class="co-h"><span class="co-num">2</span> PHƯƠNG THỨC VẬN CHUYỂN</h6>
+            <h2 class="co-h">Phương thức vận chuyển</h2>
             <div v-if="shippingQuoteError" class="shipping-quote-warning mt-3">
-              <i class="bi bi-info-circle me-1"></i>{{ shippingQuoteError }}
+              <i class="icon icon-info-circle mr-1"></i>{{ shippingQuoteError }}
             </div>
             <div class="ship-grid mt-4">
               <label v-for="m in shippingMethods" :key="m.code" class="ship-opt" :class="{ active: shippingCode === m.code }">
-                <input type="radio" :value="m.code" v-model="shippingCode" hidden />
-                <div class="flex-grow-1">
+                <input class="choice-radio" type="radio" name="shipping-method" :value="m.code" v-model="shippingCode" />
+                <div class="grow">
                   <div class="ship-name">{{ m.name }}</div>
                   <div class="ship-desc">{{ m.desc }}</div>
                   <div class="ship-eta">Dự kiến: {{ shippingQuotes[m.code]?.eta || m.eta }}</div>
                   <div v-if="shippingDistance(m)" class="ship-distance">
-                    <i class="bi bi-geo-alt me-1"></i>{{ shippingDistance(m) }} từ kho Hai Bà Trưng, Hà Nội
+                    <i class="icon icon-geo-alt mr-1"></i>{{ shippingDistance(m) }} từ kho Hai Bà Trưng, Hà Nội
                   </div>
-                  <div v-else-if="shippingLoading" class="ship-distance text-muted">
-                    <i class="bi bi-arrow-repeat me-1"></i>Đang tính theo địa chỉ…
+                  <div v-else-if="shippingLoading" class="ship-distance text-gray-500">
+                    <i class="icon icon-arrow-repeat mr-1"></i>Đang tính theo địa chỉ…
                   </div>
                 </div>
                 <div class="ship-fee">{{ formatCurrency(shippingPrice(m)) }}</div>
-                <div class="ship-check"></div>
               </label>
             </div>
           </div>
 
           <!-- 3. Thanh toán -->
           <div class="co-block">
-            <h6 class="co-h"><span class="co-num">3</span> PHƯƠNG THỨC THANH TOÁN</h6>
+            <h2 class="co-h">Thanh toán</h2>
             <div class="pay-grid mt-4">
               <label v-for="p in payments" :key="p.code" class="pay-opt" :class="{ active: paymentCode === p.code }">
-                <input type="radio" :value="p.code" v-model="paymentCode" hidden />
-                <div class="flex-grow-1">
+                <input class="choice-radio" type="radio" name="payment-method" :value="p.code" v-model="paymentCode" />
+                <div class="grow">
                   <div class="pay-name">{{ p.name }}</div>
                   <div class="pay-desc">{{ p.desc }}</div>
                 </div>
-                <div class="pay-check"></div>
               </label>
             </div>
           </div>
+          <button type="button" class="checkout-submit" :disabled="placing" @click="placeOrder">
+            {{ placing ? 'Đang xử lý…' : 'Đặt hàng' }}
+          </button>
         </div>
 
         <!-- Tóm tắt đơn hàng -->
-        <div class="col-lg-5">
+        <aside class="checkout-summary" aria-label="Tóm tắt đơn hàng">
           <div class="co-summary-box">
-            <h6 class="summary-title">ĐƠN HÀNG ({{ cartCount }})</h6>
+            <h2 class="summary-title">Đơn hàng ({{ cartCount }})</h2>
 
             <div class="co-items mt-4">
               <div class="co-item" v-for="item in cartItems" :key="item.id_product_detail">
@@ -765,7 +758,7 @@ const placeOrder = async () => {
                   </div>
                   <span class="co-qty">{{ item.quantity }}</span>
                 </div>
-                <div class="flex-grow-1">
+                <div class="grow min-w-0">
                   <div class="co-item-name">{{ item.product?.product_name }}</div>
                   <div class="co-item-attr">Size {{ item.size?.size_name || item.size }} · {{ item.color?.color_label || item.color?.color_name || item.color }}</div>
                 </div>
@@ -788,16 +781,16 @@ const placeOrder = async () => {
                   :aria-expanded="showCouponInput"
                   aria-label="Nhập mã giảm giá khác"
                   title="Nhập mã giảm giá khác"
-                ><i class="bi" :class="showCouponInput ? 'bi-dash-lg' : 'bi-plus-lg'"></i></button>
+                ><i class="icon" :class="showCouponInput ? 'icon-dash-lg' : 'icon-plus-lg'"></i></button>
               </div>
 
               <div v-if="appliedCoupon" class="coupon-applied mt-3">
                 <div class="ca-info">
-                  <div class="ca-status"><i class="bi bi-check-circle-fill"></i> Đã áp dụng</div>
+                  <div class="ca-status"><i class="icon icon-check-circle-fill"></i> Đã áp dụng</div>
                   <span class="ca-code">{{ appliedCoupon.code }}</span>
                   <span class="ca-desc">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
                 </div>
-                <button type="button" class="ca-remove" @click="removeCoupon" aria-label="Bỏ mã giảm giá"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="ca-remove" @click="removeCoupon" aria-label="Bỏ mã giảm giá"><i class="icon icon-x-lg"></i></button>
               </div>
 
               <div v-if="couponsLoading" class="coupon-loading mt-3">Đang tải ưu đãi...</div>
@@ -828,14 +821,14 @@ const placeOrder = async () => {
               <div v-if="showCouponInput" class="coupon-input-box mt-3">
                 <div class="coupon-input-label">Nhập mã bạn có</div>
                 <div class="coupon-input-row">
-                  <input v-model="couponCode" class="sg-input flex-grow-1 uppercase" placeholder="Nhập mã..." @keyup.enter="applyCoupon" />
+                  <input v-model="couponCode" class="sg-input grow uppercase" placeholder="Nhập mã..." @keyup.enter="applyCoupon" />
                   <button type="button" class="btn-sg-outline" @click="applyCoupon" :disabled="couponsLoading">
                     {{ couponsLoading ? '...' : 'ÁP DỤNG' }}
                   </button>
                 </div>
               </div>
 
-              <div v-if="couponError" class="text-danger mt-2 small-error">{{ couponError }}</div>
+              <div v-if="couponError" class="text-red-600 mt-2 small-error">{{ couponError }}</div>
             </div>
 
             <hr class="summary-divider mt-4" />
@@ -848,7 +841,7 @@ const placeOrder = async () => {
               <span>Phí vận chuyển</span>
               <span>{{ formatCurrency(shippingFee) }}</span>
             </div>
-            <div v-if="appliedCoupon" class="sum-row text-success">
+            <div v-if="appliedCoupon" class="sum-row text-green-600">
               <span>Giảm giá ({{ appliedCoupon.code }})</span>
               <span>-{{ formatCurrency(discountAmount) }}</span>
             </div>
@@ -860,15 +853,12 @@ const placeOrder = async () => {
             <hr class="summary-divider" />
 
             <div class="sum-row total">
-              <span>TỔNG THANH TOÁN</span>
+              <span>Tổng</span>
               <strong>{{ formatCurrency(total) }}</strong>
             </div>
 
-            <button class="btn-sg-warm w-100 mt-4" :disabled="placing" @click="placeOrder">
-              {{ placing ? 'ĐANG XỬ LÝ...' : 'ĐẶT HÀNG' }}
-            </button>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
 
@@ -876,21 +866,21 @@ const placeOrder = async () => {
     <transition name="suc">
       <div v-if="addrModal.open" class="modal-overlay" @click.self="addrModal.open = false">
         <div class="sg-card modal-box">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">Thêm địa chỉ mới</h5>
-            <button class="btn-close-modal" @click="addrModal.open = false"><i class="bi bi-x-lg"></i></button>
+          <div class="flex justify-between items-center mb-3">
+            <h5 class="font-bold mb-0">Thêm địa chỉ mới</h5>
+            <button class="btn-close-modal" @click="addrModal.open = false"><i class="icon icon-x-lg"></i></button>
           </div>
 
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="co-label">Tên người nhận <span class="text-danger">*</span></label>
-              <input v-model="addrModal.recipient" class="sg-input w-100" placeholder="Ví dụ: Nguyễn Văn A">
+          <div class="grid grid-cols-12 gap-3">
+            <div class="col-span-12 md:col-span-6">
+              <label class="co-label">Tên người nhận <span class="text-red-600">*</span></label>
+              <input v-model="addrModal.recipient" class="sg-input w-full" placeholder="Ví dụ: Nguyễn Văn A">
             </div>
-            <div class="col-md-6">
-              <label class="co-label">Số điện thoại <span class="text-danger">*</span></label>
+            <div class="col-span-12 md:col-span-6">
+              <label class="co-label">Số điện thoại <span class="text-red-600">*</span></label>
               <input
                 v-model="addrModal.phone"
-                class="sg-input w-100"
+                class="sg-input w-full"
                 maxlength="10"
                 placeholder="Ví dụ: 0901234567"
                 @input="addrModal.phone = addrModal.phone.replace(/[^0-9]/g, '')"
@@ -898,19 +888,19 @@ const placeOrder = async () => {
             </div>
 
             <!-- Tỉnh / Thành phố (Có tìm kiếm) -->
-            <div class="col-md-6 position-relative">
-              <label class="co-label">Tỉnh / Thành phố <span class="text-danger">*</span></label>
+            <div class="col-span-12 md:col-span-6 relative">
+              <label class="co-label">Tỉnh / Thành phố <span class="text-red-600">*</span></label>
               <div class="search-input-wrapper">
                 <input
                   type="text"
                   v-model="searchProvince"
-                  class="sg-input w-100 pe-4"
+                  class="sg-input w-full pr-4"
                   placeholder="Nhập để tìm Tỉnh/TP..."
                   @focus="showProvinceDropdown = true"
                   @blur="showProvinceDropdown = false"
                   @input="showProvinceDropdown = true; addrModal.provinceId = ''"
                 />
-                <i class="bi bi-chevron-down select-arrow"></i>
+                <i class="icon icon-chevron-down select-arrow"></i>
               </div>
 
               <!-- Dropdown gợi ý Tỉnh/TP -->
@@ -930,20 +920,20 @@ const placeOrder = async () => {
             </div>
 
             <!-- Phường / Xã (Có tìm kiếm) -->
-            <div class="col-md-6 position-relative">
-              <label class="co-label">Phường / Xã <span class="text-danger">*</span></label>
+            <div class="col-span-12 md:col-span-6 relative">
+              <label class="co-label">Phường / Xã <span class="text-red-600">*</span></label>
               <div class="search-input-wrapper">
                 <input
                   type="text"
                   v-model="searchCommune"
-                  class="sg-input w-100 pe-4"
+                  class="sg-input w-full pr-4"
                   :disabled="!addrModal.provinceId || loadingCommunes"
                   :placeholder="loadingCommunes ? 'Đang tải dữ liệu...' : 'Nhập để tìm Phường/Xã...'"
                   @focus="showCommuneDropdown = true"
                   @blur="showCommuneDropdown = false"
                   @input="showCommuneDropdown = true; addrModal.communeId = ''"
                 />
-                <i class="bi bi-chevron-down select-arrow"></i>
+                <i class="icon icon-chevron-down select-arrow"></i>
               </div>
 
               <!-- Dropdown gợi ý Phường/Xã -->
@@ -963,23 +953,23 @@ const placeOrder = async () => {
             </div>
 
             <!-- Địa chỉ cụ thể -->
-            <div class="col-12">
-              <label class="co-label">Số nhà, ngõ, tên đường <span class="text-danger">*</span></label>
-              <input v-model="addrModal.line" class="sg-input w-100" placeholder="Ví dụ: Số 123 Đường Cầu Giấy">
+            <div class="col-span-12">
+              <label class="co-label">Số nhà, ngõ, tên đường <span class="text-red-600">*</span></label>
+              <input v-model="addrModal.line" class="sg-input w-full" placeholder="Ví dụ: Số 123 Đường Cầu Giấy">
             </div>
 
-            <div class="col-12">
+            <div class="col-span-12">
               <label class="check-row">
                 <input type="checkbox" v-model="addrModal.isDefault">
-                <span class="fw-semibold">Lưu làm địa chỉ nhận hàng mặc định</span>
+                <span class="font-semibold">Lưu làm địa chỉ nhận hàng mặc định</span>
               </label>
             </div>
           </div>
 
-          <div class="d-flex gap-2 mt-4 justify-content-end">
+          <div class="flex gap-2 mt-4 justify-end">
             <button class="btn-sg-outline" @click="addrModal.open = false">Hủy bỏ</button>
             <button class="btn-sg" :disabled="addressSaving" @click="saveNewAddress">
-              <i class="bi bi-save me-1"></i>{{ addressSaving ? 'Đang lưu…' : 'Lưu & Chọn' }}
+              <i class="icon icon-save mr-1"></i>{{ addressSaving ? 'Đang lưu…' : 'Lưu & Chọn' }}
             </button>
           </div>
         </div>
@@ -990,14 +980,14 @@ const placeOrder = async () => {
     <transition name="suc">
       <div v-if="payModal.open" class="modal-overlay" @click.self="payLater">
         <div class="sg-card modal-box text-center">
-          <h5 class="fw-bold mb-2">Thanh toán đơn hàng</h5>
-          <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
+          <h5 class="font-bold mb-2">Thanh toán đơn hàng</h5>
+          <p class="text-gray-600 mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" />
-          <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
-          <div class="d-flex flex-column gap-2">
-            <button class="btn-sg-warm w-100" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="btn-sg-outline w-100" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
+          <h4 class="font-semibold text-[#0E0E0E] mb-4">{{ formatCurrency(payModal.total) }}</h4>
+          <p class="text-gray-600 text-sm mb-4">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
+          <div class="flex flex-col gap-2">
+            <button class="btn-sg-warm w-full" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
+            <button class="btn-sg-outline w-full" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
           </div>
         </div>
       </div>
@@ -1078,7 +1068,7 @@ const placeOrder = async () => {
 .coupon-card-main { display: flex; flex-direction: column; min-width: 0; flex: 1; padding: 11px 12px; }
 .coupon-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .coupon-code { font-size: .84rem; letter-spacing: .05em; }
-.coupon-value { flex: 0 0 auto; color: #d73939; font-size: .76rem; font-weight: 900; }
+.coupon-value { flex: 0 0 auto; color: #0E0E0E; font-size: .76rem; font-weight: 900; }
 .coupon-name { margin-top: 4px; font-size: .8rem; font-weight: 700; color: #27313b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .coupon-description { margin-top: 3px; color: #6b7280; font-size: .72rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .coupon-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; color: #8a8f98; font-size: .68rem; line-height: 1.3; }
@@ -1101,7 +1091,6 @@ const placeOrder = async () => {
 .check-row input { width: 16px; height: 16px; accent-color: #0A0A0A; cursor: pointer; }
 
 /* Styles cho Dropdown tìm kiếm thông minh */
-.position-relative { position: relative; }
 .search-input-wrapper { position: relative; display: flex; align-items: center; }
 .search-input-wrapper input { width: 100%; }
 .select-arrow { position: absolute; right: 12px; pointer-events: none; font-size: 0.75rem; color: #888; }
@@ -1150,9 +1139,50 @@ const placeOrder = async () => {
 .suc-enter-from, .suc-leave-to { opacity: 0; }
 
 /* ——— Checkout chuyên nghiệp đen/trắng bo góc ——— */
-:deep(.sg-input) { border-radius: 10px !important; }
-:deep(.btn-sg), :deep(.btn-sg-warm) { border-radius: 12px !important; background: #0A0A0A !important; border-color: #0A0A0A !important; color: #fff !important; }
+:deep(.sg-input) { border-radius: 8px; }
+:deep(.btn-sg), :deep(.btn-sg-warm) { border-radius: 8px; background: #0E0E0E; border-color: #0E0E0E; color: #fff; }
 :deep(.btn-sg:hover), :deep(.btn-sg-warm:hover) { background: #000 !important; }
-:deep(.btn-sg-outline) { border-radius: 10px !important; border-color: #0A0A0A !important; color: #0A0A0A !important; }
+:deep(.btn-sg-outline) { border-radius: 8px; border-color: #0E0E0E; color: #0E0E0E; }
 :deep(.btn-sg-outline:hover) { background: #0A0A0A !important; color: #fff !important; }
+
+/* Figma checkout layout */
+.checkout-page { background: #fff; }
+.page-container { width: 100%; max-width: 1180px; margin: 0 auto; }
+.checkout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.checkout-form { min-width: 0; padding: 40px; border-right: 1px solid #E5E5E5; }
+.checkout-back { display: inline-flex; align-items: center; gap: 8px; color: #737373; font-size: 13px; text-decoration: none; margin-bottom: 28px; }
+.checkout-back:hover { color: #0E0E0E; }
+.checkout-page .co-title { font-family: "Fraunces", Georgia, serif; text-transform: none; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -.04em; font-weight: 600; margin-bottom: 36px; }
+.checkout-page .co-block { margin-bottom: 40px; }
+.checkout-page .co-h { font-family: "Fraunces", Georgia, serif; text-transform: none; font-size: 1.45rem; letter-spacing: -.025em; border: 0; padding: 0; color: #0E0E0E; }
+.co-help { color: #737373; font-size: 13px; line-height: 1.5; margin: 7px 0 0; }
+.btn-add-quick { border: 0; background: transparent; color: #0E0E0E; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.saved-addresses { display: grid; gap: 10px; }
+.saved-address { display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; border: 1px solid #E5E5E5; border-radius: 8px; cursor: pointer; transition: border-color .2s, background .2s; }
+.saved-address:hover, .saved-address.active { border-color: #0E0E0E; background: #FAFAFA; }
+.saved-address input, .choice-radio { margin-top: 3px; accent-color: #0E0E0E; flex: 0 0 auto; }
+.choice-radio { appearance: none; width: 16px; height: 16px; border: 1.5px solid #D4D4D4; border-radius: 50%; background: #fff; position: relative; }
+.choice-radio:checked { border: 5px solid #0E0E0E; }
+.address-default { color: #fff; background: #0E0E0E; padding: 3px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+.ship-opt, .pay-opt { border-radius: 8px; padding: 16px; }
+.ship-opt.active, .pay-opt.active { padding: 16px; border-width: 1px; background: #FAFAFA; }
+.ship-opt .choice-radio, .pay-opt .choice-radio { width: 16px; height: 16px; }
+.ship-check, .pay-check { display: none; }
+.checkout-summary { order: 2; min-width: 0; padding: 40px; background: #FAFAFA; }
+.co-summary-box { top: 92px; background: transparent; border: 0; border-radius: 0; padding: 0; }
+.summary-title { font-family: "Fraunces", Georgia, serif; text-transform: uppercase; letter-spacing: -.01em; font-size: 1.2rem; }
+.checkout-submit { width: 100%; margin-top: -8px; border: 0; border-radius: 8px; padding: 16px 24px; background: #0E0E0E; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .2s; }
+.checkout-submit:hover { background: #333; }
+.checkout-submit:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 1023px) {
+  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-summary { order: -1; }
+  .checkout-form { border-right: 0; }
+  .co-summary-box { position: static; }
+}
+@media (max-width: 640px) {
+  .checkout-form, .checkout-summary { padding: 32px 24px; }
+  .checkout-page .co-title { margin-bottom: 28px; }
+  .checkout-page .co-block { margin-bottom: 32px; }
+}
 </style>

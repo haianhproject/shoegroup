@@ -1,22 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  --font-display: "Fraunces", serif;
+  --font-body: "Be Vietnam Pro", sans-serif;
+  --color-background: #FFFFFF;
+  --color-foreground: #0E0E0E;
+  --color-secondary: #F0F0F0;
+  --color-muted: #D4D4D4;
+  --color-muted-foreground: #737373;
+  --color-border: #E5E5E5;
+  --radius: 4px;
+}
 /* =====================================================================
-   ShoeGroup - Premium Minimal Design System (Lululemon-Inspired)
+   ShoeGroup - Figma Design System
    ===================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap');
 
 :root {
   /* Neutral Palette */
-  --sg-ink:       #0A0A0A;
+  --sg-ink:       #0E0E0E;
   --sg-ink-2:     #333333;
-  --sg-muted:     #6B6B6B;
+  --sg-muted:     #737373;
   --sg-line:      #E5E5E5;
   --sg-surface:   #FFFFFF;
-  --sg-canvas:    #FAFAFA;
-  --sg-soft:      #F5F5F5;
+  --sg-canvas:    #FFFFFF;
+  --sg-soft:      #F0F0F0;
 
   /* Brand - Minimal (Black, White, Red) */
   --sg-navy:       #0A0A0A;
   --sg-blue:       #0A0A0A;
+  --sg-blue-700:   #0E0E0E;
   --sg-red:        #D4001A;
   --sg-orange:     #D4001A;
   --sg-orange-600: #B80017;
@@ -24,6 +38,7 @@
   /* Gradients - NONE, use solid colors */
   --sg-grad-primary: #0A0A0A;
   --sg-grad-warm:    #D4001A;
+  --sg-grad-hero:    #FFFFFF;
 
   /* Radii - Sharp, minimal */
   --sg-r-sm: 4px;
@@ -49,21 +64,21 @@ html { scroll-behavior: smooth; }
 body {
   background-color: #fff;
   color: var(--sg-ink);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
 }
 
 /* ---- Typography nhất quán ---- */
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
   font-weight: 900;
   letter-spacing: -0.025em;
   line-height: 1.15;
   color: var(--sg-ink);
 }
 p, span, li, td, th, label, input, select, textarea, button {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
 }
 
 /* ---------- Utilities ---------- */
@@ -189,6 +204,113 @@ p, span, li, td, th, label, input, select, textarea, button {
   outline: none;
   border-color: var(--sg-ink);
 }
+
+/* Figma customer design system. The customer shell is the single visual
+   contract for every route; admin pages keep their own workspace theme. */
+.figma-customer-shell {
+  --figma-ink: #0E0E0E;
+  --figma-muted: #737373;
+  --figma-line: #E5E5E5;
+  --figma-surface: #F0F0F0;
+  --figma-radius-sm: 4px;
+  --figma-radius-md: 12px;
+  --figma-radius-lg: 16px;
+  --figma-shadow: 0 12px 40px -20px rgba(0, 0, 0, .22);
+  font-family: "Be Vietnam Pro", sans-serif;
+}
+.figma-customer-shell .figma-display,
+.figma-customer-shell h1,
+.figma-customer-shell h2,
+.figma-customer-shell h3,
+.figma-customer-shell h4,
+.figma-customer-shell h5,
+.figma-customer-shell h6 {
+  font-family: "Fraunces", Georgia, serif;
+  letter-spacing: -.025em;
+}
+.figma-customer-shell input,
+.figma-customer-shell select,
+.figma-customer-shell textarea,
+.figma-customer-shell button {
+  font-family: "Be Vietnam Pro", sans-serif;
+}
+.figma-customer-shell .products-page,
+.figma-customer-shell .wallet-page,
+.figma-customer-shell .orders-page,
+.figma-customer-shell .return-page,
+.figma-customer-shell .about-page,
+.figma-customer-shell .contact-page,
+.figma-customer-shell .success-page {
+  background: #FFFFFF;
+  min-height: calc(100vh - 69px);
+}
+.figma-customer-shell .products-page > .w-full,
+.figma-customer-shell .wallet-page > .w-full,
+.figma-customer-shell .orders-page > .w-full,
+.figma-customer-shell .return-page > .w-full,
+.figma-customer-shell .about-page > .w-full,
+.figma-customer-shell .contact-page > .w-full,
+.figma-customer-shell .success-page > .w-full {
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 4vw, 48px);
+  padding-block: 36px 64px;
+}
+.figma-customer-shell .page-title,
+.figma-customer-shell .detail-name,
+.figma-customer-shell .wallet-title,
+.figma-customer-shell .success-title {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+.figma-customer-shell .sg-card,
+.figma-customer-shell .filter-panel,
+.figma-customer-shell .wallet-panel,
+.figma-customer-shell .address-card {
+  border-color: var(--figma-line);
+  border-radius: var(--figma-radius-md);
+  box-shadow: none;
+}
+.figma-customer-shell .sg-input,
+.figma-customer-shell .auth-input,
+.figma-customer-shell select,
+.figma-customer-shell textarea {
+  border-color: var(--figma-line);
+  border-radius: var(--figma-radius-sm);
+}
+.figma-customer-shell .auth-page {
+  min-height: calc(100vh - 69px);
+  background: #FFFFFF;
+}
+.figma-customer-shell .auth-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; letter-spacing: -.02em; }
+@media (max-width: 767px) {
+  .figma-customer-shell .products-page > .w-full,
+  .figma-customer-shell .wallet-page > .w-full,
+  .figma-customer-shell .orders-page > .w-full,
+  .figma-customer-shell .return-page > .w-full,
+  .figma-customer-shell .about-page > .w-full,
+  .figma-customer-shell .contact-page > .w-full,
+  .figma-customer-shell .success-page > .w-full {
+    padding-top: 24px;
+    padding-bottom: 44px;
+  }
+}
+
+/* Loading indicators used across customer and admin views. */
+.sg-spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid rgba(10, 10, 10, .18);
+  border-top-color: var(--sg-ink);
+  border-radius: 999px;
+  animation: sgSpin .7s linear infinite;
+  vertical-align: -.2em;
+}
+.sg-spinner-sm { width: .9rem; height: .9rem; border-width: 1.5px; }
+@keyframes sgSpin { to { transform: rotate(360deg); } }
 
 /* ---------- Animations ---------- */
 .fade-in-up { opacity: 0; animation: sgFadeInUp 0.5s ease forwards; }

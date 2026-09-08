@@ -57,7 +57,7 @@ admin/
    ```bash
    npm install vue-router chart.js
    ```
-   Bootstrap 5 + bootstrap-icons vẫn dùng như dự án gốc (bootstrap-icons được import sẵn trong `admin-theme.css`).
+   Admin UI uses the shared Tailwind design system and local icon styles.
 
 ## Ghi chú
 

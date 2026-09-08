@@ -4,11 +4,11 @@
 import { uiState, dismissNotify } from '../stores/uiStore'
 
 const icon = (type) => ({
-  success: 'bi-check-circle-fill',
-  error: 'bi-x-circle-fill',
-  warning: 'bi-exclamation-triangle-fill',
-  info: 'bi-info-circle-fill',
-}[type] || 'bi-info-circle-fill')
+  success: 'icon-check-circle-fill',
+  error: 'icon-x-circle-fill',
+  warning: 'icon-exclamation-triangle-fill',
+  info: 'icon-info-circle-fill',
+}[type] || 'icon-info-circle-fill')
 </script>
 
 <template>
@@ -21,12 +21,12 @@ const icon = (type) => ({
         :class="`cn-${n.type}`"
         @click="dismissNotify(n.id)"
       >
-        <div class="cn-icon"><i class="bi" :class="icon(n.type)"></i></div>
+        <div class="cn-icon"><i class="icon" :class="icon(n.type)"></i></div>
         <div class="cn-body">
           <div v-if="n.title" class="cn-title">{{ n.title }}</div>
           <div class="cn-msg">{{ n.message }}</div>
         </div>
-        <button class="cn-close" @click.stop="dismissNotify(n.id)"><i class="bi bi-x"></i></button>
+        <button class="cn-close" @click.stop="dismissNotify(n.id)"><i class="icon icon-x"></i></button>
       </div>
     </transition-group>
   </div>

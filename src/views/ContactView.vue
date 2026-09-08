@@ -12,33 +12,33 @@ onMounted(() => {
     <section class="contact-hero">
       <img src="https://images.unsplash.com/photo-1556906781-9a412961c28c?auto=format&fit=crop&q=80&w=2000" alt="ShoeGroup HQ" class="hero-bg">
       <div class="hero-overlay"></div>
-      <div class="container-fluid px-4 hero-content fade-in-up">
+      <div class="w-full px-4 hero-content fade-in-up">
         <h1 class="display-title">LIÊN HỆ CHÚNG TÔI</h1>
         <p class="hero-sub">Trụ sở không gian mở tại trung tâm mua sắm hàng đầu. Chúng tôi luôn sẵn sàng lắng nghe và hỗ trợ bạn mọi lúc, mọi nơi.</p>
       </div>
     </section>
 
     <!-- Main Content -->
-    <section class="container-fluid px-4 py-5" style="margin-top: -80px; position: relative; z-index: 10; max-width: 1200px;">
-      <div class="row g-5">
+    <section class="w-full px-4 py-5" style="margin-top: -80px; position: relative; z-index: 10; max-width: 1200px;">
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <!-- Info Cards -->
-        <div class="col-lg-5 fade-in-up" style="animation-delay: 0.1s">
+        <div class="lg:col-span-5 fade-in-up" style="animation-delay: 0.1s">
           <div class="info-card mb-4">
-            <div class="icon-wrap"><i class="bi bi-geo-alt"></i></div>
+            <div class="icon-wrap"><i class="icon icon-geo-alt"></i></div>
             <div>
               <h4 class="info-title">Trụ sở chính</h4>
               <p class="info-text">Tầng 99, Tháp ShoeGroup Landmark, Quận 1, TP. HCM</p>
             </div>
           </div>
           <div class="info-card mb-4">
-            <div class="icon-wrap"><i class="bi bi-headset"></i></div>
+            <div class="icon-wrap"><i class="icon icon-headset"></i></div>
             <div>
               <h4 class="info-title">Hotline hỗ trợ</h4>
               <p class="info-text">Zalo/Phone: <strong>0375.990.871</strong><br>(Phục vụ 24/7)</p>
             </div>
           </div>
           <div class="info-card">
-            <div class="icon-wrap"><i class="bi bi-envelope"></i></div>
+            <div class="icon-wrap"><i class="icon icon-envelope"></i></div>
             <div>
               <h4 class="info-title">Email phản hồi</h4>
               <p class="info-text">contact@shoegroup.vn</p>
@@ -47,26 +47,26 @@ onMounted(() => {
         </div>
 
         <!-- Minimal Form -->
-        <div class="col-lg-7 fade-in-up" style="animation-delay: 0.3s">
+        <div class="lg:col-span-7 fade-in-up" style="animation-delay: 0.3s">
           <div class="contact-form">
             <h3 class="form-title mb-4">GỬI TIN NHẮN CHO CHÚNG TÔI</h3>
             <div class="sg-title-bar mb-4"></div>
             <form @submit.prevent>
-              <div class="row g-4">
-                <div class="col-md-6">
-                  <label class="form-label">HỌ VÀ TÊN</label>
-                  <input type="text" class="sg-input w-100" placeholder="Nguyễn Văn A">
+              <div class="grid grid-cols-12 gap-4">
+                <div class="col-span-12 md:col-span-6">
+                  <label class="block text-sm font-medium">HỌ VÀ TÊN</label>
+                  <input type="text" class="sg-input w-full" placeholder="Nguyễn Văn A">
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label">EMAIL HOẶC SỐ ĐIỆN THOẠI</label>
-                  <input type="text" class="sg-input w-100" placeholder="you@example.com">
+                <div class="col-span-12 md:col-span-6">
+                  <label class="block text-sm font-medium">EMAIL HOẶC SỐ ĐIỆN THOẠI</label>
+                  <input type="text" class="sg-input w-full" placeholder="you@example.com">
                 </div>
-                <div class="col-12">
-                  <label class="form-label">NỘI DUNG</label>
-                  <textarea class="sg-input w-100" rows="5" placeholder="Chia sẻ ý kiến hoặc vấn đề của bạn..."></textarea>
+                <div class="col-span-12">
+                  <label class="block text-sm font-medium">NỘI DUNG</label>
+                  <textarea class="sg-input w-full" rows="5" placeholder="Chia sẻ ý kiến hoặc vấn đề của bạn..."></textarea>
                 </div>
-                <div class="col-12 mt-4">
-                  <button type="submit" class="btn-sg w-100 py-3">GỬI TIN NHẮN</button>
+                <div class="col-span-12 mt-4">
+                  <button type="submit" class="btn-sg w-full py-3">GỬI TIN NHẮN</button>
                 </div>
               </div>
             </form>

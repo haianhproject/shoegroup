@@ -18,10 +18,8 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 
-import 'bootstrap/dist/css/bootstrap.min.css'
-import 'bootstrap/dist/js/bootstrap.bundle.min.js'
-import 'bootstrap-icons/font/bootstrap-icons.css'
 import './assets/main.css'
+import './assets/icons.css'
 
 // Vite phat su kien nay khi tai truoc module that bai (hay gap khi dev / sau khi build lai)
 // -> tu tai lai trang de tranh man hinh trang "mat trang".

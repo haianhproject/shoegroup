@@ -137,40 +137,40 @@ function transitionMessage() {
     <!-- ================= DANH SÁCH ================= -->
     <div v-if="!orderDetail.open">
       <!-- Tiêu đề -->
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+      <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
         <div>
           <p class="admin-eyebrow mb-2">Vận hành bán hàng</p>
-          <h5 class="fw-bold mb-2 text-dark">Hàng đợi thanh toán</h5>
-          <p v-if="apiErrors.length" class="text-warning-emphasis small mb-0">
+          <h5 class="font-bold mb-2 text-gray-900">Hàng đợi thanh toán</h5>
+          <p v-if="apiErrors.length" class="text-warning-emphasis text-sm mb-0">
             Hàng đợi vẫn hiển thị; một số dữ liệu phụ đang tạm thời chưa đồng bộ.
           </p>
         </div>
-        <span class="badge bg-dark text-white px-3 py-2" style="border-radius:3px;" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
+        <span class="badge bg-gray-900 text-white px-3 py-2" style="border-radius:3px;" v-text="'Tổng ' + paymentTotalCount + ' đơn'"></span>
       </div>
 
       <div class="admin-surface p-3 p-md-4">
         <!-- Tabs Online / Offline + Tìm kiếm -->
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <div class="d-flex gap-2">
-            <button @click="paymentChannel = 'Online'" class="btn btn-sm fw-medium border px-3"
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <div class="flex gap-2">
+            <button @click="paymentChannel = 'Online'" class="btn btn-sm font-medium border px-3"
               style="border-radius: 4px;"
-              :class="paymentChannel === 'Online' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">
+              :class="paymentChannel === 'Online' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'">
               Online
-              <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Online') + ')'"></span>
+              <span class="ml-1 opacity-75" v-text="'(' + countOrdersByChannel('Online') + ')'"></span>
             </button>
-            <button @click="paymentChannel = 'Offline'" class="btn btn-sm fw-medium border px-3"
+            <button @click="paymentChannel = 'Offline'" class="btn btn-sm font-medium border px-3"
               style="border-radius: 4px;"
-              :class="paymentChannel === 'Offline' ? 'btn-dark text-white border-dark' : 'btn-white text-secondary'">
+              :class="paymentChannel === 'Offline' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'">
               Tại quầy
-              <span class="ms-1 opacity-75" v-text="'(' + countOrdersByChannel('Offline') + ')'"></span>
+              <span class="ml-1 opacity-75" v-text="'(' + countOrdersByChannel('Offline') + ')'"></span>
             </button>
           </div>
-          <div class="d-flex gap-2 ms-auto">
-            <button class="btn btn-sm border px-3" :class="queueView === 'ACTIVE' ? 'btn-dark' : 'btn-white text-secondary'" @click="queueView = 'ACTIVE'">Đang xử lý</button>
-            <button class="btn btn-sm border px-3" :class="queueView === 'ALL' ? 'btn-dark' : 'btn-white text-secondary'" @click="queueView = 'ALL'">Tất cả</button>
+          <div class="flex gap-2 ml-auto">
+            <button class="btn btn-sm border px-3" :class="queueView === 'ACTIVE' ? 'btn-dark' : 'btn-white text-gray-600'" @click="queueView = 'ACTIVE'">Đang xử lý</button>
+            <button class="btn btn-sm border px-3" :class="queueView === 'ALL' ? 'btn-dark' : 'btn-white text-gray-600'" @click="queueView = 'ALL'">Tất cả</button>
           </div>
-          <div class="position-relative" style="max-width:280px;width:100%;">
-            <input v-model="paymentSearch" type="text" class="form-control form-control-sm ps-4" style="border-radius:4px;" placeholder="Tìm mã đơn / khách hàng...">
+          <div class="relative" style="max-width:280px;width:100%;">
+            <input v-model="paymentSearch" type="text" class="sg-input sg-input pl-4" style="border-radius:4px;" placeholder="Tìm mã đơn / khách hàng...">
           </div>
         </div>
 
@@ -187,7 +187,7 @@ function transitionMessage() {
         <div v-else class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
-              <tr class="text-secondary small text-uppercase bg-light">
+              <tr class="text-gray-600 text-sm uppercase bg-gray-100">
                 <th style="width:60px;">STT</th>
                 <th>Đơn hàng</th>
                 <th>Phương thức</th>
@@ -203,12 +203,12 @@ function transitionMessage() {
                   <span class="queue-no">{{ String(queueNumber(ord, index)).padStart(2, '0') }}</span>
                 </td>
                 <td>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="fw-bold text-dark small" v-text="getTrackingCode(ord)"></span>
-                    <span v-if="ord.address_changed" class="badge bg-danger text-white" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
-                    <span v-if="ord.stock_issue_status === 'NEEDS_REVIEW'" class="badge bg-warning text-dark" style="font-size:0.65rem;">Cần xử lý tồn kho</span>
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-gray-900 text-sm" v-text="getTrackingCode(ord)"></span>
+                    <span v-if="ord.address_changed" class="badge bg-red-600 text-white" style="font-size:0.65rem;">Đã đổi địa chỉ</span>
+                    <span v-if="ord.stock_issue_status === 'NEEDS_REVIEW'" class="badge bg-warning text-gray-900" style="font-size:0.65rem;">Cần xử lý tồn kho</span>
                   </div>
-                  <div class="text-secondary" style="font-size:0.78rem;">
+                  <div class="text-gray-600" style="font-size:0.78rem;">
                     <span v-text="ord.handled_by || ord.customer_name || 'Khách lẻ'"></span>
                     <span class="mx-1">|</span>
                     <span v-text="formatDate(ord.date)"></span>
@@ -229,13 +229,13 @@ function transitionMessage() {
                     :class="getOrderStatusPill(ord).cls"
                     v-text="getOrderStatusPill(ord).label"></span>
                   <div v-if="getOrderResolutionReason(ord)" class="order-reason-inline">
-                    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                    <i class="icon icon-info-circle mr-1" aria-hidden="true"></i>
                     <span v-text="getOrderResolutionReason(ord)"></span>
                   </div>
                 </td>
-                <td class="text-end fw-bold text-dark small" v-text="formatPrice(ord.total)"></td>
+                <td class="text-end font-bold text-gray-900 text-sm" v-text="formatPrice(ord.total)"></td>
                 <td class="text-end">
-                  <button @click="openOrderDetail(ord)" class="btn btn-sm btn-outline-dark fw-medium" style="border-radius:4px;">Mở đơn</button>
+                  <button @click="openOrderDetail(ord)" class="btn btn-sm btn-outline-dark font-medium" style="border-radius:4px;">Mở đơn</button>
                 </td>
               </tr>
             </tbody>
@@ -247,95 +247,95 @@ function transitionMessage() {
     <!-- ================= CHI TIẾT ================= -->
     <div v-else-if="orderDetail.order">
       <!-- Thanh tiêu đề -->
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <div class="d-flex align-items-center gap-2">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <div class="flex items-center gap-2">
           <button @click="closeOrderDetail()" class="btn btn-sm btn-light border" style="border-radius:4px;">Quay lại</button>
-          <h5 class="fw-bold mb-0 text-dark">Chi tiết đơn <span class="text-secondary fw-normal">/</span> <span v-text="getTrackingCode(orderDetail.order)"></span></h5>
+          <h5 class="font-bold mb-0 text-gray-900">Chi tiết đơn <span class="text-gray-600 font-normal">/</span> <span v-text="getTrackingCode(orderDetail.order)"></span></h5>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="flex items-center gap-2">
           <span class="badge px-3 py-2" style="border-radius:3px;font-size:0.75rem;"
             :class="getPaymentStatusPill(orderDetail.order).cls"
             v-text="getPaymentStatusPill(orderDetail.order).label"></span>
-          <button @click="printInvoice(orderDetail.order)" class="btn btn-sm btn-dark fw-medium" style="border-radius:4px;">In hóa đơn</button>
+          <button @click="printInvoice(orderDetail.order)" class="btn btn-sm btn-dark font-medium" style="border-radius:4px;">In hóa đơn</button>
         </div>
       </div>
 
       <!-- Lịch sử đơn hàng (timeline ngang) -->
       <div class="bg-white p-4 mb-3" style="border-radius:4px;">
-        <h6 class="fw-bold text-dark mb-4 small text-uppercase text-secondary">Lịch sử đơn hàng</h6>
-        <div class="d-flex justify-content-between position-relative flex-nowrap overflow-auto pb-2" style="gap:8px;">
-          <div v-for="(step, i) in buildOrderHistory(orderDetail.order)" :key="i" class="text-center position-relative flex-fill" style="min-width:100px;">
-            <div v-if="i > 0" class="position-absolute" :style="{ height: '2px', top: '18px', left: '-50%', width: '100%', background: step.done ? '#0A0A0A' : '#e5e7eb', zIndex: 0 }"></div>
-            <div class="d-flex align-items-center justify-content-center mx-auto position-relative border"
-              :class="step.done ? 'bg-dark text-white' : 'bg-white text-secondary'"
+        <h6 class="font-bold text-gray-900 mb-4 text-sm uppercase text-gray-600">Lịch sử đơn hàng</h6>
+        <div class="flex justify-between relative flex-nowrap overflow-auto pb-2" style="gap:8px;">
+          <div v-for="(step, i) in buildOrderHistory(orderDetail.order)" :key="i" class="text-center relative flex-fill" style="min-width:100px;">
+            <div v-if="i > 0" class="absolute" :style="{ height: '2px', top: '18px', left: '-50%', width: '100%', background: step.done ? '#0A0A0A' : '#e5e7eb', zIndex: 0 }"></div>
+            <div class="flex items-center justify-center mx-auto relative border"
+              :class="step.done ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'"
               style="width:36px;height:36px;z-index:1;border-radius:4px;">
-              <i class="bi" :class="step.icon"></i>
+              <i class="icon" :class="step.icon"></i>
             </div>
-            <div class="small fw-medium mt-2" style="font-size:0.78rem;" :class="step.done ? 'text-dark' : 'text-secondary'" v-text="step.label"></div>
-            <div class="text-secondary" style="font-size:0.7rem;" v-text="step.date ? formatDate(step.date) : '—'"></div>
+            <div class="text-sm font-medium mt-2" style="font-size:0.78rem;" :class="step.done ? 'text-gray-900' : 'text-gray-600'" v-text="step.label"></div>
+            <div class="text-gray-600" style="font-size:0.7rem;" v-text="step.date ? formatDate(step.date) : '—'"></div>
           </div>
         </div>
       </div>
 
-      <div class="row g-3">
+      <div class="grid grid-cols-12 gap-3">
         <!-- Thông tin đơn hàng -->
-        <div class="col-lg-8">
+        <div class="lg:col-span-8">
           <div class="bg-white p-4 mb-3" style="border-radius:4px;">
-            <h6 class="fw-bold text-dark mb-3 small text-uppercase text-secondary">Thông tin đơn hàng</h6>
-            <div class="row g-3 small">
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Mã vận đơn</span><span class="fw-medium text-dark" v-text="getTrackingCode(orderDetail.order)"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Mã lấy hàng (shipper)</span><span class="fw-medium text-dark" v-text="getShipperCode(orderDetail.order)"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Kênh bán</span><span class="fw-medium text-dark" v-text="getOrderChannel(orderDetail.order) === 'Offline' ? 'Tại quầy' : 'Online'"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Ngày tạo</span><span class="fw-medium text-dark" v-text="formatDate(orderDetail.order.date)"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Nhân viên xử lý</span><span class="fw-medium text-dark" v-text="orderDetail.order.handled_by || 'Admin'"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Khách hàng</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_name || 'Khách lẻ'"></span></div>
-              <div class="col-md-6"><span class="text-secondary d-block mb-1">Số điện thoại</span><span class="fw-medium text-dark" v-text="orderDetail.order.customer_phone || '—'"></span></div>
-              <div class="col-md-6">
-                <span class="text-secondary d-block mb-1">Địa chỉ nhận hàng</span>
-                <span class="fw-medium text-dark" v-text="orderDetail.order.customer_address || '—'"></span>
-                <span v-if="orderDetail.order.address_changed" class="badge bg-danger text-white ms-2">Đã đổi địa chỉ</span>
+            <h6 class="font-bold text-gray-900 mb-3 text-sm uppercase text-gray-600">Thông tin đơn hàng</h6>
+            <div class="grid grid-cols-12 gap-3 text-sm">
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Mã vận đơn</span><span class="font-medium text-gray-900" v-text="getTrackingCode(orderDetail.order)"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Mã lấy hàng (shipper)</span><span class="font-medium text-gray-900" v-text="getShipperCode(orderDetail.order)"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Kênh bán</span><span class="font-medium text-gray-900" v-text="getOrderChannel(orderDetail.order) === 'Offline' ? 'Tại quầy' : 'Online'"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Ngày tạo</span><span class="font-medium text-gray-900" v-text="formatDate(orderDetail.order.date)"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Nhân viên xử lý</span><span class="font-medium text-gray-900" v-text="orderDetail.order.handled_by || 'Admin'"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Khách hàng</span><span class="font-medium text-gray-900" v-text="orderDetail.order.customer_name || 'Khách lẻ'"></span></div>
+              <div class="md:col-span-6"><span class="text-gray-600 block mb-1">Số điện thoại</span><span class="font-medium text-gray-900" v-text="orderDetail.order.customer_phone || '—'"></span></div>
+              <div class="md:col-span-6">
+                <span class="text-gray-600 block mb-1">Địa chỉ nhận hàng</span>
+                <span class="font-medium text-gray-900" v-text="orderDetail.order.customer_address || '—'"></span>
+                <span v-if="orderDetail.order.address_changed" class="badge bg-red-600 text-white ml-2">Đã đổi địa chỉ</span>
               </div>
             </div>
           </div>
 
           <!-- Sản phẩm -->
           <div class="bg-white p-4" style="border-radius:4px;">
-            <h6 class="fw-bold text-dark mb-3 small text-uppercase text-secondary">Sản phẩm trong đơn</h6>
-            <div v-for="(p, idx) in orderDetail.order.products" :key="idx" class="d-flex align-items-center gap-3 py-2 border-bottom border-light">
+            <h6 class="font-bold text-gray-900 mb-3 text-sm uppercase text-gray-600">Sản phẩm trong đơn</h6>
+            <div v-for="(p, idx) in orderDetail.order.products" :key="idx" class="flex items-center gap-3 py-2 border-b border-white">
               <img :src="p.image || 'https://via.placeholder.com/44'" style="width:44px;height:44px;object-fit:cover;border-radius:2px;border:1px solid #eee;" @error="$event.target.src='https://via.placeholder.com/44'">
-              <div class="flex-grow-1">
-                <p class="fw-medium mb-0 text-dark small" v-text="p.name"></p>
-                <p class="text-secondary mb-0" style="font-size:0.78rem;"><span v-text="p.color"></span> / Size <span v-text="p.size"></span> · SL: <span v-text="p.quantity"></span></p>
+              <div class="grow">
+                <p class="font-medium mb-0 text-gray-900 text-sm" v-text="p.name"></p>
+                <p class="text-gray-600 mb-0" style="font-size:0.78rem;"><span v-text="p.color"></span> / Size <span v-text="p.size"></span> · SL: <span v-text="p.quantity"></span></p>
               </div>
-              <span class="fw-medium text-dark small" v-text="formatPrice(p.price)"></span>
+              <span class="font-medium text-gray-900 text-sm" v-text="formatPrice(p.price)"></span>
             </div>
-            <div class="d-flex justify-content-between align-items-center pt-3 mt-1">
-              <span class="text-secondary small">Tổng tiền</span>
-              <span class="fw-bolder fs-5 text-dark" v-text="formatPrice(orderDetail.order.total)"></span>
+            <div class="flex justify-between items-center pt-3 mt-1">
+              <span class="text-gray-600 text-sm">Tổng tiền</span>
+              <span class="font-extrabold text-lg text-gray-900" v-text="formatPrice(orderDetail.order.total)"></span>
             </div>
           </div>
         </div>
 
         <!-- Trạng thái & Hành động -->
-        <div class="col-lg-4">
+        <div class="lg:col-span-4">
           <div class="bg-white p-4" style="border-radius:4px;">
-            <h6 class="fw-bold text-dark mb-3 small text-uppercase text-secondary">Trạng thái</h6>
+            <h6 class="font-bold text-gray-900 mb-3 text-sm uppercase text-gray-600">Trạng thái</h6>
 
-            <div class="mb-3 pb-3 border-bottom">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="text-secondary small">Trạng thái đơn</span>
+            <div class="mb-3 pb-3 border-b">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-600 text-sm">Trạng thái đơn</span>
                 <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                   :class="getOrderStatusPill(orderDetail.order).cls"
                   v-text="getOrderStatusPill(orderDetail.order).label"></span>
               </div>
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="text-secondary small">Thanh toán</span>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-gray-600 text-sm">Thanh toán</span>
                 <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                   :class="getPaymentStatusPill(orderDetail.order).cls"
                   v-text="getPaymentStatusPill(orderDetail.order).label"></span>
               </div>
-              <div class="d-flex justify-content-between align-items-center">
-                <span class="text-secondary small">Phương thức</span>
+              <div class="flex justify-between items-center">
+                <span class="text-gray-600 text-sm">Phương thức</span>
                 <span class="badge" style="border-radius:2px;font-size:0.72rem;"
                   :class="getPaymentMethodPill(orderDetail.order.payment_method).cls"
                   v-text="getPaymentMethodPill(orderDetail.order.payment_method).code"></span>
@@ -344,33 +344,33 @@ function transitionMessage() {
 
             <div v-if="getOrderResolutionReason(orderDetail.order)" class="order-reason-alert" :class="isCancelledOrder(orderDetail.order) ? 'cancel' : 'failure'">
               <strong>
-                <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+                <i class="icon icon-exclamation-triangle mr-1" aria-hidden="true"></i>
                 <span v-text="isCancelledOrder(orderDetail.order) ? 'Lý do hủy đơn' : 'Lý do giao thất bại'"></span>
               </strong>
               <span v-text="getOrderResolutionReason(orderDetail.order)"></span>
             </div>
 
-            <div v-if="orderDetail.order.stock_issue_status === 'NEEDS_REVIEW'" class="alert alert-warning py-2 px-3 small mb-3">
+            <div v-if="orderDetail.order.stock_issue_status === 'NEEDS_REVIEW'" class="alert alert-warning py-2 px-3 text-sm mb-3">
               <strong>Cần xử lý tồn kho.</strong>
-              <span class="d-block mt-1">{{ orderDetail.order.stock_issue_reason || 'Kiểm tra lại biến thể trước khi tiếp tục xử lý.' }}</span>
-              <span class="d-block mt-1">Nếu hủy đơn, hệ thống chỉ hoàn kho một lần.</span>
+              <span class="block mt-1">{{ orderDetail.order.stock_issue_reason || 'Kiểm tra lại biến thể trước khi tiếp tục xử lý.' }}</span>
+              <span class="block mt-1">Nếu hủy đơn, hệ thống chỉ hoàn kho một lần.</span>
             </div>
 
-            <div class="mb-3 pb-3 border-bottom">
-              <p class="text-secondary mb-2" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Tiến trình đơn hàng</p>
-              <div class="d-grid gap-2">
+            <div class="mb-3 pb-3 border-b">
+              <p class="text-gray-600 mb-2" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Tiến trình đơn hàng</p>
+              <div class="grid gap-2">
                 <button v-for="act in getOrderActions(orderDetail.order)" :key="act.key"
                   @click="requestOrderAction(orderDetail.order, act)"
                   :disabled="act.locked || transitionConfirm.open || transitionConfirm.busy"
-                  class="btn btn-sm fw-medium"
+                  class="btn btn-sm font-medium"
                   style="border-radius:4px;"
                   :class="act.class"
                   v-text="act.text"></button>
-                <div v-if="getOrderActions(orderDetail.order).length === 0" class="text-secondary small text-center py-1">Đơn đã hoàn tất hoặc đã hủy.</div>
+                <div v-if="getOrderActions(orderDetail.order).length === 0" class="text-gray-600 text-sm text-center py-1">Đơn đã hoàn tất hoặc đã hủy.</div>
               </div>
             </div>
 
-            <button @click="printInvoice(orderDetail.order)" class="btn btn-dark w-100 fw-medium btn-sm" style="border-radius:4px;">In hóa đơn</button>
+            <button @click="printInvoice(orderDetail.order)" class="btn btn-dark w-full font-medium btn-sm" style="border-radius:4px;">In hóa đơn</button>
           </div>
         </div>
       </div>
@@ -379,35 +379,35 @@ function transitionMessage() {
     <Teleport to="body">
       <div
         v-if="transitionConfirm.open"
-        class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+        class="fixed top-0 left-0 w-full h-full flex items-center justify-center p-3"
         style="z-index:2050;background:rgba(10,10,10,0.62);"
         role="dialog"
         aria-modal="true"
         aria-labelledby="transition-confirm-title"
         @click.self="closeTransitionConfirm"
       >
-        <div class="bg-white border border-dark p-4 w-100" style="max-width:440px;border-radius:4px;box-shadow:0 18px 48px rgba(0,0,0,0.2);">
-          <h6 id="transition-confirm-title" class="fw-bold text-dark mb-2">Xác nhận chuyển trạng thái</h6>
-          <p class="text-secondary small mb-4" v-text="transitionMessage()"></p>
-          <div v-if="transitionConfirm.action?.menu" class="d-grid gap-2 mb-3">
+        <div class="bg-white border border-dark p-4 w-full" style="max-width:440px;border-radius:4px;box-shadow:0 18px 48px rgba(0,0,0,0.2);">
+          <h6 id="transition-confirm-title" class="font-bold text-gray-900 mb-2">Xác nhận chuyển trạng thái</h6>
+          <p class="text-gray-600 text-sm mb-4" v-text="transitionMessage()"></p>
+          <div v-if="transitionConfirm.action?.menu" class="grid gap-2 mb-3">
             <button
               v-for="option in transitionConfirm.action.menu"
               :key="option.key"
               type="button"
-              class="btn btn-sm fw-medium text-start"
+              class="btn btn-sm font-medium text-start"
               style="border-radius:4px;"
               :class="option.class"
               :disabled="transitionConfirm.busy"
               @click="chooseFailureResolution(option)"
             >{{ option.text }}</button>
-            <div class="d-flex justify-content-end mt-1">
-              <button type="button" class="btn btn-sm btn-white border border-dark text-dark px-3" :disabled="transitionConfirm.busy" @click="closeTransitionConfirm">Hủy bỏ</button>
+            <div class="flex justify-end mt-1">
+              <button type="button" class="btn btn-sm btn-white border border-dark text-gray-900 px-3" :disabled="transitionConfirm.busy" @click="closeTransitionConfirm">Hủy bỏ</button>
             </div>
           </div>
-          <div v-if="!transitionConfirm.action?.menu" class="d-flex justify-content-end gap-2">
+          <div v-if="!transitionConfirm.action?.menu" class="flex justify-end gap-2">
             <button
               type="button"
-              class="btn btn-sm btn-white border border-dark text-dark px-3"
+              class="btn btn-sm btn-white border border-dark text-gray-900 px-3"
               :disabled="transitionConfirm.busy"
               @click="closeTransitionConfirm"
             >Hủy bỏ</button>
@@ -417,7 +417,7 @@ function transitionMessage() {
               :disabled="transitionConfirm.busy"
               @click="confirmTransition"
             >
-              <span v-if="transitionConfirm.busy" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+              <span v-if="transitionConfirm.busy" class="sg-spinner sg-spinner sg-spinner-sm mr-1" aria-hidden="true"></span>
               <span v-text="transitionConfirm.busy ? 'Đang cập nhật...' : 'Xác nhận chuyển'"></span>
             </button>
           </div>

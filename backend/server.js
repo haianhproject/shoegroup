@@ -260,14 +260,16 @@ const poolConnect = pool.connect().then(async () => {
           CONSTRAINT FK_ShoeGroupWalletWithdrawals_Users FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
         );
       END;
-      IF NOT EXISTS (
+      IF EXISTS (
         SELECT 1 FROM sys.indexes
         WHERE name=N'IX_ShoeGroupWalletTransactions_ReturnRefund'
           AND object_id=OBJECT_ID(N'dbo.ShoeGroupWalletTransactions')
       )
-        CREATE UNIQUE INDEX IX_ShoeGroupWalletTransactions_ReturnRefund
-          ON dbo.ShoeGroupWalletTransactions(ReturnID, TransactionType)
-          WHERE ReturnID IS NOT NULL AND TransactionType=N'REFUND';
+        DROP INDEX IX_ShoeGroupWalletTransactions_ReturnRefund
+          ON dbo.ShoeGroupWalletTransactions;
+      CREATE UNIQUE INDEX IX_ShoeGroupWalletTransactions_ReturnRefund
+        ON dbo.ShoeGroupWalletTransactions(ReturnID, TransactionType)
+        WHERE ReturnID IS NOT NULL AND TransactionType='REFUND';
       IF NOT EXISTS (
         SELECT 1 FROM sys.indexes
         WHERE name=N'IX_ShoeGroupWalletTransactions_UserCreated'

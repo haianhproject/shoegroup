@@ -61,7 +61,7 @@ const sections = [
     items: [
       {
         to: "/admin/panel/dashboard",
-        icon: "bi-grid-1x2-fill",
+        icon: "icon-grid-1x2-fill",
         label: "Thống Kê Tổng Quan",
       },
     ],
@@ -71,21 +71,21 @@ const sections = [
     items: [
       {
         to: "/admin/panel/payments",
-        icon: "bi-credit-card-2-front-fill",
+        icon: "icon-credit-card-2-front-fill",
         label: "Xác Nhận Thanh Toán",
         badge: () => incompleteOrdersCount.value,
         badgeClass: "bg-warning text-dark",
       },
       {
         to: "/admin/panel/returns",
-        icon: "bi-arrow-return-left",
+        icon: "icon-arrow-return-left",
         label: "Trả Hàng / Đổi Trả",
         badge: () => pendingReturnsCount.value,
         badgeClass: "bg-danger",
       },
       {
         to: "/admin/panel/pos",
-        icon: "bi-shop-window",
+        icon: "icon-shop-window",
         label: "Bán Hàng Tại Quầy",
       },
     ],
@@ -95,34 +95,34 @@ const sections = [
     items: [
       {
         to: "/admin/panel/products",
-        icon: "bi-box-seam-fill",
+        icon: "icon-box-seam-fill",
         label: "Sản Phẩm",
         badge: () => activeProductCount.value,
         badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/categories",
-        icon: "bi-diagram-3-fill",
+        icon: "icon-diagram-3-fill",
         label: "Danh Mục Bộ Môn",
         badge: () => categoryCount.value,
         badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/brands",
-        icon: "bi-award-fill",
+        icon: "icon-award-fill",
         label: "Thương Hiệu",
         badge: () => brandCount.value,
         badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/materials",
-        icon: "bi-layers-fill",
+        icon: "icon-layers-fill",
         label: "Chất Liệu",
         badge: () => materialCount.value,
         badgeClass: "bg-secondary",
       },
-      { to: "/admin/panel/colors", icon: "bi-palette-fill", label: "Màu Sắc", badge: () => colorCount.value, badgeClass: "bg-secondary" },
-      { to: "/admin/panel/sizes", icon: "bi-rulers", label: "Kích Thước", badge: () => sizeCount.value, badgeClass: "bg-secondary" },
+      { to: "/admin/panel/colors", icon: "icon-palette-fill", label: "Màu Sắc", badge: () => colorCount.value, badgeClass: "bg-secondary" },
+      { to: "/admin/panel/sizes", icon: "icon-rulers", label: "Kích Thước", badge: () => sizeCount.value, badgeClass: "bg-secondary" },
     ],
   },
   {
@@ -130,14 +130,14 @@ const sections = [
     items: [
       {
         to: "/admin/panel/discounts",
-        icon: "bi-ticket-perforated-fill",
+        icon: "icon-ticket-perforated-fill",
         label: "Mã Khuyến Mãi",
         badge: () => discountCount.value,
         badgeClass: "bg-secondary",
       },
       {
         to: "/admin/panel/customers",
-        icon: "bi-people-fill",
+        icon: "icon-people-fill",
         label: "Khách Hàng (CRM)",
         badge: () => customerCount.value,
         badgeClass: "bg-secondary",
@@ -149,7 +149,7 @@ const sections = [
     items: [
       {
         to: "/admin/panel/accounts",
-        icon: "bi-shield-lock-fill",
+        icon: "icon-shield-lock-fill",
         label: "Quản Lý Tài Khoản",
       },
     ],
@@ -210,29 +210,29 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="fixed-overlay d-flex flex-column bg-light-gray font-sans"
+    class="fixed-overlay flex flex-col bg-light-gray font-sans"
     style="overflow-x: hidden"
   >
     <!-- ============ SIDEBAR ============ -->
     <aside
-      class="sidebar-left bg-sidebar text-white position-fixed top-0 start-0 h-100 d-flex flex-column transition-sidebar z-index-1050 shadow-lg"
+      class="sidebar-left bg-sidebar text-white fixed top-0 left-0 h-full flex flex-col transition-sidebar z-[1050] shadow-lg"
       :style="{
         width: '260px',
         transform: isNavOpen ? 'translateX(0)' : 'translateX(-100%)',
       }"
     >
       <div
-        class="p-4 d-flex align-items-center justify-content-center border-bottom border-secondary border-opacity-25"
+        class="p-4 flex items-center justify-center border-b border-secondary border-white/25"
         style="height: 72px"
       >
-        <div class="d-flex align-items-center gap-2">
+        <div class="flex items-center gap-2">
           <BrandLogo :size="36" :radius="4" />
-          <h3 class="fw-bolder text-uppercase m-0 tracking-wider text-white fs-5" style="font-family: 'Inter', sans-serif;">SHOE<span class="text-white">GROUP</span></h3>
+          <h3 class="font-extrabold uppercase m-0 tracking-wider text-white text-lg" style="font-family: 'Inter', sans-serif;">SHOE<span class="text-white">GROUP</span></h3>
         </div>
       </div>
 
       <div
-        class="flex-grow-1 overflow-auto py-3 px-3 list-group custom-scrollbar-dark"
+        class="grow overflow-auto py-3 px-3 list-group custom-scrollbar-dark"
       >
         <template v-for="(sec, si) in sections" :key="si">
           <p
@@ -250,11 +250,11 @@ onUnmounted(() => {
             <button
               type="button"
               @click="go(navigate)"
-              class="list-group-item border-0 mb-1 rounded-2 fw-medium custom-nav-item d-flex justify-content-between align-items-center w-100"
-              :class="isActive ? 'active-nav text-white' : 'text-secondary'"
+              class="list-group-item border-0 mb-1 rounded-2 font-medium custom-nav-item flex justify-between items-center w-full"
+              :class="isActive ? 'active-nav text-white' : 'text-gray-600'"
             >
-              <span class="d-flex align-items-center text-start">
-                <i class="bi me-2 fs-6" :class="item.icon" style="min-width: 20px;"></i>
+              <span class="flex items-center text-start">
+                <i class="icon mr-2 text-base" :class="item.icon" style="min-width: 20px;"></i>
                 <span v-text="item.label" class="lh-sm"></span>
               </span>
               <span
@@ -269,72 +269,72 @@ onUnmounted(() => {
       </div>
 
       <div
-        class="p-4 bg-sidebar-darker mt-auto border-top border-secondary border-opacity-25"
+        class="p-4 bg-sidebar-darker mt-auto border-t border-secondary border-white/25"
       >
         <button
           @click="onLogout"
-          class="btn btn-sm w-100 fw-medium py-2 d-flex align-items-center justify-content-center"
+          class="btn btn-sm w-full font-medium py-2 flex items-center justify-center"
           style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;"
         >
-          <i class="bi bi-box-arrow-right me-2"></i> Đăng Xuất
+          <i class="icon icon-box-arrow-right mr-2"></i> Đăng Xuất
         </button>
       </div>
     </aside>
 
     <!-- ============ MAIN ============ -->
     <main
-      class="flex-grow-1 transition-main d-flex flex-column bg-light-gray position-relative"
+      class="grow transition-main flex flex-col bg-light-gray relative"
       :style="{ marginLeft: isNavOpen ? '260px' : '0' }"
     >
       <header
-        class="d-flex justify-content-between align-items-center px-4 bg-white shadow-sm z-index-10 position-sticky top-0"
+        class="flex justify-between items-center px-4 bg-white shadow-sm z-10 sticky top-0"
         style="height: 72px"
       >
-        <div class="d-flex align-items-center gap-3">
+        <div class="flex items-center gap-3">
           <button
-            class="btn btn-light border d-flex align-items-center justify-content-center text-dark bg-light-gray"
+            class="btn btn-light border flex items-center justify-center text-gray-900 bg-light-gray"
             style="width: 40px; height: 40px; border-radius: 4px;"
             @click="isNavOpen = !isNavOpen"
             title="Toggle Menu"
           >
-            <i class="bi bi-list fs-4"></i>
+            <i class="icon icon-list text-xl"></i>
           </button>
           <h2
-            class="h5 mb-0 fw-bold text-dark d-none d-md-block tracking-wide"
+            class="h5 mb-0 font-bold text-gray-900 hidden md:block tracking-wide"
             v-text="activeTabTitle"
           ></h2>
         </div>
-        <div class="d-flex align-items-center gap-3">
+        <div class="flex items-center gap-3">
           <!-- Real-time indicator -->
-          <div class="d-flex align-items-center gap-2 d-none d-md-flex">
-            <span class="d-inline-block" style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite;" title="Tự động đồng bộ với hệ thống"></span>
-            <span class="text-secondary" style="font-size:0.72rem;">Dữ liệu trực tiếp</span>
+          <div class="flex items-center gap-2 hidden md:flex">
+            <span class="inline-block" style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite;" title="Tự động đồng bộ với hệ thống"></span>
+            <span class="text-gray-600" style="font-size:0.72rem;">Dữ liệu trực tiếp</span>
           </div>
           <div
-            class="bg-light rounded-circle d-flex align-items-center justify-content-center text-dark fw-bold border"
+            class="bg-gray-100 rounded-full flex items-center justify-center text-gray-900 font-bold border"
             style="width: 40px; height: 40px"
           >A</div>
           <span
-            class="fw-bold text-dark d-none d-sm-block"
+            class="font-bold text-gray-900 hidden sm:block"
           >Xin chào, Admin</span>
         </div>
       </header>
 
       <div
         v-if="isLoading"
-        class="position-absolute start-0 end-0 bottom-0 d-flex flex-column justify-content-center align-items-center"
+        class="absolute left-0 right-0 bottom-0 flex flex-col justify-center items-center"
         style="top: 72px; z-index: 20; background: rgba(245, 246, 248, 0.96)"
       >
-        <div class="spinner-border text-dark mb-3"></div>
-        <p class="fw-medium text-secondary">Đang nạp dữ liệu từ CSDL...</p>
+        <div class="sg-spinner text-gray-900 mb-3"></div>
+        <p class="font-medium text-gray-600">Đang nạp dữ liệu từ CSDL...</p>
       </div>
 
-      <div class="p-4 flex-grow-1 overflow-auto custom-scrollbar-light w-100 mx-auto" style="max-width: 1440px;">
+      <div class="p-4 grow overflow-auto custom-scrollbar-light w-full mx-auto" style="max-width: 1440px;">
         <!-- Chỉ chuyển mượt vùng nội dung; sidebar/header quản lý giữ nguyên. -->
         <router-view v-slot="{ Component, route }">
-          <div class="position-relative w-100">
+          <div class="relative w-full">
             <Transition name="admin-page">
-              <div :key="route.fullPath" class="admin-page-wrapper w-100">
+              <div :key="route.fullPath" class="admin-page-wrapper w-full">
                 <component :is="Component" />
               </div>
             </Transition>
@@ -352,9 +352,9 @@ onUnmounted(() => {
     >
       <div class="custom-modal-box fade-in-scale">
         <div
-          class="p-4 border-bottom d-flex justify-content-between align-items-center"
+          class="p-4 border-b flex justify-between items-center"
         >
-          <h6 class="fw-bold mb-0 text-dark">
+          <h6 class="font-bold mb-0 text-gray-900">
             Hủy Đơn Hàng
             <span
               v-text="'#' + (cancelModal.order && cancelModal.order.id)"
@@ -364,15 +364,15 @@ onUnmounted(() => {
             @click="cancelModal.open = false"
             class="btn btn-sm btn-light border-0"
           >
-            <i class="bi bi-x-lg"></i>
+            <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4">
-          <p class="small text-secondary">
+          <p class="text-sm text-gray-600">
             Vui lòng chọn hoặc nhập lý do hủy đơn. Thông tin này sẽ được lưu vào
             lịch sử đơn hàng.
           </p>
-          <div class="d-flex flex-wrap gap-2 mb-3">
+          <div class="flex flex-wrap gap-2 mb-3">
             <button
               v-for="reason in cancelReasons"
               :key="reason"
@@ -382,7 +382,7 @@ onUnmounted(() => {
               :class="
                 cancelModal.reason === reason
                   ? 'btn-dark text-white'
-                  : 'btn-white text-secondary'
+                  : 'btn-white text-gray-600'
               "
               v-text="reason"
             ></button>
@@ -390,11 +390,11 @@ onUnmounted(() => {
           <textarea
             v-model="cancelModal.reason"
             rows="2"
-            class="form-control rounded-2"
+            class="sg-input rounded-2"
             placeholder="Lý do khác..."
           ></textarea>
         </div>
-        <div class="p-4 border-top d-flex justify-content-end gap-2">
+        <div class="p-4 border-t flex justify-end gap-2">
           <button
             @click="cancelModal.open = false"
             class="btn btn-light border rounded-2"
@@ -403,9 +403,9 @@ onUnmounted(() => {
           ><button
             @click="submitCancelOrder"
             :disabled="!cancelModal.reason || cancelModal.busy"
-            class="btn btn-danger rounded-2 fw-bold"
+            class="btn btn-danger rounded-2 font-bold"
           >
-            <span v-if="cancelModal.busy" class="spinner-border spinner-border-sm me-1"></span>
+            <span v-if="cancelModal.busy" class="sg-spinner sg-spinner sg-spinner-sm mr-1"></span>
             <span v-text="cancelModal.busy ? 'Đang hủy...' : 'Xác nhận hủy'"></span>
           </button>
         </div>
@@ -420,9 +420,9 @@ onUnmounted(() => {
     >
       <div class="custom-modal-box fade-in-scale">
         <div
-          class="p-4 border-bottom d-flex justify-content-between align-items-center"
+          class="p-4 border-b flex justify-between items-center"
         >
-          <h6 class="fw-bold mb-0 text-dark">
+          <h6 class="font-bold mb-0 text-gray-900">
             Lịch Sử Đơn
             <span
               v-text="'#' + (timelineModal.order && timelineModal.order.id)"
@@ -432,16 +432,16 @@ onUnmounted(() => {
             @click="timelineModal.open = false"
             class="btn btn-sm btn-light border-0"
           >
-            <i class="bi bi-x-lg"></i>
+            <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
           <div
             v-for="(h, i) in timelineModal.history"
             :key="i"
-            class="d-flex gap-3"
+            class="flex gap-3"
           >
-            <div class="d-flex flex-column align-items-center">
+            <div class="flex flex-col items-center">
               <div class="timeline-dot"></div>
               <div
                 v-if="i < timelineModal.history.length - 1"
@@ -449,15 +449,15 @@ onUnmounted(() => {
               ></div>
             </div>
             <div class="pb-4">
-              <p class="fw-medium mb-0 text-dark small" v-text="h.status"></p>
+              <p class="font-medium mb-0 text-gray-900 text-sm" v-text="h.status"></p>
               <p
-                class="text-secondary mb-0"
+                class="text-gray-600 mb-0"
                 style="font-size: 0.78rem"
                 v-text="formatDate(h.date)"
               ></p>
               <p
                 v-if="h.note"
-                class="text-secondary small mb-0 fst-italic"
+                class="text-gray-600 text-sm mb-0 fst-italic"
                 v-text="h.note"
               ></p>
             </div>
@@ -474,24 +474,24 @@ onUnmounted(() => {
     >
       <div class="custom-modal-box fade-in-scale">
         <div
-          class="p-4 border-bottom d-flex justify-content-between align-items-center"
+          class="p-4 border-b flex justify-between items-center"
         >
-          <h6 class="fw-bold mb-0 text-dark" v-text="formModal.title"></h6>
+          <h6 class="font-bold mb-0 text-gray-900" v-text="formModal.title"></h6>
           <button
             @click="formModal.open = false"
             class="btn btn-sm btn-light border-0"
           >
-            <i class="bi bi-x-lg"></i>
+            <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
           <div v-for="f in formFields" :key="f.key" class="mb-3">
-            <label class="form-label small fw-medium" v-text="f.label"></label>
+            <label class="block text-sm font-medium text-sm font-medium" v-text="f.label"></label>
             <select
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]"
               :disabled="f.disabled"
-              class="form-select rounded-2"
+              class="sg-input rounded-2"
             >
               <option
                 v-for="opt in f.options"
@@ -502,11 +502,11 @@ onUnmounted(() => {
             </select>
             <div
               v-else-if="f.type === 'checkbox'"
-              class="form-check form-switch"
+              class="flex items-center gap-2 flex items-center"
             >
               <input
                 v-model="formModal.data[f.key]"
-                class="form-check-input"
+                class="accent-black"
                 type="checkbox"
               />
             </div>
@@ -514,10 +514,10 @@ onUnmounted(() => {
               v-else-if="f.type === 'textarea'"
               v-model="formModal.data[f.key]"
               rows="2"
-              class="form-control rounded-2"
+              class="sg-input rounded-2"
             ></textarea>
             <div v-else-if="f.type === 'image'">
-              <div class="d-flex align-items-center gap-3 mb-2">
+              <div class="flex items-center gap-3 mb-2">
                 <img
                   :src="
                     formModal.data[f.key] || 'https://via.placeholder.com/56'
@@ -532,25 +532,25 @@ onUnmounted(() => {
                   @error="$event.target.src = 'https://via.placeholder.com/56'"
                 />
                 <label class="btn btn-sm btn-outline-dark rounded-2 mb-0"
-                  ><i class="bi bi-upload me-1"></i> Chọn ảnh trên máy<input
+                  ><i class="icon icon-upload mr-1"></i> Chọn ảnh trên máy<input
                     type="file"
                     accept="image/*"
-                    class="d-none"
+                    class="hidden"
                     @change="(e) => onFormImageFile(e, f.key)"
                 /></label>
               </div>
               <input
                 v-model="formModal.data[f.key]"
                 type="text"
-                class="form-control rounded-2"
+                class="sg-input rounded-2"
                 placeholder="Hoặc dán URL ảnh..."
               />
             </div>
-            <div v-else-if="f.type === 'password'" class="input-group">
+            <div v-else-if="f.type === 'password'" class="flex">
               <input
                 v-model="formModal.data[f.key]"
                 :type="passwordVisible ? 'text' : 'password'"
-                class="form-control rounded-start-3"
+                class="sg-input rounded-start-3"
                 autocomplete="new-password"
               />
               <button
@@ -559,24 +559,24 @@ onUnmounted(() => {
                 @click="passwordVisible = !passwordVisible"
                 :title="passwordVisible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
               >
-                <i class="bi" :class="passwordVisible ? 'bi-eye-slash' : 'bi-eye'"></i>
+                <i class="icon" :class="passwordVisible ? 'icon-eye-slash' : 'icon-eye'"></i>
               </button>
             </div>
             <input
               v-else
               v-model="formModal.data[f.key]"
               :type="f.type || 'text'"
-              class="form-control rounded-2"
+              class="sg-input rounded-2"
             />
           </div>
         </div>
-        <div class="p-4 border-top d-flex justify-content-end gap-2">
+        <div class="p-4 border-t flex justify-end gap-2">
           <button
             @click="formModal.open = false"
             class="btn btn-light border rounded-2"
           >
             Hủy</button
-          ><button @click="saveForm" class="btn btn-dark rounded-2 fw-bold">
+          ><button @click="saveForm" class="btn btn-dark rounded-2 font-bold">
             Lưu
           </button>
         </div>
@@ -591,32 +591,32 @@ onUnmounted(() => {
     >
       <div class="custom-modal-box fade-in-scale">
         <div
-          class="p-4 border-bottom d-flex justify-content-between align-items-center"
+          class="p-4 border-b flex justify-between items-center"
         >
           <h6
-            class="fw-bold mb-0 text-dark"
+            class="font-bold mb-0 text-gray-900"
             v-text="customerModal.customer && customerModal.customer.name"
           ></h6>
           <button
             @click="customerModal.open = false"
             class="btn btn-sm btn-light border-0"
           >
-            <i class="bi bi-x-lg"></i>
+            <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
-          <div class="row g-2 mb-3 small">
-            <div class="col-6">
-              <span class="text-secondary">SĐT:</span>
+          <div class="grid grid-cols-12 gap-2 mb-3 text-sm">
+            <div class="col-span-6">
+              <span class="text-gray-600">SĐT:</span>
               <span
-                class="fw-medium"
+                class="font-medium"
                 v-text="customerModal.customer && customerModal.customer.phone"
               ></span>
             </div>
-            <div class="col-6">
-              <span class="text-secondary">Tổng chi:</span>
+            <div class="col-span-6">
+              <span class="text-gray-600">Tổng chi:</span>
               <span
-                class="fw-medium"
+                class="font-medium"
                 v-text="
                   formatPrice(
                     customerModal.customer && customerModal.customer.spent,
@@ -625,26 +625,26 @@ onUnmounted(() => {
               ></span>
             </div>
           </div>
-          <h6 class="fw-bold small text-dark mb-2">Lịch sử đơn hàng</h6>
+          <h6 class="font-bold text-sm text-gray-900 mb-2">Lịch sử đơn hàng</h6>
           <div
             v-if="customerModal.orders.length === 0"
-            class="text-secondary small"
+            class="text-gray-600 text-sm"
           >
             Chưa có đơn hàng.
           </div>
           <div
             v-for="o in customerModal.orders"
             :key="o.id"
-            class="d-flex justify-content-between align-items-center border-bottom py-2 small"
+            class="flex justify-between items-center border-b py-2 text-sm"
           >
-            <span class="fw-medium" v-text="'#' + o.id"></span
-            ><span class="text-secondary" v-text="formatDate(o.date)"></span
+            <span class="font-medium" v-text="'#' + o.id"></span
+            ><span class="text-gray-600" v-text="formatDate(o.date)"></span
             ><span
               class="badge rounded-1"
               :class="getStatusBadgeClass(o.status)"
               v-text="o.status"
             ></span
-            ><span class="fw-medium" v-text="formatPrice(o.total)"></span>
+            ><span class="font-medium" v-text="formatPrice(o.total)"></span>
           </div>
         </div>
       </div>
@@ -659,18 +659,18 @@ onUnmounted(() => {
       <div class="custom-modal-box fade-in-scale" style="max-width: 440px">
         <div class="p-4 text-center">
           <div class="confirm-icon mx-auto mb-3">
-            <i class="bi bi-exclamation-triangle-fill"></i>
+            <i class="icon icon-exclamation-triangle-fill"></i>
           </div>
-          <h6 class="fw-bold text-dark" v-text="confirmModal.title"></h6>
+          <h6 class="font-bold text-gray-900" v-text="confirmModal.title"></h6>
           <p
-            class="text-secondary small mb-0"
+            class="text-gray-600 text-sm mb-0"
             v-text="confirmModal.message"
           ></p>
           <div
             v-if="confirmModal.danger"
-            class="alert alert-danger d-flex align-items-start gap-2 text-start small mt-3 mb-0 rounded-2"
+            class="alert alert-danger flex items-start gap-2 text-start text-sm mt-3 mb-0 rounded-2"
           >
-            <i class="bi bi-graph-down-arrow fs-6"></i>
+            <i class="icon icon-graph-down-arrow text-base"></i>
             <span
               ><strong>Cảnh báo doanh thu:</strong> Xoá cứng sẽ xoá vĩnh viễn
               sản phẩm cùng biến thể, ảnh và các dòng chi tiết đơn hàng liên
@@ -679,7 +679,7 @@ onUnmounted(() => {
             >
           </div>
         </div>
-        <div class="p-4 pt-0 d-flex justify-content-center gap-2">
+        <div class="p-4 pt-0 flex justify-center gap-2">
           <button
             @click="confirmModal.open = false"
             class="btn btn-light border rounded-2 px-4"
@@ -687,7 +687,7 @@ onUnmounted(() => {
             Hủy</button
           ><button
             @click="executeConfirm"
-            class="btn rounded-2 fw-bold px-4"
+            class="btn rounded-2 font-bold px-4"
             :class="confirmModal.danger ? 'btn-danger' : 'btn-dark'"
             v-text="confirmModal.confirmLabel || 'Xác nhận'"
           ></button>
@@ -704,15 +704,15 @@ onUnmounted(() => {
           class="app-toast fade-in-scale"
           :class="'toast-' + t.type"
         >
-          <i class="bi me-2 fs-6" :class="toastIcon(t.type)"></i>
-          <span class="flex-grow-1" v-text="t.message"></span>
+          <i class="icon mr-2 text-base" :class="toastIcon(t.type)"></i>
+          <span class="grow" v-text="t.message"></span>
           <button
             type="button"
-            class="btn btn-sm btn-link text-secondary p-0 ms-2 lh-1"
+            class="btn btn-sm btn-link text-gray-600 p-0 ml-2 lh-1"
             @click="dismissToast(t.id)"
             aria-label="Đóng thông báo"
           >
-            <i class="bi bi-x-lg" style="font-size:0.8rem;"></i>
+            <i class="icon icon-x-lg" style="font-size:0.8rem;"></i>
           </button>
         </div>
       </div>
@@ -722,9 +722,9 @@ onUnmounted(() => {
 
 <!-- Theme dùng chung (global) cho mọi page con -->
 <style src="./admin-theme.css"></style>
+<style src="./admin-pages-theme.css"></style>
 
 <style scoped>
-@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css");
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap");
 
 .font-sans {

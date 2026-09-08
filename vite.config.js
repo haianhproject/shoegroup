@@ -1,4 +1,5 @@
 import vue from "@vitejs/plugin-vue"
+import tailwindcss from "@tailwindcss/vite"
 import path from "path"
 import { defineConfig } from "vite"
 
@@ -6,7 +7,7 @@ import { defineConfig } from "vite"
 // Da bo cac doan rieng cua AI Studio (DISABLE_HMR) va chuyen tu .ts sang .js
 // de du an khong con phu thuoc TypeScript.
 export default defineConfig({
-	plugins: [vue()],
+	plugins: [vue(), tailwindcss()],
 	resolve: {
 		alias: {
 			"@": path.resolve(import.meta.dirname, "./src"),
@@ -14,6 +15,7 @@ export default defineConfig({
 	},
 	server: {
 		port: 3000,
+		strictPort: true,
 		open: false,
 		proxy: {
 			"/api": {
@@ -34,7 +36,6 @@ export default defineConfig({
 				manualChunks(id) {
 					if (id.includes("node_modules")) {
 						if (id.includes("chart.js")) return "vendor-chart"
-						if (id.includes("bootstrap")) return "vendor-bootstrap"
 						if (id.includes("vue")) return "vendor-vue"
 						return "vendor"
 					}
