@@ -7,30 +7,22 @@
     - Các modal & toast dùng chung nằm ở đây để phủ lên mọi trang
 -->
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import BrandLogo from "../../components/BrandLogo.vue";
+import AdminIcon from "./components/AdminIcon.vue";
+import AdminLogoutModal from "./components/AdminLogoutModal.vue";
+import brandMark from "../../../img/logogiay.png";
 import {
   isNavOpen,
   isLoading,
+  apiErrors,
   fetchAllData,
   getDisplayName,
   handleLogout,
-  pendingOrdersCount,
-  unpaidCount,
   incompleteOrdersCount,
   pendingReturnsCount,
-  paymentOrders,
   lowStockCount,
-  outOfStockProductsCount,
   activeProductCount,
-  categoryCount,
-  brandCount,
-  materialCount,
-  colorCount,
-  sizeCount,
-  discountCount,
-  customerCount,
   formatPrice,
   formatDate,
   cancelModal,
@@ -53,123 +45,131 @@ import {
 const route = useRoute();
 const passwordVisible = ref(false);
 const router = useRouter();
+const logoutModalOpen = ref(false);
+const logoutBusy = ref(false);
 
-// Cấu trúc menu -> mỗi mục trỏ đến 1 route con riêng
+const navSearch = ref('');
+const menuToggle = ref(null);
+const sidebar = ref(null);
+const contentArea = ref(null);
+const isMobile = ref(window.innerWidth < 1024);
+isNavOpen.value = !isMobile.value;
+const initials = computed(() => getDisplayName.value.trim().split(/\s+/).slice(-2).map(part => part[0]).join('').toUpperCase());
+const todayLabel = computed(() => new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()));
+
 const sections = [
-  {
-    title: "Tổng Quan",
-    items: [
-      {
-        to: "/admin/panel/dashboard",
-        icon: "icon-grid-1x2-fill",
-        label: "Thống Kê Tổng Quan",
-      },
-    ],
-  },
-  {
-    title: "Mặt Hàng & Giao Dịch",
-    items: [
-      {
-        to: "/admin/panel/payments",
-        icon: "icon-credit-card-2-front-fill",
-        label: "Xác Nhận Thanh Toán",
-        badge: () => incompleteOrdersCount.value,
-        badgeClass: "bg-warning text-dark",
-      },
-      {
-        to: "/admin/panel/returns",
-        icon: "icon-arrow-return-left",
-        label: "Trả Hàng / Đổi Trả",
-        badge: () => pendingReturnsCount.value,
-        badgeClass: "bg-danger",
-      },
-      {
-        to: "/admin/panel/pos",
-        icon: "icon-shop-window",
-        label: "Bán Hàng Tại Quầy",
-      },
-    ],
-  },
-  {
-    title: "Quản Lý Sản Phẩm",
-    items: [
-      {
-        to: "/admin/panel/products",
-        icon: "icon-box-seam-fill",
-        label: "Sản Phẩm",
-        badge: () => activeProductCount.value,
-        badgeClass: "bg-secondary",
-      },
-      {
-        to: "/admin/panel/categories",
-        icon: "icon-diagram-3-fill",
-        label: "Danh Mục Bộ Môn",
-        badge: () => categoryCount.value,
-        badgeClass: "bg-secondary",
-      },
-      {
-        to: "/admin/panel/brands",
-        icon: "icon-award-fill",
-        label: "Thương Hiệu",
-        badge: () => brandCount.value,
-        badgeClass: "bg-secondary",
-      },
-      {
-        to: "/admin/panel/materials",
-        icon: "icon-layers-fill",
-        label: "Chất Liệu",
-        badge: () => materialCount.value,
-        badgeClass: "bg-secondary",
-      },
-      { to: "/admin/panel/colors", icon: "icon-palette-fill", label: "Màu Sắc", badge: () => colorCount.value, badgeClass: "bg-secondary" },
-      { to: "/admin/panel/sizes", icon: "icon-rulers", label: "Kích Thước", badge: () => sizeCount.value, badgeClass: "bg-secondary" },
-    ],
-  },
-  {
-    title: "Tiếp Thị & Khách Hàng",
-    items: [
-      {
-        to: "/admin/panel/discounts",
-        icon: "icon-ticket-perforated-fill",
-        label: "Mã Khuyến Mãi",
-        badge: () => discountCount.value,
-        badgeClass: "bg-secondary",
-      },
-      {
-        to: "/admin/panel/customers",
-        icon: "icon-people-fill",
-        label: "Khách Hàng (CRM)",
-        badge: () => customerCount.value,
-        badgeClass: "bg-secondary",
-      },
-    ],
-  },
-  {
-    title: "Vận Hành & Bảo Mật",
-    items: [
-      {
-        to: "/admin/panel/accounts",
-        icon: "icon-shield-lock-fill",
-        label: "Quản Lý Tài Khoản",
-      },
-    ],
-  },
+  { title: 'Không gian làm việc', items: [
+    { to: '/admin/panel/dashboard', icon: 'grid', label: 'Tổng quan' },
+    { to: '/admin/panel/payments', icon: 'payment', label: 'Đơn hàng & thanh toán', badge: () => incompleteOrdersCount.value, attention: true },
+    { to: '/admin/panel/returns', icon: 'return', label: 'Đổi trả hàng', badge: () => pendingReturnsCount.value, attention: true },
+    { to: '/admin/panel/pos', icon: 'shop', label: 'Bán hàng tại quầy' },
+  ] },
+  { title: 'Sản phẩm', items: [
+    { to: '/admin/panel/products', icon: 'box', label: 'Tất cả sản phẩm', badge: () => activeProductCount.value },
+    { to: '/admin/panel/inventory', icon: 'warehouse', label: 'Kho hàng', badge: () => lowStockCount.value, attention: true },
+    { to: '/admin/panel/categories', icon: 'category', label: 'Danh mục' },
+    { to: '/admin/panel/brands', icon: 'award', label: 'Thương hiệu' },
+    { to: '/admin/panel/collections', icon: 'collection', label: 'Bộ sưu tập' },
+    { to: '/admin/panel/materials', icon: 'layers', label: 'Chất liệu' },
+    { to: '/admin/panel/colors', icon: 'color', label: 'Màu sắc' },
+    { to: '/admin/panel/sizes', icon: 'ruler', label: 'Kích thước' },
+  ] },
+  { title: 'Kinh doanh', items: [
+    { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã khuyến mãi' },
+    { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Giảm giá biến thể' },
+    { to: '/admin/panel/customers', icon: 'people', label: 'Khách hàng' },
+  ] },
+  { title: 'Hệ thống', items: [
+    { to: '/admin/panel/accounts', icon: 'shield', label: 'Tài khoản & phân quyền' },
+  ] },
 ];
+const normalizeSearch = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
+const visibleSections = computed(() => sections.map(section => ({
+  ...section,
+  items: section.items.filter(item => normalizeSearch(item.label).includes(normalizeSearch(navSearch.value.trim()))),
+})).filter(section => section.items.length));
+const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
+const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products'].includes(route.name));
+const pageDescriptions = {
+  payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
+  returns: 'Tiếp nhận, kiểm tra và theo dõi các yêu cầu đổi trả.',
+  pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
+  inventory: 'Theo dõi tồn kho và chủ động bổ sung từng biến thể sản phẩm.',
+  categories: 'Sắp xếp sản phẩm theo bộ môn để khách hàng dễ dàng khám phá.',
+  brands: 'Quản lý các thương hiệu trong danh mục của ShoeGroup.',
+  collections: 'Tổ chức các bộ sưu tập và câu chuyện sản phẩm của cửa hàng.',
+  materials: 'Quản lý thông tin chất liệu được sử dụng cho sản phẩm.',
+  colors: 'Đồng bộ bảng màu và các lựa chọn sản phẩm.',
+  sizes: 'Quản lý kích thước cho từng dòng sản phẩm.',
+  discounts: 'Thiết lập và theo dõi các chương trình ưu đãi cho khách hàng.',
+  'variant-discounts': 'Quản lý giá ưu đãi theo từng biến thể màu sắc.',
+  customers: 'Theo dõi thông tin và lịch sử mua sắm của khách hàng.',
+  accounts: 'Quản lý tài khoản và quyền truy cập hệ thống.',
+};
+const pageDescription = computed(() => pageDescriptions[route.path.split('/').pop()] || 'Quản lý hoạt động cửa hàng ShoeGroup.');
 
-const activeTabTitle = computed(() => route.meta.title || "Bảng Điều Khiển");
-
-function go(navigate) {
-  navigate();
-  if (window.innerWidth < 768) isNavOpen.value = false;
+function closeNavigation(restoreFocus = false) {
+  isNavOpen.value = false;
+  if (restoreFocus) nextTick(() => menuToggle.value?.focus());
+}
+function go(event, navigate) {
+  navigate(event);
+  if (isMobile.value) closeNavigation(true);
 }
 function onLogout() {
-  if (handleLogout()) router.push("/login");
+  if (isMobile.value) closeNavigation();
+  logoutModalOpen.value = true;
 }
+function cancelLogout() {
+  if (logoutBusy.value) return;
+  logoutModalOpen.value = false;
+  if (isMobile.value) nextTick(() => menuToggle.value?.focus());
+}
+async function confirmLogout() {
+  if (logoutBusy.value) return;
+  logoutBusy.value = true;
+  try {
+    if (await handleLogout()) await router.push('/login');
+  } finally {
+    logoutBusy.value = false;
+    logoutModalOpen.value = false;
+  }
+}
+function onResize() {
+  const nextMobile = window.innerWidth < 1024;
+  if (nextMobile !== isMobile.value) {
+    isMobile.value = nextMobile;
+    isNavOpen.value = !nextMobile;
+  }
+}
+function onKeydown(event) {
+  if (!isMobile.value || !isNavOpen.value) return;
+  if (event.key === 'Escape') { event.preventDefault(); closeNavigation(true); }
+  if (event.key === 'Tab') {
+    const items = sidebar.value?.querySelectorAll('a[href], button:not([disabled]), input');
+    if (!items?.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+}
+watch(isNavOpen, async (open) => {
+  if (open && isMobile.value) {
+    await nextTick();
+    sidebar.value?.querySelector('button')?.focus();
+  }
+});
+watch(() => route.fullPath, () => {
+  if (isMobile.value && isNavOpen.value) closeNavigation(true);
+  if (contentArea.value) contentArea.value.scrollTop = 0;
+});
 
 // Interval 30s refresh dữ liệu realtime (đơn hàng mới, trạng thái, tồn kho...)
 // để không tạo tải SQL dồn dập khi mở khu quản trị trong thời gian dài.
 const POLL_INTERVAL = 30_000;
 let pollTimer = null;
+let disposed = false;
 const isRefreshing = ref(false);
 let lastFocused = Date.now();
 
@@ -198,159 +198,108 @@ function onVisibilityChange() {
 }
 
 onMounted(async () => {
-  await fetchAllData();
-  startPolling();
+  window.addEventListener('resize', onResize);
+  document.addEventListener('keydown', onKeydown);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  await fetchAllData();
+  if (!disposed) startPolling();
 });
 onUnmounted(() => {
+  disposed = true;
+  window.removeEventListener('resize', onResize);
+  document.removeEventListener('keydown', onKeydown);
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
 });
 </script>
 
 <template>
-  <div
-    class="fixed-overlay flex flex-col bg-light-gray font-sans"
-    style="overflow-x: hidden"
-  >
-    <!-- ============ SIDEBAR ============ -->
-    <aside
-      class="sidebar-left bg-sidebar text-white fixed top-0 left-0 h-full flex flex-col transition-sidebar z-[1050] shadow-lg"
-      :style="{
-        width: '260px',
-        transform: isNavOpen ? 'translateX(0)' : 'translateX(-100%)',
-      }"
-    >
-      <div
-        class="p-4 flex items-center justify-center border-b border-secondary border-white/25"
-        style="height: 72px"
-      >
-        <div class="flex items-center gap-2">
-          <BrandLogo :size="36" :radius="4" />
-          <h3 class="font-extrabold uppercase m-0 tracking-wider text-white text-lg" style="font-family: 'Inter', sans-serif;">SHOE<span class="text-white">GROUP</span></h3>
-        </div>
+  <div class="admin-shell" :class="{ 'admin-nav-open': isNavOpen }" :inert="logoutModalOpen">
+    <a class="admin-skip-link" href="#admin-content">Đi đến nội dung</a>
+    <Transition name="admin-backdrop">
+      <div v-if="isMobile && isNavOpen" class="admin-nav-backdrop" aria-hidden="true" @click="closeNavigation(true)"></div>
+    </Transition>
+    <aside ref="sidebar" id="admin-navigation" class="admin-sidebar" :inert="!isNavOpen" :aria-hidden="!isNavOpen" :role="isMobile ? 'dialog' : undefined" :aria-modal="isMobile && isNavOpen ? true : undefined" aria-label="Điều hướng quản lý">
+      <div class="admin-brand-row">
+        <router-link to="/admin/panel/dashboard" class="admin-brand" aria-label="ShoeGroup — Tổng quan quản lý">
+          <img :src="brandMark" alt="" width="38" height="38" />
+          <span><strong>SHOEGROUP<span class="admin-brand-dot">.</span></strong><small>QUẢN LÝ CỬA HÀNG</small></span>
+        </router-link>
+        <button v-if="isMobile" type="button" class="admin-icon-button" aria-label="Đóng menu" @click="closeNavigation(true)"><AdminIcon name="close" /></button>
       </div>
-
-      <div
-        class="grow overflow-auto py-3 px-3 list-group custom-scrollbar-dark"
-      >
-        <template v-for="(sec, si) in sections" :key="si">
-          <p
-            class="nav-section-title"
-            :class="{ 'mt-4': si > 0 }"
-            v-text="sec.title"
-          ></p>
-          <router-link
-            v-for="item in sec.items"
-            :key="item.to"
-            :to="item.to"
-            custom
-            v-slot="{ isActive, navigate }"
-          >
-            <button
-              type="button"
-              @click="go(navigate)"
-              class="list-group-item border-0 mb-1 rounded-2 font-medium custom-nav-item flex justify-between items-center w-full"
-              :class="isActive ? 'active-nav text-white' : 'text-gray-600'"
-            >
-              <span class="flex items-center text-start">
-                <i class="icon mr-2 text-base" :class="item.icon" style="min-width: 20px;"></i>
-                <span v-text="item.label" class="lh-sm"></span>
-              </span>
-              <span
-                v-if="item.badge && item.badge() > 0"
-                class="badge rounded-1 shadow-sm"
-                :class="item.badgeClass"
-                v-text="item.badge()"
-              ></span>
-            </button>
+      <div class="admin-nav-search">
+        <AdminIcon name="search" />
+        <input v-model="navSearch" aria-label="Tìm mục quản lý" placeholder="Tìm mục quản lý…" type="search" />
+      </div>
+      <nav class="admin-nav-list" aria-label="Các mục quản lý">
+        <section v-for="section in visibleSections" :key="section.title" class="admin-nav-section">
+          <h2>{{ section.title }}</h2>
+          <router-link v-for="item in section.items" :key="item.to" :to="item.to" custom v-slot="{ isActive, navigate, href }">
+            <a :href="href" class="admin-nav-link" :class="{ 'is-active': isActive }" :aria-current="isActive ? 'page' : undefined" @click="go($event, navigate)">
+              <AdminIcon :name="item.icon" />
+              <span>{{ item.label }}</span>
+              <span v-if="item.badge && item.badge() > 0" class="admin-nav-count" :class="{ 'is-attention': item.attention }">{{ item.badge() }}</span>
+            </a>
           </router-link>
-        </template>
-      </div>
-
-      <div
-        class="p-4 bg-sidebar-darker mt-auto border-t border-secondary border-white/25"
-      >
-        <button
-          @click="onLogout"
-          class="btn btn-sm w-full font-medium py-2 flex items-center justify-center"
-          style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;"
-        >
-          <i class="icon icon-box-arrow-right mr-2"></i> Đăng Xuất
-        </button>
+        </section>
+        <p v-if="!visibleSections.length" class="admin-nav-empty">Không tìm thấy mục phù hợp.</p>
+      </nav>
+      <div class="admin-sidebar-footer">
+        <div class="admin-profile"><span class="admin-avatar">{{ initials }}</span><span class="admin-profile-info"><strong>{{ getDisplayName }}</strong><small>Quản trị viên</small></span></div>
+        <button type="button" class="admin-icon-button admin-logout" aria-label="Đăng xuất" title="Đăng xuất" @click="onLogout"><AdminIcon name="logout" /></button>
       </div>
     </aside>
 
-    <!-- ============ MAIN ============ -->
-    <main
-      class="grow transition-main flex flex-col bg-light-gray relative"
-      :style="{ marginLeft: isNavOpen ? '260px' : '0' }"
-    >
-      <header
-        class="flex justify-between items-center px-4 bg-white shadow-sm z-10 sticky top-0"
-        style="height: 72px"
-      >
-        <div class="flex items-center gap-3">
-          <button
-            class="btn btn-light border flex items-center justify-center text-gray-900 bg-light-gray"
-            style="width: 40px; height: 40px; border-radius: 4px;"
-            @click="isNavOpen = !isNavOpen"
-            title="Toggle Menu"
-          >
-            <i class="icon icon-list text-xl"></i>
-          </button>
-          <h2
-            class="h5 mb-0 font-bold text-gray-900 hidden md:block tracking-wide"
-            v-text="activeTabTitle"
-          ></h2>
+    <main class="admin-workspace" :inert="isMobile && isNavOpen">
+      <header class="admin-topbar">
+        <div class="admin-topbar-start">
+          <button ref="menuToggle" type="button" class="admin-icon-button" :aria-label="isNavOpen ? 'Thu gọn menu' : 'Mở menu quản lý'" :aria-expanded="isNavOpen" aria-controls="admin-navigation" @click="isNavOpen = !isNavOpen"><AdminIcon name="menu" /></button>
+          <div class="admin-breadcrumb"><span>Quản lý</span><AdminIcon name="chevron" /><strong>{{ activeTabTitle }}</strong></div>
         </div>
-        <div class="flex items-center gap-3">
-          <!-- Real-time indicator -->
-          <div class="flex items-center gap-2 hidden md:flex">
-            <span class="inline-block" style="width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse-dot 2s infinite;" title="Tự động đồng bộ với hệ thống"></span>
-            <span class="text-gray-600" style="font-size:0.72rem;">Dữ liệu trực tiếp</span>
-          </div>
-          <div
-            class="bg-gray-100 rounded-full flex items-center justify-center text-gray-900 font-bold border"
-            style="width: 40px; height: 40px"
-          >A</div>
-          <span
-            class="font-bold text-gray-900 hidden sm:block"
-          >Xin chào, Admin</span>
+        <div class="admin-topbar-actions">
+          <span class="admin-date"><AdminIcon name="calendar" />{{ todayLabel }}</span>
+          <button type="button" class="admin-sync" :class="{ 'has-error': apiErrors.length }" :disabled="isRefreshing || isLoading" :aria-label="apiErrors.length ? 'Thử đồng bộ lại' : 'Đồng bộ dữ liệu'" @click="refresh" :title="apiErrors.length ? 'Có dữ liệu chưa tải được. Nhấn để thử lại.' : 'Tự động cập nhật mỗi 30 giây. Nhấn để làm mới.'">
+            <AdminIcon name="refresh" :class="{ 'is-spinning': isRefreshing || isLoading }" />
+            <span>{{ isRefreshing || isLoading ? 'Đang cập nhật' : apiErrors.length ? 'Thử đồng bộ lại' : 'Đồng bộ dữ liệu' }}</span>
+          </button>
+          <router-link to="/admin/panel/pos" class="admin-pos-link"><AdminIcon name="shop" /><span>Bán tại quầy</span></router-link>
         </div>
       </header>
-
-      <div
-        v-if="isLoading"
-        class="absolute left-0 right-0 bottom-0 flex flex-col justify-center items-center"
-        style="top: 72px; z-index: 20; background: rgba(245, 246, 248, 0.96)"
-      >
-        <div class="sg-spinner text-gray-900 mb-3"></div>
-        <p class="font-medium text-gray-600">Đang nạp dữ liệu từ CSDL...</p>
-      </div>
-
-      <div class="p-4 grow overflow-auto custom-scrollbar-light w-full mx-auto" style="max-width: 1440px;">
-        <!-- Chỉ chuyển mượt vùng nội dung; sidebar/header quản lý giữ nguyên. -->
-        <router-view v-slot="{ Component, route }">
-          <div class="relative w-full">
-            <Transition name="admin-page">
-              <div :key="route.fullPath" class="admin-page-wrapper w-full">
-                <component :is="Component" />
-              </div>
+      <div ref="contentArea" id="admin-content" class="admin-content" tabindex="-1" :aria-busy="isLoading">
+        <div v-if="!hasOwnPageHeading" class="admin-route-heading">
+          <p>{{ activeSection }}</p><h1>{{ activeTabTitle }}</h1><span>{{ pageDescription }}</span>
+        </div>
+        <div v-if="apiErrors.length && !isLoading" class="admin-data-warning" role="alert">
+          <span><strong>Một số dữ liệu chưa được cập nhật.</strong> Vui lòng thử đồng bộ lại để xem thông tin mới nhất.</span>
+          <button type="button" :disabled="isRefreshing" @click="refresh">{{ isRefreshing ? 'Đang thử lại…' : 'Thử lại' }}</button>
+        </div>
+        <router-view v-slot="{ Component, route: pageRoute }">
+          <div class="admin-route-view">
+            <Transition name="admin-page" mode="out-in">
+              <div :key="pageRoute.fullPath" class="admin-page-wrapper"><component :is="Component" /></div>
             </Transition>
           </div>
         </router-view>
+        <footer class="admin-content-footer"><span>SHOEGROUP<span class="admin-brand-dot">.</span></span><span>Không gian quản lý cửa hàng</span></footer>
       </div>
+      <div v-if="isLoading" class="admin-loading" role="status"><span class="sg-spinner"></span><strong>Đang tải dữ liệu cửa hàng</strong><p>Vui lòng chờ trong giây lát…</p></div>
     </main>
 
     <!-- ==================== MODALS (dùng chung) ==================== -->
+    <AdminLogoutModal
+      :open="logoutModalOpen"
+      :admin-name="getDisplayName"
+      :busy="logoutBusy"
+      @cancel="cancelLogout"
+      @confirm="confirmLogout"
+    />
     <!-- Cancel order -->
     <div
       v-if="cancelModal.open"
       class="custom-modal-overlay"
       @click.self="cancelModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale">
+      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Hủy đơn hàng">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -362,7 +311,7 @@ onUnmounted(() => {
           </h6>
           <button
             @click="cancelModal.open = false"
-            class="btn btn-sm btn-light border-0"
+            class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hộp thoại"
           >
             <i class="icon icon-x-lg"></i>
           </button>
@@ -418,7 +367,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="timelineModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale">
+      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Lịch sử đơn hàng">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -430,7 +379,7 @@ onUnmounted(() => {
           </h6>
           <button
             @click="timelineModal.open = false"
-            class="btn btn-sm btn-light border-0"
+            class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hộp thoại"
           >
             <i class="icon icon-x-lg"></i>
           </button>
@@ -472,24 +421,24 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="formModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale">
+      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" :aria-label="formModal.title">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
           <h6 class="font-bold mb-0 text-gray-900" v-text="formModal.title"></h6>
           <button
             @click="formModal.open = false"
-            class="btn btn-sm btn-light border-0"
+            class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hộp thoại"
           >
             <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
           <div v-for="f in formFields" :key="f.key" class="mb-3">
-            <label class="block text-sm font-medium text-sm font-medium" v-text="f.label"></label>
+            <label :for="'admin-field-' + f.key" class="block text-sm font-medium text-sm font-medium" v-text="f.label"></label>
             <select
               v-if="f.type === 'select'"
-              v-model="formModal.data[f.key]"
+              v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :disabled="f.disabled"
               class="sg-input rounded-2"
             >
@@ -505,14 +454,14 @@ onUnmounted(() => {
               class="flex items-center gap-2 flex items-center"
             >
               <input
-                v-model="formModal.data[f.key]"
+                v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
                 class="accent-black"
                 type="checkbox"
               />
             </div>
             <textarea
               v-else-if="f.type === 'textarea'"
-              v-model="formModal.data[f.key]"
+              v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               rows="2"
               class="sg-input rounded-2"
             ></textarea>
@@ -520,7 +469,7 @@ onUnmounted(() => {
               <div class="flex items-center gap-3 mb-2">
                 <img
                   :src="
-                    formModal.data[f.key] || 'https://via.placeholder.com/56'
+                    formModal.data[f.key] || brandMark
                   "
                   class="rounded-2 border"
                   style="
@@ -529,7 +478,7 @@ onUnmounted(() => {
                     object-fit: contain;
                     background: #f3f4f6;
                   "
-                  @error="$event.target.src = 'https://via.placeholder.com/56'"
+                  :alt="f.label" @error="$event.target.onerror = null; $event.target.src = brandMark"
                 />
                 <label class="btn btn-sm btn-outline-dark rounded-2 mb-0"
                   ><i class="icon icon-upload mr-1"></i> Chọn ảnh trên máy<input
@@ -540,7 +489,7 @@ onUnmounted(() => {
                 /></label>
               </div>
               <input
-                v-model="formModal.data[f.key]"
+                v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
                 type="text"
                 class="sg-input rounded-2"
                 placeholder="Hoặc dán URL ảnh..."
@@ -548,7 +497,7 @@ onUnmounted(() => {
             </div>
             <div v-else-if="f.type === 'password'" class="flex">
               <input
-                v-model="formModal.data[f.key]"
+                v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
                 :type="passwordVisible ? 'text' : 'password'"
                 class="sg-input rounded-start-3"
                 autocomplete="new-password"
@@ -564,7 +513,7 @@ onUnmounted(() => {
             </div>
             <input
               v-else
-              v-model="formModal.data[f.key]"
+              v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :type="f.type || 'text'"
               class="sg-input rounded-2"
             />
@@ -589,7 +538,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="customerModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale">
+      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Thông tin khách hàng">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -599,7 +548,7 @@ onUnmounted(() => {
           ></h6>
           <button
             @click="customerModal.open = false"
-            class="btn btn-sm btn-light border-0"
+            class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hộp thoại"
           >
             <i class="icon icon-x-lg"></i>
           </button>
@@ -656,7 +605,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="confirmModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale" style="max-width: 440px">
+      <div class="custom-modal-box fade-in-scale" role="alertdialog" aria-modal="true" :aria-label="confirmModal.title" style="max-width: 440px">
         <div class="p-4 text-center">
           <div class="confirm-icon mx-auto mb-3">
             <i class="icon icon-exclamation-triangle-fill"></i>
@@ -697,7 +646,7 @@ onUnmounted(() => {
 
     <!-- Toasts: teleport ra <body> để không bị modal / overflow của khung admin che mất -->
     <Teleport to="body">
-      <div class="toast-container">
+      <div class="toast-container" aria-live="polite" aria-atomic="false">
         <div
           v-for="t in toasts"
           :key="t.id"
@@ -708,7 +657,7 @@ onUnmounted(() => {
           <span class="grow" v-text="t.message"></span>
           <button
             type="button"
-            class="btn btn-sm btn-link text-gray-600 p-0 ml-2 lh-1"
+            class="admin-toast-close"
             @click="dismissToast(t.id)"
             aria-label="Đóng thông báo"
           >
@@ -723,219 +672,6 @@ onUnmounted(() => {
 <!-- Theme dùng chung (global) cho mọi page con -->
 <style src="./admin-theme.css"></style>
 <style src="./admin-pages-theme.css"></style>
+<style src="./admin-icons.css"></style>
 
-<style scoped>
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap");
-
-.font-sans {
-  font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-}
-.fixed-overlay {
-  position: fixed;
-  inset: 0;
-  height: 100vh;
-  width: 100vw;
-}
-
-.bg-light-gray {
-  background-color: #f3f4f6 !important;
-}
-.bg-sidebar {
-  background: #111111 !important;
-}
-.bg-sidebar-darker {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-.z-index-1050 {
-  z-index: 1050;
-}
-.z-index-10 {
-  z-index: 10;
-}
-.tracking-wide {
-  letter-spacing: 0.04em;
-}
-.tracking-wider {
-  letter-spacing: 0.08em;
-}
-.transition-sidebar {
-  transition: transform 0.3s ease;
-}
-.transition-main {
-  transition: margin-left 0.3s ease;
-}
-
-.nav-section-title {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #6b7280;
-  font-weight: 600;
-  padding: 0 0.75rem;
-  margin-bottom: 0.5rem;
-}
-.custom-nav-item {
-  background-color: transparent !important;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  font-size: 0.9rem;
-  border-radius: 4px !important;
-}
-.custom-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.07) !important;
-  color: #fff !important;
-}
-.active-nav {
-  background: #ffffff !important;
-  color: #0A0A0A !important;
-  font-weight: 700 !important;
-}
-.active-nav:hover {
-  background: #f0f0f0 !important;
-  color: #0A0A0A !important;
-}
-
-.custom-scrollbar-light::-webkit-scrollbar,
-.custom-scrollbar-dark::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.custom-scrollbar-light::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 8px;
-}
-.custom-scrollbar-dark::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 8px;
-}
-.custom-scrollbar-light::-webkit-scrollbar-track,
-.custom-scrollbar-dark::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1080;
-  padding: 1rem;
-}
-.custom-modal-box {
-  background: #fff;
-  border-radius: 6px;
-  width: 100%;
-  max-width: 560px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-  overflow: hidden;
-}
-.confirm-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #0A0A0A;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-}
-.timeline-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #0A0A0A;
-  margin-top: 4px;
-}
-.timeline-line {
-  width: 2px;
-  flex-grow: 1;
-  background: #e5e7eb;
-  margin: 2px 0;
-}
-.btn-white {
-  background-color: #ffffff;
-}
-.btn-white:hover {
-  background-color: #f3f4f6;
-}
-
-.toast-container {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 2000;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-.app-toast {
-  background: #fff;
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  font-size: 0.88rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  min-width: 260px;
-  max-width: 380px;
-  border-left: 3px solid #0A0A0A;
-  pointer-events: auto;
-}
-.toast-success {
-  border-left-color: #0A0A0A;
-  color: #0A0A0A;
-}
-.toast-error {
-  border-left-color: #D4001A;
-  color: #D4001A;
-}
-.toast-warning {
-  border-left-color: #000000;
-  color: #000000;
-}
-.toast-info {
-  border-left-color: #333333;
-  color: #333333;
-}
-.admin-page-enter-active,
-.admin-page-leave-active {
-  transition: opacity .2s ease, transform .2s ease;
-}
-.admin-page-leave-active {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.admin-page-enter-from { opacity: 0; transform: translateY(6px); }
-.admin-page-leave-to { opacity: 0; transform: translateY(-3px); }
-.fade-in-scale {
-  animation: fadeInScale 0.25s ease;
-}
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.7); }
-}
-</style>
-
+<style scoped src="./admin-layout.css"></style>

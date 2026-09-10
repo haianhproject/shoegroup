@@ -1,4 +1,4 @@
-<!-- Trang: Quan Ly Tai Khoan (hien tat ca vai tro + nut phan quyen) -->
+<!-- Trang: Quản lý tài khoản -->
 <script setup>
 import { ref, computed } from 'vue'
 import { db, openForm, getRoleBadgeClass, roleName, deleteItem, apiWrite } from '../adminStore'
@@ -29,12 +29,12 @@ const sections = computed(function () {
     return Number(a.role_id) !== 1 && Number(a.role_id) !== 2 && Number(a.role_id) !== 3
   })
   const arr = [
-    { key: 'admin', title: 'Quan tri vien', icon: 'icon-shield-lock', rows: admins },
-    { key: 'employee', title: 'Nhan vien', icon: 'icon-person-badge', rows: employees },
-    { key: 'customer', title: 'Khach hang', icon: 'icon-people', rows: customers },
+    { key: 'admin', title: 'Quản trị viên', icon: 'icon-shield-lock', rows: admins },
+    { key: 'employee', title: 'Nhân viên', icon: 'icon-person-badge', rows: employees },
+    { key: 'customer', title: 'Khách hàng', icon: 'icon-people', rows: customers },
   ]
   if (others.length) {
-    arr.push({ key: 'other', title: 'Vai tro khac', icon: 'icon-question-circle', rows: others })
+    arr.push({ key: 'other', title: 'Vai trò khác', icon: 'icon-question-circle', rows: others })
   }
   return arr
 })
@@ -53,11 +53,11 @@ async function changeRole(a, value) {
     })
     if (!res.ok) throw new Error(res.data?.message || 'fail')
     roleMsgOk.value = true
-    roleMsg.value = 'Da doi vai tro cho ' + (a.name || a.username || 'tai khoan') + ' thanh ' + roleName(newRole)
+    roleMsg.value = 'Đã đổi vai trò của ' + (a.name || a.username || 'tài khoản') + ' thành ' + roleName(newRole)
   } catch (e) {
     a.role_id = prev // khoi phuc neu loi
     roleMsgOk.value = false
-    roleMsg.value = 'Khong doi duoc vai tro. Kiem tra may chu / API /accounts.'
+    roleMsg.value = 'Không thể cập nhật vai trò. Vui lòng thử lại.'
   }
   savingId.value = null
   setTimeout(function () { roleMsg.value = '' }, 3500)
@@ -68,21 +68,21 @@ async function changeRole(a, value) {
   <div class="fade-in">
     <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
       <div class="flex bg-white rounded-2 shadow-sm" style="max-width:320px;">
-        <span class="flex items-center bg-white border-0"><i class="icon icon-search text-gray-600"></i></span>
-        <input v-model="search" type="text" class="sg-input border-0" placeholder="Tim tai khoan...">
+        <span class="flex items-center bg-white border-0"><i class="icon icon-search text-gray-600" aria-hidden="true"></i></span>
+        <input v-model="search" type="search" class="sg-input border-0" placeholder="Tìm tài khoản…" aria-label="Tìm tài khoản theo tên, tên đăng nhập hoặc email">
       </div>
       <button @click="openForm('accounts')" class="btn btn-dark btn-sm rounded-2 font-bold shadow-sm px-3">
-        <i class="icon icon-person-plus mr-1"></i> Them Tai Khoan
+        <i class="icon icon-person-plus mr-1" aria-hidden="true"></i> Thêm tài khoản
       </button>
     </div>
 
-    <div v-if="roleMsg" class="alert py-2 px-3 rounded-2 text-sm mb-3"
+    <div v-if="roleMsg" class="alert py-2 px-3 rounded-2 text-sm mb-3" role="status" aria-live="polite"
          :class="roleMsgOk ? 'bg-gray-100 text-gray-900' : 'bg-red-100 text-red-600'"
          v-text="roleMsg"></div>
 
     <div v-for="sec in sections" :key="sec.key" class="mb-4">
       <div class="flex items-center gap-2 mb-2">
-        <i :class="['icon', sec.icon, 'text-gray-600']"></i>
+        <i :class="['icon', sec.icon, 'text-gray-600']" aria-hidden="true"></i>
         <h6 class="font-bold mb-0 text-gray-900" v-text="sec.title"></h6>
         <span class="badge rounded-1 bg-light-gray text-gray-900" v-text="sec.rows.length"></span>
       </div>
@@ -90,12 +90,12 @@ async function changeRole(a, value) {
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead>
-              <tr class="text-gray-600 text-sm uppercase">
-                <th class="pl-4">Tai Khoan</th>
-                <th>Email</th>
-                <th>Vai Tro</th>
-                <th>Trang Thai</th>
-                <th class="text-end pr-4">Hanh Dong</th>
+              <tr class="text-gray-600 text-sm">
+                <th scope="col" class="pl-4">Tài khoản</th>
+                <th scope="col">Email</th>
+                <th scope="col">Vai trò</th>
+                <th scope="col">Trạng thái</th>
+                <th scope="col" class="text-end pr-4">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -111,14 +111,14 @@ async function changeRole(a, value) {
                 </td>
                 <td class="text-sm" v-text="a.email"></td>
                 <td><span class="badge rounded-1" :class="getRoleBadgeClass(a.role_id)" v-text="roleName(a.role_id)"></span></td>
-                <td><span class="badge rounded-1" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-gray-600'" v-text="a.active !== false ? 'Hoat dong' : 'Khoa'"></span></td>
+                <td><span class="badge rounded-1" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-gray-600'" v-text="a.active !== false ? 'Hoạt động' : 'Đã khóa'"></span></td>
                 <td class="text-end pr-4">
-                  <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-2 mr-1"><i class="icon icon-pencil"></i></button>
-                  <button @click="deleteItem('accounts', a.id, a.username)" class="btn btn-sm btn-light border rounded-2 text-red-600"><i class="icon icon-trash"></i></button>
+                  <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-2 mr-1" :aria-label="'Chỉnh sửa tài khoản ' + (a.name || a.username)" title="Chỉnh sửa tài khoản"><i class="icon icon-pencil" aria-hidden="true"></i></button>
+                  <button @click="deleteItem('accounts', a.id, a.username)" class="btn btn-sm btn-light border rounded-2 text-red-600" :aria-label="'Xóa tài khoản ' + (a.name || a.username)" title="Xóa tài khoản"><i class="icon icon-trash" aria-hidden="true"></i></button>
                 </td>
               </tr>
               <tr v-if="!sec.rows.length">
-                <td colspan="5" class="text-center text-gray-600 text-sm py-4">Chua co tai khoan trong nhom nay</td>
+                <td colspan="5" class="text-center text-gray-600 text-sm py-4">{{ search.trim() ? 'Không tìm thấy tài khoản phù hợp trong nhóm này.' : 'Chưa có tài khoản trong nhóm này.' }}</td>
               </tr>
             </tbody>
           </table>

@@ -166,8 +166,7 @@ function createRateLimiter({
     // DELETE để chống spam và lạm dụng endpoint.
     if (typeof skip === "function" && skip(req)) return next();
     const ip =
-      req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-      req.socket?.remoteAddress ||
+      req.ip || req.socket?.remoteAddress ||
       "unknown";
     const id = `${key}:${ip}`;
     const now = Date.now();
@@ -216,7 +215,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-access-token"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-access-token", "Idempotency-Key"],
 };
 
 /* ---------- 6. Xu ly loi tap trung (khong lo thong tin he thong) ---------- */

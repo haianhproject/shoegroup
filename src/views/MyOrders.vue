@@ -169,9 +169,11 @@ const handlePay = (o) => {
 }
 
 const confirmPaid = async () => {
+  let paymentStatus = 'Chờ thanh toán'
   if (payModal.serverId) {
     try {
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+      paymentStatus = result?.payment_status || paymentStatus
     } catch(error) {
       notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
@@ -179,11 +181,11 @@ const confirmPaid = async () => {
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
-    order.payment_status = 'Đã thanh toán'
+    order.payment_status = paymentStatus
     saveOrders()
   }
   payModal.open = false
-  notify({ type: 'success', title: 'Thanh toán đã được ghi nhận', message: 'Đơn hàng đã sẵn sàng để cửa hàng xác nhận và xử lý.' })
+  notify({ type: 'success', title: 'Đã gửi thông báo chuyển khoản', message: 'Cửa hàng sẽ đối soát tiền nhận được trước khi xác nhận thanh toán.' })
 }
 
 const closePayModal = () => { payModal.open = false }

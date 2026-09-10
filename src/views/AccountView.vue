@@ -7,25 +7,30 @@ import { formatCurrency } from '../stores/cartStore'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import { api } from '../services/apiClient'
 import MyOrders from './MyOrders.vue'
+import logoGiay from '../../img/logogiay.png'
 
 const route = useRoute()
 const router = useRouter()
-const tab = ref(['orders', 'address', 'profile', 'coupons'].includes(route.query.tab) ? route.query.tab : 'profile')
+const tab = ref(['orders', 'address', 'profile', 'coupons', 'wallet'].includes(route.query.tab) ? route.query.tab : 'profile')
 
 onMounted(async () => {
   if (route.query.tab === 'orders') tab.value = 'orders'
-  await Promise.all([fetchProvinces(), loadAddresses(), fetchUserCoupons()])
+  if (route.query.tab === 'wallet') tab.value = 'wallet'
+  await Promise.all([fetchProvinces(), loadAddresses(), fetchUserCoupons(), loadWallet()])
 })
 
 const setTab = (t) => {
   tab.value = t
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  if (t === 'wallet') loadWallet()
 }
 
 // Navbar and deep links may change the selected account panel without
 // remounting this view; keep the local tab in sync with the URL.
 watch(() => route.query.tab, (value) => {
-  if (['orders', 'address', 'profile', 'coupons'].includes(value)) tab.value = value
+  if (['orders', 'address', 'profile', 'coupons', 'wallet'].includes(value)) {
+    tab.value = value
+    if (value === 'wallet') loadWallet()
+  }
 })
 
 const logoutConfirmOpen = ref(false)
@@ -421,12 +426,114 @@ const fetchUserCoupons = async () => {
 const copyCoupon = (code) => {
   navigator.clipboard.writeText(code).then(() => notify({ type: 'success', title: 'Da sao chep!', message: code }))
 }
+
+// ==========================================
+// VÍ SHOEGROUP (TÍCH HỢP TRANG HỒ SƠ)
+// ==========================================
+const walletLoading = ref(false)
+const walletSubmitting = ref(false)
+const walletBalance = ref(0)
+const walletTransactions = ref([])
+const walletWithdrawals = ref([])
+const walletPanel = ref('history')
+const walletForm = reactive({ method: 'VISA', amount: '', destination: '', holderName: '' })
+
+const formatWalletDate = (value) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
+}
+
+const signedWalletAmount = (value) => {
+  const amount = Number(value) || 0
+  return `${amount >= 0 ? '+' : ''}${formatCurrency(amount)}`
+}
+
+const isValidLuhn = (value) => {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (!digits) return false
+  let sum = 0
+  let alternate = false
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let n = Number(digits[i])
+    if (alternate) { n *= 2; if (n > 9) n -= 9 }
+    sum += n
+    alternate = !alternate
+  }
+  return sum % 10 === 0
+}
+
+const loadWallet = async () => {
+  walletLoading.value = true
+  try {
+    const [wallet, history] = await Promise.all([api.get('/wallet'), api.get('/wallet/transactions')])
+    walletBalance.value = Number(wallet?.balance) || 0
+    walletTransactions.value = Array.isArray(history?.transactions) ? history.transactions : []
+    walletWithdrawals.value = Array.isArray(history?.withdrawals) ? history.withdrawals : []
+  } catch (error) {
+    // Không chặn nếu chưa có ví
+  } finally {
+    walletLoading.value = false
+  }
+}
+
+const resetWalletForm = () => Object.assign(walletForm, { method: 'VISA', amount: '', destination: '', holderName: '' })
+
+const submitWalletWithdrawal = async () => {
+  if (walletSubmitting.value) return
+  const amount = Number(walletForm.amount)
+  const destination = String(walletForm.destination || '').trim()
+  if (!Number.isFinite(amount) || amount <= 0) {
+    notify({ type: 'error', message: 'Nhập số tiền muốn rút lớn hơn 0.' }); return
+  }
+  if (amount > walletBalance.value) {
+    notify({ type: 'error', message: 'Số dư Ví ShoeGroup không đủ.' }); return
+  }
+  if (walletForm.method === 'VISA') {
+    const card = destination.replace(/\s+/g, '')
+    if (!/^4\d{12,18}$/.test(card) || !isValidLuhn(card)) {
+      notify({ type: 'error', message: 'Số thẻ Visa không hợp lệ.' }); return
+    }
+    if (!String(walletForm.holderName || '').trim()) {
+      notify({ type: 'error', message: 'Vui lòng nhập tên chủ thẻ Visa.' }); return
+    }
+  } else if (!/^0(?:3|5|7|8|9)\d{8}$/.test(destination.replace(/\s+/g, ''))) {
+    notify({ type: 'error', message: 'Số điện thoại MoMo không hợp lệ.' }); return
+  }
+  if (typeof window !== 'undefined' && !window.confirm(`Xác nhận rút ${formatCurrency(amount)} về ${walletForm.method === 'VISA' ? 'thẻ Visa' : 'ví MoMo'}?`)) return
+  walletSubmitting.value = true
+  try {
+    const result = await api.post('/wallet/withdrawals', {
+      method: walletForm.method,
+      amount,
+      destination,
+      holder_name: String(walletForm.holderName || '').trim(),
+    })
+    walletBalance.value = Number(result?.balance) || Math.max(0, walletBalance.value - amount)
+    resetWalletForm()
+    walletPanel.value = 'history'
+    await loadWallet()
+    notify({ type: 'success', message: 'Đã tạo yêu cầu rút tiền. ShoeGroup sẽ xử lý sớm.' })
+  } catch (error) {
+    notify({ type: 'error', message: error?.message || 'Không thể tạo yêu cầu rút tiền.' })
+  } finally {
+    walletSubmitting.value = false
+  }
+}
+
+const allWalletHistory = computed(() => [
+  ...walletTransactions.value.filter((item) => String(item.type || '').toUpperCase() !== 'WITHDRAWAL').map((item) => ({ ...item, kind: 'wallet' })),
+  ...walletWithdrawals.value.map((item) => ({ ...item, kind: 'withdrawal', amount: -Number(item.amount || 0), description: `Rút tiền về ${item.method === 'VISA' ? 'thẻ Visa' : 'ví MoMo'}`, created_at: item.created_at })),
+].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()))
 </script>
 
 <template>
   <div class="account-page">
     <div class="account-container">
-      <router-link to="/" class="account-home-link"><i class="icon icon-arrow-left" aria-hidden="true"></i>Trang chủ</router-link>
+      <router-link to="/" class="account-home-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Trang chủ
+      </router-link>
       <div class="account-grid">
         <!-- Sidebar -->
         <aside class="sg-card acc-side">
@@ -439,12 +546,30 @@ const copyCoupon = (code) => {
             <p class="acc-email">{{ profile.email }}</p>
           </div>
             <nav class="acc-nav" aria-label="Tài khoản của tôi">
-              <button :class="{ active: tab === 'profile' }" @click="setTab('profile')"><i class="icon icon-person"></i> Thông tin cá nhân</button>
-              <button :class="{ active: tab === 'address' }" @click="setTab('address')"><i class="icon icon-geo-alt"></i> Sổ địa chỉ</button>
-              <button :class="{ active: tab === 'orders' }" @click="setTab('orders')"><i class="icon icon-box-seam"></i> Đơn hàng của tôi</button>
-              <button :class="{ active: tab === 'coupons' }" @click="setTab('coupons')"><i class="icon icon-ticket-perforated"></i> Mã giảm giá</button>
-              <router-link to="/wallet" class="acc-wallet-link"><i class="icon icon-wallet2"></i> Ví ShoeGroup</router-link>
-              <button class="acc-logout" @click="requestLogout"><i class="icon icon-box-arrow-right"></i> Đăng xuất</button>
+              <button :class="{ active: tab === 'profile' }" @click="setTab('profile')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                Thông tin cá nhân
+              </button>
+              <button :class="{ active: tab === 'address' }" @click="setTab('address')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                Sổ địa chỉ
+              </button>
+              <button :class="{ active: tab === 'orders' }" @click="setTab('orders')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg>
+                Đơn hàng của tôi
+              </button>
+              <button :class="{ active: tab === 'coupons' }" @click="setTab('coupons')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/></svg>
+                Mã giảm giá
+              </button>
+              <button :class="{ active: tab === 'wallet' }" @click="setTab('wallet')">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M16 12h.01M3 9h18"/></svg>
+                Ví ShoeGroup
+              </button>
+              <button class="acc-logout" @click="requestLogout">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+                Đăng xuất
+              </button>
             </nav>
         </aside>
 
@@ -543,6 +668,120 @@ const copyCoupon = (code) => {
                   <button v-if="!c.used && !c.expired" class="coupon-copy" @click="copyCoupon(c.code)">
                     <i class="icon icon-copy"></i> Sao chép
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- VÍ SHOEGROUP (HIỂN THỊ Ở KHUNG BÊN PHẢI) -->
+          <div v-else-if="tab === 'wallet'" class="acc-block">
+            <div class="flex items-center justify-between mb-5">
+              <div>
+                <h2 style="font-family:'Fraunces',serif" class="text-2xl font-semibold mb-1">Ví ShoeGroup</h2>
+                <p class="text-xs text-[#737373]">Tiền hoàn từ đơn trả hàng & giao dịch sẽ tự động cộng vào ví của bạn.</p>
+              </div>
+              <span class="inline-flex items-center gap-1.5 text-xs text-[#0E0E0E] bg-[#F5F5F5] border border-[#E5E5E5] px-3 py-1.5 rounded-full font-medium">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-green-600"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                Bảo mật & Tự động
+              </span>
+            </div>
+
+            <!-- Thẻ ví đen phong cách Figma -->
+            <div class="relative overflow-hidden rounded-2xl bg-[#0E0E0E] text-white p-7 mb-6 shadow-[0_12px_30px_-10px_rgba(0,0,0,0.3)]">
+              <div class="text-[11px] font-bold tracking-[0.2em] uppercase text-white/60 mb-2">Số dư khả dụng</div>
+              <div style="font-family:'Fraunces',serif" class="text-4xl font-semibold mb-6 tracking-tight">
+                {{ formatCurrency(walletBalance) }}
+              </div>
+              <div class="flex items-center justify-between border-t border-white/10 pt-4">
+                <span class="text-xs text-white/70">ShoeGroup Wallet · {{ profile.full_name || 'Khách hàng' }}</span>
+                <img :src="logoGiay" alt="ShoeGroup" class="w-8 h-8 object-contain invert opacity-90" />
+              </div>
+            </div>
+
+            <!-- Tab hành động nhanh -->
+            <div class="grid grid-cols-2 gap-3 mb-6">
+              <button type="button" @click="walletPanel = 'withdraw'"
+                class="py-3 text-[13px] font-semibold rounded-xl border transition-colors cursor-pointer text-center"
+                :class="walletPanel === 'withdraw' ? 'bg-[#0E0E0E] text-white border-[#0E0E0E]' : 'bg-white text-[#0E0E0E] border-[#E5E5E5] hover:border-[#0E0E0E]'">
+                Rút tiền về thẻ / ví
+              </button>
+              <button type="button" @click="walletPanel = 'history'"
+                class="py-3 text-[13px] font-semibold rounded-xl border transition-colors cursor-pointer text-center"
+                :class="walletPanel === 'history' ? 'bg-[#0E0E0E] text-white border-[#0E0E0E]' : 'bg-white text-[#0E0E0E] border-[#E5E5E5] hover:border-[#0E0E0E]'">
+                Lịch sử giao dịch ({{ allWalletHistory.length }})
+              </button>
+            </div>
+
+            <!-- Panel Rút tiền -->
+            <div v-if="walletPanel === 'withdraw'" class="border border-[#E5E5E5] rounded-xl p-5 mb-6 bg-[#FAFAFA]">
+              <h3 class="text-sm font-bold mb-1">Yêu cầu rút tiền</h3>
+              <p class="text-xs text-[#737373] mb-4">Chọn thẻ Visa hoặc ví MoMo nhận tiền. Yêu cầu sẽ được xử lý trong vòng 24 giờ.</p>
+              <form @submit.prevent="submitWalletWithdrawal" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-[#0E0E0E]">Phương thức rút</label>
+                    <select v-model="walletForm.method" class="w-full border border-[#E5E5E5] rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#0E0E0E]">
+                      <option value="VISA">Thẻ Visa</option>
+                      <option value="MOMO">Ví điện tử MoMo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-[#0E0E0E]">Số tiền muốn rút (VND)</label>
+                    <input v-model="walletForm.amount" type="number" min="1" step="1" placeholder="Ví dụ: 100000"
+                      class="w-full border border-[#E5E5E5] rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#0E0E0E]" />
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-[#0E0E0E]">{{ walletForm.method === 'VISA' ? 'Số thẻ Visa' : 'Số điện thoại MoMo' }}</label>
+                    <input v-model="walletForm.destination" :inputmode="walletForm.method === 'VISA' ? 'numeric' : 'tel'"
+                      :maxlength="walletForm.method === 'VISA' ? 23 : 10"
+                      :placeholder="walletForm.method === 'VISA' ? '4xxx xxxx xxxx xxxx' : '09xxxxxxxx'"
+                      class="w-full border border-[#E5E5E5] rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#0E0E0E]" />
+                  </div>
+                  <div v-if="walletForm.method === 'VISA'">
+                    <label class="block text-xs font-semibold mb-1 text-[#0E0E0E]">Tên chủ thẻ (in hoa không dấu)</label>
+                    <input v-model="walletForm.holderName" maxlength="120" placeholder="NGUYEN VAN A"
+                      class="w-full border border-[#E5E5E5] rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#0E0E0E]" />
+                  </div>
+                </div>
+                <div class="flex justify-end pt-2">
+                  <button type="submit" :disabled="walletSubmitting"
+                    class="bg-[#0E0E0E] text-white px-6 py-2.5 rounded-lg text-[13px] font-semibold hover:bg-[#333] transition-colors border-none cursor-pointer disabled:opacity-50">
+                    {{ walletSubmitting ? 'Đang gửi yêu cầu…' : 'Xác nhận rút tiền' }}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Panel Lịch sử giao dịch -->
+            <div v-if="walletPanel === 'history'">
+              <div v-if="walletLoading" class="text-center py-8 text-sm text-[#737373]">Đang tải dữ liệu ví…</div>
+              <div v-else-if="allWalletHistory.length === 0" class="text-center py-10 border border-[#E5E5E5] rounded-xl text-[#737373] text-sm">
+                Chưa có giao dịch nào trong ví.
+              </div>
+              <div v-else class="space-y-2">
+                <div v-for="(h, idx) in allWalletHistory" :key="idx"
+                  class="flex items-center justify-between p-3.5 border border-[#E5E5E5] rounded-xl hover:border-[#D4D4D4] transition-colors bg-white">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                      :class="Number(h.amount || 0) >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                      {{ Number(h.amount || 0) >= 0 ? '↓' : '↑' }}
+                    </div>
+                    <div>
+                      <div class="text-sm font-semibold text-[#0E0E0E]">{{ h.description || (Number(h.amount || 0) >= 0 ? 'Hoàn tiền vào ví' : 'Rút tiền') }}</div>
+                      <div class="text-xs text-[#737373]">{{ formatWalletDate(h.created_at || h.CreatedAt) }}</div>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-sm font-bold" :class="Number(h.amount || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
+                      {{ signedWalletAmount(h.amount) }}
+                    </div>
+                    <span v-if="h.status" class="text-[11px] px-2 py-0.5 rounded-full"
+                      :class="h.status === 'Đã duyệt' || h.status === 'Hoàn tất' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'">
+                      {{ h.status }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

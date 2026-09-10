@@ -76,6 +76,7 @@ export const runAutoCancel = () => {
   let changed = false;
   orderState.orders.forEach((o) => {
     if (
+      !o.serverId && !o.fromServer &&
       o.autoCancelDeadline &&
       now > o.autoCancelDeadline &&
       ["PENDING", "CONFIRMED"].includes(o.status)
@@ -258,14 +259,14 @@ const localPaymentKey = (value) => String(value || "")
 
 const orderWasPaid = (order) => {
   const paymentKey = localPaymentKey(order?.payment_status ?? order?.PaymentStatus);
-  return ["da thanh toan", "cho thanh toan", "hoan tien"].includes(paymentKey);
+  return ["da thanh toan", "cho hoan tien", "hoan tien"].includes(paymentKey);
 };
 
-export const cancelOrder = (orderId, reason) => {
+export const cancelOrder = (orderId, reason, paymentStatus) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "CANCELLED";
-  o.payment_status = orderWasPaid(o) ? "Hoàn tiền" : "Đã hủy";
+  o.payment_status = paymentStatus || (o.payment_status === "Hoàn tiền" ? "Hoàn tiền" : orderWasPaid(o) ? "Chờ hoàn tiền" : "Đã hủy");
   o.cancelReason = reason || "Khách hàng hủy đơn.";
   saveOrders();
 };
@@ -301,11 +302,11 @@ export const mapStatusToKey = (status) => {
   const n = normalizeStatusText(raw);
 
   if (n.includes("huy") || n.includes("cancel")) return "CANCELLED";
+  if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
   if (n.includes("tra hang") || n.includes("hoan tien") || n.includes("return")) return "RETURNED";
   if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
   if (n.includes("hoan thanh") || n.includes("complete")) return "COMPLETED";
   if (n.includes("giao hang that bai") || n.includes("khong giao duoc hang") || n.includes("delivery failed") || n.includes("delivery failure") || n.includes("delivery_failure")) return "DELIVERY_FAILED";
-  if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
   if (n.includes("da giao") || n.includes("giao hang thanh cong") || n.includes("deliver")) return "DELIVERED";
   if (n.includes("van chuyen") || n.includes("dang giao") || n.includes("ship")) return "SHIPPING";
   if (n.includes("chuan bi") || n.includes("lay hang") || n.includes("process") || n.includes("picking")) return "CONFIRMED";
@@ -388,7 +389,7 @@ export const mapServerOrder = (s) => {
       unitPrice: d.price ?? 0,
       subtotal: (d.price ?? 0) * (d.quantity ?? 1),
     })),
-    subtotal: s.total ?? 0,
+    subtotal: s.subtotalAmount ?? s.subtotal ?? (s.products || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
     shippingFee: s.shippingFee ?? 0,
     discount: s.discount ?? 0,
     total: s.total ?? 0,
@@ -445,7 +446,7 @@ export const syncFromServer = async () => {
     // local vừa lưu "Đã nhận hàng"; chỉ giữ terminal local trước một bản
     // ghi server cũ hơn (DELIVERED/PENDING).
     const serverAuthoritative = ["RETURNED", "CANCELLED", "COMPLETED"].includes(key);
-    if (o.status !== key && (!CLIENT_TERMINAL.includes(o.status) || serverAuthoritative)) {
+    if (o.status !== key) {
       o.status = key;
       if (key === "DELIVERED" && !o.deliveredDate) {
         o.deliveredDate = Date.now();
@@ -467,6 +468,15 @@ export const syncFromServer = async () => {
     if (s.payment_status && o.payment_status !== s.payment_status) {
       o.payment_status = s.payment_status;
       changed = true;
+    }
+    if (Array.isArray(s.products) || Array.isArray(s.OrderDetails)) {
+      const snapshot = mapServerOrder(s);
+      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total']) {
+        if (JSON.stringify(o[field]) !== JSON.stringify(snapshot[field])) {
+          o[field] = snapshot[field];
+          changed = true;
+        }
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(s, "stock_issue_status") || Object.prototype.hasOwnProperty.call(s, "StockIssueStatus")) {

@@ -30,7 +30,7 @@
 .icon-check-lg::before, .icon-check2::before, .icon-check2-circle::before,
 .icon-check-circle::before, .icon-check-circle-fill::before { content: '✓'; }
 .icon-x-circle::before, .icon-x-circle-fill::before { content: '⊗'; }
-.icon-bag::before, .icon-bag-check::before, .icon-bag-plus::before { content: '▱'; }
+.icon-bag::before, .icon-bag-check::before, .icon-bag-plus::before { content: '🛍'; font-size: .85em; }
 .icon-bank::before { content: '▥'; }
 .icon-box-arrow-right::before { content: '⇥'; }
 .icon-box-seam::before, .icon-box-seam-fill::before { content: '▣'; }

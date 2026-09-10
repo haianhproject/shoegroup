@@ -51,7 +51,9 @@ function booleanValue(value, defaultValue = true) {
 function dateValue(value, { required = false } = {}) {
   const raw = text(value, 40);
   if (!raw) return required ? null : null;
-  const date = new Date(raw);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const date = parts ? new Date(Number(parts[1]), Number(parts[2])-1, Number(parts[3])) : new Date(raw);
+  if (parts && (date.getFullYear() !== Number(parts[1]) || date.getMonth() !== Number(parts[2])-1 || date.getDate() !== Number(parts[3]))) return null;
   return Number.isFinite(date.getTime()) ? date : null;
 }
 

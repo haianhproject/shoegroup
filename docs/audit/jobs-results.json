@@ -1,0 +1,70 @@
+{
+  "database": "ShoegroupAudit_20260909_fixed",
+  "time": "2026-09-09T10:19:32.859Z",
+  "results": [
+    {
+      "id": "J01",
+      "scenario": "Real scheduler releases expired bank hold and overdue COD",
+      "expected": "both cancelled; inventory restored once",
+      "actual": [
+        {
+          "OrderID": 79,
+          "Status": "Đã hủy"
+        },
+        {
+          "OrderID": 82,
+          "Status": "Đã hủy"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "J02",
+      "scenario": "Expired payment deadline with confirmed/declaration payment",
+      "expected": "paid and declared orders retained until general deadline",
+      "actual": [
+        {
+          "OrderID": 80,
+          "Status": "Chờ xác nhận",
+          "PaymentStatus": "Đã thanh toán"
+        },
+        {
+          "OrderID": 81,
+          "Status": "Chờ xác nhận",
+          "PaymentStatus": "Chờ thanh toán"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "J03",
+      "scenario": "Real scheduler recognizes eligible paid received order",
+      "expected": "IsCountedAsRevenue becomes true",
+      "actual": {
+        "IsCountedAsRevenue": true
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "J04",
+      "scenario": "Same checkout key across two server instances",
+      "expected": "one order and one stock deduction",
+      "actual": [
+        84,
+        84
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "J05",
+      "scenario": "Repeated scheduler invocation",
+      "expected": "no duplicate restock or cancellation history",
+      "actual": [
+        {
+          "n": 1
+        }
+      ],
+      "result": "PASS"
+    }
+  ]
+}

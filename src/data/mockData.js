@@ -1,4 +1,7 @@
 import { reactive } from "vue";
+import sneakersImage from "../../img/hero-sneakers.jpg";
+import runningImage from "../../img/hero-running.jpg";
+import saleImage from "../../img/hero-sale.jpg";
 
 /* =====================================================================
    mockData — dữ liệu mẫu dùng khi API chưa sẵn sàng (fallback).
@@ -133,7 +136,7 @@ export const products = [
     id_product: 1, id_brand: 1, id_category: 1,
     product_name: "Nike Air Zoom Pegasus 40", price: 2899000,
     description: "Giày chạy bộ chuyên nghiệp, siêu nhẹ và thoáng khí, hoàn trả năng lượng cao.",
-    image_url: "/img/banner2.png",
+    image_url: runningImage,
     brand_name: "Nike", category_name: "Chạy bộ", sport: "Running",
     material_name: "Lưới Flyknit", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
     collection_name: "Pro Athlete",
@@ -142,7 +145,7 @@ export const products = [
     id_product: 2, id_brand: 2, id_category: 1,
     product_name: "Adidas Ultraboost 22", price: 3499000,
     description: "Giày chạy bộ êm ái với đệm Boost trứng danh, ôm chân chắc chắn.",
-    image_url: "/img/banner2.png",
+    image_url: runningImage,
     brand_name: "Adidas", category_name: "Chạy bộ", sport: "Running",
     material_name: "Primeknit", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
     collection_name: "Summer 2026",
@@ -151,7 +154,7 @@ export const products = [
     id_product: 3, id_brand: 3, id_category: 2,
     product_name: "Puma RS-X3 Puzzle", price: 2199000,
     description: "Thiết kế retro pha lẫn hiện đại, phong cách đường phố cực chất.",
-    image_url: "/img/banner1.png",
+    image_url: sneakersImage,
     brand_name: "Puma", category_name: "Sneakers", sport: "Lifestyle",
     material_name: "Da tổng hợp", sole_name: "Cao su non-marking", cushioning_name: "Puma Nitro",
     collection_name: "Urban Street",
@@ -160,7 +163,7 @@ export const products = [
     id_product: 4, id_brand: 1, id_category: 3,
     product_name: "Nike LeBron 21", price: 4299000,
     description: "Giày bóng rổ có túi khí bảo vệ chấn thương, bám sân tốt.",
-    image_url: "/img/banner1.png",
+    image_url: sneakersImage,
     brand_name: "Nike", category_name: "Bóng rổ", sport: "Basketball",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
     collection_name: "Pro Athlete",
@@ -169,7 +172,7 @@ export const products = [
     id_product: 5, id_brand: 4, id_category: 6,
     product_name: "New Balance Fresh Foam X", price: 2699000,
     description: "Giày tập gym ổn định, đệm Fresh Foam êm ái cho buổi tập dài.",
-    image_url: "/img/banner2.png",
+    image_url: runningImage,
     brand_name: "New Balance", category_name: "Tập Gym", sport: "Training",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su non-marking", cushioning_name: "Fresh Foam",
     collection_name: "Summer 2026",
@@ -178,7 +181,7 @@ export const products = [
     id_product: 6, id_brand: 2, id_category: 4,
     product_name: "Adidas Predator Edge", price: 3199000,
     description: "Giày bóng đá bám sân cỏ, kiểm soát bóng chính xác.",
-    image_url: "/img/banner3.png",
+    image_url: saleImage,
     brand_name: "Adidas", category_name: "Bóng đá", sport: "Football",
     material_name: "Da tổng hợp", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
     collection_name: "Pro Athlete",

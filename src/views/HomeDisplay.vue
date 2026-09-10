@@ -13,14 +13,15 @@
           @mouseleave="onDragEnd"
           :style="isDragging ? 'cursor: grabbing; user-select: none' : 'cursor: grab'">
           <!-- Track -->
-          <div class="flex items-stretch"
-            :class="isDragging ? '' : 'transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]'"
+          <div ref="heroTrack" class="flex items-stretch"
+            :class="isDragging || !isTransitioning ? '' : 'transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]'"
+            @transitionend="onTrackTransitionEnd"
             :style="{ transform: `translateX(${trackOffset}px)`, gap: heroGap + 'px' }">
-            <div v-for="(slide, i) in heroSlides" :key="slide.title"
+            <div v-for="(slide, i) in displaySlides" :key="slide._key"
               class="shrink-0 transition-all duration-700 ease-out"
               :style="{ width: slideWidth + 'px' }"
-              :class="i === activeSlide ? 'opacity-100 scale-100' : 'opacity-45 scale-[0.94]'"
-              @click="!dragMoved && (i === activeSlide ? goToProducts(slide.filter) : goToSlide(i))">
+              :class="i === currentIndex ? 'opacity-100 scale-100' : 'opacity-45 scale-[0.94]'"
+              @click="!dragMoved && (i === currentIndex ? goToProducts(slide.filter) : (currentIndex = i))">
               <div class="group relative overflow-hidden rounded-2xl bg-[#0E0E0E] h-[300px] md:h-[400px] lg:h-[460px] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.4)]">
                 <!-- Media -->
                 <template v-if="slide.type === 'video'">
@@ -199,15 +200,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
 import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
 import { notify } from '../stores/uiStore'
-import banner1 from '../../img/banner1.png'
-import banner2 from '../../img/banner2.png'
-import banner3 from '../../img/banner3.png'
+import { homeMedia } from '../data/homeMedia'
 
 const router = useRouter()
 const email = ref('')
@@ -269,13 +268,29 @@ const loadData = async () => {
   }
 }
 
+const heroVideo = homeMedia.videos[Math.floor(Math.random() * homeMedia.videos.length)]
 const heroSlides = [
-  { eyebrow: 'Bộ Sưu Tập Nam 2026', title: 'Giày thể thao', titleEm: 'đỉnh cao', sub: 'Thiết kế tối giản, hiệu suất vượt trội. Mỗi bước chân là tuyên ngôn về phong cách sống năng động.', cta: 'Mua ngay', filter: 'all', img: 'https://images.unsplash.com/photo-1600185365926-3a2ce3cdb9eb?w=1600&h=900&fit=crop&auto=format', fallback: banner1 },
-  { eyebrow: 'Trên chân thực tế', title: 'Cảm nhận', titleEm: 'từng chuyển động', sub: 'Chất liệu, phom dáng và độ bám được chăm chút trong từng bước chân.', cta: 'Khám phá sản phẩm', filter: 'all', type: 'video', src: 'https://videos.pexels.com/video-files/13633626/13633626-hd_1920_1080_30fps.mp4', fallback: banner2 },
-  { eyebrow: 'Dòng Chạy Bộ', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ — nâng tầm mỗi cây số.', cta: 'Xem giày chạy', filter: 'running', img: 'https://images.unsplash.com/photo-1542219550-37153d387c27?w=1600&h=900&fit=crop&auto=format', fallback: banner3 },
-  { eyebrow: 'Ưu Đãi Cuối Mùa', title: 'Giảm đến 30%', titleEm: 'số lượng có hạn', sub: 'Loạt mẫu lifestyle & training giá tốt nhất năm.', cta: 'Săn sale ngay', filter: 'sale', img: 'https://images.unsplash.com/photo-1656164603279-b989e21168ba?w=1600&h=900&fit=crop&auto=format', fallback: banner1 },
+  { eyebrow: 'Bộ Sưu Tập Nam 2026', title: 'Giày thể thao', titleEm: 'đỉnh cao', sub: 'Thiết kế tối giản, hiệu suất vượt trội. Mỗi bước chân là tuyên ngôn về phong cách sống năng động.', cta: 'Mua ngay', filter: 'all', alt: 'Giày thể thao nam trắng', img: homeMedia.hero.sneakers },
+  { eyebrow: 'Trên chân thực tế', title: 'Cảm nhận', titleEm: 'từng chuyển động', sub: 'Chất liệu, phom dáng và độ bám được chăm chút trong từng bước chân.', cta: 'Khám phá sản phẩm', filter: 'all', type: 'video', src: heroVideo, fallback: homeMedia.hero.sneakers },
+  { eyebrow: 'Dòng Chạy Bộ', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ — nâng tầm mỗi cây số.', cta: 'Xem giày chạy', filter: 'running', alt: 'Nam giới chạy bộ với giày thể thao', img: homeMedia.hero.running },
+  { eyebrow: 'Ưu Đãi Cuối Mùa', title: 'Giảm đến 30%', titleEm: 'số lượng có hạn', sub: 'Loạt mẫu lifestyle & training giá tốt nhất năm.', cta: 'Săn sale ngay', filter: 'sale', alt: 'Giày sneaker nam phong cách đường phố', img: homeMedia.hero.sale },
 ]
-const activeSlide = ref(0)
+// Tạo 3 bộ slide để tạo vòng lặp vô hạn mượt mà (cả 2 bên trái/phải luôn có ảnh hiển thị)
+const displaySlides = computed(() => [
+  ...heroSlides.map((s, idx) => ({ ...s, _key: `set0-${idx}`, realIdx: idx })),
+  ...heroSlides.map((s, idx) => ({ ...s, _key: `set1-${idx}`, realIdx: idx })),
+  ...heroSlides.map((s, idx) => ({ ...s, _key: `set2-${idx}`, realIdx: idx })),
+])
+
+const currentIndex = ref(heroSlides.length) // Bắt đầu ở slide 0 của set giữa
+const isTransitioning = ref(true)
+
+const activeSlide = computed(() => {
+  const len = heroSlides.length
+  return ((currentIndex.value % len) + len) % len
+})
+
+const heroTrack = ref(null)
 const heroViewport = ref(null)
 const viewportWidth = ref(1200)
 const heroGap = 20
@@ -289,15 +304,50 @@ const dragMoved = ref(false)
 const DRAG_THRESHOLD = 60 // px kéo tối thiểu để chuyển slide
 
 const trackOffset = computed(() =>
-  Math.round(viewportWidth.value / 2 - slideWidth.value / 2 - activeSlide.value * (slideWidth.value + heroGap))
+  Math.round(viewportWidth.value / 2 - slideWidth.value / 2 - currentIndex.value * (slideWidth.value + heroGap))
   + (isDragging.value ? dragDeltaX.value : 0)
 )
 
 const measure = () => { if (heroViewport.value) viewportWidth.value = heroViewport.value.clientWidth }
 let heroTimer = null
-const goToSlide = (i) => { activeSlide.value = (i + heroSlides.length) % heroSlides.length }
-const nextSlide = () => goToSlide(activeSlide.value + 1)
-const prevSlide = () => goToSlide(activeSlide.value - 1)
+
+const goToSlide = (targetRealIdx) => {
+  const currentRealIdx = activeSlide.value
+  let diff = targetRealIdx - currentRealIdx
+  if (diff > heroSlides.length / 2) diff -= heroSlides.length
+  else if (diff < -heroSlides.length / 2) diff += heroSlides.length
+  currentIndex.value += diff
+}
+
+const nextSlide = () => { currentIndex.value++ }
+const prevSlide = () => { currentIndex.value-- }
+
+const onTrackTransitionEnd = (e) => {
+  if (e && e.target !== e.currentTarget) return
+  if (e && e.propertyName && e.propertyName !== 'transform') return
+
+  const len = heroSlides.length
+  if (currentIndex.value >= len * 2) {
+    isTransitioning.value = false
+    currentIndex.value -= len
+    if (heroTrack.value) void heroTrack.value.offsetHeight
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isTransitioning.value = true
+      })
+    })
+  } else if (currentIndex.value < len) {
+    isTransitioning.value = false
+    currentIndex.value += len
+    if (heroTrack.value) void heroTrack.value.offsetHeight
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isTransitioning.value = true
+      })
+    })
+  }
+}
+
 const playHero = () => { if (!heroTimer) heroTimer = setInterval(nextSlide, 5000) }
 const pauseHero = () => { if (heroTimer) { clearInterval(heroTimer); heroTimer = null } }
 
@@ -377,11 +427,7 @@ const goToProducts = (filter = 'all') => {
   router.push({ path: '/products', query })
 }
 const homeProducts = computed(() => products.value.slice(0, 5))
-const categoryImages = [
-  'https://images.unsplash.com/photo-1656164753657-8ff832063a71?w=600&h=800&fit=crop&auto=format',
-  'https://images.unsplash.com/photo-1469395446868-fb6a048d5ca3?w=600&h=800&fit=crop&auto=format',
-  'https://images.unsplash.com/photo-1554139844-af2fc8ad3a3a?w=600&h=800&fit=crop&auto=format',
-]
+const categoryImages = homeMedia.categories
 const categorySpecs = [
   { key: 'running', label: 'Chạy Bộ' },
   { key: 'basketball', label: 'Bóng Rổ' },
@@ -397,16 +443,15 @@ const categoryCards = computed(() => categorySpecs.map((spec, i) => {
     count: `${count || allProducts.value.filter((product) => normalizeFilterText(`${product.sport} ${product.category_name}`).includes(normalizeFilterText(spec.key))).length} sản phẩm`,
     categoryId,
     img: categoryImages[i],
-    fallback: [banner2, banner1, banner3][i],
   }
 }))
 const tickerItems = ['CHẠY BỘ NAM', 'BÓNG RỔ', 'TRAINING', 'LIFESTYLE', 'TENNIS', 'SALE -30%']
 const banners = [
-  { eyebrow: 'Dòng Hiệu Suất Cao', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ.', cta: 'Xem bộ sưu tập', filter: 'running', dark: true, img: 'https://images.unsplash.com/photo-1656164753657-8ff832063a71?w=900&h=1100&fit=crop&auto=format', fallback: banner1 },
-  { eyebrow: 'Sân đấu bóng rổ', title: 'Bứt phá mọi giới hạn', sub: 'Bám sân tối ưu, hỗ trợ cổ chân vững chắc.', cta: 'Khám phá ngay', filter: 'basketball', dark: true, img: 'https://images.unsplash.com/photo-1587563871167-1ee9c731aefb?w=900&h=600&fit=crop&auto=format', fallback: banner2 },
-  { eyebrow: 'Giảm đến 30%', title: 'Ưu đãi cuối mùa', sub: 'Loạt mẫu lifestyle & training giá tốt.', cta: 'Săn sale', filter: 'sale', dark: false, img: 'https://images.unsplash.com/photo-1544441892-794166f1e3be?w=900&h=600&fit=crop&auto=format', fallback: banner3 },
+  { eyebrow: 'Dòng Hiệu Suất Cao', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ.', cta: 'Xem bộ sưu tập', filter: 'running', dark: true, alt: 'Giày chạy bộ hiệu suất cao', img: homeMedia.promo.running },
+  { eyebrow: 'Sân đấu bóng rổ', title: 'Bứt phá mọi giới hạn', sub: 'Bám sân tối ưu, hỗ trợ cổ chân vững chắc.', cta: 'Khám phá ngay', filter: 'basketball', dark: true, alt: 'Giày thể thao dành cho sân bóng rổ', img: homeMedia.promo.basketball },
+  { eyebrow: 'Giảm đến 30%', title: 'Ưu đãi cuối mùa', sub: 'Loạt mẫu lifestyle & training giá tốt.', cta: 'Săn sale', filter: 'sale', dark: false, alt: 'Bộ sưu tập ưu đãi cuối mùa', img: homeMedia.promo.sale },
 ]
-const trustItems = [{ icon: 'truck', title: 'Miễn phí vận chuyển', sub: 'Đơn từ 1.500.000₫' }, { icon: 'return', title: 'Đổi trả 30 ngày', sub: 'Miễn phí, dễ dàng' }, { icon: 'shield', title: 'Chính hãng 100%', sub: 'Cam kết hoàn tiền' }, { icon: 'support', title: 'Hỗ trợ 24/7', sub: 'Luôn sẵn sàng' }]
+const trustItems = [{ icon: 'truck', title: 'Giao hàng toàn quốc', sub: 'Xem phí khi thanh toán' }, { icon: 'return', title: 'Yêu cầu trả hàng', sub: 'Trong 14 ngày từ khi nhận' }, { icon: 'shield', title: 'Chính hãng 100%', sub: 'Cam kết hoàn tiền' }, { icon: 'support', title: 'Hỗ trợ 24/7', sub: 'Luôn sẵn sàng' }]
 const trustIcons = { truck: '<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>', return: '<path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>', shield: '<path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>', support: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-3v-8h3a2 2 0 0 1 2 2z"/><path d="M3 19a2 2 0 0 0 2 2h3v-8H5a2 2 0 0 0-2 2z"/>' }
 onMounted(() => { loadData(); measure(); window.addEventListener('resize', measure); playHero() })
 onUnmounted(() => { pauseHero(); window.removeEventListener('resize', measure) })

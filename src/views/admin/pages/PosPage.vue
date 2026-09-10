@@ -8,7 +8,7 @@ import {
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
   posCustomerSearch, posCustomerResults, pickPosCustomer, savePosCustomer,
-  checkoutPos, formatPrice, validateCartItemQty,
+  checkoutPos, formatPrice, validateCartItemQty, posSubmitting,
 } from '../adminStore'
 
 const qtyInputs = ref({})
@@ -88,9 +88,9 @@ function addWithQty(v) {
             <input v-model="posSearch" type="text" class="sg-input rounded-2 pl-5" placeholder="Tìm theo tên, mã, màu, size...">
           </div>
           <div class="grid grid-cols-12 gap-3" style="max-height:52vh;overflow:auto;">
-            <div v-if="posVariants.length === 0" class="text-center text-gray-600 py-4 text-sm">Không tìm thấy sản phẩm.</div>
+            <div v-if="posVariants.length === 0" class="col-span-12 text-center text-gray-600 py-4 text-sm">Không tìm thấy sản phẩm.</div>
             <div v-for="v in posVariants" :key="v.id" class="col-span-6 md:col-span-4">
-              <div class="border rounded-2 p-2 h-full flex flex-col">
+              <div class="admin-pos-product border rounded-2 p-2 h-full flex flex-col">
                 <div class="relative mb-2">
                   <img :src="v.image || 'https://via.placeholder.com/160'" class="rounded-2 w-full" style="height:96px;object-fit:cover;" @error="$event.target.src='https://via.placeholder.com/160'">
                   <span class="rounded-full border absolute" :style="{ width:'16px', height:'16px', bottom:'6px', right:'6px', background: v.color_hex || '#d1d5db' }"></span>
@@ -165,7 +165,7 @@ function addWithQty(v) {
             <div class="col-span-6"><button @click="activePosOrder.payment_method = 'Chuyển khoản'" class="btn w-full rounded-2 border py-2" :class="activePosOrder.payment_method === 'Chuyển khoản' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'"><i class="icon icon-bank mr-1"></i>Chuyển khoản</button></div>
           </div>
 
-          <button @click="checkoutPos()" :disabled="activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>Tạo đơn / Thanh toán</button>
+          <button @click="checkoutPos()" :disabled="posSubmitting || activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
         </div>
       </div>
     </div>

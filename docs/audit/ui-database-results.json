@@ -1,0 +1,14 @@
+{
+  "time": "2026-09-09T10:25:59.500Z",
+  "observations": [
+    {
+      "OrderID": 85,
+      "Status": "Đã hủy",
+      "PaymentStatus": "Đã hủy",
+      "TotalAmount": 575000,
+      "CancelReason": "Audit UI cancellation - synthetic data",
+      "StockRestoredAt": "2026-09-09T10:20:54.967Z",
+      "StockQuantity": 100
+    }
+  ]
+}

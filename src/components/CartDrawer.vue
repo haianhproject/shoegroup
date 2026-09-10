@@ -2,7 +2,7 @@
 import { onUnmounted, computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  cartState, cartItems, cartCount, cartSubtotal, cartShippingFee, cartTotal,
+  cartState, cartItems, cartCount, cartSubtotal,
   formatCurrency, increaseQuantity, decreaseQuantity, removeFromCart, clearCart,
   refreshCartAvailability, cartHasUnavailableItems, isCheckingCartStock,
   hideDrawer,
@@ -111,13 +111,21 @@ const addSuggestedToCart = async (p) => {
           <!-- Header -->
           <div class="drawer-header">
             <h2 id="cart-drawer-title" class="drawer-title">Giỏ hàng của bạn ({{ cartCount }})</h2>
-            <button class="drawer-close" @click="close" aria-label="Đóng"><i class="icon icon-x-lg"></i></button>
+            <button class="drawer-close" @click="close" aria-label="Đóng">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
           </div>
 
           <!-- Body -->
           <div class="drawer-body">
             <div v-if="cartCount === 0" class="empty-state">
-              <i class="icon icon-bag"></i>
+              <div class="empty-icon-wrap flex justify-center mb-3 text-[#737373]">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                  <line x1="3" y1="6" x2="21" y2="6"/>
+                  <path d="M16 10a4 4 0 0 1-8 0"/>
+                </svg>
+              </div>
               <h3>Giỏ hàng trống</h3>
               <p>Thêm vài đôi giày để bắt đầu.</p>
               <router-link to="/products" class="btn-sg-dark" @click="close">Khám phá sản phẩm</router-link>
@@ -144,16 +152,22 @@ const addSuggestedToCart = async (p) => {
                     :to="`/product/${item.id_product}`"
                     class="cc-choose-variant"
                     @click="close"
-                  ><i class="icon icon-arrow-repeat mr-1"></i>Chọn biến thể khác</router-link>
+                  ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1 inline-block"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>Chọn biến thể khác</router-link>
                   <div class="cc-actions">
                     <div class="qty-compact">
-                      <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)" :aria-label="`Giảm số lượng ${item.product?.product_name}`"><i class="icon icon-dash" aria-hidden="true"></i></button>
+                      <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)" :aria-label="`Giảm số lượng ${item.product?.product_name}`">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/></svg>
+                      </button>
                       <span>{{ item.quantity }}</span>
-                      <button :disabled="item.isOutOfStock || item.hasInsufficientStock || item.quantity >= Number(item.stockQuantity || 0)" @click="handleIncrease(item)" :aria-label="`Tăng số lượng ${item.product?.product_name}`"><i class="icon icon-plus" aria-hidden="true"></i></button>
+                      <button :disabled="item.isOutOfStock || item.hasInsufficientStock || item.quantity >= Number(item.stockQuantity || 0)" @click="handleIncrease(item)" :aria-label="`Tăng số lượng ${item.product?.product_name}`">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                      </button>
                     </div>
                     <div class="cc-unit-actions">
                       <span class="cc-unit">{{ formatCurrency(item.unitPrice) }} / sp</span>
-                      <button class="cc-remove" @click="removeFromCart(item.id_product_detail)" :aria-label="`Xóa ${item.product?.product_name}`" title="Xóa"><i class="icon icon-trash" aria-hidden="true"></i></button>
+                      <button class="cc-remove" @click="removeFromCart(item.id_product_detail)" :aria-label="`Xóa ${item.product?.product_name}`" title="Xóa">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -177,8 +191,14 @@ const addSuggestedToCart = async (p) => {
                   </button>
                 </div>
                 <div v-else class="suggest-grid">
-                  <router-link to="/products" class="suggest-card" @click="close"><i class="icon icon-plus-lg"></i><span>Khám phá thêm</span></router-link>
-                  <router-link to="/products" class="suggest-card" @click="close"><i class="icon icon-plus-lg"></i><span>Sản phẩm mới</span></router-link>
+                  <router-link to="/products" class="suggest-card" @click="close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Khám phá thêm</span>
+                  </router-link>
+                  <router-link to="/products" class="suggest-card" @click="close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Sản phẩm mới</span>
+                  </router-link>
                 </div>
               </div>
             </div>
@@ -192,10 +212,10 @@ const addSuggestedToCart = async (p) => {
             </div>
             <div class="footer-row footer-shipping">
               <span>Phí vận chuyển</span>
-              <span>{{ formatCurrency(cartShippingFee) }}</span>
+              <span>Tính khi thanh toán</span>
             </div>
             <button class="btn-checkout" :disabled="isCheckingCartStock || cartHasUnavailableItems" @click="goCheckout">
-              <i class="icon icon-bag mr-2"></i>{{ isCheckingCartStock ? 'ĐANG KIỂM TRA...' : `Thanh toán ${formatCurrency(cartTotal)}` }}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 inline-block"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>{{ isCheckingCartStock ? 'ĐANG KIỂM TRA...' : 'Tiếp tục thanh toán' }}
             </button>
             <p class="footer-hint">Nhập coupon và phí vận chuyển ở trang thanh toán</p>
           </div>

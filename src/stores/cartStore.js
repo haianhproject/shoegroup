@@ -356,6 +356,7 @@ const refreshCartStockFromServer = async () => {
     const outOfStock = [];
     const insufficient = [];
     const newlyUnavailable = [];
+    const priceChanged = [];
     const checkedAt = Date.now();
 
     for (const item of cartState.items) {
@@ -420,6 +421,38 @@ const refreshCartStockFromServer = async () => {
       item.stockAvailability = nextStatus;
       item.stockCheckedAt = checkedAt;
 
+      // Đồng bộ ảnh biến thể và màu mới nhất từ server nếu admin vừa cập nhật
+      if (product) {
+        // Cart prices are estimates until order creation. Refresh from the same
+        // product sale/base price used by the server before the customer submits.
+        const basePrice = Number(product.price ?? product.BasePrice);
+        const salePrice = Number(product.sale_price ?? product.SalePrice ?? 0);
+        const currentPrice = salePrice > 0 ? salePrice : basePrice;
+        if (Number.isFinite(currentPrice) && currentPrice >= 0 && item.unitPrice !== currentPrice) {
+          priceChanged.push({ id: item.id_product_detail, previousPrice: item.unitPrice, currentPrice });
+          item.unitPrice = currentPrice;
+        }
+        if (product.name && item.product) {
+          item.product.product_name = product.name;
+        }
+        if (product.image_url && item.product) {
+          item.product.image_url = product.image_url;
+        }
+        const colorName = item.color?.color_label || item.color?.color_name || variant?.color;
+        if (colorName) {
+          const colorObj = (product.colors || []).find(
+            (c) => normalizeVariantText(c.name || c.ColorName) === normalizeVariantText(colorName),
+          );
+          const freshImg = colorObj?.image || colorObj?.ImageURL || variant?.image || product.image_url;
+          if (freshImg) {
+            if (!item.color) item.color = {};
+            item.color.image = freshImg;
+            if (colorObj?.name) item.color.color_label = colorObj.name;
+            if (colorObj?.hex) item.color.hex = colorObj.hex;
+          }
+        }
+      }
+
       if (isOutOfStock) outOfStock.push(item);
       if (hasInsufficientStock) insufficient.push(item);
       if (
@@ -430,7 +463,10 @@ const refreshCartStockFromServer = async () => {
       }
     }
 
-    return { ok: true, outOfStock, insufficient, newlyUnavailable };
+    // Lưu giỏ hàng đã đồng bộ vào bộ nhớ
+    saveCartForUser(activeUserKey, cartState.items);
+
+    return { ok: true, outOfStock, insufficient, newlyUnavailable, priceChanged };
   } catch (error) {
     return {
       ok: false,

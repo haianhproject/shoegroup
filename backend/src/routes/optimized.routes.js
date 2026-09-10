@@ -12,6 +12,7 @@
  *  GET /api/v2/dashboard/summary   - so lieu tong quan 1 truy vấn
  * ============================================================ */
 const express = require("express");
+const revenueSql = require('../revenue');
 
 module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
   const router = express.Router();
@@ -51,7 +52,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       const search = (req.query.q || "").toString().slice(0, 100);
       const categoryId = req.query.categoryId ? toInt(req.query.categoryId, 0, 0, 1e9) : null;
       const brandId = req.query.brandId ? toInt(req.query.brandId, 0, 0, 1e9) : null;
-      if (categoryId === null || brandId === null) return res.status(400).json({ success: false, message: "Bộ lọc danh mục/thương hiệu không hợp lệ." });
+      if ((req.query.categoryId && categoryId === null) || (req.query.brandId && brandId === null)) return res.status(400).json({ success: false, message: "Bộ lọc danh mục/thương hiệu không hợp lệ." });
       const sortMap = {
         newest: "p.CreatedAt DESC, p.ProductID DESC",
         price_asc: "ISNULL(p.SalePrice, p.BasePrice) ASC",
@@ -208,7 +209,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
         SELECT
           (SELECT COUNT(*) FROM Orders) AS totalOrders,
           (SELECT COUNT(*) FROM Orders WHERE OrderDate >= CAST(GETDATE() AS date)) AS ordersToday,
-          (SELECT ISNULL(SUM(TotalAmount),0) FROM Orders WHERE ISNULL(IsCountedAsRevenue,0) = 1) AS recognizedRevenue,
+          (SELECT ISNULL(SUM(${revenueSql.netAmount}),0) FROM Orders o ${revenueSql.refundJoin} WHERE ${revenueSql.recognizedWhere}) AS recognizedRevenue,
           (SELECT COUNT(*) FROM Products WHERE ISNULL(IsActive,1) = 1) AS activeProducts,
           (SELECT COUNT(*) FROM Users WHERE ISNULL(IsActive,1) = 1) AS activeUsers,
           (SELECT COUNT(*) FROM ProductVariants WHERE StockQuantity <= 5) AS lowStockVariants

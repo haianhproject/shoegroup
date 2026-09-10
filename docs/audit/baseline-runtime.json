@@ -1,0 +1,363 @@
+{
+  "database": "ShoegroupAudit_20260909",
+  "time": "2026-09-09T05:23:14.929Z",
+  "port": "5101",
+  "results": [
+    {
+      "id": "T01",
+      "scenario": "Stock 7, quantity 10, transaction rollback",
+      "expected": "409; stock 7; no order details",
+      "actual": {
+        "status": 409,
+        "data": {
+          "success": false,
+          "message": "Biến thể vừa hết hàng hoặc không đủ số lượng.",
+          "code": "STOCK_UNAVAILABLE"
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T02-1",
+      "scenario": "Buy 1 from stock 10",
+      "expected": "200; deducted exactly once",
+      "actual": {
+        "success": true,
+        "orderId": 2,
+        "OrderID": 2,
+        "subtotalAmount": 500000,
+        "shippingFee": 75000,
+        "discountAmount": 0,
+        "totalAmount": 575000,
+        "shippingMethodCode": "STANDARD",
+        "shippingMethodId": 1,
+        "distanceKm": 1720,
+        "eta": "4-5 ngày"
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T02-10",
+      "scenario": "Buy 10 from stock 10",
+      "expected": "200; deducted exactly once",
+      "actual": {
+        "success": true,
+        "orderId": 3,
+        "OrderID": 3,
+        "subtotalAmount": 5000000,
+        "shippingFee": 75000,
+        "discountAmount": 0,
+        "totalAmount": 5075000,
+        "shippingMethodCode": "STANDARD",
+        "shippingMethodId": 1,
+        "distanceKm": 1720,
+        "eta": "4-5 ngày"
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T03-0",
+      "scenario": "Direct API quantity 0",
+      "expected": "400/409; stock unchanged",
+      "actual": {
+        "status": 400,
+        "data": {
+          "success": false,
+          "message": "San pham, bien the hoac so luong trong don khong hop le."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T03--1",
+      "scenario": "Direct API quantity -1",
+      "expected": "400/409; stock unchanged",
+      "actual": {
+        "status": 400,
+        "data": {
+          "success": false,
+          "message": "San pham, bien the hoac so luong trong don khong hop le."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T03-999999",
+      "scenario": "Direct API quantity 999999",
+      "expected": "400/409; stock unchanged",
+      "actual": {
+        "status": 409,
+        "data": {
+          "success": false,
+          "message": "Biến thể vừa hết hàng hoặc không đủ số lượng.",
+          "code": "STOCK_UNAVAILABLE"
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T03-1.5",
+      "scenario": "Direct API quantity 1.5",
+      "expected": "400/409; stock unchanged",
+      "actual": {
+        "status": 400,
+        "data": {
+          "success": false,
+          "message": "San pham, bien the hoac so luong trong don khong hop le."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T04",
+      "scenario": "Unknown product and empty order",
+      "expected": "409/400",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "San pham hoac bien the khong con duoc kinh doanh."
+          }
+        },
+        {
+          "status": 400,
+          "data": {
+            "success": false,
+            "message": "Don hang khong co san pham."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T05",
+      "scenario": "Disabled product or variant",
+      "expected": "409",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "San pham hoac bien the khong con duoc kinh doanh."
+          }
+        },
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "San pham hoac bien the khong con duoc kinh doanh."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T06",
+      "scenario": "Client price/total/discount/shipping tampering",
+      "expected": "500k item plus server shipping",
+      "actual": {
+        "success": true,
+        "orderId": 5,
+        "OrderID": 5,
+        "subtotalAmount": 500000,
+        "shippingFee": 75000,
+        "discountAmount": 0,
+        "totalAmount": 575000,
+        "shippingMethodCode": "STANDARD",
+        "shippingMethodId": 1,
+        "distanceKm": 1720,
+        "eta": "4-5 ngày"
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T07",
+      "scenario": "Price snapshot survives price edit/sale end",
+      "expected": "UnitPrice at order creation stays 500k",
+      "actual": [
+        {
+          "UnitPrice": 500000
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T08-2",
+      "scenario": "2 different users buy last SKU",
+      "expected": "one success, others 409, stock zero, one item",
+      "actual": [
+        200,
+        409
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T08-5",
+      "scenario": "5 different users buy last SKU",
+      "expected": "one success, others 409, stock zero, one item",
+      "actual": "[{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":200,\"data\":{\"success\":true,\"orderId\":13,\"OrderID\":13,\"subtotalAmount\":500000,\"shippingFee\":75000,\"discountAmount\":0,\"totalAmount\":575000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "T08-10",
+      "scenario": "10 different users buy last SKU",
+      "expected": "one success, others 409, stock zero, one item",
+      "actual": "[{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":200,\"data\":{\"success\":true,\"orderId\":22,\"OrderID\":22,\"subtotalAmount\":500000,\"shippingFee\":75000,\"discountAmount\":0,\"totalAmount\":575000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "T09",
+      "scenario": "Repeated same checkout key",
+      "expected": "same order ID; inventory decremented once",
+      "actual": "Expected values to be strictly equal:\n\n24 !== 25\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T10",
+      "scenario": "10 parallel retries same checkout key",
+      "expected": "all same order ID, stock decremented once",
+      "actual": "[{\"status\":200,\"data\":{\"success\":true,\"orderId\":33,\"OrderID\":33,\"subtotalAmount\":500000,\"shippingFee\":75000,\"discountAmount\":0,\"totalAmount\":575000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "T11",
+      "scenario": "Same key different payload",
+      "expected": "409 conflict",
+      "actual": "{\"status\":200,\"data\":{\"success\":true,\"orderId\":37,\"OrderID\":37,\"subtotalAmount\":1000000,\"shippingFee\":75000,\"discountAmount\":0,\"totalAmount\":1075000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}}\n\n200 !== 409\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T12",
+      "scenario": "Two users campaign one-time coupon",
+      "expected": "one success, one 409, counter 1",
+      "actual": "[{\"status\":200,\"data\":{\"success\":true,\"orderId\":38,\"OrderID\":38,\"subtotalAmount\":500000,\"shippingFee\":75000,\"discountAmount\":50000,\"totalAmount\":525000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "T13",
+      "scenario": "Same user concurrent PerUserLimit=1 coupon",
+      "expected": "one success, one 409",
+      "actual": "[{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":200,\"data\":{\"success\":true,\"orderId\":39,\"OrderID\":39,\"subtotalAmount\":500000,\"shippingFee\":75000,\"discountAmount\":50000,\"totalAmount\":525000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "T14",
+      "scenario": "Invalid/expired coupon",
+      "expected": "409 stock unchanged",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Ma giam gia khong hop le hoac da het luot su dung."
+          }
+        },
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Ma giam gia khong hop le hoac da het luot su dung."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T15",
+      "scenario": "Cancel and duplicate cancel",
+      "expected": "stock restored once; repeated cancel succeeds unchanged",
+      "actual": "{\"status\":409,\"data\":{\"success\":false,\"message\":\"Don hang khong con o trang thai co the huy.\"}}\n\n409 !== 200\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T16",
+      "scenario": "Order ownership and admin authorization",
+      "expected": "403/401, owner unaffected",
+      "actual": [
+        403,
+        403,
+        403,
+        403,
+        403,
+        401,
+        403
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T17",
+      "scenario": "Customer transfer declaration cannot create paid money",
+      "expected": "pending declaration; no SUCCESS or valid signature",
+      "actual": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'Đã thanh toán'\n- 'Chờ thanh toán'\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T18",
+      "scenario": "Cancelled cannot become shipped/paid",
+      "expected": "409",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Khong the chuyen don tu 'Đã hủy' sang 'Đang vận chuyển'."
+          }
+        },
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Trang thai thanh toan khong the thay doi."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "T19",
+      "scenario": "Duplicate admin paid confirmation then paid cancellation",
+      "expected": "one SUCCESS; refund pending, never fake refunded",
+      "actual": "Expected values to be strictly equal:\n\n1 !== 0\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T20",
+      "scenario": "POS tampered amount and stale item price",
+      "expected": "server canonical 500k",
+      "actual": "Expected values to be strictly equal:\n\n1 !== 500000\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T21",
+      "scenario": "POS cannot create cancelled order consuming stock",
+      "expected": "400/409",
+      "actual": "{\"status\":200,\"data\":{\"success\":true,\"orderId\":46,\"OrderID\":46,\"subtotalAmount\":500000,\"shippingFee\":0,\"discountAmount\":0,\"totalAmount\":500000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":null,\"distanceKm\":null,\"eta\":null}}",
+      "result": "FAIL"
+    },
+    {
+      "id": "T22",
+      "scenario": "Hard product deletion preserves order history",
+      "expected": "409, order detail remains",
+      "actual": "{\"status\":200,\"data\":{\"success\":true,\"mode\":\"hard\"}}\n\n200 !== 409\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "T23",
+      "scenario": "Public paginated products without optional filters",
+      "expected": "200",
+      "actual": {
+        "status": 200,
+        "count": 12
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "T24",
+      "scenario": "SQL consistency after API tests",
+      "expected": "no orphan/empty orders; no negative stock",
+      "actual": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n+   emptyOrders: 1,\n-   emptyOrders: 0,\n    negative: 0,\n    orphanItems: 0\n  }\n",
+      "result": "FAIL"
+    }
+  ]
+}

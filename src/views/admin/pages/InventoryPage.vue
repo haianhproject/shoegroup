@@ -25,14 +25,14 @@ function stepStock(v, delta) {
     </div>
 
     <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
-      <div class="flex bg-white rounded-2 shadow-sm" style="max-width:320px;"><span class="flex items-center bg-white border-0"><i class="icon icon-search text-gray-600"></i></span><input v-model="inventorySearch" type="text" class="sg-input border-0" placeholder="Tìm theo SKU / tên..."></div>
-      <div class="flex items-center gap-2 flex items-center"><input v-model="lowStockOnly" class="accent-black" type="checkbox" id="lowStockSwitch"><label class="text-sm text-sm font-medium" for="lowStockSwitch">Chỉ hiện sắp/hết hàng</label></div>
+      <div class="flex bg-white rounded-2 shadow-sm" style="max-width:320px;"><span class="flex items-center bg-white border-0"><i class="icon icon-search text-gray-600" aria-hidden="true"></i></span><input v-model="inventorySearch" type="search" class="sg-input border-0" placeholder="Tìm theo SKU hoặc tên…" aria-label="Tìm tồn kho theo SKU hoặc tên sản phẩm"></div>
+      <div class="flex items-center gap-2"><input v-model="lowStockOnly" class="accent-black" type="checkbox" id="lowStockSwitch"><label class="text-sm font-medium" for="lowStockSwitch">Chỉ hiện sắp hết hoặc hết hàng</label></div>
     </div>
 
     <div class="bg-white rounded-1 shadow-sm overflow-hidden">
       <div class="table-responsive">
         <table class="table align-middle mb-0">
-          <thead><tr class="text-gray-600 text-sm uppercase"><th class="pl-4">Sản Phẩm</th><th>SKU</th><th>Màu</th><th>Size</th><th class="text-center">Trạng Thái</th><th class="text-center">Tồn Kho</th><th class="text-end pr-4">Cập Nhật</th></tr></thead>
+          <thead><tr class="text-gray-600 text-sm"><th scope="col" class="pl-4">Sản phẩm</th><th scope="col">SKU</th><th scope="col">Màu sắc</th><th scope="col">Kích cỡ</th><th scope="col" class="text-center">Trạng thái</th><th scope="col" class="text-center">Tồn kho</th><th scope="col" class="text-end pr-4">Cập nhật</th></tr></thead>
           <tbody>
             <tr v-for="v in filteredInventory" :key="v.id">
               <td class="pl-4 text-sm font-medium" v-text="v.product_name"></td>
@@ -43,14 +43,18 @@ function stepStock(v, delta) {
               <td class="text-center font-bold" v-text="v.stock"></td>
               <td class="text-end pr-4">
                 <div class="inline-flex gap-1 items-center">
-                  <button @click="stepStock(v,-1)" class="btn btn-sm btn-light border rounded-2" :disabled="Number(v.stock)<=0"><i class="icon icon-dash"></i></button>
-                  <input v-model.number="v.stock" type="number" min="0" max="100000" class="sg-input sg-input text-center" style="width:80px;">
-                  <button @click="stepStock(v,1)" class="btn btn-sm btn-light border rounded-2"><i class="icon icon-plus"></i></button>
-                  <button @click="updateStock(v)" class="btn btn-sm btn-dark rounded-2" title="Lưu tồn kho"><i class="icon icon-check-lg"></i></button>
+                  <button @click="stepStock(v,-1)" class="btn btn-sm btn-light border rounded-2" :disabled="Number(v.stock)<=0" :aria-label="'Giảm tồn kho của ' + (v.sku || v.product_name)" title="Giảm tồn kho"><i class="icon icon-dash" aria-hidden="true"></i></button>
+                  <input v-model.number="v.stock" type="number" min="0" max="100000" class="sg-input text-center" style="width:80px;" :aria-label="'Số lượng tồn kho của ' + (v.sku || v.product_name)">
+                  <button @click="stepStock(v,1)" class="btn btn-sm btn-light border rounded-2" :aria-label="'Tăng tồn kho của ' + (v.sku || v.product_name)" title="Tăng tồn kho"><i class="icon icon-plus" aria-hidden="true"></i></button>
+                  <button @click="updateStock(v)" class="btn btn-sm btn-dark rounded-2" :aria-label="'Lưu tồn kho của ' + (v.sku || v.product_name)" title="Lưu tồn kho"><i class="icon icon-check-lg" aria-hidden="true"></i></button>
                 </div>
               </td>
             </tr>
-            <tr v-if="!filteredInventory.length"><td colspan="7" class="text-center text-gray-600 py-5"><i class="icon icon-box-seam text-2xl block mb-2 opacity-50"></i>Chưa có dữ liệu kho. Hãy tạo biến thể cho sản phẩm hoặc chạy file dữ liệu mẫu.</td></tr>
+            <tr v-if="!filteredInventory.length"><td colspan="7" class="text-center text-gray-600 py-5">
+              <i class="icon icon-box-seam text-2xl block mb-2 opacity-50" aria-hidden="true"></i>
+              <p class="font-medium mb-1">{{ db.inventory.length ? 'Không tìm thấy biến thể phù hợp' : 'Chưa có dữ liệu kho' }}</p>
+              <p class="text-sm mb-0">{{ !db.inventory.length ? 'Tạo biến thể cho sản phẩm để bắt đầu quản lý tồn kho.' : lowStockOnly ? 'Thử từ khóa khác hoặc bỏ bộ lọc sắp hết hàng.' : 'Thử tìm kiếm bằng SKU hoặc tên sản phẩm khác.' }}</p>
+            </td></tr>
           </tbody>
         </table>
       </div>

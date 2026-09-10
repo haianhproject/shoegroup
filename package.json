@@ -10,6 +10,7 @@
     "dev:web": "vite --port=3000",
     "dev:api": "npm --prefix backend run dev",
     "build": "vite build",
+    "test": "node --test test/*.test.cjs",
     "preview": "vite preview --port=4173"
   },
   "dependencies": {

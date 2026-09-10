@@ -22,6 +22,7 @@ function conditionLabel(request) {
   if (getReturnTypeLabel(request?.return_type) === 'Chưa nhận được hàng') return 'Không áp dụng (chưa nhận hàng)'
   const conditions = (request?.details || []).map((detail) => String(detail.Condition ?? detail.condition ?? '').toUpperCase())
   if (conditions.includes('DAMAGED')) return 'Hư hỏng / tai nạn'
+  if (conditions.includes('SALEABLE')) return 'Đã kiểm tra, có thể bán'
   if (conditions.includes('OPENED')) return 'Đã mở / đã thử'
   if (conditions.includes('UNOPENED')) return 'Còn nguyên'
   return 'Chưa phân loại'
@@ -123,6 +124,16 @@ function refundAmountLabel(request) {
               <td class="text-sm text-gray-600" style="max-width:220px;" v-text="r.reason"></td>
               <td>
                 <span class="text-sm font-medium" v-text="conditionLabel(r)"></span>
+                <div v-if="r.status === 'Đang kiểm tra' && getReturnTypeLabel(r.return_type) !== 'Chưa nhận được hàng'">
+                  <label v-for="detail in r.details" :key="detail.OrderDetailID" class="block text-sm my-2">
+                    {{ detail.ProductName }} ({{ detail.Size }})
+                    <select v-model="detail.Condition" class="sg-input">
+                      <option value="PENDING_INSPECTION">Giữ ngoài kho bán</option>
+                      <option value="DAMAGED">Hư hỏng, không bán lại</option>
+                      <option value="SALEABLE">Đã kiểm tra, có thể bán lại</option>
+                    </select>
+                  </label>
+                </div>
                 <span v-if="r.restocked_at" class="block text-gray-600" style="font-size:0.7rem;">Đã xử lý kho</span>
               </td>
               <td class="text-end font-medium" v-text="refundAmountLabel(r)"></td>
@@ -137,7 +148,7 @@ function refundAmountLabel(request) {
                   <button @click="processReturn(r, 'Sự cố', { inspection_note: 'Cần bổ sung bằng chứng hoặc kiện hàng gặp sự cố.' })" class="btn btn-sm btn-light border" style="border-radius:4px;">Ghi nhận sự cố</button>
                 </div>
                 <div v-else-if="r.status === 'Đang kiểm tra'" class="flex gap-1 justify-end">
-                  <button @click="processReturn(r, 'Chấp nhận hoàn tiền')" class="btn btn-sm btn-dark" style="border-radius:4px;">Chấp nhận hoàn</button>
+                  <button @click="processReturn(r, 'Chấp nhận hoàn tiền', { conditions: (r.details || []).map(d => ({ order_detail_id: d.OrderDetailID, condition: ['SALEABLE', 'DAMAGED'].includes(d.Condition) ? d.Condition : 'PENDING_INSPECTION' })) })" class="btn btn-sm btn-dark" style="border-radius:4px;">Chấp nhận hoàn</button>
                   <button @click="processReturn(r, 'Từ chối')" class="btn btn-sm btn-light border text-red-600" style="border-radius:4px;">Từ chối</button>
                 </div>
                 <div v-else-if="r.status === 'Sự cố'" class="flex gap-1 justify-end">

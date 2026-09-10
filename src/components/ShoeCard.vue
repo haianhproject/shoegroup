@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { addToCart, formatCurrency, showDrawer } from "../stores/cartStore"
 import { notify } from "../stores/uiStore"
-import fallbackProductImage from "../../img/banner1.png"
+import fallbackProductImage from "../../img/hero-sneakers.jpg"
 
 const props = defineProps({
   product: { type: Object, required: true },
@@ -140,12 +140,28 @@ function openVariantModal() {
     return
   }
   selectedColor.value = colorList.value.length > 0 ? colorList.value[0] : null
-  selectedSize.value = null
+  const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+  if (availSizes.length === 1) {
+    selectedSize.value = availSizes[0]
+  } else if (sizeList.value.length === 1) {
+    selectedSize.value = sizeList.value[0]
+  } else {
+    selectedSize.value = null
+  }
   selectedQty.value = 1
   showVariantModal.value = true
 }
 
-watch(selectedColor, () => { selectedSize.value = null })
+watch(selectedColor, () => {
+  const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+  if (availSizes.length === 1) {
+    selectedSize.value = availSizes[0]
+  } else if (sizeList.value.length === 1) {
+    selectedSize.value = sizeList.value[0]
+  } else {
+    selectedSize.value = null
+  }
+})
 watch(selectedSize, () => { selectedQty.value = 1 })
 
 const galleryImages = computed(() => {
@@ -193,7 +209,17 @@ function confirmAddToCart() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
-    if (!selectedSize.value) { notify({ type: "warning", message: "Vui lòng chọn kích thước." }); return }
+    if (!selectedSize.value) {
+      const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+      if (availSizes.length === 1) {
+        selectedSize.value = availSizes[0]
+      } else if (sizeList.value.length === 1) {
+        selectedSize.value = sizeList.value[0]
+      } else {
+        notify({ type: "warning", message: "Vui lòng chọn kích thước." });
+        return
+      }
+    }
     if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Biến thể này đã hết hàng." }); return }
   }
   const colorObj = selectedColor.value
@@ -220,7 +246,17 @@ function handleBuyNow() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
-    if (!selectedSize.value) { notify({ type: "warning", message: "Vui lòng chọn kích thước." }); return }
+    if (!selectedSize.value) {
+      const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+      if (availSizes.length === 1) {
+        selectedSize.value = availSizes[0]
+      } else if (sizeList.value.length === 1) {
+        selectedSize.value = sizeList.value[0]
+      } else {
+        notify({ type: "warning", message: "Vui lòng chọn kích thước." });
+        return
+      }
+    }
     if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Biến thể này đã hết hàng." }); return }
   }
   const colorObj = selectedColor.value
