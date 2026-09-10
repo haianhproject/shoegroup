@@ -14,6 +14,7 @@ import {
   onProductImageFile,
   colorImageDraft,
   onColorImageFile,
+  setColorImage,
   onColorDraftImageFile,
   changeColor,
   activeCategories,
@@ -349,7 +350,9 @@ function onProductImageError(event) {
                   </label>
                   <div class="flex items-center gap-1.5">
                     <input
-                      v-model="c.image"
+                      :value="c.image"
+                      @input="setColorImage(i, $event.target.value)"
+                      :aria-label="'Đường dẫn ảnh biến thể ' + c.name"
                       type="text"
                       class="sg-input sg-input-sm rounded-2 flex-1 text-xs"
                       placeholder="Dán link ảnh hoặc tải từ máy..."
@@ -524,7 +527,7 @@ function onProductImageError(event) {
             <i class="icon icon-upload" aria-hidden="true"></i> Tải ảnh từ thiết bị
             <input type="file" accept="image/*" class="product-file-input" @change="onProductImageFile" />
           </label>
-          <p class="product-help">Ảnh đại diện được hiển thị trong danh sách sản phẩm tại cửa hàng.</p>
+          <p class="product-help">Ảnh đại diện hiển thị trên cửa hàng. Đổi ảnh biến thể đầu tiên sẽ cập nhật ảnh đại diện; đổi riêng ảnh đại diện không thay đổi ảnh biến thể.</p>
         </div>
         <div class="product-form-panel">
           <div class="flex justify-between items-center mb-3">

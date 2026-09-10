@@ -154,3 +154,66 @@ test('checkout blocks double click before stock preflight resolves', async () =>
   assert.equal(stockCalls, 1);
   assert.equal(checkout.placing.value, false);
 });
+
+function loadAdminImages() {
+  return load('src/views/admin/adminStore.js', {
+    '@/services/checkoutAttempt': {},
+    '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
+    '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => null },
+    '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
+  }, {
+    setTimeout() {},
+    FileReader: class {
+      readAsDataURL(file) { this.result = file.data; this.onload(); }
+    },
+  });
+}
+
+const imageProduct = () => ({
+  id: 1, name: 'Giày thử ảnh', image_url: 'cover-original.png',
+  colors: [{ name: 'Đen', image: 'black-original.png' }, { name: 'Trắng', image: 'white-original.png' }],
+  variants: [{ id: 11, color: 'Đen', size: '40', stock: 5 }, { id: 12, color: 'Trắng', size: '40', stock: 5 }],
+});
+
+test('first variant image updates cover, while cover edits and other variants stay independent', () => {
+  const admin = loadAdminImages();
+  const saved = imageProduct();
+  admin.openProductForm(saved);
+  assert.equal(admin.productForm.image_url, 'cover-original.png');
+  admin.setColorImage(0, 'black-new.png');
+  assert.equal(admin.productForm.image_url, 'black-new.png');
+  admin.productForm.image_url = 'cover-custom.png';
+  assert.equal(admin.productForm.colors[0].image, 'black-new.png');
+  admin.setColorImage(1, 'white-new.png');
+  assert.equal(admin.productForm.image_url, 'cover-custom.png');
+  admin.openProductForm(JSON.parse(JSON.stringify(admin.productForm)));
+  assert.equal(admin.productForm.image_url, 'cover-custom.png');
+  assert.equal(admin.productForm.colors[0].image, 'black-new.png');
+  assert.equal(saved.colors[0].image, 'black-original.png');
+});
+
+test('device uploads obey the same one-way image rule', async () => {
+  const admin = loadAdminImages();
+  admin.openProductForm(imageProduct());
+  const upload = data => ({ target: { files: [{ type: 'image/png', size: 100, data }] } });
+  await admin.onColorImageFile(upload('data:image/png;base64,variant'), 0);
+  assert.equal(admin.productForm.image_url, 'data:image/png;base64,variant');
+  await admin.onProductImageFile(upload('data:image/png;base64,cover'));
+  assert.equal(admin.productForm.image_url, 'data:image/png;base64,cover');
+  assert.equal(admin.productForm.colors[0].image, 'data:image/png;base64,variant');
+});
+
+test('adding the first color with an image supplies a cover, later colors do not overwrite it', () => {
+  const admin = loadAdminImages();
+  admin.db.colors = [{ id: 1, name: 'Đen' }, { id: 2, name: 'Trắng' }];
+  admin.openProductForm();
+  admin.colorDraft.value = 1;
+  admin.colorImageDraft.value = 'first.png';
+  admin.addColor();
+  assert.equal(admin.productForm.image_url, 'first.png');
+  admin.colorDraft.value = 2;
+  admin.colorImageDraft.value = 'second.png';
+  admin.addColor();
+  assert.equal(admin.productForm.image_url, 'first.png');
+});

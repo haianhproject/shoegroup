@@ -176,7 +176,6 @@ export const getDisplayName = computed(() => {
   );
 });
 export function handleLogout() {
-  if (typeof window !== "undefined" && !window.confirm("Bạn có chắc muốn đăng xuất khỏi ShoeGroup không?")) return false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
   return true;
@@ -2394,6 +2393,9 @@ export function addColor() {
     image: colorImageDraft.value || "",
     note: (colorNoteDraft.value || "").trim(),
   });
+  if (productForm.colors.length === 1 && colorImageDraft.value) {
+    productForm.image_url = colorImageDraft.value;
+  }
   colorDraft.value = "";
   colorImageDraft.value = "";
   colorNoteDraft.value = "";
@@ -2430,11 +2432,23 @@ export async function onProductImageFile(e) {
   notify("Đã tải ảnh sản phẩm từ thiết bị", "success");
 }
 // Chon anh cho tung mau tu may (doi mau -> doi anh o cua hang)
+export function setColorImage(index, image) {
+  const color = productForm.colors[index];
+  if (!color) return;
+  color.image = String(image ?? "");
+  // Only an explicit first-color edit updates the storefront cover.
+  // Loading the form or changing the cover preserves independent images.
+  if (index === 0) productForm.image_url = color.image;
+}
 export async function onColorImageFile(e, index) {
   const file = pickImageFile(e);
-  if (!file) return;
-  productForm.colors[index].image = await readImageFile(file);
-  notify("Đã tải ảnh cho màu " + productForm.colors[index].name, "success");
+  const color = productForm.colors[index];
+  if (!file || !color) return;
+  const image = await readImageFile(file);
+  const currentIndex = productForm.colors.indexOf(color);
+  if (currentIndex < 0) return;
+  setColorImage(currentIndex, image);
+  notify("Đã tải ảnh cho màu " + color.name, "success");
 }
 // Chon anh cho MAU MOI dang them o khung them mau
 export async function onColorDraftImageFile(e) {

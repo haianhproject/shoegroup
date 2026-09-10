@@ -1,0 +1,51 @@
+{
+  "database": "ShoegroupAudit_restore_20260910_1789041429060",
+  "artifactSha256": "db4c8cbca8c633c229c195023c4358905ab7c8a0452e1a2e5952951af0dec8b2",
+  "startedAt": "2026-09-10T11:57:09.071Z",
+  "runs": [
+    {
+      "run": 1,
+      "tables": 46,
+      "rows": 577,
+      "indexes": 36,
+      "modules": 4,
+      "dataHashesMatch": true,
+      "columnDefinitionsMatch": true,
+      "indexDefinitionsMatch": true,
+      "identityCountersMatch": true,
+      "databaseOptionsMatch": true,
+      "allConstraintsTrusted": true,
+      "checkConstraints": "PASS",
+      "checkDB": "PASS",
+      "negativeStockRejected": true,
+      "checkoutKeysCaseSensitive": true,
+      "duplicateCheckoutRejected": true,
+      "duplicatePaymentRejected": true,
+      "notificationTrigger": "PASS"
+    },
+    {
+      "run": 2,
+      "tables": 46,
+      "rows": 577,
+      "indexes": 36,
+      "modules": 4,
+      "dataHashesMatch": true,
+      "columnDefinitionsMatch": true,
+      "indexDefinitionsMatch": true,
+      "identityCountersMatch": true,
+      "databaseOptionsMatch": true,
+      "allConstraintsTrusted": true,
+      "checkConstraints": "PASS",
+      "checkDB": "PASS",
+      "negativeStockRejected": true,
+      "checkoutKeysCaseSensitive": true,
+      "duplicateCheckoutRejected": true,
+      "duplicatePaymentRejected": true,
+      "notificationTrigger": "PASS"
+    }
+  ],
+  "failureRollback": "PASS",
+  "status": "PASS",
+  "auditDatabaseRemoved": true,
+  "finishedAt": "2026-09-10T11:57:16.049Z"
+}
