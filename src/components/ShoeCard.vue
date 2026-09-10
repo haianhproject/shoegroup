@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { addToCart, formatCurrency, showDrawer } from "../stores/cartStore"
 import { notify } from "../stores/uiStore"
+import fallbackProductImage from "../../img/hero-sneakers.jpg"
 
 const props = defineProps({
   product: { type: Object, required: true },
@@ -15,6 +16,11 @@ const displayName = computed(() => (sportName.value ? `${sportName.value} - ${ba
 
 const router = useRouter()
 const productLink = computed(() => `/product/${props.product.id_product || props.product.id}`)
+const onProductImageError = (event) => {
+  if (event.target.dataset.fallbackApplied) return
+  event.target.dataset.fallbackApplied = "true"
+  event.target.src = fallbackProductImage
+}
 
 const isOutOfStock = computed(() => {
   let ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
@@ -95,6 +101,26 @@ const salePrice = computed(() => {
 const hasDiscount = computed(() =>
   originalPrice.value > 0 && salePrice.value > 0 && salePrice.value < originalPrice.value,
 )
+const badgeLabel = computed(() => {
+  const tag = props.product.tag || props.product.badge || props.product.label
+  if (tag) return String(tag)
+  if (props.product.is_new || props.product.isNew) return 'MỚI'
+  if (props.product.is_featured || props.product.IsFeatured) return 'BÁN CHẠY'
+  if (hasDiscount.value) return 'SALE'
+  return props.product.sport || props.product.category_name || props.product.category || ''
+})
+const badgeTone = computed(() => {
+  const label = badgeLabel.value.toLowerCase()
+  return /mới|new|limited/.test(label) ? 'dark' : 'light'
+})
+const colorText = computed(() => {
+  const value = props.product.color_name || props.product.color || props.product.color_label
+  if (value) return String(value)
+  return (props.product.f_colors || []).map((color) => {
+    if (typeof color === 'string') return color
+    return color?.name || color?.color_label || color?.color_name || ''
+  }).filter(Boolean).join(' / ')
+})
 const displayPrice = computed(() => hasDiscount.value ? salePrice.value : originalPrice.value)
 const discountPercent = computed(() => {
   if (!hasDiscount.value) return 0
@@ -114,12 +140,28 @@ function openVariantModal() {
     return
   }
   selectedColor.value = colorList.value.length > 0 ? colorList.value[0] : null
-  selectedSize.value = null
+  const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+  if (availSizes.length === 1) {
+    selectedSize.value = availSizes[0]
+  } else if (sizeList.value.length === 1) {
+    selectedSize.value = sizeList.value[0]
+  } else {
+    selectedSize.value = null
+  }
   selectedQty.value = 1
   showVariantModal.value = true
 }
 
-watch(selectedColor, () => { selectedSize.value = null })
+watch(selectedColor, () => {
+  const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+  if (availSizes.length === 1) {
+    selectedSize.value = availSizes[0]
+  } else if (sizeList.value.length === 1) {
+    selectedSize.value = sizeList.value[0]
+  } else {
+    selectedSize.value = null
+  }
+})
 watch(selectedSize, () => { selectedQty.value = 1 })
 
 const galleryImages = computed(() => {
@@ -167,7 +209,17 @@ function confirmAddToCart() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
-    if (!selectedSize.value) { notify({ type: "warning", message: "Vui lòng chọn kích thước." }); return }
+    if (!selectedSize.value) {
+      const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+      if (availSizes.length === 1) {
+        selectedSize.value = availSizes[0]
+      } else if (sizeList.value.length === 1) {
+        selectedSize.value = sizeList.value[0]
+      } else {
+        notify({ type: "warning", message: "Vui lòng chọn kích thước." });
+        return
+      }
+    }
     if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Biến thể này đã hết hàng." }); return }
   }
   const colorObj = selectedColor.value
@@ -194,7 +246,17 @@ function handleBuyNow() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
-    if (!selectedSize.value) { notify({ type: "warning", message: "Vui lòng chọn kích thước." }); return }
+    if (!selectedSize.value) {
+      const availSizes = sizeList.value.filter(s => !isVariantOos(selectedColor.value?.name, s))
+      if (availSizes.length === 1) {
+        selectedSize.value = availSizes[0]
+      } else if (sizeList.value.length === 1) {
+        selectedSize.value = sizeList.value[0]
+      } else {
+        notify({ type: "warning", message: "Vui lòng chọn kích thước." });
+        return
+      }
+    }
     if (isVariantOos(selectedColor.value?.name, selectedSize.value)) { notify({ type: "warning", message: "Biến thể này đã hết hàng." }); return }
   }
   const colorObj = selectedColor.value
@@ -221,28 +283,30 @@ function handleBuyNow() {
 
 <template>
   <div class="shoe-card" :class="{ 'shoe-card-oos': isOutOfStock }">
-    <router-link :to="productLink" class="shoe-media">
-      <span v-if="hasDiscount" class="discount-badge">-{{ discountLabel }}%</span>
-      <span v-else-if="product.category_name || product.category" class="shoe-tag">{{ product.category_name || product.category }}</span>
-      <img :src="product.image_url" :alt="product.product_name || product.name">
+    <div class="shoe-media">
+      <span v-if="badgeLabel" class="shoe-tag" :class="`shoe-tag-${badgeTone}`">{{ badgeLabel }}</span>
+      <router-link :to="productLink" class="shoe-image-link" tabindex="-1" aria-hidden="true">
+        <img :src="product.image_url" :alt="product.product_name || product.name" @error="onProductImageError">
+      </router-link>
       <div v-if="isOutOfStock" class="shoe-oos-overlay">
-        <span class="shoe-oos-badge"><i class="bi bi-x-circle me-1"></i>Hết hàng</span>
+        <span class="shoe-oos-badge"><i class="icon icon-x-circle mr-1"></i>Hết hàng</span>
       </div>
-      <!-- Hover actions: mắt xem nhanh (hover mới hiện chữ) + Tùy chọn vào chi tiết -->
+      <!-- Figma hover action: thêm vào giỏ -->
       <div v-if="!isOutOfStock" class="hover-actions">
-        <button class="quick-view-btn" @click.prevent.stop="openVariantModal" aria-label="Xem nhanh"><i class="bi bi-eye"></i><span class="qv-text">Xem nhanh</span></button>
-        <router-link :to="productLink" class="option-btn" @click.stop>Tùy chọn</router-link>
+        <button class="hover-add-btn" type="button" @click.prevent.stop="openVariantModal">Thêm vào giỏ</button>
       </div>
       <span class="shoe-shine"></span>
-    </router-link>
+    </div>
     <div class="shoe-body">
       <span v-if="brandName" class="shoe-brand">{{ brandName }}</span>
       <router-link :to="productLink" class="shoe-name">{{ displayName }}</router-link>
-      <div class="shoe-price d-flex flex-column">
+      <span v-if="colorText" class="shoe-color">{{ colorText }}</span>
+      <div class="shoe-price">
         <span v-if="hasDiscount" class="price-sale">{{ formatCurrency(displayPrice) }}</span>
         <span v-else class="price-regular">{{ formatCurrency(displayPrice) }}</span>
         <span v-if="hasDiscount" class="price-original">{{ formatCurrency(originalPrice) }}</span>
       </div>
+      <button v-if="!isOutOfStock" class="mobile-add-btn" type="button" @click.prevent.stop="openVariantModal">Thêm vào giỏ</button>
     </div>
   </div>
 
@@ -250,14 +314,14 @@ function handleBuyNow() {
     <transition name="vm-fade">
       <div v-if="showVariantModal" class="vm-overlay" @click.self="showVariantModal = false">
         <div class="vm-box-quick">
-          <button class="vm-close-quick" @click="showVariantModal = false"><i class="bi bi-x-lg"></i></button>
+          <button class="vm-close-quick" @click="showVariantModal = false"><i class="icon icon-x-lg"></i></button>
           <div class="vm-quick-grid">
             <!-- Gallery -->
             <div class="vm-gallery">
               <div class="vm-main-wrap">
                 <img :src="previewImage" :alt="baseName" class="vm-main-img">
-                <button v-if="galleryImages.length>1" class="vm-nav vm-nav-prev" @click="galleryPrev"><i class="bi bi-chevron-left"></i></button>
-                <button v-if="galleryImages.length>1" class="vm-nav vm-nav-next" @click="galleryNext"><i class="bi bi-chevron-right"></i></button>
+                <button v-if="galleryImages.length>1" class="vm-nav vm-nav-prev" @click="galleryPrev"><i class="icon icon-chevron-left"></i></button>
+                <button v-if="galleryImages.length>1" class="vm-nav vm-nav-next" @click="galleryNext"><i class="icon icon-chevron-right"></i></button>
               </div>
               <div class="vm-thumbs">
                 <button v-for="img in galleryImages" :key="img" class="vm-thumb" :class="{ active: previewImage===img }" @click="selectThumb(img)">
@@ -283,7 +347,7 @@ function handleBuyNow() {
                     <img v-if="c.image" :src="c.image" :alt="c.name" class="vm-color-img">
                     <span v-else-if="c.hex" class="vm-color-swatch" :style="{ background: c.hex }"></span>
                     <span class="vm-color-name">{{ c.name }}</span>
-                    <i class="bi bi-check-lg vm-color-check"></i>
+                    <i class="icon icon-check-lg vm-color-check"></i>
                   </button>
                 </div>
               </div>
@@ -297,24 +361,24 @@ function handleBuyNow() {
                     {{ sz }}
                   </button>
                 </div>
-                <a href="#" class="vm-size-guide" @click.prevent><i class="bi bi-rulers me-1"></i>Hướng dẫn chọn size</a>
+                <a href="#" class="vm-size-guide" @click.prevent><i class="icon icon-rulers mr-1"></i>Hướng dẫn chọn size</a>
               </div>
 
               <div class="vm-section">
                 <div class="vm-label">Số lượng</div>
                 <div class="vm-qty-row">
                   <div class="vm-qty-box">
-                    <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.max(1, selectedQty - 1)"><i class="bi bi-dash"></i></button>
+                    <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.max(1, selectedQty - 1)"><i class="icon icon-dash"></i></button>
                     <span class="vm-qty-val">{{ selectedQty }}</span>
-                    <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.min(selectedVariantStock || 99, selectedQty + 1)"><i class="bi bi-plus"></i></button>
+                    <button class="vm-qty-btn" :disabled="hasVariants && !selectedSize" @click="selectedQty = Math.min(selectedVariantStock || 99, selectedQty + 1)"><i class="icon icon-plus"></i></button>
                   </div>
                   <span class="vm-stock-status" :class="stockStatus.cls">{{ stockStatus.text }}</span>
                 </div>
               </div>
 
               <div class="vm-actions">
-                <button class="vm-btn-buy" @click="handleBuyNow"><i class="bi bi-bag me-2"></i>MUA NGAY</button>
-                <button class="vm-btn-add" @click="confirmAddToCart"><i class="bi bi-cart-plus me-2"></i>THÊM VÀO GIỎ</button>
+                <button class="vm-btn-buy" @click="handleBuyNow"><i class="icon icon-bag mr-2"></i>MUA NGAY</button>
+                <button class="vm-btn-add" @click="confirmAddToCart"><i class="icon icon-cart-plus mr-2"></i>THÊM VÀO GIỎ</button>
               </div>
             </div>
           </div>
@@ -325,43 +389,45 @@ function handleBuyNow() {
 </template>
 
 <style scoped>
-.shoe-card { display: flex; flex-direction: column; height: 100%; min-width: 0; background: #fff; border: 1px solid var(--sg-line); border-radius: 14px; overflow: hidden; transition: border-color .3s ease, box-shadow .3s ease, transform .3s ease; }
-.shoe-card:hover { border-color: #0A0A0A; box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.shoe-card { display: flex; flex-direction: column; height: 100%; min-width: 0; background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.shoe-card:hover { border-color: transparent; box-shadow: none; }
 .shoe-card-oos { opacity: 0.82; }
-.shoe-media { position: relative; display: block; aspect-ratio: 1 / 1; background: #f3f3f3; overflow: hidden; border-bottom: 1px solid var(--sg-line); padding: 0; border-radius: 16px 16px 0 0; }
+.shoe-media { position: relative; display: block; aspect-ratio: 4 / 5; margin-bottom: 12px; background: #F0F0F0; overflow: hidden; border: 0; padding: 0; border-radius: 0; }
+.shoe-image-link { position: absolute; inset: 0; display: block; }
 .shoe-media img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
-.shoe-card:hover .shoe-media img { transform: scale(1.04); }
-.shoe-tag { position: absolute; top: 12px; left: 12px; z-index: 2; background: #0A0A0A; color: #fff; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; padding: .28rem .7rem; border-radius: 6px; }
-.discount-badge { position: absolute; top: 12px; left: 12px; z-index: 2; background: #e53935; color: #fff; font-size: .72rem; font-weight: 800; padding: 4px 8px; border-radius: 6px; line-height: 1; }
+.shoe-card:hover .shoe-media img { transform: scale(1.05); }
+.shoe-tag { position: absolute; top: 12px; left: 12px; z-index: 2; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 6px 9px; border-radius: 0; line-height: 1.15; }
+.shoe-tag-light { background: #fff; color: #0E0E0E; }
+.shoe-tag-dark { background: #0E0E0E; color: #fff; }
+.shoe-tag-sale { background: #fff; color: #0E0E0E; }
 .hover-actions { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .18s ease; z-index: 3; }
 .shoe-card:hover .hover-actions { opacity: 1; pointer-events: auto; }
-.quick-view-btn { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: #111; transition: all .22s ease; overflow: hidden; white-space: nowrap; }
-.quick-view-btn i { font-size: .95rem; flex-shrink: 0; }
-.quick-view-btn .qv-text { display: none; font-size: .76rem; font-weight: 700; margin-left: 5px; }
-.quick-view-btn:hover { width: auto; padding: 0 12px; border-radius: 999px; background: #0A0A0A; color: #fff; border-color: #0A0A0A; gap: 5px; }
-.quick-view-btn:hover .qv-text { display: inline; }
-.option-btn { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); width: 84%; max-width: 180px; background: #0A0A0A; color: #fff; border: 1px solid #0A0A0A; border-radius: 999px; padding: 9px 14px; font-size: .80rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.15); text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; opacity: 0; transform: translateX(-50%) translateY(6px); transition: all .22s ease; pointer-events: none; }
-.shoe-card:hover .option-btn { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
-.price-sale { font-weight: 900; font-size: 1rem; color: #e53935; }
+.hover-add-btn { position: absolute; bottom: 0; left: 0; right: 0; transform: translateY(100%); background: #0E0E0E; color: #fff; border: 0; padding: 12px 16px; font-size: 13px; font-weight: 600; letter-spacing: .01em; cursor: pointer; transition: transform .3s ease, background-color .2s ease; }
+.shoe-card:hover .hover-add-btn { transform: translateY(0); }
+.hover-add-btn:hover { background: #333; }
+.price-sale { font-weight: 900; font-size: 1rem; color: #0E0E0E; }
 .price-original { font-size: .74rem; color: #888; text-decoration: line-through; font-weight: 400; }
 .price-regular { font-weight: 900; font-size: 1rem; color: #0A0A0A; }
 .shoe-oos-overlay { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.38); backdrop-filter: blur(1.5px); }
 .shoe-oos-badge { background: rgba(239,68,68,0.95); color: #fff; font-size: .85rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding: .5rem 1.4rem; border-radius: 2px; }
 .shoe-shine { display: none; }
-.shoe-body { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 14px; flex: 1; min-height: 124px; }
-.shoe-brand { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--sg-muted); opacity: .7; margin-bottom: -2px; }
-.shoe-name { font-weight: 800; color: #000; text-decoration: none; font-size: .92rem; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.4em; transition: color .2s; }
+.shoe-body { display: flex; flex-direction: column; gap: 4px; padding: 0; flex: 1; min-height: 0; }
+.shoe-brand { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #737373; margin-bottom: 0; }
+.shoe-name { font-family: "Fraunces", Georgia, serif; font-weight: 500; color: #0E0E0E; text-decoration: none; font-size: 15px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; min-height: 0; transition: color .2s; }
 .shoe-name:hover { color: #555; }
+.shoe-color { font-size: 12px; line-height: 1.3; color: #737373; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shoe-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .shoe-meta .sg-chip { font-size: .68rem; padding: .16rem .55rem; border-radius: 999px; background: #f9f9f9; color: #000; border: 1px solid var(--sg-line); }
 .shoe-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; }
-.shoe-price { margin-top: auto; line-height: 1.2; }
+.shoe-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-top: 2px; line-height: 1.2; }
+.mobile-add-btn { display: none; width: 100%; margin-top: 10px; padding: 10px 16px; border: 0; background: #0E0E0E; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
 .shoe-add { width: 38px; height: 38px; border-radius: 10px; border: 1px solid #0A0A0A; background: #0A0A0A; color: #fff; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: all .3s ease; text-decoration: none; cursor: pointer; }
 .shoe-add:hover { background: #fff; color: #0A0A0A; }
 .shoe-add-oos { background: #6b7280 !important; border-color: #6b7280 !important; }
 .shoe-add-oos:hover { background: #4b5563 !important; color: #fff !important; border-color: #4b5563 !important; }
-@media (max-width: 768px) { .shoe-body { padding: 12px 12px 14px; gap: 8px; min-height: 116px; } .shoe-name { font-size: 0.95rem; min-height: 2.4em; } .shoe-price { font-size: 1.1rem; } .shoe-add { width: 40px; height: 40px; font-size: 1rem; } }
-@media (max-width: 576px) { .shoe-body { padding: 10px 10px 12px; gap: 6px; } .shoe-brand { font-size: 0.68rem; } .shoe-name { font-size: 0.85rem; min-height: 2.4em; } .shoe-price { font-size: 1rem; } .shoe-meta .sg-chip { font-size: 0.6rem; padding: 0.12rem 0.4rem; } .shoe-add { width: 34px; height: 34px; font-size: 0.9rem; } }
+@media (max-width: 1023px) { .mobile-add-btn { display: block; } }
+@media (max-width: 768px) { .shoe-name { font-size: 15px; } .shoe-price { font-size: 1.1rem; } }
+@media (max-width: 576px) { .shoe-brand { font-size: 10px; } .shoe-name { font-size: 14px; } .shoe-color { font-size: 11px; } .shoe-price { font-size: 1rem; gap: 6px; } }
 
 /* VARIANT MODAL */
 .vm-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); display: flex; align-items: flex-end; justify-content: center; overflow-y: auto; padding: 16px; }

@@ -29,22 +29,22 @@ const submit = async () => {
       </router-link>
 
       <div v-if="!sent">
-        <div class="fp-ic"><i class="bi bi-key"></i></div>
+        <div class="fp-ic"><i class="icon icon-key"></i></div>
         <h2 class="auth-title">Quên mật khẩu?</h2>
         <p class="auth-sub">Nhập email đăng ký, chúng tôi sẽ gửi liên kết đặt lại mật khẩu đến hộp thư của bạn.</p>
         <label class="co-label">Email</label>
-        <div class="in-wrap"><i class="bi bi-envelope"></i><input v-model="email" type="email" class="auth-input" placeholder="you@example.com" @keyup.enter="submit"></div>
-        <button class="btn-sg w-100 mt-4" :disabled="loading" @click="submit"><i class="bi bi-send me-2"></i>{{ loading ? 'Đang gửi…' : 'Gửi liên kết đặt lại' }}</button>
+        <div class="in-wrap"><i class="icon icon-envelope"></i><input v-model="email" type="email" class="auth-input" placeholder="you@example.com" @keyup.enter="submit"></div>
+        <button class="btn-sg w-full mt-4" :disabled="loading" @click="submit"><i class="icon icon-send mr-2"></i>{{ loading ? 'Đang gửi…' : 'Gửi liên kết đặt lại' }}</button>
       </div>
 
       <div v-else class="fp-sent">
-        <div class="suc-check"><i class="bi bi-envelope-check"></i></div>
+        <div class="suc-check"><i class="icon icon-envelope-check"></i></div>
         <h2 class="auth-title">Kiểm tra email của bạn</h2>
         <p class="auth-sub">Nếu <strong>{{ email }}</strong> tồn tại trong hệ thống, bạn sẽ nhận được email kèm liên kết đặt lại mật khẩu trong vài phút.</p>
-        <div class="fp-hint"><i class="bi bi-info-circle"></i> Không thấy email? Kiểm tra mục Spam hoặc thử lại sau vài phút.</div>
+        <div class="fp-hint"><i class="icon icon-info-circle"></i> Không thấy email? Kiểm tra mục Spam hoặc thử lại sau vài phút.</div>
       </div>
 
-      <router-link to="/login" class="fp-back"><i class="bi bi-arrow-left me-1"></i>Quay lại đăng nhập</router-link>
+      <router-link to="/login" class="fp-back"><i class="icon icon-arrow-left mr-1"></i>Quay lại đăng nhập</router-link>
     </div>
   </div>
 </template>

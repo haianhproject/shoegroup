@@ -1,11 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ShoeCard from '../components/ShoeCard.vue'
-import {
-  products as mockProducts, categories as mockCats,
-  colors as mockColors, sizes as mockSizes, materials as mockMaterials, sports as mockSports,
-} from '../data/mockData'
+import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
+import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from "../services/apiClient";
 
 const route = useRoute()
@@ -13,6 +10,7 @@ const router = useRouter()
 
 const products = ref([])
 const categories = ref([])
+const brands = ref([])
 const colors = ref([])
 const sizes = ref([])
 const materials = ref([])
@@ -24,11 +22,13 @@ const isCentered = computed(() => route.query.center === 'true')
 // Filter state
 const search = ref('')
 const selCategory = ref(null)
+const selBrand = ref(null)
 const selSports = ref([])
 const selColors = ref([])
 const selSizes = ref([])
 const selMaterials = ref([])
 const sortBy = ref('featured')
+const activeFilter = ref('')
 const showFiltersMobile = ref(false)
 
 // Hiển thị tối đa 8 sản phẩm mỗi trang.  Trang hiện tại được giữ trong
@@ -39,47 +39,43 @@ const currentPage = ref(1)
 
 const fetchAll = async () => {
   try {
-    const [dp, dc, dcol, ds, dm] = await Promise.all([
+    const [dp, dc, db, dcol, ds, dm] = await Promise.all([
       api.get('/products'), api.get('/categories'),
+      api.get('/brands'),
       api.get('/colors'), api.get('/sizes'), api.get('/materials'),
     ])
+    if (!Array.isArray(dp) || !dp.length || !Array.isArray(dc)) throw new Error('Dữ liệu sản phẩm trống')
     const catSportMap = {}
-    dc.forEach((c) => { catSportMap[c.id] = c.sport })
-    products.value = dp.filter((p) => p.active).map((p) => ({
-      id_product: p.id, product_name: p.name, price: p.price, sale_price: p.sale_price,
-      id_category: p.category_id, category_name: p.category,
+    dc.forEach((c) => { catSportMap[c.id ?? c.id_category] = c.sport })
+    products.value = dp.filter((p) => p.active !== false && p.active !== 0 && p.active !== '0').map((p) => ({
+      id_product: p.id ?? p.id_product, product_name: p.name ?? p.product_name, price: p.price, sale_price: p.sale_price,
+      id_category: p.category_id ?? p.id_category, category_name: p.category_name ?? p.category,
+      is_new: p.is_new ?? p.isNew ?? p.new_arrival ?? p.is_featured ?? p.IsFeatured ?? false,
+      is_featured: p.is_featured ?? p.IsFeatured ?? false, tag: p.tag,
       sport: catSportMap[p.category_id] || '',
       material_id: p.material_id,
+      material_name: p.material_name || p.material || '',
       f_sizes: (p.sizes || []).map((s) => String(s)),
-      f_colors: (p.colors || []).map((c) => c.name),
+      f_colors: (p.colors || []).map((c) => c.name ?? c.color_name ?? c.color_label ?? c).filter(Boolean),
       image_url: p.image_url,
-      brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand || p.brand_id || 1,
+      brand_name: p.brand_name || p.brand || '', id_brand: p.id_brand ?? p.brand_id ?? null,
       variants: p.variants || [], colors: p.colors || [], total_stock: p.total_stock ?? p.stock ?? null,
     }))
-    categories.value = dc.filter((c) => c.active).map((c) => ({ id_category: c.id, category_name: c.name, sport: c.sport }))
-    colors.value = dcol.map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
-    sizes.value = ds.map((s) => ({ id_size: s.id, size_name: String(s.name) }))
-    materials.value = dm.map((m) => ({ id_material: m.id, material_name: m.name }))
+    categories.value = dc.filter((c) => c.active !== false && c.active !== 0 && c.active !== '0').map((c) => ({ id_category: c.id ?? c.id_category, category_name: c.name ?? c.category_name, sport: c.sport }))
+    brands.value = (Array.isArray(db) ? db : []).filter((b) => b.active !== false && b.active !== 0 && b.active !== '0').map((b) => ({ id_brand: b.id ?? b.id_brand, brand_name: b.name ?? b.brand_name }))
+    colors.value = dcol.filter((c) => c.active !== false && c.active !== 0 && c.active !== '0').map((c) => ({ id_color: c.id, color_label: c.name, hex: c.hex || '' }))
+    sizes.value = ds.filter((s) => s.active !== false && s.active !== 0 && s.active !== '0').map((s) => ({ id_size: s.id, size_name: String(s.name) }))
+    materials.value = dm.filter((m) => m.active !== false && m.active !== 0 && m.active !== '0').map((m) => ({ id_material: m.id, material_name: m.name }))
     sports.value = [...new Set(categories.value.map((c) => c.sport).filter(Boolean))]
   } catch (e) {
     console.error("Lỗi khi lấy dữ liệu bộ lọc từ DB:", e)
-    // Vẫn hiển thị được cửa hàng khi API chưa chạy (ví dụ môi trường demo).
-    // Chuẩn hóa cùng shape với dữ liệu API để bộ lọc và phân trang hoạt động
-    // nhất quán ở cả hai nguồn dữ liệu.
-    products.value = mockProducts.map((p) => ({
-      ...p,
-      f_sizes: (p.sizes || []).map((s) => String(s)),
-      f_colors: (p.colors || []).map((c) => c.name || c.color_label || c.color_name || c),
-    }))
-    categories.value = mockCats
-    colors.value = mockColors.map((c) => ({
-      id_color: c.id_color,
-      color_label: c.color_label || c.color_name,
-      hex: c.hex || '',
-    }))
-    sizes.value = mockSizes
-    materials.value = mockMaterials
-    sports.value = mockSports
+    products.value = []
+    categories.value = []
+    brands.value = []
+    colors.value = []
+    sizes.value = []
+    materials.value = []
+    sports.value = []
   } finally {
     isLoading.value = false
   }
@@ -94,9 +90,14 @@ const parsePage = (value) => {
 watch(() => route.query, (q) => {
   const categoryValue = Array.isArray(q.category) ? q.category[0] : q.category
   const searchValue = Array.isArray(q.search) ? q.search[0] : q.search
+  const legacySearchValue = Array.isArray(q.q) ? q.q[0] : q.q
+  const brandValue = Array.isArray(q.brand) ? q.brand[0] : q.brand
+  const filterValue = Array.isArray(q.filter) ? q.filter[0] : q.filter
   const categoryId = categoryValue ? Number(categoryValue) : NaN
   selCategory.value = Number.isFinite(categoryId) ? categoryId : null
-  search.value = searchValue || ''
+  selBrand.value = brandValue ? String(brandValue) : null
+  search.value = searchValue || legacySearchValue || ''
+  activeFilter.value = filterValue || (!Number.isFinite(categoryId) && categoryValue ? String(categoryValue) : '')
   currentPage.value = parsePage(q.page)
 }, { immediate: true })
 
@@ -107,16 +108,44 @@ const toggle = (arr, val) => {
 }
 
 const clearFilters = () => {
-  selCategory.value = null; selSports.value = []; selColors.value = []
+  selCategory.value = null; selBrand.value = null; selSports.value = []; selColors.value = []
   selSizes.value = []; selMaterials.value = []; search.value = ''
   router.replace({ path: '/products' })
+}
+
+const setBrand = (brandId) => {
+  const query = { ...route.query }
+  if (String(selBrand.value) === String(brandId)) delete query.brand
+  else query.brand = String(brandId)
+  delete query.page
+  router.push({ path: '/products', query })
 }
 
 const filtered = computed(() => {
   let list = [...products.value]
   const q = search.value.trim().toLowerCase()
-  if (q) list = list.filter((p) => (p.product_name || '').toLowerCase().includes(q))
-  if (selCategory.value) list = list.filter((p) => p.id_category === selCategory.value)
+  if (q) list = list.filter((p) => normalizeFilterText([
+    p.product_name,
+    p.brand_name,
+    p.category_name,
+    p.sport,
+    p.material_name,
+    ...(p.f_colors || []),
+  ].join(' ')).includes(normalizeFilterText(q)))
+  if (selCategory.value != null) list = list.filter((p) => String(p.id_category) === String(selCategory.value))
+  if (selBrand.value) {
+    const brandNeedle = String(selBrand.value).toLowerCase()
+    list = list.filter((p) => String(p.id_brand) === String(selBrand.value) || String(p.brand_name || '').toLowerCase() === brandNeedle)
+  }
+  if (activeFilter.value === 'sale') list = list.filter((p) => Number(p.sale_price) > 0 && Number(p.sale_price) < Number(p.price))
+  if (activeFilter.value === 'new') list = list.filter((p) => p.is_new || p.is_featured || p.isNew || p.tag === 'Mới' || p.tag === 'New')
+  if (activeFilter.value && !['sale', 'new'].includes(activeFilter.value)) {
+    const aliases = filterAliases[activeFilter.value] || [activeFilter.value]
+    list = list.filter((p) => {
+      const haystack = normalizeFilterText(`${p.category_name} ${p.sport} ${p.product_name}`)
+      return aliases.some((alias) => haystack.includes(normalizeFilterText(alias)))
+    })
+  }
   if (selSports.value.length) list = list.filter((p) => selSports.value.includes(p.sport))
   if (selColors.value.length) list = list.filter((p) => (p.f_colors || []).some((c) => selColors.value.includes(c)))
   if (selSizes.value.length) list = list.filter((p) => (p.f_sizes || []).some((s) => selSizes.value.includes(String(s))))
@@ -127,8 +156,33 @@ const filtered = computed(() => {
   return list
 })
 
-const activeCategoryName = computed(() => categories.value.find((c) => c.id_category === selCategory.value)?.category_name)
+const activeCategoryName = computed(() => categories.value.find((c) => String(c.id_category) === String(selCategory.value))?.category_name)
+const activeBrandName = computed(() => brands.value.find((b) => String(b.id_brand) === String(selBrand.value))?.brand_name || (selBrand.value && !/^\d+$/.test(selBrand.value) ? selBrand.value : ''))
+const activeFilterName = computed(() => ({
+  running: 'CHẠY BỘ',
+  basketball: 'BÓNG RỔ',
+  training: 'TRAINING',
+  lifestyle: 'LIFESTYLE',
+  football: 'BÓNG ĐÁ',
+  tennis: 'TENNIS',
+}[activeFilter.value] || ''))
+const pageTitle = computed(() => {
+  if (activeFilter.value === 'sale') return 'SẢN PHẨM ĐANG SALE'
+  if (activeFilter.value === 'new') return 'HÀNG MỚI VỀ'
+  if (activeBrandName.value) return `THƯƠNG HIỆU ${activeBrandName.value}`
+  if (activeFilterName.value) return activeFilterName.value
+  return activeCategoryName.value || 'TẤT CẢ SẢN PHẨM'
+})
 const fmtPrice = (v) => new Intl.NumberFormat('vi-VN').format(v) + 'đ'
+const normalizeFilterText = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const filterAliases = {
+  running: ['running', 'chay bo'],
+  basketball: ['basketball', 'bong ro'],
+  training: ['training', 'gym', 'tap'],
+  lifestyle: ['lifestyle', 'sneaker'],
+  football: ['football', 'bong da'],
+  tennis: ['tennis'],
+}
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize)))
 const paginatedProducts = computed(() => {
@@ -159,10 +213,9 @@ const resetPagination = () => {
 // Khi thay đổi bộ lọc, luôn bắt đầu ở trang đầu; tránh trạng thái trang cũ
 // không còn dữ liệu sau khi lọc.
 watch(
-  [selCategory, selSports, selColors, selSizes, selMaterials, sortBy, search],
+  [selCategory, selBrand, selSports, selColors, selSizes, selMaterials, sortBy, search],
   () => {
     resetPagination()
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   },
   { deep: true },
 )
@@ -177,130 +230,53 @@ onMounted(fetchAll)
 </script>
 
 <template>
-  <div class="products-page" :class="{ 'd-flex align-items-center justify-content-center min-vh-100': isCentered }">
-    <div class="container-fluid px-4 py-4" :style="isCentered ? 'max-width: 1200px; width: 100%;' : ''">
-      <!-- Header -->
-      <div class="page-head">
+  <div class="figma-products-page bg-white" :class="{ 'flex items-center justify-center min-h-screen': isCentered }">
+    <div class="mx-auto w-full max-w-[1400px] px-5 pb-16 pt-8 sm:px-6 lg:px-12">
+      <div class="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <div class="sg-title-bar mb-2"></div>
-          <h1 class="page-title">{{ activeCategoryName || 'TẤT CẢ SẢN PHẨM' }}</h1>
-          <p class="text-secondary mb-0">{{ filtered.length }} sản phẩm</p>
+          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-[#737373]">Bộ sưu tập ShoeGroup</span>
+          <h1 class="figma-display mt-2 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">{{ pageTitle }}</h1>
+          <p class="mt-2 text-sm text-[#737373]">{{ filtered.length }} sản phẩm từ dữ liệu cửa hàng</p>
         </div>
-        <div class="d-flex gap-2 align-items-center">
-          <button class="btn-sg-outline d-lg-none" @click="showFiltersMobile = !showFiltersMobile"><i class="bi bi-funnel me-1"></i>Lọc</button>
-          <select v-model="sortBy" class="sg-input sort-sel">
-            <option value="featured">Nổi bật</option>
-            <option value="price-asc">Giá thấp → cao</option>
-            <option value="price-desc">Giá cao → thấp</option>
-            <option value="name">Tên A → Z</option>
+        <div class="flex items-center gap-2">
+          <button type="button" class="inline-flex items-center gap-2 rounded-full border border-[#E5E5E5] bg-white px-4 py-2.5 text-xs font-semibold transition-colors hover:border-[#0E0E0E]" @click="showFiltersMobile = !showFiltersMobile"><i class="icon icon-funnel"></i>{{ showFiltersMobile ? 'Ẩn bộ lọc' : 'Bộ lọc' }}</button>
+          <label class="sr-only" for="product-sort">Sắp xếp</label>
+          <select id="product-sort" v-model="sortBy" class="rounded-full border border-[#E5E5E5] bg-white px-4 py-2.5 text-xs font-semibold outline-none focus:border-[#0E0E0E]">
+            <option value="featured">Nổi bật</option><option value="price-asc">Giá thấp → cao</option><option value="price-desc">Giá cao → thấp</option><option value="name">Tên A → Z</option>
           </select>
         </div>
       </div>
 
-      <div class="row g-4 mt-1">
-        <!-- LEFT FILTERS -->
-        <aside class="col-lg-3" :class="{ 'd-none d-lg-block': !showFiltersMobile }">
-          <div class="filter-panel sg-card">
-            <div class="filter-top">
-              <h6 class="mb-0 fw-bold"><i class="bi bi-sliders me-2"></i>Bộ lọc</h6>
-              <button class="btn-clear" @click="clearFilters">Xóa lọc</button>
-            </div>
-
-            <!-- Type-ahead search -->
-            <div class="filter-group">
-              <label class="filter-label">TÌM KIẾM</label>
-              <div class="search-inline">
-                <i class="bi bi-search"></i>
-                <input v-model="search" type="search" placeholder="Tìm sản phẩm…">
-              </div>
-            </div>
-
-            <!-- Sport / category -->
-            <div class="filter-group">
-              <label class="filter-label">THỂ LOẠI</label>
-              <div class="chip-wrap">
-                <button v-for="s in sports" :key="s" class="filter-chip" :class="{ active: selSports.includes(s) }" @click="toggle(selSports, s)">{{ s }}</button>
-              </div>
-            </div>
-
-            <!-- Colors -->
-            <div class="filter-group">
-              <label class="filter-label">MÀU SẮC</label>
-              <div class="color-wrap">
-                <button v-for="c in colors" :key="c.id_color" class="color-dot" :class="{ active: selColors.includes(c.color_label) }" :style="{ background: c.hex || '#ccc' }" :title="c.color_label" @click="toggle(selColors, c.color_label)">
-                  <i v-if="selColors.includes(c.color_label)" class="bi bi-check-lg"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- Sizes -->
-            <div class="filter-group">
-              <label class="filter-label">KÍCH CỠ</label>
-              <div class="size-wrap">
-                <button v-for="s in sizes" :key="s.id_size" class="size-box" :class="{ active: selSizes.includes(s.size_name) }" @click="toggle(selSizes, s.size_name)">{{ s.size_name }}</button>
-              </div>
-            </div>
-
-            <!-- Materials -->
-            <div class="filter-group">
-              <label class="filter-label">CHẤT LIỆU</label>
-              <div class="d-flex flex-column gap-2">
-                <label v-for="m in materials" :key="m.id_material" class="check-row">
-                  <input type="checkbox" :value="m.id_material" :checked="selMaterials.includes(m.id_material)" @change="toggle(selMaterials, m.id_material)">
-                  <span>{{ m.material_name }}</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <!-- PRODUCT GRID -->
-        <div class="col-lg-9">
-          <div v-if="isLoading" class="text-center py-5"><div class="spinner-border" style="color: #222;"></div></div>
-          <div v-else-if="filtered.length === 0" class="empty-state sg-card">
-            <i class="bi bi-search"></i>
-            <h5>Không tìm thấy sản phẩm</h5>
-            <p class="text-secondary">Thử điều chỉnh bộ lọc hoặc từ khóa khác.</p>
-            <button class="btn-sg" @click="clearFilters">Xóa bộ lọc</button>
-          </div>
-          <div v-else class="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3 g-lg-4 product-grid">
-            <div class="col fade-in" v-for="product in paginatedProducts" :key="product.id_product">
-              <ShoeCard :product="product" />
-            </div>
-          </div>
-
-          <!-- Pagination: tám sản phẩm trên mỗi trang -->
-          <nav v-if="totalPages > 1" class="products-pagination" aria-label="Phân trang sản phẩm">
-            <button
-              class="page-btn page-prev"
-              type="button"
-              :disabled="currentPage === 1"
-              aria-label="Trang trước"
-              @click="updatePageQuery(currentPage - 1)"
-            >
-              <i class="bi bi-chevron-left"></i>
-            </button>
-            <button
-              v-for="page in pageNumbers"
-              :key="page"
-              class="page-btn"
-              type="button"
-              :class="{ active: page === currentPage }"
-              :aria-current="page === currentPage ? 'page' : undefined"
-              @click="updatePageQuery(page)"
-            >{{ page }}</button>
-            <button
-              class="page-btn page-next"
-              type="button"
-              :disabled="currentPage === totalPages"
-              aria-label="Trang sau"
-              @click="updatePageQuery(currentPage + 1)"
-            >
-              <i class="bi bi-chevron-right"></i>
-            </button>
-          </nav>
+      <div class="mb-8 flex flex-col gap-4 border-y border-[#E5E5E5] py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="!activeFilter && selSports.length === 0 ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="clearFilters">Tất cả</button>
+          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="activeFilter === 'sale' ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="router.push({ path: '/products', query: { filter: 'sale' } })">Sale</button>
+          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="activeFilter === 'new' ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="router.push({ path: '/products', query: { filter: 'new' } })">Hàng mới</button>
+          <button v-for="sport in sports" :key="sport" type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="selSports.includes(sport) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="toggle(selSports, sport)">{{ sport }}</button>
+          <button v-for="brand in brands" :key="brand.id_brand" type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="String(selBrand) === String(brand.id_brand) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="setBrand(brand.id_brand)">{{ brand.brand_name }}</button>
+        </div>
+        <div class="flex items-center gap-2 rounded-full border border-[#E5E5E5] px-4 py-2 text-sm">
+          <i class="icon icon-search text-[#737373]"></i><input v-model="search" type="search" class="w-full min-w-0 border-0 bg-transparent text-sm outline-none placeholder:text-[#737373]" placeholder="Tìm sản phẩm…" />
         </div>
       </div>
+
+      <div v-if="showFiltersMobile" class="mb-8 grid gap-5 rounded-2xl bg-[#F0F0F0] p-5 md:grid-cols-2 lg:grid-cols-4">
+        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Màu sắc</div><div class="flex flex-wrap gap-3"><button v-for="c in colors" :key="c.id_color" type="button" class="relative h-8 w-8 rounded-full border-2 transition-all duration-150" :class="selColors.includes(c.color_label) ? 'border-white scale-110 shadow-[0_0_0_3px_#0E0E0E]' : 'border-white shadow-[0_0_0_1.5px_#D4D4D4] hover:shadow-[0_0_0_2px_#737373]'" :style="{ background: c.hex || '#ccc' }" :title="c.color_label" @click="toggle(selColors, c.color_label)"></button></div></div>
+        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Kích cỡ</div><div class="flex flex-wrap gap-2"><button v-for="s in sizes" :key="s.id_size" type="button" class="rounded-full border px-3 py-1.5 text-xs font-semibold" :class="selSizes.includes(s.size_name) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white'" @click="toggle(selSizes, s.size_name)">{{ s.size_name }}</button></div></div>
+        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Chất liệu</div><label v-for="m in materials" :key="m.id_material" class="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" :value="m.id_material" :checked="selMaterials.includes(m.id_material)" @change="toggle(selMaterials, m.id_material)" />{{ m.material_name }}</label><button type="button" class="mt-2 text-xs font-bold underline" @click="clearFilters">Xóa bộ lọc</button></div>
+      </div>
+
+      <div v-if="isLoading" class="flex justify-center py-24"><span class="sg-spinner" aria-label="Đang tải"></span></div>
+      <div v-else-if="filtered.length === 0" class="rounded-2xl border border-[#E5E5E5] px-6 py-24 text-center"><div class="mb-4 text-4xl text-[#D4D4D4]">⌕</div><h2 class="figma-display text-2xl font-semibold">Không tìm thấy sản phẩm</h2><p class="mt-2 text-sm text-[#737373]">Thử điều chỉnh bộ lọc hoặc từ khóa khác.</p><button type="button" class="mt-6 rounded-full bg-[#0E0E0E] px-6 py-3 text-xs font-bold text-white" @click="clearFilters">Xóa bộ lọc</button></div>
+      <FigmaProductGrid v-else :columns="5" class="figma-product-grid">
+        <div v-for="product in paginatedProducts" :key="product.id_product" class="min-w-0"><FigmaProductCard :product="product" /></div>
+      </FigmaProductGrid>
+
+      <nav v-if="totalPages > 1" class="mt-10 flex items-center justify-center gap-2" aria-label="Phân trang sản phẩm">
+        <button type="button" class="flex h-9 w-9 items-center justify-center rounded-full border border-[#E5E5E5] disabled:opacity-40" :disabled="currentPage === 1" aria-label="Trang trước" @click="updatePageQuery(currentPage - 1)"><i class="icon icon-chevron-left"></i></button>
+        <button v-for="page in pageNumbers" :key="page" type="button" class="flex h-9 min-w-9 items-center justify-center rounded-full border px-3 text-xs font-bold" :class="page === currentPage ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white'" @click="updatePageQuery(page)">{{ page }}</button>
+        <button type="button" class="flex h-9 w-9 items-center justify-center rounded-full border border-[#E5E5E5] disabled:opacity-40" :disabled="currentPage === totalPages" aria-label="Trang sau" @click="updatePageQuery(currentPage + 1)"><i class="icon icon-chevron-right"></i></button>
+      </nav>
     </div>
   </div>
 </template>

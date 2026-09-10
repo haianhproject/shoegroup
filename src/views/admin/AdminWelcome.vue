@@ -65,11 +65,11 @@ function onLogoutClick() {
 </script>
 
 <template>
-  <div class="welcome-overlay d-flex align-items-center justify-content-center font-sans px-3">
+  <div class="welcome-overlay flex items-center justify-center font-sans px-3">
     <!-- Nền lưới tinh tế -->
     <div class="bg-grid"></div>
 
-    <div class="welcome-card text-center fade-in-scale position-relative">
+    <div class="welcome-card text-center fade-in-scale relative">
       <!-- Đường viền đỏ accent ở trên đỉnh card -->
       <div class="top-accent-bar"></div>
 
@@ -80,13 +80,13 @@ function onLogoutClick() {
         </div>
         <div class="brand-name">
           <span class="text-black">SHOE</span><span class="text-red">GROUP</span>
-          <span class="badge-admin ms-2">ADMIN</span>
+          <span class="badge-admin ml-2">ADMIN</span>
         </div>
       </div>
 
       <!-- Huy hiệu xác thực -->
       <div class="auth-status-pill mx-auto mb-3">
-        <i class="bi bi-shield-fill-check text-success me-1"></i>
+        <i class="icon icon-shield-fill-check text-green-600 mr-1"></i>
         <span>ĐĂNG NHẬP THÀNH CÔNG</span>
       </div>
 
@@ -102,11 +102,11 @@ function onLogoutClick() {
 
       <!-- Khung thông tin quản lý tóm tắt -->
       <div class="admin-info-box mb-4 text-start">
-        <div class="d-flex align-items-center gap-3">
+        <div class="flex items-center gap-3">
           <div class="avatar-badge">{{ adminInitial }}</div>
-          <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-bold text-dark text-truncate">{{ adminName }}</div>
-            <div class="text-muted small text-truncate">{{ adminEmail }}</div>
+          <div class="grow overflow-hidden">
+            <div class="font-bold text-gray-900 text-truncate">{{ adminName }}</div>
+            <div class="text-gray-500 text-sm text-truncate">{{ adminEmail }}</div>
           </div>
           <div class="text-end">
             <span class="role-tag">{{ adminRole }}</span>
@@ -115,9 +115,9 @@ function onLogoutClick() {
 
         <div class="info-divider my-2"></div>
 
-        <div class="d-flex justify-content-between align-items-center text-muted small">
-          <span><i class="bi bi-clock me-1"></i>Đăng nhập lúc:</span>
-          <span class="fw-medium text-dark">{{ loginTime || 'Vừa xong' }}</span>
+        <div class="flex justify-between items-center text-gray-500 text-sm">
+          <span><i class="icon icon-clock mr-1"></i>Đăng nhập lúc:</span>
+          <span class="font-medium text-gray-900">{{ loginTime || 'Vừa xong' }}</span>
         </div>
       </div>
 
@@ -125,27 +125,27 @@ function onLogoutClick() {
       <button
         @click="enterPanel"
         :disabled="isEntering"
-        class="btn-enter-panel w-100 mb-3"
+        class="btn-enter-panel w-full mb-3"
       >
-        <span v-if="!isEntering" class="d-flex align-items-center justify-content-center gap-2">
-          <i class="bi bi-speedometer2"></i>
+        <span v-if="!isEntering" class="flex items-center justify-center gap-2">
+          <i class="icon icon-speedometer2"></i>
           <span>XÁC NHẬN &amp; VÀO TRANG QUẢN LÝ</span>
-          <i class="bi bi-arrow-right"></i>
+          <i class="icon icon-arrow-right"></i>
         </span>
-        <span v-else class="d-flex align-items-center justify-content-center gap-2">
-          <span class="spinner-border spinner-border-sm" role="status"></span>
+        <span v-else class="flex items-center justify-center gap-2">
+          <span class="sg-spinner sg-spinner sg-spinner-sm" role="status"></span>
           <span>Đang chuyển hướng...</span>
         </span>
       </button>
 
       <!-- Các liên kết phụ — admin không được về trang khách để đặt hàng -->
-      <div class="d-flex justify-content-center align-items-center gap-3 text-muted small">
+      <div class="flex justify-center items-center gap-3 text-gray-500 text-sm">
         <button class="btn-sub-link" disabled title="Tài khoản admin không được thao tác như khách hàng. Vui lòng đăng xuất nếu muốn mua hàng." style="opacity:.45; cursor:not-allowed;">
-          <i class="bi bi-shop me-1"></i>Xem Cửa Hàng
+          <i class="icon icon-shop mr-1"></i>Xem Cửa Hàng
         </button>
         <span class="dot-sep">•</span>
         <button @click="onLogoutClick" class="btn-sub-link text-danger-sub">
-          <i class="bi bi-box-arrow-right me-1"></i>Đăng Xuất
+          <i class="icon icon-box-arrow-right mr-1"></i>Đăng Xuất
         </button>
       </div>
 
@@ -154,7 +154,6 @@ function onLogoutClick() {
 </template>
 
 <style scoped>
-@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap');
 
 .font-sans {

@@ -1,84 +1,108 @@
-/*
- * admin-theme.css
- * ------------------------------------------------------------------
- * Các class giao diện DÙNG CHUNG cho mọi trang trong khu quản trị.
- * File này được import 1 lần (không scoped) trong AdminLayout.vue nên
- * tất cả các page con đều dùng được mà không phải khai báo lại.
- *
- * Lưu ý: các class của Bootstrap 5 (row, col, table, btn, badge...)
- * vẫn cần Bootstrap được nạp ở cấp ứng dụng như dự án gốc.
- *
- * Design: Ít màu sắc, nhiều khoảng trắng, gần vuông, chuyên nghiệp.
- * Palette: Trắng, Xám nhạt (#f8f8f8 / #f3f4f6), Đen (#0A0A0A), Đỏ accent (#D4001A)
- * ------------------------------------------------------------------
- */
-@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&subset=vietnamese&display=swap');
-
-.font-sans { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-
-/* ---- Áp dụng Inter cho toàn bộ trang admin ---- */
-*, *::before, *::after {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+/* Shared admin primitives. Every selector stays inside the management shell. */
+.admin-shell {
+  --admin-ink: #0e0e0e;
+  --admin-muted: #737373;
+  --admin-line: #e5e5e5;
+  --admin-canvas: #f7f7f8;
+  --admin-accent: #d4001a;
+  --admin-accent-dark: #b80017;
+  --admin-accent-soft: #fff1f2;
+  --admin-radius-control: 8px;
+  --admin-radius-panel: 12px;
+  color: var(--admin-ink);
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
 }
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+.admin-shell :is(button, input, select, textarea, .font-sans) { font-family: inherit; }
+.admin-shell :is(h1, h2, h3, h4, h5, h6) { font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif; font-weight: 700; letter-spacing: -.025em; line-height: 1.35; }
+.admin-shell :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 3px; }
+.admin-shell :is(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .5; }
+.admin-shell .bg-light-gray { background-color: var(--admin-canvas) !important; }
+.admin-shell .bg-secondary { background-color: #737373; }
+.admin-shell .text-danger { color: var(--admin-accent); }
+.admin-shell .text-success { color: #23724a; }
+.admin-shell .text-warning-emphasis { color: #846018; }
+.admin-shell .tracking-wide { letter-spacing: .04em; }
+.admin-shell .text-justify { text-align: justify; }
+.admin-shell .text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-shell .text-end { text-align: right; }
+.admin-shell .text-start { text-align: left; }
+.admin-shell :where(.border, .border-t, .border-b, .border-l, .border-r) { border-color: var(--admin-line); }
+.admin-shell .rounded-1 { border-radius: 6px; }
+.admin-shell .rounded-2 { border-radius: 8px; }
+.admin-shell .lh-1 { line-height: 1; }
+.admin-shell .fst-italic { font-style: italic; }
+
+/* Existing CRUD screens still use these legacy control names. */
+.admin-shell .btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; min-height: 40px; padding: 9px 15px; border: 1px solid transparent; border-radius: 8px !important; font-size: .8125rem; font-weight: 600; line-height: 1.4; text-align: center; text-decoration: none; vertical-align: middle; cursor: pointer; transition: color .16s ease, background-color .16s ease, border-color .16s ease; }
+.admin-shell .btn-sm { min-height: 34px; padding: 7px 11px; font-size: .75rem; }
+.admin-shell .btn-lg { min-height: 46px; padding: 11px 20px; }
+.admin-shell .btn:disabled { pointer-events: none; }
+.admin-shell :is(.btn-dark, .btn-primary) { background: var(--admin-ink) !important; border-color: var(--admin-ink) !important; color: #fff !important; }
+.admin-shell :is(.btn-dark, .btn-primary):hover:not(:disabled) { background: #303030 !important; border-color: #303030 !important; }
+.admin-shell :is(.btn-white, .btn-light, .btn-outline-secondary) { background: #fff; border-color: var(--admin-line); color: #404040; }
+.admin-shell :is(.btn-white, .btn-light, .btn-outline-secondary):hover:not(:disabled) { background: #f4f4f5; border-color: #c9c9cc; }
+.admin-shell .btn-outline-dark { background: #fff; border-color: var(--admin-ink) !important; color: var(--admin-ink) !important; }
+.admin-shell .btn-outline-dark:hover:not(:disabled) { background: var(--admin-ink); color: #fff !important; }
+.admin-shell .btn-outline-danger { background: #fff; border-color: #f1bac2; color: var(--admin-accent); }
+.admin-shell .btn-outline-danger:hover:not(:disabled) { background: var(--admin-accent-soft); border-color: var(--admin-accent); }
+.admin-shell :is(.btn-danger, .btn-warning) { background: var(--admin-accent) !important; border-color: var(--admin-accent) !important; color: #fff !important; }
+.admin-shell :is(.btn-danger, .btn-warning):hover:not(:disabled) { background: var(--admin-accent-dark) !important; border-color: var(--admin-accent-dark) !important; }
+.admin-shell .btn-link { background: transparent; border-color: transparent; }
+.admin-shell .btn-link:hover { color: var(--admin-accent); }
+.admin-shell .btn:is(.text-danger, .text-red-600) { color: var(--admin-accent) !important; }
+.admin-shell .btn.border-success { border-color: #bbd7c8 !important; }
+.admin-shell .btn:is(.text-success, .text-green-600) { color: #23724a !important; }
+.admin-shell .btn.rounded-0 { border-radius: 0 !important; }
+.admin-shell .btn.p-0 { padding: 0; }
+
+.admin-shell :is(.sg-input, .form-select) { width: 100%; min-width: 0; min-height: 40px; padding: 9px 12px; border: 1px solid var(--admin-line); border-radius: 8px; background-color: #fff; color: var(--admin-ink); font-size: .8125rem; font-weight: 400; line-height: 1.5; transition: border-color .16s ease, box-shadow .16s ease; }
+.admin-shell .sg-input:is(.pl-4, .pl-5) { padding-left: 36px; }
+.admin-shell .sg-input::placeholder { color: #8a8a8f; }
+.admin-shell textarea.sg-input { min-height: 88px; resize: vertical; }
+.admin-shell :is(.sg-input, .form-select):focus { outline: none; border-color: var(--admin-ink); box-shadow: 0 0 0 3px rgb(14 14 14 / 8%); }
+.admin-shell :is(.sg-input, .form-select)[aria-invalid="true"] { border-color: var(--admin-accent); }
+.admin-shell .form-select { padding-right: 28px; }
+.admin-shell .form-label { display: block; margin-bottom: 6px; font-size: .8125rem; font-weight: 600; }
+.admin-shell :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--admin-ink); }
+.admin-shell .form-check-input { width: 16px; height: 16px; vertical-align: middle; }
+.admin-shell .form-check-input:checked { background-color: var(--admin-ink); border-color: var(--admin-ink); }
+.admin-shell .input-group { display: flex; align-items: stretch; }
+.admin-shell .input-group > :is(.sg-input, .form-select) { flex: 1 1 auto; width: 1%; }
+.admin-shell .input-group-text { display: flex; align-items: center; padding: 0 12px; }
+
+.admin-shell :is(.badge, .admin-badge) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 24px; padding: 4px 9px; border: 1px solid transparent; border-radius: 6px; font-size: .6875rem; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+.admin-shell :is(.badge-active, .badge.bg-success, .badge.bg-success-subtle) { background: #eef7f1 !important; border-color: #d4e8db !important; color: #23623f !important; }
+.admin-shell :is(.admin-badge-done, .badge.bg-dark, .badge.bg-black) { background: var(--admin-ink) !important; color: #fff !important; }
+.admin-shell :is(.admin-badge-neutral, .admin-badge-warn, .badge.bg-light, .badge.bg-secondary-subtle, .badge.bg-dark-subtle) { background: #f4f4f5 !important; border-color: var(--admin-line) !important; color: #626266 !important; }
+.admin-shell :is(.admin-badge-red, .badge.bg-danger, .badge.bg-danger-subtle, .badge.bg-red-600) { background: var(--admin-accent-soft) !important; border-color: #ffd2d8 !important; color: var(--admin-accent-dark) !important; }
+.admin-shell :is(.badge.bg-warning, .badge.bg-warning-subtle) { background: #fff8e8 !important; border-color: #f1e1bc !important; color: #846018 !important; }
+.admin-shell :is(.badge.bg-info-subtle, .badge.bg-primary-subtle) { background: #f2f4f7 !important; border-color: #e1e5ec !important; color: #4b596c !important; }
+.admin-shell .stat-icon { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 10px; font-size: 1.125rem; }
+.admin-shell :is(.stat-icon.bg-dark, .stat-icon.bg-black) { background: var(--admin-ink) !important; color: #fff !important; }
+.admin-shell .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.admin-shell :is(.dashboard-card, .order-card) { transition: border-color .16s ease; }
+.admin-shell :is(.dashboard-card, .order-card):hover { transform: none; }
+.admin-shell .color-swatch { background: #f7f7f8; border: 1px solid var(--admin-line); border-radius: 6px; padding: 4px 10px; font-size: .8125rem; font-weight: 500; }
+.admin-shell .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgb(0 0 0 / 15%); vertical-align: middle; }
+.admin-shell .swatch-remove { cursor: pointer; color: var(--admin-muted); }
+.admin-shell .swatch-remove:hover { color: var(--admin-accent); }
+.admin-shell .pos-product { cursor: pointer; transition: border-color .16s ease; border-radius: 8px; }
+.admin-shell .pos-product:hover { border-color: var(--admin-ink) !important; }
+
+/* Layout-owned modals sit outside the routed page wrapper. */
+.admin-shell .custom-modal-overlay { position: fixed; inset: 0; z-index: 1080; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; overscroll-behavior: contain; background: rgb(14 14 14 / 48%); backdrop-filter: blur(3px); }
+.admin-shell .custom-modal-box { width: 100%; max-width: 560px; max-height: calc(100dvh - 48px); overflow: auto; border: 1px solid var(--admin-line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgb(14 14 14 / 18%); }
+.admin-shell .custom-modal-box :is(.border-b, .border-t) { border-color: var(--admin-line); }
+.admin-shell .custom-modal-box label.block { margin-bottom: 6px; }
+.admin-shell .fade-in { opacity: 1; animation: none; }
+.admin-shell .fade-in-scale { animation: none; }
+
+@media (max-width: 639px) {
+  .admin-shell .custom-modal-overlay { padding: 12px; }
+  .admin-shell .custom-modal-box { max-height: calc(100dvh - 24px); }
+  .admin-shell .custom-modal-box > .p-4 { padding: 18px; }
 }
-
-.bg-light-gray { background-color: #f3f4f6 !important; }
-.tracking-wide { letter-spacing: 0.04em; }
-
-/* ---- Card dashboard: không dịch chuyển, chỉ đổi shadow nhẹ ---- */
-.dashboard-card { transition: box-shadow 0.2s ease; }
-.dashboard-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.09) !important; }
-.order-card { transition: box-shadow 0.2s ease; }
-.order-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.07) !important; }
-
-/* stat-icon: vuông, không bo tròn */
-.stat-icon { width: 44px; height: 44px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0; }
-
-.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
-
-/* ---- Badge trạng thái: giảm về 3 màu chính (đen/xám/đỏ) ---- */
-/* active: nền đen nhạt, chữ đen */
-.badge-active { background-color: #f0f0f0 !important; color: #0A0A0A !important; border: 1px solid #d0d0d0 !important; }
-
-.btn-white { background-color: #ffffff; border-color: #e5e7eb; }
-.btn-white:hover { background-color: #f3f4f6; }
-
-/* color-swatch trong ColorsPage: vuông hơn */
-.color-swatch { background: #f5f5f5; border: 1px solid #e5e5e5; border-radius: 2px; padding: 4px 10px; font-size: 0.82rem; font-weight: 500; }
-.color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.15); vertical-align: middle; }
-.swatch-remove { cursor: pointer; color: #666; transition: color 0.15s ease; }
-.swatch-remove:hover { color: #D4001A; }
-
-/* POS product card: không dịch chuyển */
-.pos-product { cursor: pointer; transition: border-color 0.15s ease; border-radius: 2px; }
-.pos-product:hover { border-color: #0A0A0A !important; }
-
-.fade-in { /* animation: fadeIn 0.35s ease forwards; opacity: 0; */ }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-/* ---- Modal dùng chung: ít bo góc hơn ---- */
-.text-justify { text-align: justify; }
-.custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1080; padding: 1rem; }
-.custom-modal-box { background: #fff; border-radius: 6px; width: 100%; max-width: 560px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); overflow: hidden; }
-.fade-in-scale { /* animation: fadeInScale 0.22s ease forwards; opacity: 0; */ }
-@keyframes fadeInScale { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
-
-/* ---- Button dark: vuông, dùng màu cố định ---- */
-.btn-dark { background: #0A0A0A !important; color: #ffffff !important; border-color: #0A0A0A !important; border-radius: 4px; }
-.btn-dark:hover, .btn-dark:focus { background: #2d2d2d !important; color: #ffffff !important; }
-.btn-outline-dark { color: #0A0A0A !important; border-color: #0A0A0A !important; border-radius: 4px; background: transparent; }
-.btn-outline-dark:hover { background: #0A0A0A !important; color: #ffffff !important; }
-.stat-icon.bg-dark, .stat-icon.bg-black { background: #0A0A0A !important; color: #ffffff !important; }
-
-/* ---- Admin status badge (thay thế Bootstrap màu sặc sỡ) ---- */
-/* Dùng chỉ 3 trạng thái: done (đen), pending (xám viền), danger (đỏ mờ) */
-.admin-badge { display: inline-block; padding: 2px 10px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; border-radius: 2px; }
-.admin-badge-done  { background: #0A0A0A; color: #fff; }
-.admin-badge-neutral { background: #f0f0f0; color: #444; border: 1px solid #ddd; }
-.admin-badge-warn  { background: #f5f5f5; color: #666; border: 1px solid #ddd; }
-.admin-badge-red   { background: #fff0f0; color: #D4001A; border: 1px solid #fcc; }
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *, .admin-shell *::before, .admin-shell *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

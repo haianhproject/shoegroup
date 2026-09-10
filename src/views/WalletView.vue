@@ -106,43 +106,43 @@ onMounted(loadWallet)
 
 <template>
   <div class="wallet-page">
-    <div class="container-fluid px-4 py-4">
+    <div class="w-full px-4 py-4">
       <div class="sg-title-bar mb-2"></div>
-      <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4">
+      <div class="flex flex-wrap justify-between items-end gap-2 mb-4">
         <div>
           <h1 class="wallet-title mb-1">Ví ShoeGroup</h1>
-          <p class="text-secondary mb-0">Tiền hoàn từ các yêu cầu trả hàng đã được xử lý sẽ cộng vào ví của bạn.</p>
+          <p class="text-gray-600 mb-0">Tiền hoàn từ các yêu cầu trả hàng đã được xử lý sẽ cộng vào ví của bạn.</p>
         </div>
-        <span class="wallet-badge"><i class="bi bi-shield-check me-1"></i>Hoàn tiền an toàn</span>
+        <span class="wallet-badge"><i class="icon icon-shield-check mr-1"></i>Hoàn tiền an toàn</span>
       </div>
 
-      <div v-if="loading" class="sg-card text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải ví…</div>
+      <div v-if="loading" class="sg-card text-center py-5 text-gray-500"><span class="sg-spinner sg-spinner sg-spinner-sm mr-2"></span>Đang tải ví…</div>
       <template v-else>
         <div class="wallet-balance sg-card">
           <div><div class="wallet-label">Số dư khả dụng</div><div class="wallet-amount">{{ formatCurrency(balance) }}</div><small>VND · cập nhật tự động sau khi trả hàng thành công</small></div>
-          <i class="bi bi-wallet2 wallet-icon"></i>
+          <i class="icon icon-wallet2 wallet-icon"></i>
         </div>
         <div class="wallet-actions">
-          <button class="wallet-action" :class="{ active: panel === 'history' }" type="button" @click="panel = panel === 'history' ? 'overview' : 'history'"><i class="bi bi-clock-history"></i><span>Lịch sử</span></button>
-          <button class="wallet-action" :class="{ active: panel === 'withdraw' }" type="button" @click="panel = panel === 'withdraw' ? 'overview' : 'withdraw'"><i class="bi bi-arrow-up-right-circle"></i><span>Rút tiền</span></button>
+          <button class="wallet-action" :class="{ active: panel === 'history' }" type="button" @click="panel = panel === 'history' ? 'overview' : 'history'"><i class="icon icon-clock-history"></i><span>Lịch sử</span></button>
+          <button class="wallet-action" :class="{ active: panel === 'withdraw' }" type="button" @click="panel = panel === 'withdraw' ? 'overview' : 'withdraw'"><i class="icon icon-arrow-up-right-circle"></i><span>Rút tiền</span></button>
         </div>
 
         <div v-if="panel === 'withdraw'" class="sg-card wallet-panel">
-          <h5 class="fw-bold mb-1">Rút tiền từ Ví ShoeGroup</h5>
-          <p class="text-secondary small mb-3">Chọn thẻ Visa hoặc số điện thoại MoMo nhận tiền. Yêu cầu sẽ ở trạng thái chờ xử lý để đối soát.</p>
-          <div class="row g-3">
-            <div class="col-md-4"><label class="co-label">Phương thức</label><select v-model="form.method" class="sg-input w-100"><option value="VISA">Thẻ Visa</option><option value="MOMO">Ví MoMo</option></select></div>
-            <div class="col-md-4"><label class="co-label">Số tiền (VND)</label><input v-model="form.amount" class="sg-input w-100" type="number" min="1" step="1" placeholder="Nhập số tiền muốn rút"></div>
-            <div class="col-md-4"><label class="co-label">{{ form.method === 'VISA' ? 'Số thẻ Visa' : 'Số điện thoại MoMo' }}</label><input v-model="form.destination" class="sg-input w-100" :inputmode="form.method === 'VISA' ? 'numeric' : 'tel'" :maxlength="form.method === 'VISA' ? 23 : 10" :placeholder="form.method === 'VISA' ? '13–19 chữ số' : '09xxxxxxxx'"></div>
-            <div v-if="form.method === 'VISA'" class="col-md-6"><label class="co-label">Tên chủ thẻ</label><input v-model="form.holderName" class="sg-input w-100" maxlength="120" placeholder="Nhập đúng như trên thẻ"></div>
+          <h5 class="font-bold mb-1">Rút tiền từ Ví ShoeGroup</h5>
+          <p class="text-gray-600 text-sm mb-3">Chọn thẻ Visa hoặc số điện thoại MoMo nhận tiền. Yêu cầu sẽ ở trạng thái chờ xử lý để đối soát.</p>
+          <div class="grid grid-cols-12 gap-3">
+            <div class="col-span-12 md:col-span-4"><label class="co-label">Phương thức</label><select v-model="form.method" class="sg-input w-full"><option value="VISA">Thẻ Visa</option><option value="MOMO">Ví MoMo</option></select></div>
+            <div class="col-span-12 md:col-span-4"><label class="co-label">Số tiền (VND)</label><input v-model="form.amount" class="sg-input w-full" type="number" min="1" step="1" placeholder="Nhập số tiền muốn rút"></div>
+            <div class="col-span-12 md:col-span-4"><label class="co-label">{{ form.method === 'VISA' ? 'Số thẻ Visa' : 'Số điện thoại MoMo' }}</label><input v-model="form.destination" class="sg-input w-full" :inputmode="form.method === 'VISA' ? 'numeric' : 'tel'" :maxlength="form.method === 'VISA' ? 23 : 10" :placeholder="form.method === 'VISA' ? '13–19 chữ số' : '09xxxxxxxx'"></div>
+            <div v-if="form.method === 'VISA'" class="col-span-12 md:col-span-6"><label class="co-label">Tên chủ thẻ</label><input v-model="form.holderName" class="sg-input w-full" maxlength="120" placeholder="Nhập đúng như trên thẻ"></div>
           </div>
-          <div class="d-flex justify-content-end mt-3"><button class="btn-sg" type="button" :disabled="submitting" @click="submitWithdrawal"><span v-if="submitting" class="spinner-border spinner-border-sm me-1"></span>{{ submitting ? 'Đang gửi…' : 'Xác nhận rút tiền' }}</button></div>
+          <div class="flex justify-end mt-3"><button class="btn-sg" type="button" :disabled="submitting" @click="submitWithdrawal"><span v-if="submitting" class="sg-spinner sg-spinner sg-spinner-sm mr-1"></span>{{ submitting ? 'Đang gửi…' : 'Xác nhận rút tiền' }}</button></div>
         </div>
 
         <div v-if="panel === 'history'" class="sg-card wallet-panel">
-          <h5 class="fw-bold mb-3">Lịch sử Ví ShoeGroup</h5>
-          <div v-if="allHistory.length === 0" class="text-center text-muted py-4">Chưa có giao dịch nào.</div>
-          <div v-else class="wallet-history"><div v-for="item in allHistory" :key="`${item.kind}-${item.id}`" class="wallet-history-row"><div><strong>{{ item.description || (item.kind === 'withdrawal' ? 'Yêu cầu rút tiền' : 'Giao dịch ví') }}</strong><small>{{ formatDate(item.created_at) }}<span v-if="item.kind === 'withdrawal'" class="ms-2 wallet-status">{{ item.status }}</span></small></div><strong :class="Number(item.amount) >= 0 ? 'amount-plus' : 'amount-minus'">{{ signedAmount(item.amount) }}</strong></div></div>
+          <h5 class="font-bold mb-3">Lịch sử Ví ShoeGroup</h5>
+          <div v-if="allHistory.length === 0" class="text-center text-gray-500 py-4">Chưa có giao dịch nào.</div>
+          <div v-else class="wallet-history"><div v-for="item in allHistory" :key="`${item.kind}-${item.id}`" class="wallet-history-row"><div><strong>{{ item.description || (item.kind === 'withdrawal' ? 'Yêu cầu rút tiền' : 'Giao dịch ví') }}</strong><small>{{ formatDate(item.created_at) }}<span v-if="item.kind === 'withdrawal'" class="ml-2 wallet-status">{{ item.status }}</span></small></div><strong :class="Number(item.amount) >= 0 ? 'amount-plus' : 'amount-minus'">{{ signedAmount(item.amount) }}</strong></div></div>
         </div>
       </template>
     </div>

@@ -18,10 +18,10 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
   <transition name="promo">
     <div v-if="uiState.promoOpen" class="promo-overlay" @click.self="dismiss">
       <div class="promo-card sg-card">
-        <button class="promo-x" @click="dismiss" aria-label="Đóng"><i class="bi bi-x-lg"></i></button>
+        <button class="promo-x" @click="dismiss" aria-label="Đóng"><i class="icon icon-x-lg"></i></button>
 
         <div class="promo-hero">
-          <span class="sg-chip promo-chip"><i class="bi bi-stars"></i> ƯU ĐÃI ĐẶC BIỆT</span>
+          <span class="sg-chip promo-chip"><i class="icon icon-stars"></i> ƯU ĐÃI ĐẶC BIỆT</span>
           <h3 class="promo-title">Chào mừng đến với <strong>ShoeGroup</strong></h3>
           <p class="promo-sub">Bộ sưu tập giày thể thao nam 2026 — bứt phá từng bước chạy.</p>
         </div>
@@ -35,14 +35,14 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
             </div>
           </div>
           <div class="deal">
-            <div class="deal-badge warm"><i class="bi bi-truck"></i></div>
+            <div class="deal-badge warm"><i class="icon icon-truck"></i></div>
             <div>
               <div class="deal-h">Miễn phí giao hàng tiêu chuẩn</div>
               <div class="deal-p">Cho mọi đơn hàng từ 2.000.000đ.</div>
             </div>
           </div>
           <div class="deal">
-            <div class="deal-badge lime"><i class="bi bi-gift"></i></div>
+            <div class="deal-badge lime"><i class="icon icon-gift"></i></div>
             <div>
               <div class="deal-h">Quà tặng thành viên mới</div>
               <div class="deal-p">Tặng tất thể thao + túi tote khi đăng ký tài khoản hôm nay.</div>
@@ -51,17 +51,17 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
         </div>
 
         <div class="promo-support">
-          <div class="sup-title"><i class="bi bi-headset"></i> Liên hệ hỗ trợ</div>
+          <div class="sup-title"><i class="icon icon-headset"></i> Liên hệ hỗ trợ</div>
           <div class="sup-grid">
-            <div><i class="bi bi-telephone-fill"></i> Hotline / Zalo: <strong>0375.990.871</strong></div>
-            <div><i class="bi bi-envelope-fill"></i> support@shoegroup.vn</div>
-            <div><i class="bi bi-geo-alt-fill"></i> Số 1 Lê Duẩn, Hoàn Kiếm, Hà Nội</div>
-            <div><i class="bi bi-clock-fill"></i> 9:00 – 21:00 (T2 – CN)</div>
+            <div><i class="icon icon-telephone-fill"></i> Hotline / Zalo: <strong>0375.990.871</strong></div>
+            <div><i class="icon icon-envelope-fill"></i> support@shoegroup.vn</div>
+            <div><i class="icon icon-geo-alt-fill"></i> Số 1 Lê Duẩn, Hoàn Kiếm, Hà Nội</div>
+            <div><i class="icon icon-clock-fill"></i> 9:00 – 21:00 (T2 – CN)</div>
           </div>
         </div>
 
         <div class="promo-actions">
-          <button class="btn-sg" @click="go('/products')"><i class="bi bi-bag-check me-2"></i>Mua sắm ngay</button>
+          <button class="btn-sg" @click="go('/products')"><i class="icon icon-bag-check mr-2"></i>Mua sắm ngay</button>
           <button class="btn-sg-outline" @click="dismiss">Để sau</button>
         </div>
         <label class="promo-dont">

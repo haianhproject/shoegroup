@@ -13,6 +13,18 @@ test("API policy exposes only intended public/customer routes", () => {
   assert.equal(resolvePolicy("PATCH", "/api/unknown"), "ADMIN");
 });
 
+test('untrusted X-Forwarded-For rotation cannot bypass the write limit', () => {
+  const limiter=createRateLimiter({windowMs:60000,max:1});
+  const response=()=>({statusCode:200,setHeader(){},status(code){this.statusCode=code;return this;},json(){return this;}});
+  let passed=0;
+  for(const forwarded of ['fake-client-a','fake-client-b']) {
+    const res=response();
+    limiter({method:'POST',ip:'127.0.0.1',headers:{'x-forwarded-for':forwarded},socket:{remoteAddress:'127.0.0.1'}},res,()=>passed++);
+    if(forwarded==='fake-client-b')assert.equal(res.statusCode,429);
+  }
+  assert.equal(passed,1);
+});
+
 test("passwords are hashed and verified without storing plaintext", async () => {
   const hash = await password.hash("student-password");
   assert.notEqual(hash, "student-password");

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   addToCart,
   formatCurrency,
@@ -8,19 +8,119 @@ import {
 } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import { api } from '../services/apiClient'
+import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
 
 const route = useRoute()
+const router = useRouter()
 
 const product = ref(null)
 const variants = ref([])
 const colorList = ref([])
 const sizeList = ref([])
 const isLoading = ref(true)
-
+const loadError = ref('')
 const selSize = ref(null)
 const selColor = ref(null)
 const activeImage = ref('')
 const qty = ref(1)
+const relatedProducts = ref([])
+
+const trustItems = [
+  { icon: 'truck', title: 'Giao hàng toàn quốc', sub: 'Xem phí khi thanh toán' },
+  { icon: 'return', title: 'Yêu cầu trả hàng', sub: 'Trong 14 ngày từ khi nhận' },
+  { icon: 'shield', title: 'Chính hãng 100%', sub: 'Cam kết hoàn tiền' },
+  { icon: 'support', title: 'Hỗ trợ 24/7', sub: 'Luôn sẵn sàng' }
+]
+const trustIcons = {
+  truck: '<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
+  return: '<path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>',
+  shield: '<path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>',
+  support: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-3v-8h3a2 2 0 0 1 2 2z"/><path d="M3 19a2 2 0 0 0 2 2h3v-8H5a2 2 0 0 0-2 2z"/>'
+}
+
+const fetchRelatedProducts = async (currentId, categoryId, brandId) => {
+  try {
+    const list = await api.get('/products')
+    const rows = Array.isArray(list) ? list : (list?.data || list?.products || [])
+
+    const getStock = (p) => {
+      let ts = p.total_stock ?? p.stock_quantity ?? p.stock
+      if (ts === null || ts === undefined || ts === '' || ts === 'null') {
+        const vars = p.variants || []
+        ts = vars.length > 0 ? vars.reduce((s, v) => s + (Number(v.stock) || 0), 0) : 0
+      }
+      const n = Number(ts)
+      return isNaN(n) ? 0 : n
+    }
+
+    // Lọc sản phẩm khác sản phẩm hiện tại và đang active
+    const candidates = rows.filter((p) => {
+      const pid = Number(p.id ?? p.id_product)
+      if (pid === Number(currentId)) return false
+      if (p.active === false || p.active === 0 || p.active === '0') return false
+      return true
+    })
+
+    const currentPrice = Number(product.value?.price || 0)
+
+    // Thuật toán đề xuất thông minh: Ưu tiên còn hàng + cùng danh mục/thương hiệu/môn thể thao
+    const scored = candidates.map((p) => {
+      const pStock = getStock(p)
+      const pCat = p.category_id ?? p.id_category
+      const pBrand = p.brand_id ?? p.id_brand
+      let score = 0
+
+      // Ưu tiên sản phẩm còn hàng
+      if (pStock > 0) score += 1000
+
+      if (categoryId && String(pCat) === String(categoryId)) score += 50
+      if (brandId && String(pBrand) === String(brandId)) score += 30
+      if (product.value?.sport && p.sport === product.value.sport) score += 20
+
+      const price = Number(p.price || 0)
+      if (currentPrice > 0 && price > 0 && Math.abs(price - currentPrice) / currentPrice < 0.3) {
+        score += 10
+      }
+
+      return { p, stock: pStock, score }
+    })
+
+    scored.sort((a, b) => b.score - a.score)
+
+    // Lấy 5 sản phẩm đề xuất (ưu tiên tuyệt đối sản phẩm còn hàng)
+    let selected = scored.filter(item => item.stock > 0).slice(0, 5)
+    if (selected.length < 5) {
+      const existingIds = new Set(selected.map(i => Number(i.p.id ?? i.p.id_product)))
+      for (const item of scored) {
+        if (!existingIds.has(Number(item.p.id ?? item.p.id_product))) {
+          selected.push(item)
+          if (selected.length >= 5) break
+        }
+      }
+    }
+
+    relatedProducts.value = selected.map(({ p, stock }) => ({
+      id_product: p.id ?? p.id_product,
+      product_name: p.name ?? p.product_name,
+      price: p.price,
+      sale_price: p.sale_price,
+      image_url: p.image_url ?? p.img,
+      brand_name: p.brand_name ?? p.brand ?? '',
+      sport: p.sport,
+      tag: p.tag,
+      is_new: p.is_new ?? p.new_arrival,
+      is_featured: p.is_featured,
+      total_stock: stock,
+      stock_quantity: stock,
+      stock: stock,
+      variants: p.variants || [],
+      colors: p.colors || [],
+      sizes: p.sizes || []
+    }))
+  } catch (_) {
+    relatedProducts.value = []
+  }
+}
 
 const originalPrice = computed(() => {
   const value = Number(product.value?.price ?? product.value?.BasePrice ?? 0)
@@ -55,34 +155,95 @@ const fetchData = async () => {
   variants.value = []
   colorList.value = []
   sizeList.value = []
+  loadError.value = ''
   if (!Number.isSafeInteger(id) || id <= 0) {
+    loadError.value = 'Sản phẩm không hợp lệ.'
     isLoading.value = false
     return
   }
 
   try {
-    const dp = await api.get('/products')
+    const [productsResult, categoriesResult, brandsResult, materialsResult, collectionsResult] = await Promise.allSettled([
+      api.get('/products'),
+      api.get('/categories'),
+      api.get('/brands'),
+      api.get('/materials'),
+      api.get('/collections'),
+    ])
+    const dp = productsResult.status === 'fulfilled' ? productsResult.value : []
+    const rowsOf = (result) => {
+      const payload = result?.status === 'fulfilled' ? result.value : []
+      return Array.isArray(payload) ? payload : (payload?.data || payload?.items || [])
+    }
+    const categories = rowsOf(categoriesResult)
+    const brands = rowsOf(brandsResult)
+    const materials = rowsOf(materialsResult)
+    const collections = rowsOf(collectionsResult)
+    const findName = (rows, id, names) => {
+      if (id == null) return ''
+      const row = rows.find((item) => String(item.id ?? item.id_category ?? item.id_brand ?? item.id_material ?? item.id_collection) === String(id))
+      return row ? (names.map((key) => row[key]).find(Boolean) || '') : ''
+    }
 
     const raw = Array.isArray(dp)
       ? dp.find((p) => Number(p.id) === id)
       : null
 
     if (raw) {
+      const categoryId = raw.category_id ?? raw.id_category
+      const brandId = raw.brand_id ?? raw.id_brand
+      const categoryRow = categories.find((item) => String(item.id ?? item.id_category) === String(categoryId))
       product.value = {
         id_product: raw.id,
-        product_name: raw.name,
-        price: raw.price,
-        sale_price: raw.sale_price,
-        category_name: raw.category,
-        sport: raw.sport,
-        description: raw.description,
-        material_name: raw.material_name,
-        brand_name: raw.brand,
-        collection_name: raw.collection_name,
-        image_url: raw.image_url,
+        product_name: raw.name ?? raw.product_name,
+        price: raw.price ?? raw.base_price ?? raw.BasePrice,
+        sale_price: raw.sale_price ?? raw.discount_price ?? raw.SalePrice,
+        category_name: raw.category_name ?? raw.category ?? findName(categories, categoryId, ['name', 'category_name']),
+        sport: raw.sport ?? categoryRow?.sport ?? '',
+        description: raw.description ?? raw.Description ?? '',
+        material_name: raw.material_name ?? raw.material ?? findName(materials, raw.material_id, ['name', 'material_name']),
+        brand_name: raw.brand_name ?? raw.brand ?? findName(brands, brandId, ['name', 'brand_name']),
+        collection_name: raw.collection_name ?? raw.collection ?? findName(collections, raw.collection_id, ['name', 'collection_name']),
+        image_url: raw.image_url ?? raw.image ?? raw.ImageURL,
         stock_quantity: raw.stock_quantity ?? raw.stock ?? raw.total_stock ?? 0,
         total_stock: raw.total_stock ?? raw.stock_quantity ?? raw.stock ?? 0
       }
+
+      // ======================================================
+      // GIỮ NGUYÊN CÁC BIẾN THỂ THẬT TỪ API
+      // ======================================================
+
+      variants.value = Array.isArray(raw.variants)
+        ? raw.variants.map((v) => ({
+            ...v,
+
+            id:
+              v.id ??
+              v.variant_id ??
+              v.id_variant ??
+              null,
+
+            size:
+              v.size ??
+              v.size_name ??
+              v.SizeName ??
+              '',
+
+            color:
+              v.color ??
+              v.color_name ??
+              v.color_label ??
+              v.ColorName ??
+              '',
+
+            stock: Number(
+              v.stock ??
+              v.stock_quantity ??
+              v.quantity ??
+              0
+            )
+          }))
+        : []
 
       // ======================================================
       // GIỮ NGUYÊN CÁC BIẾN THỂ THẬT TỪ API
@@ -149,7 +310,11 @@ const fetchData = async () => {
         image:
           c.image ??
           c.image_url ??
-          null
+          null,
+
+        note:
+          c.note ??
+          ''
       }))
 
       // ======================================================
@@ -167,6 +332,11 @@ const fetchData = async () => {
           s
         )
       }))
+      if (product.value) {
+        fetchRelatedProducts(id, categoryId, brandId)
+      }
+    } else {
+      loadError.value = 'Không tìm thấy sản phẩm này.'
     }
   } catch (error) {
     console.error(
@@ -174,8 +344,8 @@ const fetchData = async () => {
       error
     )
 
-    // Không tự tạo biến thể giả
     product.value = null
+    loadError.value = 'Không thể tải sản phẩm. Vui lòng thử lại.'
     variants.value = []
     colorList.value = []
     sizeList.value = []
@@ -183,8 +353,7 @@ const fetchData = async () => {
     isLoading.value = false
 
     if (colorList.value.length > 0) {
-      selColor.value =
-        colorList.value[0]
+      selColor.value = colorList.value[0]
     } else {
       selColor.value = null
     }
@@ -194,14 +363,18 @@ const fetchData = async () => {
       product.value?.image_url ||
       ''
 
-    if (availableSizes.value.length > 0) {
-      selSize.value =
-        availableSizes.value[0]
-          ?.size_name || null
+    // Tự động chọn size nếu chỉ còn đúng 1 size (hoặc chỉ 1 size còn hàng)
+    const inStock = availableSizes.value.filter((s) => !isSizeOutOfStock(s.size_name))
+    if (inStock.length === 1) {
+      selSize.value = inStock[0].size_name
+    } else if (availableSizes.value.length === 1) {
+      selSize.value = availableSizes.value[0]?.size_name || null
+    } else if (sizeList.value.length === 1) {
+      selSize.value = sizeList.value[0]?.size_name || null
+    } else if (inStock.length > 0) {
+      selSize.value = inStock[0].size_name
     } else {
-      selSize.value =
-        sizeList.value[0]
-          ?.size_name || null
+      selSize.value = availableSizes.value[0]?.size_name || null
     }
 
     qty.value = 1
@@ -481,33 +654,20 @@ const selectColor = (color) => {
   selColor.value = color
 
   if (color.image) {
-    activeImage.value =
-      color.image
+    activeImage.value = color.image
   }
 
-  const sizes =
-    availableSizes.value
+  const sizes = availableSizes.value
+  const inStock = sizes.filter((s) => !isSizeOutOfStock(s.size_name))
 
-  if (
-    !sizes.some(
-      (s) =>
-        String(s.size_name) ===
-        String(selSize.value)
-    )
-  ) {
-    // Ưu tiên size còn hàng
-    const available =
-      sizes.find(
-        (s) =>
-          !isSizeOutOfStock(
-            s.size_name
-          )
-      )
-
-    selSize.value =
-      available?.size_name ??
-      sizes[0]?.size_name ??
-      null
+  // Tự động chọn size nếu chỉ còn đúng 1 size (hoặc 1 size còn hàng)
+  if (inStock.length === 1) {
+    selSize.value = inStock[0].size_name
+  } else if (sizes.length === 1) {
+    selSize.value = sizes[0].size_name
+  } else if (!sizes.some((s) => String(s.size_name) === String(selSize.value))) {
+    const available = inStock[0] || sizes[0]
+    selSize.value = available?.size_name ?? null
   }
 
   qty.value = 1
@@ -526,27 +686,27 @@ const attributes = computed(() => {
 
   return [
     {
-      icon: 'bi-tag',
+      icon: 'icon-tag',
       label: 'Thương hiệu',
       value: p.brand_name
     },
     {
-      icon: 'bi-grid',
+      icon: 'icon-grid',
       label: 'Danh mục',
       value: p.category_name
     },
     {
-      icon: 'bi-activity',
+      icon: 'icon-activity',
       label: 'Bộ môn',
       value: p.sport
     },
     {
-      icon: 'bi-layers',
+      icon: 'icon-layers',
       label: 'Chất liệu',
       value: p.material_name
     },
     {
-      icon: 'bi-collection',
+      icon: 'icon-collection',
       label: 'Bộ sưu tập',
       value:
         p.collection_name
@@ -623,7 +783,7 @@ const decrementQty = () => {
 // ADD TO CART
 // ============================================================
 
-const handleAdd = () => {
+const handleAdd = ({ openDrawer = true } = {}) => {
   // ----------------------------------------------------------
   // CHƯA CHỌN MÀU
   // ----------------------------------------------------------
@@ -639,16 +799,25 @@ const handleAdd = () => {
   }
 
   // ----------------------------------------------------------
-  // CHƯA CHỌN SIZE
+  // CHƯA CHỌN SIZE -> TỰ ĐỘNG CHỌN NẾU CHỈ CÒN 1 SIZE
   // ----------------------------------------------------------
+
+  if (!selSize.value) {
+    const inStock = availableSizes.value.filter((s) => !isSizeOutOfStock(s.size_name))
+    if (inStock.length === 1) {
+      selSize.value = inStock[0].size_name
+    } else if (availableSizes.value.length === 1) {
+      selSize.value = availableSizes.value[0]?.size_name || null
+    } else if (sizeList.value.length === 1) {
+      selSize.value = sizeList.value[0]?.size_name || null
+    }
+  }
 
   if (!selSize.value) {
     notify({
       type: 'error',
-      message:
-        'Vui lòng chọn kích cỡ.'
+      message: 'Vui lòng chọn kích cỡ.'
     })
-
     return
   }
 
@@ -761,7 +930,7 @@ const handleAdd = () => {
   // MINI CART
   // ----------------------------------------------------------
 
-  showDrawer()
+  if (openDrawer) showDrawer()
 
   notify({
     type: 'success',
@@ -771,6 +940,15 @@ const handleAdd = () => {
       `${product.value.product_name} - Size ${selSize.value} - ${selColor.value.color_name}`,
     duration: 3000
   })
+
+  return true
+}
+
+const handleBuyNow = () => {
+  // Cả hai CTA dùng cùng payload, kiểm tra variant và tồn kho của giỏ hàng.
+  if (handleAdd({ openDrawer: false })) {
+    router.push('/checkout')
+  }
 }
 
 // ============================================================
@@ -786,903 +964,210 @@ onMounted(fetchData)
 </script>
 
 <template>
-  <div class="detail-page">
-    <div class="container-fluid px-4 py-4">
+  <main class="min-h-screen bg-white pt-6 pb-20">
+    <div class="max-w-[1200px] mx-auto px-6 lg:px-10">
 
-      <!-- LOADING -->
-      <div
-        v-if="isLoading"
-        class="text-center py-5"
-      >
-        <div
-          class="spinner-border text-primary"
-        ></div>
+      <!-- Loading State -->
+      <div v-if="isLoading" class="flex justify-center py-32" role="status">
+        <div class="sg-spinner" aria-hidden="true"></div>
+        <span class="sr-only">Đang tải sản phẩm</span>
       </div>
 
-      <!-- PRODUCT -->
-      <div
-        v-else-if="product"
-        class="row g-5"
-      >
+      <!-- Detail Content -->
+      <template v-else-if="product">
+        <!-- Breadcrumb -->
+        <nav class="flex items-center gap-2 text-xs text-[#737373] mb-6" aria-label="Đường dẫn">
+          <router-link to="/" class="hover:text-[#0E0E0E] transition-colors">Trang chủ</router-link>
+          <span>/</span>
+          <router-link to="/products" class="hover:text-[#0E0E0E] transition-colors">Sản phẩm</router-link>
+          <span>/</span>
+          <span class="text-[#0E0E0E] font-medium truncate max-w-xs">{{ product.product_name }}</span>
+        </nav>
 
-        <!-- ================================================= -->
-        <!-- GALLERY -->
-        <!-- ================================================= -->
-
-        <div class="col-lg-6">
-
-          <div class="detail-media">
-
-            <span
-              v-if="product.sport"
-              class="detail-tag"
-            >
-              {{ product.sport }}
-            </span>
-
-            <img
-              :src="
-                activeImage ||
-                product.image_url
-              "
-              :alt="
-                product.product_name
-              "
-            />
-          </div>
-
-          <div
-            v-if="
-              galleryImages.length > 1
-            "
-            class="thumb-row"
-          >
-            <button
-              v-for="(
-                img, i
-              ) in galleryImages"
-              :key="i"
-              class="thumb"
-              :class="{
-                active:
-                  activeImage === img
-              }"
-              @click="
-                activeImage = img
-              "
-            >
-              <img
-                :src="img"
-                alt="variant"
-              />
-            </button>
-          </div>
-
-        </div>
-
-        <!-- ================================================= -->
-        <!-- INFO -->
-        <!-- ================================================= -->
-
-        <div class="col-lg-6">
-
-          <nav
-            class="detail-breadcrumb"
-          >
-            <router-link to="/">
-              Trang chủ
-            </router-link>
-
-            /
-
-            <router-link
-              to="/products"
-            >
-              Sản phẩm
-            </router-link>
-
-            /
-
-            <span>
-              {{ product.product_name }}
-            </span>
-          </nav>
-
-          <h1 class="detail-name">
-            {{ product.product_name }}
-          </h1>
-
-          <!-- PRICE -->
-          <div class="detail-price d-flex flex-column">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="detail-price-current">{{ formatCurrency(displayPrice) }}</span>
-              <span v-if="hasDiscount" class="detail-discount">-{{ discountLabel }}%</span>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 items-start">
+          <!-- Gallery -->
+          <div class="lg:sticky lg:top-[92px]">
+            <div class="aspect-square rounded-2xl overflow-hidden bg-[#F0F0F0] mb-3 relative">
+              <span v-if="product.sport || hasDiscount" class="absolute top-4 left-4 z-10 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded"
+                :class="hasDiscount ? 'bg-[#0E0E0E] text-white' : 'bg-white text-[#0E0E0E] shadow-sm'">
+                {{ hasDiscount ? `Giảm ${discountLabel}%` : product.sport }}
+              </span>
+              <img :src="activeImage || product.image_url" :alt="product.product_name" class="w-full h-full object-cover transition-all duration-300" />
             </div>
-            <span v-if="hasDiscount" class="detail-price-old">{{ formatCurrency(originalPrice) }}</span>
+
+            <!-- Thumbnail gallery -->
+            <div v-if="galleryImages.length > 1" class="grid grid-cols-4 gap-3">
+              <button
+                v-for="(g, gi) in galleryImages"
+                :key="gi"
+                type="button"
+                @click="activeImage = g"
+                class="aspect-square rounded-xl overflow-hidden bg-[#F0F0F0] border-2 transition-colors cursor-pointer p-0"
+                :class="activeImage === g ? 'border-[#0E0E0E]' : 'border-transparent hover:border-[#D4D4D4]'"
+                :aria-label="`Xem ảnh ${gi + 1}`"
+              >
+                <img :src="g" :alt="`Ảnh ${gi + 1}`" class="w-full h-full object-cover" />
+              </button>
+            </div>
           </div>
 
-          <!-- DESCRIPTION -->
-          <p class="detail-desc">
-            {{
-              product.description ||
-              'Sản phẩm giày thể thao nam chính hãng, thiết kế hiện đại, phù hợp mọi hoạt động.'
-            }}
-          </p>
+          <!-- Product Info -->
+          <div>
+            <div class="flex items-center gap-2.5 mb-3">
+              <span class="text-[11px] font-bold tracking-[0.15em] uppercase text-[#737373]">
+                {{ product.brand_name || 'ShoeGroup' }}
+              </span>
+              <span v-if="product.category_name" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#F0F0F0] text-[#0E0E0E]">
+                {{ product.category_name }}
+              </span>
+            </div>
 
-          <!-- ATTRIBUTES -->
-          <div class="attr-grid">
+            <h1 style="font-family:'Fraunces',serif" class="text-3xl md:text-4xl font-semibold leading-tight mb-4 text-[#0E0E0E]">
+              {{ product.product_name }}
+            </h1>
 
-            <div
-              class="attr-item"
-              v-for="a in attributes"
-              :key="a.label"
-            >
-              <i
-                class="bi"
-                :class="a.icon"
-              ></i>
+            <!-- Price -->
+            <div class="flex items-baseline gap-3 mb-6">
+              <span style="font-family:'Fraunces',serif" class="text-3xl font-semibold text-[#0E0E0E]">
+                {{ formatCurrency(displayPrice) }}
+              </span>
+              <span v-if="hasDiscount" class="text-base text-[#737373] line-through">
+                {{ formatCurrency(originalPrice) }}
+              </span>
+            </div>
 
-              <div>
-                <span
-                  class="attr-l"
-                >
-                  {{ a.label }}
+            <!-- Description -->
+            <p class="text-sm text-[#737373] leading-relaxed mb-6">
+              {{ product.description || `${product.product_name} thuộc dòng ${product.category_name || 'Sneaker'} của ${product.brand_name || 'ShoeGroup'} — thiết kế tối giản, êm ái, bám sàn tốt cho cả tập luyện lẫn dạo phố hằng ngày.` }}
+            </p>
+
+            <!-- Màu sắc -->
+            <div v-if="colorList.length" class="mb-6">
+              <div class="text-[13px] font-semibold mb-2 text-[#0E0E0E] flex items-center flex-wrap gap-2">
+                <span>Màu sắc: <span class="text-[#737373] font-normal">{{ selColor?.color_label || selColor?.color_name || 'Chọn màu' }}</span></span>
+                <span v-if="selColor?.note" class="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                  {{ selColor.note }}
                 </span>
-
-                <strong>
-                  {{ a.value }}
-                </strong>
+              </div>
+              <div class="flex flex-wrap gap-2.5">
+                <button
+                  v-for="c in colorList"
+                  :key="c.color_name"
+                  type="button"
+                  class="h-8 w-8 rounded-full border border-white transition-all cursor-pointer relative"
+                  :class="[
+                    selColor?.color_name === c.color_name ? 'ring-2 ring-[#0E0E0E] ring-offset-2 scale-105' : 'ring-1 ring-[#D4D4D4] hover:ring-[#737373]',
+                    isColorOutOfStock(c) ? 'opacity-40' : ''
+                  ]"
+                  :style="{ background: c.hex || '#ccc' }"
+                  :title="isColorOutOfStock(c) ? `${c.color_label} (Hết hàng)` : (c.note ? `${c.color_label} · ${c.note}` : c.color_label)"
+                  @click="selectColor(c)"
+                >
+                  <span v-if="isColorOutOfStock(c)" class="absolute inset-0 m-auto w-full h-0.5 bg-red-500 rotate-45 pointer-events-none"></span>
+                </button>
               </div>
             </div>
 
-          </div>
-
-          <!-- ================================================= -->
-          <!-- COLOR -->
-          <!-- ================================================= -->
-
-          <div
-            class="picker"
-            v-if="
-              colorList.length
-            "
-          >
-
-            <label>
-              Màu sắc:
-
-              <strong>
-                {{
-                  selColor?.color_label
-                }}
-              </strong>
-            </label>
-
-            <div class="color-wrap">
-
-              <button
-                v-for="c in colorList"
-                :key="
-                  c.color_name
-                "
-                class="color-dot"
-                :class="{
-                  active:
-                    selColor?.color_name ===
-                    c.color_name,
-
-                  'color-oos':
-                    isColorOutOfStock(
-                      c
-                    )
-                }"
-                :style="{
-                  background:
-                    c.hex
-                }"
-                :title="
-                  isColorOutOfStock(c)
-                    ? `${c.color_label} - HẾT HÀNG`
-                    : c.color_label
-                "
-                @click="
-                  selectColor(c)
-                "
-              >
-
-                <i
-                  v-if="
-                    selColor?.color_name ===
-                    c.color_name
-                  "
-                  class="bi bi-check-lg"
-                ></i>
-
-                <span
-                  v-if="
-                    isColorOutOfStock(c)
-                  "
-                  class="color-oos-line"
-                ></span>
-
-              </button>
-
-            </div>
-
-          </div>
-
-          <!-- ================================================= -->
-          <!-- SIZE -->
-          <!-- ================================================= -->
-
-          <div
-            class="picker"
-            v-if="
-              availableSizes.length
-            "
-          >
-
-            <label>
-              Kích cỡ:
-
-              <strong>
-                {{ selSize }}
-              </strong>
-            </label>
-
-            <div class="size-wrap">
-
-              <button
-                v-for="s in availableSizes"
-                :key="
-                  s.size_name
-                "
-                class="size-box"
-                :class="{
-                  active:
-                    selSize ===
-                    s.size_name,
-
-                  'size-oos':
-                    isSizeOutOfStock(
-                      s.size_name
-                    )
-                }"
-                :title="
-                  isSizeOutOfStock(
-                    s.size_name
-                  )
-                    ? `Size ${s.size_name} - HẾT HÀNG`
-                    : `Size ${s.size_name} - Còn ${getSizeStock(s.size_name)} sản phẩm`
-                "
-                @click="
-                  selSize =
-                    s.size_name;
-                  qty = 1
-                "
-              >
-
-                {{ s.size_name }}
-
-                <span
-                  v-if="
-                    isSizeOutOfStock(
-                      s.size_name
-                    )
-                  "
-                  class="size-oos-text"
+            <!-- Chọn size (UK) -->
+            <div v-if="availableSizes.length" class="mb-6">
+              <div class="mb-2.5">
+                <span class="text-[13px] font-semibold text-[#0E0E0E]">
+                  Chọn size (UK) <span v-if="selSize" class="text-[#737373] font-normal">· {{ selSize }}</span>
+                </span>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="s in availableSizes"
+                  :key="s.size_name"
+                  type="button"
+                  @click="selSize = s.size_name; qty = 1"
+                  :disabled="isSizeOutOfStock(s.size_name)"
+                  class="w-12 h-11 flex items-center justify-center text-sm font-semibold rounded-lg border transition-colors cursor-pointer relative"
+                  :class="[
+                    selSize === s.size_name ? 'bg-[#0E0E0E] text-white border-[#0E0E0E]' : 'bg-white text-[#0E0E0E] border-[#E5E5E5] hover:border-[#0E0E0E]',
+                    isSizeOutOfStock(s.size_name) ? 'opacity-35 cursor-not-allowed bg-[#F9F9F9]' : ''
+                  ]"
                 >
-                  Hết
-                </span>
-
-              </button>
-
+                  {{ s.size_name }}
+                  <span v-if="isSizeOutOfStock(s.size_name)" class="absolute -top-1 -right-1 text-[8px] bg-red-100 text-red-700 px-1 rounded font-bold">Hết</span>
+                </button>
+              </div>
+              <div v-if="selSize && selColor" class="mt-2 text-xs" :class="selectedVariantOutOfStock ? 'text-red-600 font-semibold' : 'text-[#737373]'">
+                <span v-if="selectedVariantOutOfStock">Biến thể size {{ selSize }} - {{ selColor.color_name }} đã hết hàng</span>
+                <span v-else>Còn lại: <strong>{{ availableStock }}</strong> đôi trong kho</span>
+              </div>
             </div>
 
-            <!-- ================================================= -->
-            <!-- STOCK CỦA RIÊNG BIẾN THỂ -->
-            <!-- ================================================= -->
-
-            <div
-              v-if="
-                selSize &&
-                selColor
-              "
-              class="stock-info mt-3"
-            >
-
-              <template
-                v-if="
-                  selectedVariantOutOfStock
-                "
-              >
-                <i
-                  class="bi bi-x-circle-fill"
-                ></i>
-
-                <strong>
-                  Size
-                  {{ selSize }}
-                  -
-                  {{
-                    selColor.color_name
-                  }}
-                  đã hết hàng
-                </strong>
-              </template>
-
-              <template v-else>
-                <i
-                  class="bi bi-box-seam"
-                ></i>
-
-                <span>
-                  Tồn kho:
-
-                  <strong>
-                    {{ availableStock }}
-                  </strong>
-
-                  sản phẩm
-                </span>
-              </template>
-
+            <!-- Số lượng + Thêm vào giỏ + Mua ngay -->
+            <div v-if="isEntireProductOutOfStock" class="mb-6 p-4 rounded-xl bg-[#F5F5F5] text-center">
+              <p class="text-sm font-semibold text-[#0E0E0E] mb-1">Sản phẩm hiện đã hết hàng</p>
+              <router-link to="/products" class="text-xs text-[#737373] hover:underline">Xem các sản phẩm khác →</router-link>
             </div>
+            <div v-else class="space-y-3 mb-6">
+              <div class="flex items-center gap-3">
+                <!-- Quantity Counter -->
+                <div class="flex items-center border border-[#E5E5E5] rounded-lg h-12">
+                  <button type="button" @click="decrementQty" :disabled="qty <= 1" aria-label="Giảm" class="w-11 h-full flex items-center justify-center hover:bg-[#F0F0F0] transition-colors bg-transparent border-none cursor-pointer rounded-l-lg disabled:opacity-40">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                  </button>
+                  <span class="w-10 text-center text-sm font-semibold">{{ qty }}</span>
+                  <button type="button" @click="incrementQty" aria-label="Tăng" class="w-11 h-full flex items-center justify-center hover:bg-[#F0F0F0] transition-colors bg-transparent border-none cursor-pointer rounded-r-lg">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
 
-          </div>
+                <!-- Add to cart -->
+                <button
+                  type="button"
+                  @click="handleAdd()"
+                  :disabled="selectedVariantOutOfStock"
+                  class="flex-1 h-12 bg-white text-[#0E0E0E] border border-[#0E0E0E] rounded-lg text-[14px] font-semibold hover:bg-[#F0F0F0] transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  {{ selectedVariantOutOfStock ? 'Biến thể hết hàng' : 'Thêm vào giỏ' }}
+                </button>
+              </div>
 
-          <p
-            v-else
-            class="text-muted small"
-          >
-            Sản phẩm chưa cấu hình
-            biến thể.
-          </p>
-
-          <!-- ================================================= -->
-          <!-- ENTIRE PRODUCT OUT OF STOCK -->
-          <!-- ================================================= -->
-
-          <div
-            v-if="
-              isEntireProductOutOfStock
-            "
-            class="buy-row flex-column gap-2"
-          >
-
-            <button
-              class="btn-sg btn-sg-oos flex-grow-1 w-100"
-              disabled
-            >
-              <i
-                class="bi bi-x-circle me-2"
-              ></i>
-
-              HẾT HÀNG
-            </button>
-
-            <div
-              class="oos-notice"
-            >
-              <i
-                class="bi bi-info-circle-fill me-1"
-              ></i>
-
-              Tất cả biến thể của
-              sản phẩm hiện đã hết
-              hàng.
-
-              <router-link
-                to="/products"
-                class="oos-link"
-              >
-                Xem sản phẩm khác →
-              </router-link>
-            </div>
-
-          </div>
-
-          <!-- ================================================= -->
-          <!-- SELECTED VARIANT OUT OF STOCK -->
-          <!-- ================================================= -->
-
-          <div
-            v-else-if="
-              selectedVariantOutOfStock
-            "
-            class="buy-row flex-column gap-2"
-          >
-
-            <button
-              class="btn-sg btn-sg-oos flex-grow-1 w-100"
-              disabled
-            >
-              <i
-                class="bi bi-x-circle me-2"
-              ></i>
-
-              BIẾN THỂ NÀY HẾT HÀNG
-            </button>
-
-            <div
-              class="oos-notice"
-            >
-              <i
-                class="bi bi-info-circle-fill me-1"
-              ></i>
-
-              Size
-              <strong>
-                {{ selSize }}
-              </strong>
-
-              -
-              <strong>
-                {{
-                  selColor?.color_name
-                }}
-              </strong>
-
-              đã hết hàng.
-
-              <span>
-                Vui lòng chọn size hoặc
-                màu khác.
-              </span>
-            </div>
-
-          </div>
-
-          <!-- ================================================= -->
-          <!-- BUY -->
-          <!-- ================================================= -->
-
-          <div
-            v-else
-            class="buy-row"
-          >
-
-            <!-- QUANTITY -->
-            <div class="qty-box">
-
+              <!-- Buy now -->
               <button
-                @click="
-                  decrementQty
-                "
+                type="button"
+                @click="handleBuyNow"
+                :disabled="selectedVariantOutOfStock"
+                class="w-full h-12 bg-[#0E0E0E] text-white rounded-lg text-[14px] font-semibold hover:bg-[#333] transition-colors border-none cursor-pointer disabled:opacity-40"
               >
-                <i
-                  class="bi bi-dash"
-                ></i>
+                Mua ngay
               </button>
-
-              <span>
-                {{ qty }}
-              </span>
-
-              <button
-                @click="
-                  incrementQty
-                "
-              >
-                <i
-                  class="bi bi-plus"
-                ></i>
-              </button>
-
             </div>
 
-            <!-- ADD -->
-            <button
-              class="btn-sg flex-grow-1"
-              @click="
-                handleAdd
-              "
-            >
-              <i
-                class="bi bi-bag-plus me-2"
-              ></i>
-
-              Thêm vào giỏ hàng
-            </button>
-
+            <!-- Cam kết dịch vụ phong cách Figma -->
+            <div class="border-t border-[#E5E5E5] pt-5 space-y-3">
+              <div v-for="item in trustItems" :key="item.title" class="flex items-center gap-3">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="text-[#0E0E0E] flex-shrink-0" v-html="trustIcons[item.icon]"></svg>
+                <span class="text-[13px]"><span class="font-semibold text-[#0E0E0E]">{{ item.title }}</span> · <span class="text-[#737373]">{{ item.sub }}</span></span>
+              </div>
+            </div>
           </div>
-
-          <!-- TRUST -->
-          <div class="trust-row">
-
-            <span>
-              <i
-                class="bi bi-shield-check"
-              ></i>
-
-              Chính hãng
-            </span>
-
-            <span>
-              <i
-                class="bi bi-truck"
-              ></i>
-
-              Giao 24h
-            </span>
-
-            <span>
-              <i
-                class="bi bi-arrow-repeat"
-              ></i>
-
-              Đổi trả 14 ngày
-            </span>
-
-          </div>
-
         </div>
+
+        <!-- Sản phẩm tương tự -->
+        <div v-if="relatedProducts.length" class="mt-16 pt-10 border-t border-[#E5E5E5]">
+          <h2 style="font-family:'Fraunces',serif" class="text-2xl md:text-3xl font-semibold mb-6">Sản phẩm tương tự</h2>
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 lg:gap-6">
+            <FigmaProductCard v-for="rp in relatedProducts" :key="rp.id_product" :product="rp" />
+          </div>
+        </div>
+      </template>
+
+      <!-- Not found -->
+      <div v-else class="text-center py-28">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto text-[#D4D4D4] mb-3"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <h1 style="font-family:'Fraunces',serif" class="text-2xl font-semibold mb-2">Không tìm thấy sản phẩm</h1>
+        <p class="text-sm text-[#737373] mb-6">{{ loadError || 'Sản phẩm này không còn khả dụng hoặc đã bị ẩn.' }}</p>
+        <router-link to="/products" class="inline-flex items-center justify-center px-6 py-3 bg-[#0E0E0E] text-white text-xs font-bold rounded-full hover:bg-[#333] transition-colors">Quay lại danh sách sản phẩm</router-link>
       </div>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
-.detail-page {
-  background: var(--sg-canvas);
-  min-height: 100vh;
-}
-
-.detail-media {
-  position: relative;
-  border-radius: 0;
-  overflow: hidden;
-  background: #f9f9f9;
-  aspect-ratio: 1 / 1;
-  box-shadow: none;
-  border: 1px solid var(--sg-line);
-}
-
-.detail-media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  mix-blend-mode: multiply;
-}
-
-.detail-tag {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  background: #000;
-  color: #fff;
-  font-size: .72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  padding: .3rem .8rem;
-  border-radius: 0;
-  z-index: 2;
-}
-
-.thumb-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  flex-wrap: wrap;
-}
-
-.thumb {
-  width: 74px;
-  height: 74px;
-  border-radius: 0;
-  overflow: hidden;
-  border: 1px solid var(--sg-line);
-  background: #f9f9f9;
-  padding: 0;
-  transition: .2s;
-  cursor: pointer;
-}
-
-.thumb.active {
-  border-color: var(--sg-blue);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, .25);
-}
-
-.thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  mix-blend-mode: multiply;
-}
-
-.detail-breadcrumb {
-  font-size: .82rem;
-  color: var(--sg-muted);
-  margin-bottom: 10px;
-}
-
-.detail-breadcrumb a {
-  color: var(--sg-muted);
-  text-decoration: none;
-}
-
-.detail-breadcrumb a:hover {
-  color: var(--sg-blue);
-}
-
-.detail-name {
-  font-weight: 900;
-  font-size: 2rem;
-  letter-spacing: -.02em;
-}
-
-.detail-price {
-  font-weight: 900;
-  font-size: 1.8rem;
-  color: var(--sg-blue-700);
-  margin: 6px 0 16px;
-}
-.detail-price-current { color: var(--sg-blue-700); }
-.detail-price-old { color: #8b8b8b; font-size: 1rem; font-weight: 500; text-decoration: line-through; }
-.detail-discount { display: inline-flex; align-items: center; padding: .28rem .55rem; border-radius: 6px; background: #ef3340; color: #fff; font-size: .8rem; font-weight: 800; }
-
-.detail-desc {
-  color: var(--sg-ink-2);
-  line-height: 1.7;
-}
-
-.attr-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 20px 0;
-}
-
-.attr-item {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  background: #fff;
-  border: 1px solid var(--sg-line);
-  border-radius: 0;
-  padding: 10px 12px;
-}
-
-.attr-item i {
-  font-size: 1.2rem;
-  color: var(--sg-blue);
-}
-
-.attr-l {
-  display: block;
-  font-size: .72rem;
-  color: var(--sg-muted);
-}
-
-.attr-item strong {
-  font-size: .9rem;
-}
-
-.picker {
-  margin: 16px 0;
-}
-
-.picker label {
-  font-weight: 700;
-  font-size: .9rem;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.color-wrap {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.color-dot {
-  width: 42px;
-  height: 42px;
-  border-radius: 0;
-  border: 1px solid #ccc;
-  color: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: .2s;
-  cursor: pointer;
-  position: relative;
-}
-
-.color-dot:hover {
-  border-color: #0A0A0A;
-}
-
-.color-dot.active {
-  box-shadow: 0 0 0 2px #0A0A0A;
-  border-color: #0A0A0A;
-  color: #fff;
-}
-
-.color-dot.color-oos {
-  opacity: .55;
-}
-
-.color-oos-line {
-  position: absolute;
-  width: 48px;
-  height: 2px;
-  background: #dc2626;
-  transform: rotate(-45deg);
-}
-
-.size-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.size-box {
-  width: 58px;
-  height: 50px;
-  border: 1px solid #ccc;
-  background: #fff;
-  border-radius: 0;
-  font-weight: 700;
-  transition: .2s;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #0A0A0A;
-  position: relative;
-}
-
-.size-box:hover {
-  border-color: #0A0A0A;
-}
-
-.size-box.active {
-  background: #0A0A0A;
-  color: #fff;
-  border-color: #0A0A0A;
-}
-
-.size-box.size-oos {
-  color: #9ca3af;
-  background: #f3f4f6;
-  text-decoration: line-through;
-  border-color: #e5e7eb;
-}
-
-.size-box.size-oos:hover {
-  border-color: #dc2626;
-}
-
-.size-oos-text {
-  position: absolute;
-  bottom: 2px;
-  right: 4px;
-  font-size: 8px;
-  line-height: 1;
-  color: #dc2626;
-  text-decoration: none;
-}
-
-.stock-info {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  font-size: .9rem;
-}
-
-.stock-info i {
-  color: #16a34a;
-}
-
-.stock-info strong {
-  font-weight: 800;
-}
-
-.buy-row {
-  display: flex;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.qty-box {
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--sg-line);
-  border-radius: 0;
-  overflow: hidden;
-}
-
-.qty-box button {
-  width: 44px;
-  height: 48px;
-  border: 0;
-  background: #fff;
-  font-size: 1.1rem;
-}
-
-.qty-box button:hover {
-  background: var(--sg-canvas);
-}
-
-.qty-box span {
-  width: 44px;
-  text-align: center;
-  font-weight: 800;
-}
-
-.trust-row {
-  display: flex;
-  gap: 18px;
-  margin-top: 20px;
-  flex-wrap: wrap;
-}
-
-.trust-row span {
-  font-size: .85rem;
-  color: var(--sg-ink-2);
-  font-weight: 600;
-}
-
-.trust-row i {
-  color: #16a34a;
-  margin-right: 5px;
-}
-
-.btn-sg-oos {
-  background: #9ca3af !important;
-  border-color: #9ca3af !important;
-  cursor: not-allowed !important;
-  opacity: .7;
-}
-
-.oos-notice {
-  font-size: .88rem;
-  color: #6b7280;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px 14px;
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.oos-notice i {
-  color: #f59e0b;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.oos-link {
-  display: inline-block;
-  margin-left: 6px;
-  color: #2563eb;
-  font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.oos-link:hover {
-  text-decoration: underline;
-}
-
-@media (max-width: 576px) {
-  .attr-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-name {
-    font-size: 1.6rem;
-  }
-
-  .detail-price {
-    font-size: 1.5rem;
-  }
-}
+/* Clean scoped styles */
 </style>

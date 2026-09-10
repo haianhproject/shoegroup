@@ -1,0 +1,27 @@
+{
+  "modules": 18,
+  "features": 34,
+  "featureStatus": {
+    "Complete": 11,
+    "Partial": 14,
+    "Missing": 7,
+    "Broken": 2
+  },
+  "issues": 33,
+  "fixed": 27,
+  "remaining": 6,
+  "severity": {
+    "P0": 10,
+    "P1": 18,
+    "P2": 5,
+    "P3": 0
+  },
+  "runtime": {
+    "total": 65,
+    "passed": 61,
+    "failed": 4
+  },
+  "unitPassed": 26,
+  "uiChecks": 5,
+  "production": "NO"
+}

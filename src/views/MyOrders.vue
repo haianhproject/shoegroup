@@ -18,16 +18,16 @@ const isLoading = ref(true)
 const isCentered = computed(() => router.currentRoute.value.query.center === 'true')
 
 const statusMeta = {
-  PENDING: { color: 'amber', icon: 'bi-hourglass-split' },
-  CONFIRMED: { color: 'blue', icon: 'bi-check2-circle' },
-  SHIPPING: { color: 'cyan', icon: 'bi-truck' },
-  DELIVERY_FAILED: { color: 'red', icon: 'bi-truck' },
-  WAREHOUSE_RETURN: { color: 'amber', icon: 'bi-box-seam' },
-  DELIVERED: { color: 'lime', icon: 'bi-box-seam' },
-  RECEIVED: { color: 'green', icon: 'bi-bag-check' },
-  COMPLETED: { color: 'green', icon: 'bi-patch-check-fill' },
-  CANCELLED: { color: 'red', icon: 'bi-x-circle' },
-  RETURNED: { color: 'gray', icon: 'bi-arrow-return-left' },
+  PENDING: { color: 'amber', icon: 'icon-hourglass-split' },
+  CONFIRMED: { color: 'blue', icon: 'icon-check2-circle' },
+  SHIPPING: { color: 'cyan', icon: 'icon-truck' },
+  DELIVERY_FAILED: { color: 'red', icon: 'icon-truck' },
+  WAREHOUSE_RETURN: { color: 'amber', icon: 'icon-box-seam' },
+  DELIVERED: { color: 'lime', icon: 'icon-box-seam' },
+  RECEIVED: { color: 'green', icon: 'icon-bag-check' },
+  COMPLETED: { color: 'green', icon: 'icon-patch-check-fill' },
+  CANCELLED: { color: 'red', icon: 'icon-x-circle' },
+  RETURNED: { color: 'gray', icon: 'icon-arrow-return-left' },
 }
 
 // Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper)
@@ -137,11 +137,11 @@ const deliveryIssueSteps = (o) => {
     || historyKeys.includes('DELIVERY_FAILED')
     || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
   const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
-  const steps = [{ label: 'Đang giao hàng', icon: 'bi-truck' }]
-  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'bi-exclamation-triangle' })
-  if (returned) steps.push({ label: 'Đã về kho', icon: 'bi-box-seam' })
-  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'bi-truck' })
-  if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'bi-box-seam' })
+  const steps = [{ label: 'Đang giao hàng', icon: 'icon-truck' }]
+  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'icon-exclamation-triangle' })
+  if (returned) steps.push({ label: 'Đã về kho', icon: 'icon-box-seam' })
+  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'icon-truck' })
+  if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'icon-box-seam' })
   return steps
 }
 
@@ -169,9 +169,11 @@ const handlePay = (o) => {
 }
 
 const confirmPaid = async () => {
+  let paymentStatus = 'Chờ thanh toán'
   if (payModal.serverId) {
     try {
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+      paymentStatus = result?.payment_status || paymentStatus
     } catch(error) {
       notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
@@ -179,11 +181,11 @@ const confirmPaid = async () => {
   }
   const order = orderState.orders.find(x => x.id === payModal.orderId)
   if (order) {
-    order.payment_status = 'Đã thanh toán'
+    order.payment_status = paymentStatus
     saveOrders()
   }
   payModal.open = false
-  notify({ type: 'success', title: 'Thanh toán đã được ghi nhận', message: 'Đơn hàng đã sẵn sàng để cửa hàng xác nhận và xử lý.' })
+  notify({ type: 'success', title: 'Đã gửi thông báo chuyển khoản', message: 'Cửa hàng sẽ đối soát tiền nhận được trước khi xác nhận thanh toán.' })
 }
 
 const closePayModal = () => { payModal.open = false }
@@ -431,15 +433,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="orders-page" :class="{ 'd-flex align-items-center justify-content-center min-vh-100': isCentered }">
-    <div class="container-fluid px-4 py-4" :style="isCentered ? 'max-width: 900px; width: 100%;' : ''">
+  <div class="orders-page" :class="{ 'flex items-center justify-center min-h-screen': isCentered }">
+    <div class="w-full px-4 py-4" :style="isCentered ? 'max-width: 900px; width: 100%;' : ''">
       <div class="sg-title-bar mb-2"></div>
       <h1 class="op-title">Đơn hàng của tôi</h1>
 
       <!-- Toolbar -->
       <div class="op-toolbar sg-card">
         <div class="op-search">
-          <i class="bi bi-search"></i>
+          <i class="icon icon-search"></i>
           <input v-model="search" type="search" placeholder="Tìm đơn theo tên sản phẩm hoặc mã đơn…">
         </div>
         <div class="op-filters">
@@ -448,10 +450,10 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="isLoading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+      <div v-if="isLoading" class="text-center py-5"><div class="sg-spinner text-gray-900"></div></div>
       <div v-else-if="filtered.length === 0" class="empty sg-card">
-        <i class="bi bi-inbox"></i><h5>Không có đơn hàng</h5>
-        <p class="text-secondary">Bạn chưa có đơn hàng nào ở trạng thái này.</p>
+        <i class="icon icon-inbox"></i><h5>Không có đơn hàng</h5>
+        <p class="text-gray-600">Bạn chưa có đơn hàng nào ở trạng thái này.</p>
         <router-link to="/products" class="btn-sg">Mua sắm ngay</router-link>
       </div>
 
@@ -461,12 +463,12 @@ onUnmounted(() => {
           <div class="oc-head" @click="toggle(o.id)">
             <div class="oc-head-l">
               <span class="oc-id">#{{ o.id }}</span>
-              <span class="oc-date"><i class="bi bi-calendar3"></i> {{ fmtDate(o.createdAt) }}</span>
+              <span class="oc-date"><i class="icon icon-calendar3"></i> {{ fmtDate(o.createdAt) }}</span>
             </div>
             <div class="oc-head-r">
-              <span class="stat-badge" :class="statusMeta[o.status]?.color"><i class="bi" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}</span>
+              <span class="stat-badge" :class="statusMeta[o.status]?.color"><i class="icon" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}</span>
               <strong class="oc-total">{{ formatCurrency(o.total) }}</strong>
-              <i class="bi bi-chevron-down oc-caret" :class="{ open: expanded === o.id }"></i>
+              <i class="icon icon-chevron-down oc-caret" :class="{ open: expanded === o.id }"></i>
             </div>
           </div>
 
@@ -478,13 +480,13 @@ onUnmounted(() => {
           </div>
 
           <!-- Thông tin địa chỉ nhận & Nút đổi địa chỉ -->
-          <div class="addr-box-brief my-3 p-3 rounded d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="addr-box-brief my-3 p-3 rounded flex justify-between items-center flex-wrap gap-2">
             <div>
-              <div class="fw-bold small text-dark">
-                <i class="bi bi-geo-alt-fill text-danger me-1"></i>Địa chỉ nhận hàng:
-                <span v-if="o.addressChanged" class="badge bg-danger text-white ms-2">Đã đổi địa chỉ</span>
+              <div class="font-bold text-sm text-gray-900">
+                <i class="icon icon-geo-alt-fill text-red-600 mr-1"></i>Địa chỉ nhận hàng:
+                <span v-if="o.addressChanged" class="order-status order-status-alert ml-2">Đã đổi địa chỉ</span>
               </div>
-              <div class="small text-secondary mt-1">
+              <div class="text-sm text-gray-600 mt-1">
                 <strong>{{ o.customer?.fullName }}</strong> ({{ o.customer?.phone }}) -
                 <span>{{ o.shippingAddress || `${o.customer?.address}, ${o.customer?.province}` }}</span>
               </div>
@@ -495,66 +497,66 @@ onUnmounted(() => {
                 class="btn-change-addr"
                 @click.stop="openChangeAddress(o)"
               >
-                <i class="bi bi-pencil-square me-1"></i>Đổi sổ địa chỉ
+                <i class="icon icon-pencil-square mr-1"></i>Đổi sổ địa chỉ
               </button>
-              <span v-else-if="!o.addressChanged" class="badge bg-secondary text-white py-2 px-3 small">
-                <i class="bi bi-lock-fill me-1"></i>Khóa đổi địa chỉ
+                <span v-else-if="!o.addressChanged" class="order-status order-status-muted py-2 px-3 text-sm">
+                <i class="icon icon-lock-fill mr-1"></i>Khóa đổi địa chỉ
               </span>
             </div>
           </div>
 
           <!-- Thanh tiến trình trạng thái -->
           <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
-            <i class="bi bi-truck"></i>
+            <i class="icon icon-truck"></i>
             <span><strong>Giao hàng thất bại</strong><small>Đã hủy</small></span>
           </div>
           <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps">
             <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="{ current: i === deliveryIssueSteps(o).length - 1 }">
-              <span class="oc-step-dot"><i class="bi" :class="st.icon"></i></span>
+              <span class="oc-step-dot"><i class="icon" :class="st.icon"></i></span>
               <small>{{ st.label }}</small>
               <span v-if="i < deliveryIssueSteps(o).length - 1" class="oc-issue-line"></span>
             </div>
           </div>
           <div v-else-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
             <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED') }">
-              <span class="oc-step-dot"><i class="bi" :class="statusMeta[st]?.icon"></i></span>
+              <span class="oc-step-dot"><i class="icon" :class="statusMeta[st]?.icon"></i></span>
               <small>{{ ORDER_STATUS[st] }}</small>
             </div>
           </div>
           <div v-else class="oc-status-flat" :class="statusMeta[o.status]?.color">
-            <i class="bi" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}
+            <i class="icon" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}
           </div>
 
           <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o) }">
-            <i class="bi" :class="isLostDelivery(o) ? 'bi-exclamation-triangle' : 'bi-info-circle'"></i>
+            <i class="icon" :class="isLostDelivery(o) ? 'icon-exclamation-triangle' : 'icon-info-circle'"></i>
             <span>{{ deliveryIssueMessage(o) }}</span>
           </div>
 
           <!-- Auto-cancel reason -->
           <div v-if="o.status === 'CANCELLED' && o.cancelReason && !isLostDelivery(o)" class="oc-cancel">
-            <i class="bi bi-exclamation-triangle"></i> {{ o.cancelReason }}
+            <i class="icon icon-exclamation-triangle"></i> {{ o.cancelReason }}
           </div>
 
           <!-- Revenue hold notice -->
           <div v-if="o.status === 'RECEIVED' && !o.isCountedAsRevenue" class="oc-hold">
-            <i class="bi bi-shield-check"></i> Đơn đã nhận. Đang trong thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày — còn <strong>{{ daysUntilRevenue(o) }}</strong> ngày.
+            <i class="icon icon-shield-check"></i> Đơn đã nhận. Đang trong thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày — còn <strong>{{ daysUntilRevenue(o) }}</strong> ngày.
           </div>
 
           <!-- Transfer notices -->
           <div v-if="isWaitingTransfer(o)" class="oc-hold" style="border-color: #f59e0b; color: #b45309; background: #fffbeb;">
-            <i class="bi bi-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
+            <i class="icon icon-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
           </div>
           <div v-else-if="isBankTransfer(o) && o.payment_status === 'Chờ thanh toán'" class="oc-hold" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;">
-            <i class="bi bi-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
+            <i class="icon icon-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
           </div>
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="bi bi-qr-code-scan me-1"></i>Thanh toán ngay</button>
-            <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="bi bi-x-circle me-1"></i>Hủy đơn</button>
-            <button v-if="['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
-            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="bi bi-arrow-return-left me-1"></i>Yêu cầu trả hàng</button>
-            <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="bi bi-arrow-repeat me-1"></i>Đặt lại</button>
+            <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="icon icon-qr-code-scan mr-1"></i>Thanh toán ngay</button>
+            <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
+            <button v-if="['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="icon icon-arrow-return-left mr-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
+            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="icon icon-arrow-return-left mr-1"></i>Yêu cầu trả hàng</button>
+            <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="icon icon-arrow-repeat mr-1"></i>Đặt lại</button>
           </div>
 
           <!-- Expanded detail -->
@@ -562,7 +564,7 @@ onUnmounted(() => {
             <div v-if="expanded === o.id" class="oc-detail">
               <div class="oc-line" v-for="(it, i) in o.items" :key="i">
                 <img :src="it.image_url || it.product?.image_url" class="oc-line-img">
-                <div class="flex-grow-1">
+                <div class="grow">
                   <div class="oc-line-name">{{ it.product_name || it.product?.product_name }}</div>
                   <div class="oc-line-attr">
                     <span v-if="it.size">Size {{ it.size?.size_name || it.size }}</span>
@@ -592,14 +594,14 @@ onUnmounted(() => {
     <transition name="suc">
       <div v-if="changeAddrModal.open" class="modal-overlay" @click.self="changeAddrModal.open = false">
         <div class="sg-card modal-box">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">Đổi địa chỉ nhận đơn #{{ changeAddrModal.order?.id }}</h5>
-            <button class="btn-close-modal" @click="changeAddrModal.open = false"><i class="bi bi-x-lg"></i></button>
+          <div class="flex justify-between items-center mb-3">
+            <h5 class="font-bold mb-0">Đổi địa chỉ nhận đơn #{{ changeAddrModal.order?.id }}</h5>
+            <button class="btn-close-modal" @click="changeAddrModal.open = false"><i class="icon icon-x-lg"></i></button>
           </div>
 
           <div v-if="!changeAddrModal.showAddNew">
             <label class="co-label mb-2">Chọn địa chỉ từ Sổ địa chỉ của bạn:</label>
-            <div class="d-flex flex-column gap-2 mb-3 max-h-addr">
+            <div class="flex flex-col gap-2 mb-3 max-h-addr">
               <label
                 v-for="a in savedAddresses"
                 :key="a.id"
@@ -607,29 +609,29 @@ onUnmounted(() => {
                 :class="{ active: changeAddrModal.selectedAddrId === a.id }"
               >
                 <input type="radio" v-model="changeAddrModal.selectedAddrId" :value="a.id" name="order_addr_sel">
-                <div class="flex-grow-1 ms-2">
-                  <div class="d-flex align-items-center gap-2">
-                    <strong class="small">{{ a.recipient }}</strong>
-                    <span class="text-muted small">| {{ a.phone }}</span>
-                    <span v-if="a.isDefault" class="badge bg-dark" style="font-size: 0.65rem;">Mặc định</span>
+                <div class="grow ml-2">
+                  <div class="flex items-center gap-2">
+                    <strong class="text-sm">{{ a.recipient }}</strong>
+                    <span class="text-gray-500 text-sm">| {{ a.phone }}</span>
+                    <span v-if="a.isDefault" class="sg-chip-default">Mặc định</span>
                   </div>
-                  <div class="text-secondary smaller mt-1">
+                  <div class="text-gray-600 smaller mt-1">
                     {{ formatAddress(a) }}
                   </div>
                 </div>
               </label>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+            <div class="flex justify-between items-center mt-3 pt-3 border-t">
               <button class="btn-add-quick" @click="changeAddrModal.showAddNew = true">
-                <i class="bi bi-plus-lg me-1"></i>Thêm địa chỉ mới khác
+                <i class="icon icon-plus-lg mr-1"></i>Thêm địa chỉ mới khác
               </button>
-              <div class="d-flex gap-2">
+              <div class="flex gap-2">
                 <button class="btn-sg-outline" @click="changeAddrModal.open = false">Hủy</button>
                 <button class="btn-sg" :disabled="changeAddrModal.updating || selectedAddressIsCurrent" @click="confirmUpdateAddress">
                   <span v-if="changeAddrModal.updating">Đang cập nhật...</span>
-                  <span v-else-if="selectedAddressIsCurrent"><i class="bi bi-check2 me-1"></i>Địa chỉ hiện tại</span>
-                  <span v-else><i class="bi bi-check2 me-1"></i>Xác nhận đổi</span>
+                  <span v-else-if="selectedAddressIsCurrent"><i class="icon icon-check2 mr-1"></i>Địa chỉ hiện tại</span>
+                  <span v-else><i class="icon icon-check2 mr-1"></i>Xác nhận đổi</span>
                 </button>
               </div>
             </div>
@@ -637,49 +639,49 @@ onUnmounted(() => {
 
           <!-- Form Thêm Địa Chỉ Mới Trực Tiếp -->
           <div v-else>
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="co-label">Người nhận <span class="text-danger">*</span></label>
-                <input v-model="changeAddrModal.newRecipient" class="sg-input w-100" placeholder="Tên người nhận">
+            <div class="grid grid-cols-12 gap-3">
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Người nhận <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newRecipient" class="sg-input w-full" placeholder="Tên người nhận">
               </div>
-              <div class="col-md-6">
-                <label class="co-label">Số điện thoại <span class="text-danger">*</span></label>
-                <input v-model="changeAddrModal.newPhone" class="sg-input w-100" placeholder="Số điện thoại">
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Số điện thoại <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newPhone" class="sg-input w-full" placeholder="Số điện thoại">
               </div>
 
-              <div class="col-md-6">
-                <label class="co-label">Tỉnh / Thành phố <span class="text-danger">*</span></label>
-                <select v-model="changeAddrModal.newProvince" class="sg-input sg-select w-100" @change="onProvinceChange">
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Tỉnh / Thành phố <span class="text-red-600">*</span></label>
+                <select v-model="changeAddrModal.newProvince" class="sg-input sg-select w-full" @change="onProvinceChange">
                   <option value="" disabled>-- Chọn Tỉnh/TP --</option>
                   <option v-for="p in provinces" :key="p.code" :value="p.name">{{ p.name }}</option>
                 </select>
               </div>
 
-              <div class="col-md-6">
-                <label class="co-label">Phường / Xã <span class="text-danger">*</span></label>
-                <select v-model="changeAddrModal.newWard" class="sg-input sg-select w-100" :disabled="!changeAddrModal.newProvince">
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Phường / Xã <span class="text-red-600">*</span></label>
+                <select v-model="changeAddrModal.newWard" class="sg-input sg-select w-full" :disabled="!changeAddrModal.newProvince">
                   <option value="" disabled>-- Chọn Phường/Xã --</option>
                   <option v-for="w in wards" :key="w.code" :value="w.name">{{ w.name }}</option>
                 </select>
               </div>
 
-              <div class="col-12">
-                <label class="co-label">Số nhà, tên đường <span class="text-danger">*</span></label>
-                <input v-model="changeAddrModal.newLine" class="sg-input w-100" placeholder="Số 123 Đường Cầu Giấy...">
+              <div class="col-span-12">
+                <label class="co-label">Số nhà, tên đường <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newLine" class="sg-input w-full" placeholder="Số 123 Đường Cầu Giấy...">
               </div>
 
-              <div class="col-12">
+              <div class="col-span-12">
                 <label class="check-row">
                   <input type="checkbox" v-model="changeAddrModal.newIsDefault">
-                  <span class="fw-semibold small">Đặt làm địa chỉ mặc định tài khoản</span>
+                  <span class="font-semibold text-sm">Đặt làm địa chỉ mặc định tài khoản</span>
                 </label>
               </div>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+            <div class="flex justify-between items-center mt-3 pt-3 border-t">
               <button class="btn-sg-outline" @click="changeAddrModal.showAddNew = false">Quay lại danh sách</button>
               <button class="btn-sg" :disabled="changeAddrModal.adding" @click="saveNewAddrQuick">
-                <i class="bi bi-save me-1"></i>{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
+                <i class="icon icon-save mr-1"></i>{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
               </button>
             </div>
           </div>
@@ -692,10 +694,10 @@ onUnmounted(() => {
     <transition name="suc">
       <div v-if="cancelModal.open" class="modal-overlay" @click.self="closeCancelModal">
         <div class="sg-card modal-box">
-          <h5 class="fw-bold mb-3">Lý do hủy đơn</h5>
-          <p class="text-secondary mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
-          <textarea v-model="cancelModal.reason" class="sg-input w-100" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
-          <div class="d-flex gap-2 mt-4 justify-content-end">
+          <h5 class="font-bold mb-3">Lý do hủy đơn</h5>
+          <p class="text-gray-600 mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
+          <textarea v-model="cancelModal.reason" class="sg-input w-full" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
+          <div class="flex gap-2 mt-4 justify-end">
             <button class="btn-sg-outline" @click="closeCancelModal">Đóng</button>
             <button class="btn-sg" style="background: #ef4444; box-shadow: 0 10px 24px rgba(239, 68, 68, 0.3);" @click="submitCancel">Xác nhận hủy</button>
           </div>
@@ -707,14 +709,14 @@ onUnmounted(() => {
     <transition name="suc">
       <div v-if="payModal.open" class="modal-overlay" @click.self="closePayModal">
         <div class="sg-card modal-box text-center">
-          <h5 class="fw-bold mb-2">Thanh toán đơn hàng</h5>
-          <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
+          <h5 class="font-bold mb-2">Thanh toán đơn hàng</h5>
+          <p class="text-gray-600 mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" style="width: 200px; height: 200px; object-fit: contain;" />
-          <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
-          <div class="d-flex flex-column gap-2">
+          <h4 class="font-bold text-red-600 mb-4">{{ formatCurrency(payModal.total) }}</h4>
+          <p class="text-gray-600 text-sm mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
+          <div class="flex flex-col gap-2">
             <button class="btn-sg" style="background: #ea580c" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="btn-sg-outline w-100" @click="closePayModal">ĐÓNG</button>
+            <button class="btn-sg-outline w-full" @click="closePayModal">ĐÓNG</button>
           </div>
         </div>
       </div>
@@ -786,6 +788,9 @@ onUnmounted(() => {
 
 .btn-add-quick { border: 0; background: transparent; color: #D4001A; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
 .btn-add-quick:hover { text-decoration: underline; }
+.order-status { display: inline-flex; align-items: center; border-radius: 4px; font-size: .78rem; font-weight: 600; line-height: 1.2; }
+.order-status-alert { color: #0E0E0E; background: #F0F0F0; padding: 4px 8px; }
+.order-status-muted { color: #737373; background: #F0F0F0; }
 .check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; accent-color: #0a0a0a; }
 

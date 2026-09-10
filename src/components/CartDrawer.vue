@@ -1,8 +1,8 @@
 <script setup>
-import { onMounted, onUnmounted, computed, ref, watch } from 'vue'
+import { onUnmounted, computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  cartState, cartItems, cartCount, cartSubtotal, cartShippingFee, cartTotal,
+  cartState, cartItems, cartCount, cartSubtotal,
   formatCurrency, increaseQuantity, decreaseQuantity, removeFromCart, clearCart,
   refreshCartAvailability, cartHasUnavailableItems, isCheckingCartStock,
   hideDrawer,
@@ -71,7 +71,6 @@ const goCheckout = async () => {
 }
 
 const attrsOf = (item) => {
-  const a = item.attributes || item.product || {}
   return [{ label: 'Size', value: item.size?.size_name }, { label: 'Màu', value: item.color?.color_label }].filter(x => x.value)
 }
 const handleIncrease = (item) => { const r = increaseQuantity(item.id_product_detail); if (!r.ok) notify({ type: 'warning', message: r.message }) }
@@ -87,9 +86,11 @@ const fetchSuggestions = async () => {
       suggestions.value = products.slice(0, 3).map(p => ({
         id: p.id ?? p.ProductID ?? p.product_id,
         name: p.product_name ?? p.name ?? p.ProductName ?? 'Sản phẩm',
-        price: Number(p.sale_price ?? p.SalePrice ?? p.price ?? p.BasePrice ?? 0),
+        price: Number(p.sale_price ?? p.SalePrice ?? 0) > 0
+          ? Number(p.sale_price ?? p.SalePrice)
+          : Number(p.price ?? p.BasePrice ?? 0),
         image: p.image_url ?? p.ImageURL ?? p.image ?? '',
-        brand: p.brand_name ?? p.BrandName ?? 'ADIDAS',
+        brand: p.brand_name ?? p.BrandName ?? p.brand ?? 'ShoeGroup',
       }))
     }
   } catch { suggestions.value = [] }
@@ -106,20 +107,28 @@ const addSuggestedToCart = async (p) => {
   <teleport to="body">
     <transition name="drawer-fade">
       <div v-if="isOpen" class="cart-drawer-overlay" @click.self="close">
-        <div class="cart-drawer" @click.stop>
+        <aside class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" @click.stop @keydown.esc="close">
           <!-- Header -->
           <div class="drawer-header">
-            <h2 class="drawer-title">GIỎ HÀNG CỦA BẠN ({{ cartCount }})</h2>
-            <button class="drawer-close" @click="close" aria-label="Đóng"><i class="bi bi-x-lg"></i></button>
+            <h2 id="cart-drawer-title" class="drawer-title">Giỏ hàng của bạn ({{ cartCount }})</h2>
+            <button class="drawer-close" @click="close" aria-label="Đóng">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
           </div>
 
           <!-- Body -->
           <div class="drawer-body">
             <div v-if="cartCount === 0" class="empty-state">
-              <i class="bi bi-bag"></i>
-              <h5>Giỏ hàng đang trống</h5>
-              <p class="text-secondary mb-3">Hãy khám phá các mẫu giày mới nhất.</p>
-              <router-link to="/products" class="btn-sg-dark" @click="close">TIẾP TỤC MUA SẮM</router-link>
+              <div class="empty-icon-wrap flex justify-center mb-3 text-[#737373]">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                  <line x1="3" y1="6" x2="21" y2="6"/>
+                  <path d="M16 10a4 4 0 0 1-8 0"/>
+                </svg>
+              </div>
+              <h3>Giỏ hàng trống</h3>
+              <p>Thêm vài đôi giày để bắt đầu.</p>
+              <router-link to="/products" class="btn-sg-dark" @click="close">Khám phá sản phẩm</router-link>
             </div>
 
             <div v-else class="cart-compact-list">
@@ -129,8 +138,13 @@ const addSuggestedToCart = async (p) => {
                   <span v-if="item.isOutOfStock" class="cc-oos">HẾT HÀNG</span>
                 </router-link>
                 <div class="cc-info">
-                  <router-link :to="`/product/${item.id_product}`" class="cc-name" @click="close">{{ item.product?.product_name }}</router-link>
-                  <div class="cc-variant">{{ attrsOf(item).map(a=>a.value).join(' / ') || '—' }}</div>
+                  <div class="cc-heading">
+                    <div class="cc-heading-copy">
+                      <router-link :to="`/product/${item.id_product}`" class="cc-name" @click="close">{{ item.product?.product_name }}</router-link>
+                      <div class="cc-variant">{{ attrsOf(item).map(a=>a.value).join(' / ') || '—' }}</div>
+                    </div>
+                    <div class="cc-price">{{ formatCurrency(item.subtotal) }}</div>
+                  </div>
                   <div v-if="item.isOutOfStock" class="cc-alert">Biến thể đã hết hàng.</div>
                   <div v-else-if="item.hasInsufficientStock" class="cc-alert warn">Kho chỉ còn {{ item.stockQuantity }}.</div>
                   <router-link
@@ -138,17 +152,24 @@ const addSuggestedToCart = async (p) => {
                     :to="`/product/${item.id_product}`"
                     class="cc-choose-variant"
                     @click="close"
-                  ><i class="bi bi-arrow-repeat me-1"></i>Chọn biến thể khác</router-link>
+                  ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1 inline-block"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>Chọn biến thể khác</router-link>
                   <div class="cc-actions">
                     <div class="qty-compact">
-                      <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)"><i class="bi bi-dash"></i></button>
+                      <button :disabled="item.isOutOfStock || item.quantity <= 1" @click="handleDecrease(item.id_product_detail)" :aria-label="`Giảm số lượng ${item.product?.product_name}`">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/></svg>
+                      </button>
                       <span>{{ item.quantity }}</span>
-                      <button :disabled="item.isOutOfStock || item.hasInsufficientStock || item.quantity >= Number(item.stockQuantity || 0)" @click="handleIncrease(item)"><i class="bi bi-plus"></i></button>
+                      <button :disabled="item.isOutOfStock || item.hasInsufficientStock || item.quantity >= Number(item.stockQuantity || 0)" @click="handleIncrease(item)" :aria-label="`Tăng số lượng ${item.product?.product_name}`">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                      </button>
                     </div>
-                    <div class="cc-price">{{ formatCurrency(item.subtotal) }}</div>
-                    <button class="cc-remove" @click="removeFromCart(item.id_product_detail)" title="Xóa"><i class="bi bi-trash"></i></button>
+                    <div class="cc-unit-actions">
+                      <span class="cc-unit">{{ formatCurrency(item.unitPrice) }} / sp</span>
+                      <button class="cc-remove" @click="removeFromCart(item.id_product_detail)" :aria-label="`Xóa ${item.product?.product_name}`" title="Xóa">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+                      </button>
+                    </div>
                   </div>
-                  <div class="cc-unit">{{ formatCurrency(item.unitPrice) }} / sp</div>
                 </div>
               </div>
 
@@ -161,18 +182,23 @@ const addSuggestedToCart = async (p) => {
                   <router-link to="/products" class="suggest-link" @click="close">Xem thêm</router-link>
                 </div>
                 <div v-if="suggestions.length" class="suggest-grid-3">
-                  <div v-for="p in suggestions" :key="p.id" class="suggest-card-3">
-                    <router-link :to="`/product/${p.id}`" class="suggest-img" @click="close">
+                  <button v-for="p in suggestions" :key="p.id" class="suggest-card-3" @click="addSuggestedToCart(p)">
+                    <span class="suggest-img">
                       <img :src="p.image" :alt="p.name" />
-                      <span class="suggest-plus" @click.prevent="addSuggestedToCart(p)"><i class="bi bi-plus"></i></span>
-                    </router-link>
-                    <div class="suggest-name">{{ p.name }}</div>
-                    <div class="suggest-price">{{ formatCurrency(p.price) }}</div>
-                  </div>
+                    </span>
+                    <span class="suggest-name">{{ p.name }}</span>
+                    <span class="suggest-price">{{ formatCurrency(p.price) }}</span>
+                  </button>
                 </div>
                 <div v-else class="suggest-grid">
-                  <router-link to="/products" class="suggest-card" @click="close"><i class="bi bi-plus-lg"></i><span>Khám phá thêm</span></router-link>
-                  <router-link to="/products" class="suggest-card" @click="close"><i class="bi bi-plus-lg"></i><span>Sản phẩm mới</span></router-link>
+                  <router-link to="/products" class="suggest-card" @click="close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Khám phá thêm</span>
+                  </router-link>
+                  <router-link to="/products" class="suggest-card" @click="close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Sản phẩm mới</span>
+                  </router-link>
                 </div>
               </div>
             </div>
@@ -184,16 +210,16 @@ const addSuggestedToCart = async (p) => {
               <span>Tạm tính ({{ cartCount }} sản phẩm)</span>
               <strong>{{ formatCurrency(cartSubtotal) }}</strong>
             </div>
-            <div class="footer-row small text-muted">
+            <div class="footer-row footer-shipping">
               <span>Phí vận chuyển</span>
-              <span>{{ formatCurrency(cartShippingFee) }}</span>
+              <span>Tính khi thanh toán</span>
             </div>
             <button class="btn-checkout" :disabled="isCheckingCartStock || cartHasUnavailableItems" @click="goCheckout">
-              <i class="bi bi-bag me-2"></i>{{ isCheckingCartStock ? 'ĐANG KIỂM TRA...' : `Thanh toán ${formatCurrency(cartTotal)}` }}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 inline-block"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>{{ isCheckingCartStock ? 'ĐANG KIỂM TRA...' : 'Tiếp tục thanh toán' }}
             </button>
             <p class="footer-hint">Nhập coupon và phí vận chuyển ở trang thanh toán</p>
           </div>
-        </div>
+        </aside>
       </div>
     </transition>
   </teleport>
@@ -206,17 +232,17 @@ const addSuggestedToCart = async (p) => {
   z-index: 3200;
   display: flex;
   justify-content: flex-end;
-  background: rgba(10,10,10,.32);
-  backdrop-filter: blur(1px);
+  background: rgba(14,14,14,.4);
+  backdrop-filter: blur(2px);
 }
 .cart-drawer {
-  width: 420px;
+  width: 440px;
   max-width: 100vw;
   height: 100vh;
   background: #fff;
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 30px rgba(0,0,0,.18);
+  box-shadow: -20px 0 60px -20px rgba(0,0,0,.35);
   animation: slideIn .28s cubic-bezier(.16,1,.3,1);
 }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
@@ -226,66 +252,69 @@ const addSuggestedToCart = async (p) => {
 .drawer-fade-enter-from .cart-drawer { transform: translateX(100%); }
 .drawer-fade-leave-to .cart-drawer { transform: translateX(100%); }
 
-.drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
-.drawer-title { font-weight: 800; font-size: 1.05rem; letter-spacing: .06em; margin: 0; color: #0A0A0A; }
-.drawer-close { width: 32px; height: 32px; border: 0; background: #f5f5f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #333; }
-.drawer-close:hover { background: #0A0A0A; color: #fff; }
+.drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #E5E5E5; flex-shrink: 0; }
+.drawer-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 1.25rem; letter-spacing: -.025em; text-transform: uppercase; margin: 0; color: #0E0E0E; }
+.drawer-close { width: 36px; height: 36px; border: 0; background: #F0F0F0; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #0E0E0E; transition: background .2s ease; }
+.drawer-close:hover { background: #E5E5E5; }
 
 .drawer-body { flex: 1; overflow-y: auto; padding: 0; }
 .drawer-body::-webkit-scrollbar { width: 6px; }
 .drawer-body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
-.empty-state { text-align: center; padding: 60px 20px; }
+.empty-state { text-align: center; padding: 96px 24px; color: #737373; }
 .empty-state i { font-size: 2.2rem; color: #ccc; display: block; margin-bottom: 12px; }
-.empty-state h5 { font-weight: 700; color: #0A0A0A; margin-bottom: 6px; }
-.btn-sg-dark { background: #0A0A0A; color: #fff; border: 1px solid #0A0A0A; padding: 10px 18px; border-radius: 6px; font-weight: 700; font-size: .82rem; text-decoration: none; display: inline-block; }
-.btn-sg-dark:hover { background: #000; }
+.empty-state h3 { font-family: "Fraunces", Georgia, serif; font-size: 1.25rem; font-weight: 500; color: #0E0E0E; margin: 0 0 4px; }
+.empty-state p { font-size: .875rem; margin: 0 0 20px; }
+.btn-sg-dark { background: #0E0E0E; color: #fff; border: 1px solid #0E0E0E; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: .8125rem; text-decoration: none; display: inline-block; transition: background .2s ease; }
+.btn-sg-dark:hover { background: #333; }
 
-.cart-compact-list { padding: 12px 16px; }
-.cart-compact-item { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid #f0f0f0; }
-.cart-compact-item.is-unavailable { opacity: .6; background: #fafafa; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
-.cc-img { width: 68px; height: 68px; background: #f5f5f5; border: 1px solid #eee; border-radius: 6px; overflow: hidden; flex-shrink: 0; position: relative; display: block; }
+.cart-compact-list { padding: 0 24px; }
+.cart-compact-item { display: flex; gap: 14px; padding: 20px 0; border-bottom: 1px solid #E5E5E5; }
+.cart-compact-item.is-unavailable { opacity: .6; background: #FAFAFA; margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+.cc-img { width: 80px; height: 80px; background: #F0F0F0; border: 0; border-radius: 8px; overflow: hidden; flex-shrink: 0; position: relative; display: block; }
 .cc-img img { width: 100%; height: 100%; object-fit: cover; }
 .cc-oos { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%,-50%); background: #0A0A0A; color: #fff; font-size: .6rem; font-weight: 800; padding: 3px 6px; white-space: nowrap; }
 .cc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.cc-name { font-weight: 700; font-size: .88rem; color: #0A0A0A; text-decoration: none; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.cc-variant { font-size: .76rem; color: #777; }
+.cc-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.cc-heading-copy { min-width: 0; }
+.cc-name { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: .98rem; color: #0E0E0E; text-decoration: none; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cc-variant { font-size: .75rem; color: #737373; margin-top: 3px; }
 .cc-alert { font-size: .74rem; font-weight: 700; color: #0A0A0A; background: #f5f5f5; border-left: 2px solid #0A0A0A; padding: 4px 8px; }
 .cc-alert.warn { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
 .cc-choose-variant { align-self: flex-start; color: #0A0A0A; font-size: .73rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
 .cc-choose-variant:hover { color: #b91c1c; }
-.cc-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.qty-compact { display: inline-flex; align-items: center; border: 1px solid #d1d5db; border-radius: 999px; overflow: hidden; background: #fff; }
+.cc-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.qty-compact { display: inline-flex; align-items: center; border: 1px solid #E5E5E5; border-radius: 8px; overflow: hidden; background: #fff; }
 .qty-compact button { width: 28px; height: 28px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #0A0A0A; }
 .qty-compact button:disabled { opacity: .3; cursor: not-allowed; }
 .qty-compact span { width: 32px; text-align: center; font-weight: 700; font-size: .84rem; border-left: 1px solid #eee; border-right: 1px solid #eee; line-height: 28px; }
-.cc-price { font-weight: 800; font-size: .92rem; color: #0A0A0A; margin-left: auto; }
-.cc-unit { font-size: .7rem; color: #999; }
+.cc-price { font-weight: 600; font-size: .9375rem; color: #0E0E0E; white-space: nowrap; }
+.cc-unit-actions { display: inline-flex; align-items: center; gap: 12px; }
+.cc-unit { font-size: .7rem; color: #737373; white-space: nowrap; }
 .cc-remove { border: 0; background: transparent; color: #999; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px; flex-shrink: 0; }
 .cc-remove:hover { color: #0A0A0A; background: #f5f5f5; }
 
 .btn-clear-compact { border: 0; background: transparent; color: #777; font-size: .76rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; margin: 12px 0 4px; cursor: pointer; padding: 0; }
 .btn-clear-compact:hover { color: #0A0A0A; }
 
-.suggest-box { margin-top: 16px; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; background: #fafafa; }
+.suggest-box { margin: 8px 0 24px; border: 1px solid #E5E5E5; border-radius: 12px; padding: 16px; background: #FAFAFA; }
 .suggest-head { display: flex; justify-content: space-between; align-items: center; font-size: .78rem; font-weight: 800; letter-spacing: .04em; color: #0A0A0A; margin-bottom: 10px; }
 .suggest-link { font-size: .76rem; font-weight: 600; color: #0A0A0A; text-decoration: underline; }
 .suggest-grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
-.suggest-card-3 { background: #fff; border: 1px solid #eee; border-radius: 8px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.suggest-card-3 { background: transparent; border: 0; border-radius: 0; overflow: hidden; padding: 0; display: flex; flex-direction: column; text-align: left; cursor: pointer; }
 .suggest-img { position: relative; display: block; aspect-ratio: 1; background: #f9fafb; overflow: hidden; }
 .suggest-img img { width: 100%; height: 100%; object-fit: cover; }
-.suggest-plus { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; background: #0A0A0A; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .9rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-.suggest-name { font-size: .72rem; font-weight: 700; color: #0A0A0A; padding: 6px 6px 0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
-.suggest-price { font-size: .78rem; font-weight: 800; color: #0A0A0A; padding: 2px 6px 8px; }
+.suggest-name { font-family: "Fraunces", Georgia, serif; font-size: .75rem; font-weight: 500; color: #0E0E0E; padding: 6px 0 0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+.suggest-price { font-size: .75rem; font-weight: 500; color: #737373; padding: 2px 0 0; }
 .suggest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .suggest-card { border: 1px dashed #d1d5db; border-radius: 6px; background: #fff; height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-decoration: none; color: #0A0A0A; font-size: .78rem; font-weight: 600; }
 
-.drawer-footer { border-top: 1px solid #e5e5e5; padding: 14px 16px 16px; background: #fff; flex-shrink: 0; }
-.footer-row { display: flex; justify-content: space-between; font-size: .88rem; color: #333; margin-bottom: 6px; }
-.footer-row.small { font-size: .78rem; color: #777; }
+.drawer-footer { border-top: 1px solid #E5E5E5; padding: 20px 24px; background: #fff; flex-shrink: 0; }
+.footer-row { display: flex; justify-content: space-between; font-size: .875rem; color: #0E0E0E; margin-bottom: 6px; }
+.footer-shipping { color: #737373; margin-bottom: 16px; }
 .btn-checkout { width: 100%; background: #0A0A0A; color: #fff; border: 1px solid #0A0A0A; border-radius: 999px; padding: 13px 18px; font-weight: 800; font-size: .88rem; letter-spacing: .02em; cursor: pointer; margin-top: 10px; transition: background .2s; }
 .btn-checkout:hover:not(:disabled) { background: #000; }
 .btn-checkout:disabled { opacity: .5; cursor: not-allowed; }
-.footer-hint { text-align: center; font-size: .7rem; color: #999; margin: 8px 0 0; }
+.footer-hint { text-align: center; font-size: .6875rem; color: #737373; margin: 12px 0 0; }
 
 @media (max-width: 480px) { .cart-drawer { width: 100vw; } }
 </style>

@@ -14,6 +14,8 @@
  * ------------------------------------------------------------------
  */
 import { ref, reactive, computed } from "vue";
+import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAttempt';
+import { recognizedOrderRevenue } from '@/services/revenue';
 import { currentUser, logout } from "@/stores/authStore";
 
 import { API_BASE_URL, getToken } from "../../services/apiClient";
@@ -71,11 +73,11 @@ export function dismissToast(id) {
 export function toastIcon(type) {
   return (
     {
-      success: "bi-check-circle-fill",
-      error: "bi-x-circle-fill",
-      warning: "bi-exclamation-triangle-fill",
-      info: "bi-info-circle-fill",
-    }[type] || "bi-info-circle-fill"
+      success: "icon-check-circle-fill",
+      error: "icon-x-circle-fill",
+      warning: "icon-exclamation-triangle-fill",
+      info: "icon-info-circle-fill",
+    }[type] || "icon-info-circle-fill"
   );
 }
 
@@ -174,7 +176,6 @@ export const getDisplayName = computed(() => {
   );
 });
 export function handleLogout() {
-  if (typeof window !== "undefined" && !window.confirm("Bạn có chắc muốn đăng xuất khỏi ShoeGroup không?")) return false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
   return true;
@@ -185,10 +186,7 @@ export function handleLogout() {
 // ngay cả với dữ liệu cũ còn lưu trạng thái "Chờ thanh toán".
 export function isPaymentSettled(o) {
   const status = normalizeStatusText(o?.payment_status || "");
-  if (["da thanh toan", "hoan tien"].includes(status)) return true;
-  // Đơn bán tại quầy thu tiền mặt được thanh toán ngay khi tạo đơn.
-  if (getPaymentMethodPill(o?.payment_method).code === "Tiền mặt") return true;
-  return status === "cho thanh toan" && getPaymentMethodPill(o?.payment_method).code === "Chuyển khoản";
+  return ["da thanh toan", "cho hoan tien", "hoan tien"].includes(status);
 }
 export const pendingOrdersCount = computed(
   () => db.orders.filter((o) => o.status === "Chờ xác nhận").length,
@@ -288,11 +286,7 @@ export const statAccounts = computed(() => db.accounts.length);
 export const statProducts = computed(() => db.products.length);
 export const statOrders = computed(() => ordersInRange.value.length);
 export const statRevenue = computed(
-  () =>
-    ordersInRange.value
-      .filter((o) => o.status !== "Đã hủy")
-      .reduce((s, o) => s + (Number(o.total) || 0), 0) -
-    completedReturnsRefundInRange.value,
+  () => ordersInRange.value.reduce((sum,order)=>sum+recognizedOrderRevenue(order,db.returns),0),
 );
 
 export function exportReport() {
@@ -398,7 +392,7 @@ export const paymentRevenueSummary = computed(() => {
     const pm = (o.payment_method || "").toLowerCase();
     const isTransfer =
       pm.includes("chuyển khoản") || pm.includes("chuyen khoan");
-    const amt = Number(o.total) || 0;
+    const amt = recognizedOrderRevenue(o, db.returns);
 
     summary.total += amt;
 
@@ -832,7 +826,7 @@ export async function runOrderAction(o, act) {
     )
       o.payment_status = "Đã thanh toán";
     if (act.next === "Đã hủy") {
-      o.payment_status = isPaymentSettled(o) ? "Hoàn tiền" : "Đã hủy";
+      o.payment_status = isPaymentSettled(o) ? "Chờ hoàn tiền" : "Đã hủy";
       o.cancel_reason = act.reason || o.cancel_reason;
       if (act.reason && /mất hàng|thất lạc|lost/i.test(act.reason)) {
         o.stock_issue_status = "LOST_IN_TRANSIT";
@@ -895,7 +889,7 @@ export async function submitCancelOrder() {
     }
     
     ord.status = "Đã hủy";
-    ord.payment_status = isPaymentSettled(ord) ? "Hoàn tiền" : "Đã hủy";
+    ord.payment_status = isPaymentSettled(ord) ? "Chờ hoàn tiền" : "Đã hủy";
     ord.cancel_reason = cancelModal.reason;
     ord._history = ord._history || [];
     ord._history.push({
@@ -1294,43 +1288,43 @@ export function buildOrderHistory(o) {
   const isBank =
     getPaymentMethodPill(o.payment_method).code === "Chuyển khoản";
   const steps = [
-    { label: "Tạo đơn hàng", icon: "bi-cart-plus", done: true, date: created },
+    { label: "Tạo đơn hàng", icon: "icon-cart-plus", done: true, date: created },
   ];
   if (isBank) {
     // Chuyển khoản: khách thanh toán trước, rồi mới xác nhận & hoàn thành
     steps.push({
       label: "Chuyển khoản",
-      icon: "bi-bank",
+      icon: "icon-bank",
       done: paid,
       date: paid ? findDate(["Đã thanh toán", "Thanh toán thành công"]) || o.payment_confirmed_at || created : null,
     });
     steps.push({
       label: "Xác nhận đơn",
-      icon: "bi-check2-circle",
+      icon: "icon-check2-circle",
       done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
       label: redelivering ? "Đang giao lại" : "Đang giao hàng",
-      icon: "bi-truck",
+      icon: "icon-truck",
       done: shipping,
       date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
-      icon: "bi-exclamation-triangle",
+      icon: "icon-exclamation-triangle",
       done: true,
       date: findDate(["Giao hàng thất bại"]),
     });
     if (warehouseReturned) steps.push({
       label: "Về kho",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: true,
       date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Đã giao hàng",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
@@ -1338,31 +1332,31 @@ export function buildOrderHistory(o) {
     // COD: thanh toán ở gần cuối (thu tiền khi giao), trước khi hoàn thành đơn
     steps.push({
       label: "Xác nhận đơn",
-      icon: "bi-check2-circle",
+      icon: "icon-check2-circle",
       done: confirmed,
       date: findDate(["Đã xác nhận"]),
     });
     steps.push({
       label: redelivering ? "Đang giao lại" : "Đang giao hàng",
-      icon: "bi-truck",
+      icon: "icon-truck",
       done: shipping,
       date: findDate(["Đang vận chuyển", "Đang giao"]),
     });
     if (deliveryFailed) steps.push({
       label: "Giao hàng thất bại",
-      icon: "bi-exclamation-triangle",
+      icon: "icon-exclamation-triangle",
       done: true,
       date: findDate(["Giao hàng thất bại"]),
     });
     if (warehouseReturned) steps.push({
       label: "Về kho",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: true,
       date: findDate(["Về kho"]),
     });
     steps.push({
       label: "Thanh toán (COD)",
-      icon: "bi-cash-coin",
+      icon: "icon-cash-coin",
       done: paid,
       date: paid
         ? findDate(["Thanh toán thành công", "Đã giao hàng thành công"])
@@ -1370,14 +1364,14 @@ export function buildOrderHistory(o) {
     });
     steps.push({
       label: "Đã giao hàng",
-      icon: "bi-box-seam",
+      icon: "icon-box-seam",
       done: delivered,
       date: findDate(["Đã giao hàng thành công"]),
     });
   }
   if (lostDelivery) steps.push({
     label: "Đã hủy",
-    icon: "bi-x-circle",
+    icon: "icon-x-circle",
     done: true,
     date: findDate(["Đã hủy"]),
   });
@@ -1759,22 +1753,22 @@ export async function submitReturn() {
   const newId =
     (res && res.data && (res.data.ReturnID || res.data.id)) ||
     "R-" + Date.now();
-  const persistedStatus = res.data?.status || (direct ? "Đã hoàn tất" : status);
+  const persistedStatus = res.data?.Status || res.data?.status || 'Chờ xử lý';
   db.returns.unshift({
     id: newId,
     order_id: ord.id,
     return_type: payload.return_type,
     reason: payload.reason,
-    refund_amount: payload.refund_amount,
+    refund_amount: res.data?.RefundAmount ?? payload.refund_amount,
     status: persistedStatus,
     created_at: new Date().toISOString(),
   });
-  ord.status = notReceived ? "Yêu cầu trả hàng" : (direct ? "Đã hoàn tất trả hàng" : "Yêu cầu trả hàng");
+  ord.status = "Yêu cầu trả hàng";
   notify(
       notReceived
         ? "Đã ghi nhận báo chưa nhận được hàng cho đơn #" + ord.id
         : direct
-      ? "Đã trả hàng trực tiếp & hoàn tất cho đơn #" + ord.id
+      ? "Đã tạo yêu cầu trả tại quầy, chờ kiểm hàng cho đơn #" + ord.id
       : "Đã tạo yêu cầu trả hàng cho đơn #" + ord.id,
     "success",
   );
@@ -2115,7 +2109,9 @@ export async function savePosCustomer() {
     notify("Đã lưu khách vào danh sách khách hàng", "success");
   }
 }
+export const posSubmitting = ref(false);
 export function checkoutPos() {
+  if (posSubmitting.value) return;
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
@@ -2133,12 +2129,16 @@ export function checkoutPos() {
   finalizePosOrder();
 }
 async function finalizePosOrder() {
+  if (posSubmitting.value) return;
+  posSubmitting.value = true;
+  try {
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
     return;
   }
   const payload = {
+    user_id: o.customer_id || null,
     customer_name: o.customer_name || "Khách lẻ",
     customer_phone: o.customer_phone || "",
     payment_method: o.payment_method,
@@ -2159,9 +2159,10 @@ async function finalizePosOrder() {
       price: c.price,
     })),
   };
+  const attempt = getCheckoutAttempt(payload);
   const res = await apiWrite("/orders", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", 'Idempotency-Key': attempt.key },
     body: JSON.stringify(payload),
   });
 
@@ -2172,6 +2173,7 @@ async function finalizePosOrder() {
   }
   
   const created = res.data;
+  clearCheckoutAttempt();
 
   // Cập nhật db.inventory local ngay sau khi thanh toán thành công
   // để trang sản phẩm và kho hiển thị đúng số lượng mà không cần reload
@@ -2196,7 +2198,7 @@ async function finalizePosOrder() {
   db.orders.unshift({
     id: newId,
     date: nowIso,
-    total: posGrandTotal.value,
+    total: created.totalAmount,
     status: "Đã nhận hàng",
     customer_name: payload.customer_name,
     customer_phone: payload.customer_phone,
@@ -2221,8 +2223,9 @@ async function finalizePosOrder() {
       { status: "Đã nhận hàng", date: nowIso, note: "Bán tại quầy" },
     ],
   });
-  notify("Tạo đơn thành công: " + formatPrice(posGrandTotal.value), "success");
+  notify("Tạo đơn thành công: " + formatPrice(created.totalAmount), "success");
   resetPosOrder();
+  } finally { posSubmitting.value = false; }
 }
 
 /* ---------------- PRODUCTS ---------------- */
@@ -2311,19 +2314,36 @@ export function openProductForm(p) {
   if (p) {
     Object.assign(productForm, JSON.parse(JSON.stringify(p)));
     const loadedVariants = productForm.variants || [];
-    productForm.colors = (productForm.colors || []).map((c) => ({
+    let colors = Array.isArray(productForm.colors) ? [...productForm.colors] : [];
+
+    // Nếu sản phẩm có variants nhưng colors bị trống, tự khôi phục từ variants
+    const colorNames = new Set(colors.map((c) => c.name));
+    for (const v of loadedVariants) {
+      if (v.color && !colorNames.has(v.color)) {
+        colorNames.add(v.color);
+        colors.push({
+          name: v.color,
+          hex: v.hex || v.color_hex || colorHex(v.color),
+          image: v.image || "",
+          note: v.note || "",
+        });
+      }
+    }
+
+    productForm.colors = colors.map((c) => ({
       id: c.id,
       name: c.name,
       hex: c.hex || colorHex(c.name),
       image: c.image || "",
       note: c.note || "",
-      // Tai lai size + so luong (bien the) da luu cho tung mau
+      // Tải lại size + số lượng (biến thể) đã lưu cho từng màu
       variants: loadedVariants
         .filter((v) => String(v.color) === String(c.name))
         .map((v) => ({
           id: v.id,
           size: String(v.size),
           stock: Number(v.stock) || 0,
+          version: v.version,
         })),
     }));
     productForm.sizes =
@@ -2340,6 +2360,21 @@ export function openProductForm(p) {
 }
 export function closeProductForm() {
   productFormOpen.value = false;
+}
+export function changeColor(index, newColorId) {
+  const c = productForm.colors[index];
+  if (!c) return;
+  const target = db.colors.find((x) => String(x.id) === String(newColorId));
+  if (!target) return;
+  const exists = productForm.colors.some((x, i) => i !== index && x.name === target.name);
+  if (exists) {
+    notify("Màu " + target.name + " đã có trong danh sách màu của sản phẩm này", "warning");
+    return;
+  }
+  c.id = target.id;
+  c.name = target.name;
+  c.hex = target.hex;
+  notify("Đã đổi sang màu " + target.name, "info");
 }
 export function addColor() {
   const c = db.colors.find((x) => String(x.id) === String(colorDraft.value));
@@ -2358,6 +2393,9 @@ export function addColor() {
     image: colorImageDraft.value || "",
     note: (colorNoteDraft.value || "").trim(),
   });
+  if (productForm.colors.length === 1 && colorImageDraft.value) {
+    productForm.image_url = colorImageDraft.value;
+  }
   colorDraft.value = "";
   colorImageDraft.value = "";
   colorNoteDraft.value = "";
@@ -2394,11 +2432,23 @@ export async function onProductImageFile(e) {
   notify("Đã tải ảnh sản phẩm từ thiết bị", "success");
 }
 // Chon anh cho tung mau tu may (doi mau -> doi anh o cua hang)
+export function setColorImage(index, image) {
+  const color = productForm.colors[index];
+  if (!color) return;
+  color.image = String(image ?? "");
+  // Only an explicit first-color edit updates the storefront cover.
+  // Loading the form or changing the cover preserves independent images.
+  if (index === 0) productForm.image_url = color.image;
+}
 export async function onColorImageFile(e, index) {
   const file = pickImageFile(e);
-  if (!file) return;
-  productForm.colors[index].image = await readImageFile(file);
-  notify("Đã tải ảnh cho màu " + productForm.colors[index].name, "success");
+  const color = productForm.colors[index];
+  if (!file || !color) return;
+  const image = await readImageFile(file);
+  const currentIndex = productForm.colors.indexOf(color);
+  if (currentIndex < 0) return;
+  setColorImage(currentIndex, image);
+  notify("Đã tải ảnh cho màu " + color.name, "success");
 }
 // Chon anh cho MAU MOI dang them o khung them mau
 export async function onColorDraftImageFile(e) {
@@ -2548,6 +2598,8 @@ export async function saveProduct() {
       let stock = Number(sv.stock) || 0;
       if (stock < 0) stock = 0;
       flatVariants.push({
+        id: sv.id,
+        version: sv.version,
         color: c.name,
         hex: colorHex(c.name),
         size: String(sv.size),
@@ -2623,7 +2675,7 @@ export async function updateStock(v) {
   const res = await apiWrite("/inventory/" + v.id, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stock }),
+    body: JSON.stringify({ stock, version: v.version }),
   });
   if (!res.ok) {
     notify(
@@ -2632,6 +2684,7 @@ export async function updateStock(v) {
     );
     return;
   }
+  v.version = res.data.version;
   notify("Đã cập nhật tồn kho: " + v.sku + " = " + stock, "success");
 }
 
@@ -2665,6 +2718,7 @@ export function productVariants(productId) {
     color_hex: v.hex ?? v.color_hex ?? v.ColorHex ?? "",
     sku: v.sku ?? v.ChildSKU ?? "",
     stock: Number(v.stock ?? v.StockQuantity ?? 0) || 0,
+    version: v.version ?? v.Version,
   }));
 }
 export function productVariantCount(productId) {
@@ -3099,8 +3153,8 @@ export const staffStats = computed(() => {
     map[who].total++;
     if (o.status === "Đã giao hàng thành công") {
       map[who].done++;
-      map[who].revenue += Number(o.total) || 0;
     }
+    map[who].revenue += recognizedOrderRevenue(o, db.returns);
   });
   return Object.values(map).sort((a, b) => b.revenue - a.revenue);
 });
@@ -3747,6 +3801,7 @@ async function loadAllData(isBackground) {
       color_hex: v.ColorHex ?? v.color_hex ?? "",
       sku: v.ChildSKU ?? v.sku ?? "",
       stock: Number(v.StockQuantity ?? v.stock ?? 0) || 0,
+      version: v.Version ?? v.version,
       price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
       image_url: v.image_url ?? v.ImageURL ?? "",
     }));
@@ -3788,6 +3843,7 @@ async function loadAllData(isBackground) {
       resolution_note: r.ResolutionNote ?? r.resolution_note ?? "",
       restocked_at: r.RestockedAt ?? r.restocked_at ?? null,
       wallet_credited_at: r.WalletCreditedAt ?? r.wallet_credited_at ?? null,
+      refunded_at: r.RefundedAt ?? r.refunded_at ?? null,
     }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,

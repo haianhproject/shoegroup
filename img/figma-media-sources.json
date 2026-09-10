@@ -1,0 +1,77 @@
+{
+  "source": "all figma bán giày/src/App.vue",
+  "files": [
+    {
+      "file": "hero-sale.jpg",
+      "url": "https://images.unsplash.com/photo-1656164603279-b989e21168ba?w=1600&h=900&fit=crop&fm=jpg",
+      "bytes": 81685,
+      "status": "OK"
+    },
+    {
+      "file": "promo-running.jpg",
+      "url": "https://images.unsplash.com/photo-1656164753657-8ff832063a71?w=900&h=1100&fit=crop&fm=jpg",
+      "bytes": 52978,
+      "status": "OK"
+    },
+    {
+      "file": "hero-sneakers.jpg",
+      "url": "https://images.unsplash.com/photo-1600185365926-3a2ce3cdb9eb?w=1600&h=900&fit=crop&fm=jpg",
+      "bytes": 260918,
+      "status": "OK"
+    },
+    {
+      "file": "promo-basketball.jpg",
+      "url": "https://images.unsplash.com/photo-1587563871167-1ee9c731aefb?w=900&h=600&fit=crop&fm=jpg",
+      "bytes": 30509,
+      "status": "OK"
+    },
+    {
+      "file": "hero-running.jpg",
+      "url": "https://images.unsplash.com/photo-1542219550-37153d387c27?w=1600&h=900&fit=crop&fm=jpg",
+      "bytes": 133870,
+      "status": "OK"
+    },
+    {
+      "file": "promo-sale.jpg",
+      "url": "https://images.unsplash.com/photo-1544441892-794166f1e3be?w=900&h=600&fit=crop&fm=jpg",
+      "bytes": 50328,
+      "status": "OK"
+    },
+    {
+      "file": "category-running.jpg",
+      "url": "https://images.unsplash.com/photo-1656164753657-8ff832063a71?w=600&h=800&fit=crop&fm=jpg",
+      "bytes": 28856,
+      "status": "OK"
+    },
+    {
+      "file": "category-training.jpg",
+      "url": "https://images.unsplash.com/photo-1554139844-af2fc8ad3a3a?w=600&h=800&fit=crop&fm=jpg",
+      "bytes": 114723,
+      "status": "OK"
+    },
+    {
+      "file": "category-basketball.jpg",
+      "url": "https://images.unsplash.com/photo-1469395446868-fb6a048d5ca3?w=600&h=800&fit=crop&fm=jpg",
+      "bytes": 110367,
+      "status": "OK"
+    },
+    {
+      "file": "hero-walk.mp4",
+      "url": "https://videos.pexels.com/video-files/13633626/13633626-hd_1920_1080_30fps.mp4",
+      "bytes": 7100943,
+      "status": "OK"
+    },
+    {
+      "file": "hero-motion.mp4",
+      "url": "https://videos.pexels.com/video-files/4830309/4830309-hd_1920_1080_30fps.mp4",
+      "bytes": 7137778,
+      "status": "OK"
+    },
+    {
+      "file": "hero-walk-alternate.mp4",
+      "url": "https://videos.pexels.com/video-files/4211071/4211071-hd_1920_1080_25fps.mp4",
+      "bytes": 37934133,
+      "status": "OK"
+    }
+  ]
+}

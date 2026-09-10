@@ -1,0 +1,10 @@
+{
+  "description": "Create a professional minimalist homepage for selling men's sports shoes, featuring innovative background images to enhance visual appeal.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

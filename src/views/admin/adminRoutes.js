@@ -12,7 +12,7 @@
  *   ]
  *
  * Sơ đồ route:
- *   /admin              -> Màn hình "Xin chào quản lý" (AdminWelcome)
+ *   /admin              -> Chuyển thẳng vào khung quản trị
  *   /admin/panel        -> Khung quản trị (AdminLayout) + nav trái
  *     └ các trang con hiển thị bên phải qua <router-view>
  * ------------------------------------------------------------------
@@ -22,7 +22,7 @@ const adminRoutes = [
   {
     path: "/admin",
     name: "admin-welcome",
-    component: () => import("./AdminWelcome.vue"),
+    redirect: "/admin/panel",
   },
   {
     path: "/admin/panel",

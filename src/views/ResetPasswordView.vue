@@ -39,35 +39,35 @@ const submit = async () => {
 
       <!-- Liên kết không có token -->
       <div v-if="!token">
-        <div class="fp-ic fp-ic-warn"><i class="bi bi-exclamation-triangle"></i></div>
+        <div class="fp-ic fp-ic-warn"><i class="icon icon-exclamation-triangle"></i></div>
         <h2 class="auth-title">Liên kết không hợp lệ</h2>
         <p class="auth-sub">Liên kết đặt lại mật khẩu đã hết hạn hoặc không đúng. Vui lòng yêu cầu gửi lại.</p>
-        <router-link to="/forgot-password" class="btn-sg w-100 mt-2" style="text-decoration:none;"><i class="bi bi-arrow-repeat me-2"></i>Yêu cầu liên kết mới</router-link>
+        <router-link to="/forgot-password" class="btn-sg w-full mt-2" style="text-decoration:none;"><i class="icon icon-arrow-repeat mr-2"></i>Yêu cầu liên kết mới</router-link>
       </div>
 
       <!-- Form đặt mật khẩu mới -->
       <div v-else-if="!done">
-        <div class="fp-ic"><i class="bi bi-shield-lock"></i></div>
+        <div class="fp-ic"><i class="icon icon-shield-lock"></i></div>
         <h2 class="auth-title">Đặt lại mật khẩu</h2>
         <p class="auth-sub">Tạo mật khẩu mới cho tài khoản ShoeGroup của bạn.</p>
 
         <label class="co-label">Mật khẩu mới</label>
-        <div class="in-wrap"><i class="bi bi-lock"></i><input v-model="pwd" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Ít nhất 6 ký tự" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="bi" :class="showPwd ? 'bi-eye-slash' : 'bi-eye'"></i></button></div>
+        <div class="in-wrap"><i class="icon icon-lock"></i><input v-model="pwd" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Ít nhất 6 ký tự" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="icon" :class="showPwd ? 'icon-eye-slash' : 'icon-eye'"></i></button></div>
 
         <label class="co-label">Xác nhận mật khẩu</label>
-        <div class="in-wrap"><i class="bi bi-check2-circle"></i><input v-model="confirm" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Nhập lại mật khẩu mới" @keyup.enter="submit"></div>
+        <div class="in-wrap"><i class="icon icon-check2-circle"></i><input v-model="confirm" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Nhập lại mật khẩu mới" @keyup.enter="submit"></div>
 
-        <button class="btn-sg w-100 mt-4" :disabled="loading" @click="submit"><i class="bi bi-check-lg me-2"></i>{{ loading ? 'Đang xử lý…' : 'Đổi mật khẩu' }}</button>
+        <button class="btn-sg w-full mt-4" :disabled="loading" @click="submit"><i class="icon icon-check-lg mr-2"></i>{{ loading ? 'Đang xử lý…' : 'Đổi mật khẩu' }}</button>
       </div>
 
       <!-- Thành công -->
       <div v-else class="fp-sent">
-        <div class="suc-check"><i class="bi bi-check-lg"></i></div>
+        <div class="suc-check"><i class="icon icon-check-lg"></i></div>
         <h2 class="auth-title">Đổi mật khẩu thành công</h2>
         <p class="auth-sub">Mật khẩu của bạn đã được cập nhật. Đang chuyển về trang đăng nhập…</p>
       </div>
 
-      <router-link to="/login" class="fp-back"><i class="bi bi-arrow-left me-1"></i>Quay lại đăng nhập</router-link>
+      <router-link to="/login" class="fp-back"><i class="icon icon-arrow-left mr-1"></i>Quay lại đăng nhập</router-link>
     </div>
   </div>
 </template>

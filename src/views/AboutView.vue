@@ -12,30 +12,30 @@ onMounted(() => {
     <section class="about-hero">
       <img src="https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&q=80&w=2000" alt="ShoeGroup Vision" class="hero-bg">
       <div class="hero-overlay"></div>
-      <div class="container-fluid px-4 hero-content fade-in-up">
+      <div class="w-full px-4 hero-content fade-in-up">
         <span class="badge-premium">SINCE 2010</span>
         <h1 class="display-title">ĐỊNH HÌNH LẠI VĂN HOÁ<br>SÁT MẶT ĐẤT</h1>
         <p class="hero-sub">ShoeGroup không chỉ bán giày. Chúng tôi kiến tạo những di sản vượt thời gian, nơi công nghệ tiên tiến hòa quyện cùng nghệ thuật thiết kế đỉnh cao.</p>
-        <button class="btn-sg mt-4 btn-about-cta" @click="$router.push('/products')">KHÁM PHÁ BỘ SƯU TẬP <i class="bi bi-arrow-right ms-2"></i></button>
+        <button class="btn-sg mt-4 btn-about-cta" @click="$router.push('/products')">KHÁM PHÁ BỘ SƯU TẬP <i class="icon icon-arrow-right ml-2"></i></button>
       </div>
     </section>
 
     <!-- Stats Section -->
-    <section class="container-fluid px-4 py-5 mt-4" style="max-width: 1200px; margin: 0 auto;">
-      <div class="row g-4 text-center stats-row">
-        <div class="col-6 col-md-3 stat-col">
+    <section class="w-full px-4 py-5 mt-4" style="max-width: 1200px; margin: 0 auto;">
+      <div class="grid grid-cols-12 gap-4 text-center stats-row">
+        <div class="col-span-6 md:col-span-3 stat-col">
           <h2 class="stat-num">5M+</h2>
           <p class="stat-text">Khách hàng</p>
         </div>
-        <div class="col-6 col-md-3 stat-col">
+        <div class="col-span-6 md:col-span-3 stat-col">
           <h2 class="stat-num">120</h2>
           <p class="stat-text">Cửa hàng</p>
         </div>
-        <div class="col-6 col-md-3 stat-col">
+        <div class="col-span-6 md:col-span-3 stat-col">
           <h2 class="stat-num">50+</h2>
           <p class="stat-text">Bằng sáng chế</p>
         </div>
-        <div class="col-6 col-md-3 stat-col">
+        <div class="col-span-6 md:col-span-3 stat-col">
           <h2 class="stat-num">∞</h2>
           <p class="stat-text">Đam mê</p>
         </div>
@@ -43,23 +43,23 @@ onMounted(() => {
     </section>
 
     <!-- Vision Section -->
-    <section class="container-fluid px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
-      <div class="row align-items-center g-5">
-        <div class="col-lg-6 fade-in-up">
+    <section class="w-full px-4 py-5" style="max-width: 1200px; margin: 0 auto;">
+      <div class="grid grid-cols-1 items-center gap-5 lg:grid-cols-12">
+        <div class="lg:col-span-6 fade-in-up">
           <div class="vision-img-wrap">
             <img src="https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&q=80&w=1000" alt="Technology" class="vision-img">
           </div>
         </div>
-        <div class="col-lg-6 fade-in-up" style="animation-delay: 0.2s">
+        <div class="lg:col-span-6 fade-in-up" style="animation-delay: 0.2s">
           <div class="sg-title-bar"></div>
           <h2 class="section-title mb-4">CÔNG NGHỆ ĐỘC QUYỀN<br>VƯƠN TẦM THẾ GIỚI</h2>
-          <p class="text-secondary mb-4" style="font-size: 1.1rem; line-height: 1.6;">
+          <p class="text-gray-600 mb-4" style="font-size: 1.1rem; line-height: 1.6;">
             Mỗi đôi giày tại ShoeGroup được nghiên cứu tỉ mỉ, tích hợp vật liệu cao cấp và công nghệ phản hồi năng lượng ưu việt. Thiết kế không chỉ tôn vinh tính thẩm mỹ mà còn đem lại hiệu suất tối đa.
           </p>
           <ul class="vision-list">
-            <li><i class="bi bi-check2"></i> <span>Đế đệm CloudX-9 chịu lực bẻ cong đa chiều.</span></li>
-            <li><i class="bi bi-check2"></i> <span>Sợi vải Titan-Weave siêu nhẹ, độ bền cực cao.</span></li>
-            <li><i class="bi bi-check2"></i> <span>Thiết kế công thái học điều chỉnh theo form bàn chân.</span></li>
+            <li><i class="icon icon-check2"></i> <span>Đế đệm CloudX-9 chịu lực bẻ cong đa chiều.</span></li>
+            <li><i class="icon icon-check2"></i> <span>Sợi vải Titan-Weave siêu nhẹ, độ bền cực cao.</span></li>
+            <li><i class="icon icon-check2"></i> <span>Thiết kế công thái học điều chỉnh theo form bàn chân.</span></li>
           </ul>
         </div>
       </div>

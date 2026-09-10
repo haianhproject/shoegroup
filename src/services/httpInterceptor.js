@@ -31,7 +31,6 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async (input, init = {}) => {
-    try {
       let url =
         typeof input === "string"
           ? input
@@ -41,15 +40,14 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
 
       // 1) Doi dia chi may chu cu -> dia chi trong bien moi truong
       for (const legacy of LEGACY_BASES) {
-        if (url.startsWith(legacy)) {
+        if (url === legacy || url.startsWith(legacy + '/') || url.startsWith(legacy + '?')) {
           url = API_BASE_URL + url.slice(legacy.length);
           break;
         }
       }
 
       const isProjectApi =
-        url.startsWith(API_BASE_URL) ||
-        LEGACY_BASES.some((b) => url.startsWith(b)) ||
+        url === API_BASE_URL || url.startsWith(API_BASE_URL + '/') || url.startsWith(API_BASE_URL + '?') ||
         url.startsWith("/api/");
 
       if (!isProjectApi) return originalFetch(input, init);
@@ -62,7 +60,12 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
       if (token && !headers.has("Authorization"))
         headers.set("Authorization", `Bearer ${token}`);
 
-      const res = await originalFetch(url, { ...init, headers });
+      const target = input instanceof Request
+        ? new Request(url, input)
+        : url;
+      // A rejected fetch may have committed on the server already. Propagate
+      // the error; replaying POST/PUT here can duplicate orders or refunds.
+      const res = await originalFetch(target, { ...init, headers });
 
       // 3) Phien het han
       if (res.status === 401) {
@@ -70,11 +73,6 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
         if (typeof onUnauthorized === "function") onUnauthorized();
       }
       return res;
-    } catch (err) {
-      // Neu co bat ky su co trong lop boc -> fallback ve fetch goc
-      console.warn("[httpInterceptor] fallback:", err?.message);
-      return originalFetch(input, init);
-    }
   };
 }
 

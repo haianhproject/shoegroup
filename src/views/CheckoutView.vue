@@ -11,6 +11,7 @@ import { notify } from '../stores/uiStore'
 import { api } from '../services/apiClient'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import { shippingApi } from '../services/shippingService'
+import { getCheckoutAttempt, clearCheckoutAttempt } from '../services/checkoutAttempt'
 
 const router = useRouter()
 
@@ -42,8 +43,17 @@ const paymentCode = ref('COD')
 const placing = ref(false)
 
 const payments = [
-  { code: 'COD', name: 'Thanh toán khi nhận hàng (COD)', desc: 'Trả tiền mặt khi shipper giao đến.' },
-  { code: 'BANK', name: 'Chuyển khoản ngân hàng', desc: 'VietQR / Internet Banking, xác nhận tự động.' },
+  {
+    code: 'BANK',
+    name: 'Chuyển khoản ngân hàng (VietQR)',
+    desc: 'Bạn sẽ quét mã VietQR hoặc chuyển khoản trực tiếp qua ứng dụng ngân hàng để hoàn tất mua hàng.',
+    badges: ['VietQR', 'MC', 'VISA'],
+  },
+  {
+    code: 'COD',
+    name: 'Thanh toán khi nhận hàng (COD)',
+    desc: 'Bạn sẽ thanh toán tiền mặt trực tiếp cho nhân viên giao hàng khi nhận được kiện hàng.',
+  },
 ]
 
 // Hàm kiểm tra định dạng email
@@ -471,18 +481,23 @@ const total = computed(() => Math.max(0, cartSubtotal.value + shippingFee.value 
 const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0 })
 
 const confirmPaid = async () => {
+  if (!payModal.serverId) {
+    notify({ type: 'error', message: 'Đơn hàng chưa được máy chủ xác nhận. Vui lòng tải lại danh sách đơn hàng.' })
+    return
+  }
+  let paymentStatus = 'Chờ thanh toán'
   if (payModal.serverId) {
     try {
-      // Chuyển khoản online được ghi nhận ngay sau khi khách xác nhận đã thanh toán.
-      // Không tạo thêm một bước duyệt trùng ở màn hình quản trị.
-      await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
+      paymentStatus = result?.payment_status || 'Chờ thanh toán'
     } catch (error) {
       notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
     }
   }
   const order = orderState.orders.find((x) => x.id === payModal.orderId)
-  if (order) { order.payment_status = 'Đã thanh toán'; saveOrders() }
+  if (order) { order.payment_status = paymentStatus; saveOrders() }
+  notify({ type: 'info', message: 'Đã gửi thông báo chuyển khoản. Cửa hàng sẽ đối soát và xác nhận khi nhận được tiền.' })
   payModal.open = false
   router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
 }
@@ -494,9 +509,15 @@ const payLater = () => {
 
 const placeOrder = async () => {
   if (placing.value) return
+  placing.value = true
+  try {
   const stockResult = await refreshCartAvailability()
   if (!stockResult.ok) {
     notify({ type: 'warning', title: 'Chưa kiểm tra được tồn kho', message: 'Vui lòng thử lại sau ít phút.' })
+    return
+  }
+  if (stockResult.priceChanged?.length) {
+    notify({ type: 'warning', title: 'Giá sản phẩm đã thay đổi', message: 'Giỏ hàng đã cập nhật giá mới. Vui lòng kiểm tra tổng tiền rồi bấm đặt hàng lần nữa.' })
     return
   }
   if (stockResult.outOfStock.length || stockResult.insufficient.length || cartHasUnavailableItems.value) {
@@ -521,7 +542,6 @@ const placeOrder = async () => {
     return
   }
 
-  placing.value = true
   const shipMethod = selectedShippingMethod.value || {
     code: shippingCode.value,
     name: 'Giao hàng tiêu chuẩn',
@@ -583,9 +603,11 @@ const placeOrder = async () => {
         name: it.product?.product_name ?? it.product_name ?? it.name ?? '',
       })),
     }
-    const data = await api.post('/orders', payload)
+    const attempt = getCheckoutAttempt(payload)
+    const data = await api.post('/orders', payload, { headers: { 'Idempotency-Key': attempt.key } })
     createdServerId = data?.orderId ?? data?.OrderID ?? null
-    if (createdServerId) setServerId(clientOrder.order.id, createdServerId)
+    if (!createdServerId) throw new Error('Máy chủ chưa trả mã đơn hợp lệ. Vui lòng kiểm tra danh sách đơn trước khi thử lại.')
+    setServerId(clientOrder.order.id, createdServerId)
     const serverTotal = Number(data?.totalAmount)
     if (Number.isFinite(serverTotal)) {
       clientOrder.order.subtotal = Number(data?.subtotalAmount) || 0
@@ -624,11 +646,10 @@ const placeOrder = async () => {
       })
     }
     return
-  } finally {
-    placing.value = false
   }
 
-  if (paymentCode.value === 'BANK' || paymentCode.value === 'MOMO') {
+  clearCheckoutAttempt()
+  if (paymentCode.value === 'BANK') {
     payModal.orderId = clientOrder.order.id
     payModal.serverId = createdServerId
     payModal.total = clientOrder.order.total
@@ -639,365 +660,457 @@ const placeOrder = async () => {
 
   clearCart()
   router.push({ path: '/order-success', query: { orderId: clientOrder.order.id } })
+  } finally {
+    placing.value = false
+  }
 }
 </script>
 
 <template>
-  <div class="checkout-page">
-    <div class="container-fluid px-4 py-5 page-container">
-      <h1 class="co-title">THANH TOÁN</h1>
-      <div class="sg-title-bar mb-5"></div>
+  <div class="min-h-screen bg-white" style="font-family:'Be Vietnam Pro',sans-serif">
 
-      <div v-if="cartCount === 0" class="empty-state">
-        <i class="bi bi-bag"></i>
-        <h5>Không có sản phẩm để thanh toán</h5>
-        <router-link to="/products" class="btn-sg mt-3">MUA SẮM NGAY</router-link>
+    <!-- ── Giỏ trống ── -->
+    <div v-if="cartCount === 0" class="pt-24 flex flex-col items-center justify-center py-24 px-6 text-center">
+      <div class="w-16 h-16 mb-4 rounded-full bg-[#FAFAFA] border border-[#E5E5E5] flex items-center justify-center text-[#737373]">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      </div>
+      <h2 style="font-family:'Fraunces',serif" class="text-2xl font-semibold text-[#0E0E0E] mb-2">Giỏ hàng của bạn đang trống</h2>
+      <p class="text-sm text-[#737373] mb-6">Không có sản phẩm nào để tiến hành thanh toán.</p>
+      <router-link to="/products" class="inline-block px-8 py-3.5 bg-[#0E0E0E] text-white text-sm font-semibold rounded-lg hover:bg-[#333] transition-colors">MUA SẮM NGAY</router-link>
+    </div>
+
+    <!-- ── Giao diện thanh toán Split-Screen chuẩn Shopify / Reference ── -->
+    <div v-else class="min-h-screen flex flex-col lg:flex-row">
+
+      <!-- ══ CỘT TRÁI: Form thông tin thanh toán (chiếm 52% màn hình, cân đối sang trái) ══ -->
+      <div class="w-full lg:w-[52%] xl:w-[52%] bg-white flex justify-end order-2 lg:order-1 lg:border-r border-[#E5E5E5]">
+        <div class="w-full max-w-[580px] px-6 sm:px-8 lg:pl-6 lg:pr-10 xl:pl-4 xl:pr-14 py-8 lg:py-10">
+
+          <!-- Header thương hiệu & icon giỏ hàng -->
+          <div class="flex items-center justify-between pb-6 mb-6 border-b border-[#F0F0F0]">
+            <router-link to="/" class="inline-flex items-center gap-2 no-underline">
+              <span style="font-family:'Fraunces',serif" class="text-2xl font-bold text-[#0E0E0E] tracking-tight leading-none">ShoeGroup</span>
+            </router-link>
+            <router-link to="/cart" aria-label="Giỏ hàng" class="text-[#16a34a] hover:text-[#15803d] transition-colors p-1" title="Quay lại giỏ hàng">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+            </router-link>
+          </div>
+
+          <!-- ── 1. LIÊN HỆ ── -->
+          <div class="mb-7">
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E]">Liên hệ</h2>
+              <router-link v-if="!currentUser" to="/account" class="text-xs sm:text-sm font-medium text-[#16a34a] hover:underline underline-offset-4">Đăng nhập</router-link>
+              <span v-else class="text-xs text-[#737373] font-medium">{{ currentUser.name || currentUser.email }}</span>
+            </div>
+            <div class="relative">
+              <input
+                v-model="form.email"
+                type="email"
+                placeholder="Email"
+                class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-3 text-sm outline-none focus:border-[#0E0E0E] transition-colors pr-10 bg-white"
+                :class="{ 'border-red-400': formErrors.email }"
+                @blur="validateForm"
+              />
+              <div class="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#999999]" title="Dùng để gửi thông tin và mã vận đơn theo dõi đơn hàng">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+            </div>
+            <div v-if="formErrors.email" class="text-xs text-red-500 mt-1">{{ formErrors.email }}</div>
+            <label class="flex items-center gap-2.5 mt-3 cursor-pointer select-none">
+              <span class="w-4 h-4 rounded-full bg-[#16a34a] flex items-center justify-center flex-shrink-0">
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><path d="M2 6l3 3 5-5"/></svg>
+              </span>
+              <span class="text-[13px] text-[#0E0E0E]">Gửi cho tôi tin tức và ưu đãi qua email</span>
+            </label>
+          </div>
+
+          <!-- ── 2. GIAO HÀNG & SỔ ĐỊA CHỈ ── -->
+          <div class="mb-7">
+            <div class="flex items-center justify-between mb-1">
+              <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E]">Giao hàng</h2>
+              <button
+                type="button"
+                @click="openAddAddress"
+                class="inline-flex items-center gap-1 text-xs font-semibold text-[#16a34a] hover:underline underline-offset-4 cursor-pointer bg-transparent border-none p-0"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Thêm địa chỉ mới
+              </button>
+            </div>
+            <p class="text-xs text-[#737373] mb-3">Địa chỉ này cũng sẽ được dùng làm địa chỉ thanh toán cho đơn hàng này.</p>
+
+            <!-- Loading sổ địa chỉ -->
+            <div v-if="addressesLoading" class="text-xs text-[#737373] py-2 flex items-center gap-2">
+              <svg class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+              Đang tải sổ địa chỉ…
+            </div>
+
+            <!-- Danh sách Sổ Địa Chỉ đã lưu -->
+            <div v-else-if="savedAddresses.length > 0" class="flex flex-col gap-2 mb-4">
+              <div
+                v-for="a in savedAddresses"
+                :key="a.id"
+                @click="selectedAddressId = a.id"
+                class="flex items-start gap-3 border rounded-xl p-3.5 transition-all cursor-pointer bg-white"
+                :class="selectedAddressId === a.id
+                  ? 'border-[#16a34a] bg-[#f0fdf4]/50 shadow-xs'
+                  : 'border-[#E5E5E5] hover:border-[#B0B0B0]'"
+              >
+                <!-- Radio xanh tròn -->
+                <span
+                  class="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
+                  :class="selectedAddressId === a.id ? 'border-[#16a34a]' : 'border-[#D4D4D4]'"
+                >
+                  <span v-if="selectedAddressId === a.id" class="w-2 h-2 rounded-full bg-[#16a34a]"></span>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                    <span class="text-sm font-semibold text-[#0E0E0E]">{{ a.recipient || a.fullName }} · {{ a.phone }}</span>
+                    <span v-if="a.isDefault" class="text-[10px] font-bold text-white bg-[#0E0E0E] px-1.5 py-0.5 rounded leading-none">Mặc định</span>
+                  </div>
+                  <div class="text-xs text-[#737373] mt-1 leading-relaxed">{{ formatAddress(a) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Khi chưa có địa chỉ nào trong sổ -->
+            <div v-else class="border border-dashed border-[#D9D9D9] rounded-xl p-5 text-center mb-4">
+              <p class="text-xs text-[#737373] mb-3">Bạn chưa có địa chỉ nhận hàng nào được lưu.</p>
+              <button
+                type="button"
+                @click="openAddAddress"
+                class="px-4 py-2 text-xs font-semibold bg-[#0E0E0E] text-white rounded-lg hover:bg-[#333] transition-colors cursor-pointer border-none"
+              >+ Thêm địa chỉ mới vào sổ</button>
+            </div>
+
+            <!-- Ghi chú đơn hàng -->
+            <div class="mt-3">
+              <label class="block text-[11px] font-bold text-[#737373] uppercase tracking-wider mb-1.5">Ghi chú giao hàng (không bắt buộc)</label>
+              <textarea
+                v-model="form.note"
+                rows="2"
+                placeholder="Ghi chú thêm cho shipper hoặc cửa hàng..."
+                class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-[#0E0E0E] transition-colors resize-none bg-white"
+              ></textarea>
+            </div>
+
+            <!-- Bản đồ vị trí giao hàng -->
+            <div v-if="addressVerified" class="mt-3 rounded-xl overflow-hidden border border-[#E5E5E5] h-40">
+              <iframe :src="mapUrl" title="Vị trí giao hàng" class="w-full h-full border-0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+          </div>
+
+          <!-- ── 3. PHƯƠNG THỨC VẬN CHUYỂN ── -->
+          <div class="mb-7">
+            <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E] mb-2.5">Phương thức vận chuyển</h2>
+            <div v-if="shippingQuoteError" class="p-3 mb-2.5 text-xs bg-amber-50 text-amber-800 rounded-lg border border-amber-200 flex items-center gap-1.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {{ shippingQuoteError }}
+            </div>
+            <div class="flex flex-col gap-2">
+              <div
+                v-for="m in shippingMethods"
+                :key="m.code"
+                @click="shippingCode = m.code"
+                class="flex items-center justify-between border rounded-xl px-4 py-3.5 transition-all cursor-pointer"
+                :class="shippingCode === m.code
+                  ? 'border-[#16a34a] bg-[#f0fdf4]/50 shadow-xs'
+                  : 'border-[#E5E5E5] bg-white hover:border-[#B0B0B0]'"
+              >
+                <div>
+                  <div class="text-sm font-semibold text-[#0E0E0E]">{{ m.name }}</div>
+                  <div class="text-xs text-[#737373] mt-0.5">Thời gian nhận: {{ shippingQuotes[m.code]?.eta || m.eta || '3-5 ngày' }}</div>
+                  <div v-if="shippingDistance(m)" class="text-[11px] text-[#737373] mt-0.5 flex items-center gap-1">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {{ shippingDistance(m) }}
+                  </div>
+                </div>
+                <span class="text-[13px] font-bold text-[#0E0E0E] uppercase ml-3 whitespace-nowrap">
+                  {{ shippingPrice(m) === 0 ? 'MIỄN PHÍ' : formatCurrency(shippingPrice(m)) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── 4. THANH TOÁN (Chỉ COD & Chuyển khoản ngân hàng) ── -->
+          <div class="mb-8">
+            <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E] mb-1">Thanh toán</h2>
+            <p class="text-xs text-[#737373] mb-3">Địa chỉ thanh toán của phương thức thanh toán phải khớp với địa chỉ giao hàng. Toàn bộ các giao dịch được bảo mật và mã hóa.</p>
+            <div class="border border-[#E5E5E5] rounded-xl overflow-hidden divide-y divide-[#E5E5E5] bg-white">
+              <div
+                v-for="p in payments"
+                :key="p.code"
+                @click="paymentCode = p.code"
+                class="cursor-pointer transition-all"
+                :class="paymentCode === p.code ? 'bg-[#f0fdf4]/40 ring-1 ring-inset ring-[#16a34a]' : 'bg-white hover:bg-[#FAFAFA]'"
+              >
+                <div class="flex items-center justify-between px-4 py-3.5">
+                  <span class="flex items-center gap-3">
+                    <span
+                      class="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
+                      :class="paymentCode === p.code ? 'border-[#16a34a]' : 'border-[#D4D4D4]'"
+                    >
+                      <span v-if="paymentCode === p.code" class="w-2 h-2 rounded-full bg-[#16a34a]"></span>
+                    </span>
+                    <span class="text-sm font-semibold text-[#0E0E0E]">{{ p.name }}</span>
+                  </span>
+                  <!-- Badges ngân hàng/thẻ -->
+                  <div v-if="p.badges" class="flex items-center gap-1">
+                    <span class="text-[9px] font-bold text-white bg-[#005BAA] rounded px-1.5 py-0.5 leading-none">VietQR</span>
+                    <span class="text-[9px] font-bold text-white bg-[#EB001B] rounded px-1 py-0.5 leading-none">MC</span>
+                    <span class="text-[9px] font-bold text-white bg-[#1A1F71] rounded px-1 py-0.5 leading-none">VISA</span>
+                  </div>
+                </div>
+                <div v-if="paymentCode === p.code && p.desc" class="px-4 pb-3.5 -mt-0.5">
+                  <div class="bg-white border border-[#E5E5E5] rounded-lg p-3 text-xs text-[#737373] leading-relaxed text-center shadow-2xs">
+                    {{ p.desc }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Nút Đặt hàng ── -->
+          <button
+            type="button"
+            class="w-full bg-[#0E0E0E] text-white py-4 rounded-xl text-sm font-bold uppercase tracking-wider hover:bg-[#262626] active:bg-black transition-colors border-none cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            :disabled="placing"
+            @click="placeOrder"
+          >
+            <svg v-if="placing" class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path d="M4 12a8 8 0 018-8v8H4z"/></svg>
+            {{ placing ? 'Đang xử lý đặt hàng…' : 'Thanh toán ngay' }}
+          </button>
+
+          <p class="text-[11px] text-[#737373] text-center mt-3">
+            Bằng cách đặt hàng, bạn đồng ý với <span class="underline cursor-pointer">Điều khoản dịch vụ</span> và <span class="underline cursor-pointer">Chính sách bảo mật</span> của ShoeGroup.
+          </p>
+        </div>
       </div>
 
-      <div v-else class="row g-5">
-        <div class="col-lg-7">
-          <!-- 1. Giao hàng -->
-          <div class="co-block">
-            <h6 class="co-h"><span class="co-num">1</span> THÔNG TIN GIAO HÀNG</h6>
+      <!-- ══ CỘT PHẢI: Tóm tắt đơn hàng (chiếm 48% màn hình, nền xám #FAFAFA, sticky) ══ -->
+      <div class="w-full lg:w-[48%] xl:w-[48%] bg-[#FAFAFA] flex justify-start order-1 lg:order-2 flex-shrink-0">
+        <div class="w-full max-w-[480px] px-6 sm:px-8 lg:pl-10 lg:pr-6 xl:pl-14 xl:pr-8 py-8 lg:py-10 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
 
-            <div class="mt-4">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <label class="co-label text-primary mb-0"><i class="bi bi-journal-bookmark-fill me-1"></i>SỔ ĐỊA CHỈ NHẬN HÀNG <span class="text-danger">*</span></label>
-                <button class="btn-add-quick text-danger fw-bold border-0 bg-transparent" style="font-size: 0.85rem;" @click="openAddAddress">
-                  <i class="bi bi-plus-lg"></i> Thêm địa chỉ mới
-                </button>
+          <!-- Danh sách sản phẩm -->
+          <div class="space-y-4 mb-5">
+            <div v-for="item in cartItems" :key="item.id_product_detail" class="flex items-center gap-3">
+              <div class="relative flex-shrink-0 w-16 h-16 rounded-xl border border-[#E5E5E5] bg-white p-1 flex items-center justify-center shadow-xs">
+                <img
+                  :src="item.color?.image || item.product?.image_url || '/placeholder.png'"
+                  :alt="item.product?.product_name || 'Product'"
+                  class="w-full h-full object-contain"
+                />
+                <span class="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 bg-[#0E0E0E] text-white text-[11px] font-bold rounded-full flex items-center justify-center ring-2 ring-white shadow-xs">
+                  {{ item.quantity }}
+                </span>
               </div>
-              <select v-model="selectedAddressId" class="sg-input w-100 bg-light fw-semibold text-dark" :disabled="addressesLoading">
-                <option v-if="addressesLoading" :value="null" disabled>Đang tải sổ địa chỉ…</option>
-                <option v-else :value="null" disabled>-- Chọn địa chỉ đã lưu trong sổ --</option>
-                <option v-for="a in savedAddresses" :key="a.id" :value="a.id">
-                  {{ a.recipient || a.fullName }} - {{ a.phone }} ({{ formatAddress(a) }}) {{ a.isDefault ? ' [Mặc định]' : '' }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Preview địa chỉ -->
-            <div v-if="selectedAddress" class="mt-3 p-3 rounded" style="background: #f8fafc; border: 1px solid #e2e8f0;">
-                <div class="d-flex align-items-center gap-2 mb-1">
-                  <strong class="text-dark">{{ selectedAddress.recipient || selectedAddress.fullName }}</strong>
-                  <span class="text-muted">|</span>
-                  <span class="text-dark">{{ selectedAddress.phone }}</span>
-                  <span v-if="selectedAddress.isDefault" class="badge bg-dark ms-2" style="font-size: 0.65rem;">Mặc định</span>
-                </div>
-                <div class="text-secondary small">
-                  {{ formatAddress(selectedAddress) }}
-                </div>
-            </div>
-            <div v-else class="text-danger mt-2 small">Vui lòng chọn hoặc thêm địa chỉ nhận hàng.</div>
-
-            <!-- Email & Ghi chú -->
-            <div class="row g-4 mt-1">
-              <div class="col-md-6">
-                <label class="co-label">EMAIL <span class="text-muted fw-normal">(Không bắt buộc)</span></label>
-                <input v-model="form.email" type="email" class="sg-input w-100" :class="{ 'input-error': formErrors.email }" @blur="validateForm" placeholder="you@example.com" />
-                <div v-if="formErrors.email" class="field-error">{{ formErrors.email }}</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold text-[#0E0E0E] leading-snug line-clamp-2 uppercase tracking-tight">{{ item.product?.product_name }}</div>
+                <div class="text-[11px] text-[#737373] mt-0.5">UK {{ item.size?.size_name || item.size }} · {{ item.color?.color_label || item.color?.color_name || item.color }}</div>
               </div>
-
-              <div class="col-12">
-                <label class="co-label">GHI CHÚ GIAO HÀNG <span class="text-muted fw-normal">(Không bắt buộc)</span></label>
-                <textarea v-model="form.note" class="sg-input w-100" rows="2" placeholder="Ghi chú giao hàng cho shipper hoặc cửa hàng..."></textarea>
+              <div class="text-sm font-semibold text-[#0E0E0E] whitespace-nowrap">
+                {{ formatCurrency(item.subtotal) }}
               </div>
-            </div>
-
-            <!-- Bản đồ -->
-            <div v-if="addressVerified" class="map-wrap mt-4">
-              <iframe :src="mapUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
             </div>
           </div>
 
-          <!-- 2. Vận chuyển -->
-          <div class="co-block">
-            <h6 class="co-h"><span class="co-num">2</span> PHƯƠNG THỨC VẬN CHUYỂN</h6>
-            <div v-if="shippingQuoteError" class="shipping-quote-warning mt-3">
-              <i class="bi bi-info-circle me-1"></i>{{ shippingQuoteError }}
+          <!-- Mã giảm giá -->
+          <div class="border-t border-[#E5E5E5] pt-4 mb-4">
+            <div class="flex gap-2 mb-2">
+              <input
+                v-model="couponCode"
+                type="text"
+                placeholder="Mã giảm giá hoặc thẻ quà tặng"
+                class="flex-1 border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white"
+                @keyup.enter="applyCoupon"
+              />
+              <button
+                type="button"
+                class="px-4 text-xs font-semibold rounded-lg border border-[#D9D9D9] text-[#737373] hover:border-[#0E0E0E] hover:text-[#0E0E0E] transition-colors bg-white cursor-pointer whitespace-nowrap disabled:opacity-50"
+                :disabled="couponsLoading"
+                @click="applyCoupon"
+              >
+                {{ couponsLoading ? '...' : 'Áp dụng' }}
+              </button>
             </div>
-            <div class="ship-grid mt-4">
-              <label v-for="m in shippingMethods" :key="m.code" class="ship-opt" :class="{ active: shippingCode === m.code }">
-                <input type="radio" :value="m.code" v-model="shippingCode" hidden />
-                <div class="flex-grow-1">
-                  <div class="ship-name">{{ m.name }}</div>
-                  <div class="ship-desc">{{ m.desc }}</div>
-                  <div class="ship-eta">Dự kiến: {{ shippingQuotes[m.code]?.eta || m.eta }}</div>
-                  <div v-if="shippingDistance(m)" class="ship-distance">
-                    <i class="bi bi-geo-alt me-1"></i>{{ shippingDistance(m) }} từ kho Hai Bà Trưng, Hà Nội
-                  </div>
-                  <div v-else-if="shippingLoading" class="ship-distance text-muted">
-                    <i class="bi bi-arrow-repeat me-1"></i>Đang tính theo địa chỉ…
-                  </div>
-                </div>
-                <div class="ship-fee">{{ formatCurrency(shippingPrice(m)) }}</div>
-                <div class="ship-check"></div>
-              </label>
-            </div>
-          </div>
 
-          <!-- 3. Thanh toán -->
-          <div class="co-block">
-            <h6 class="co-h"><span class="co-num">3</span> PHƯƠNG THỨC THANH TOÁN</h6>
-            <div class="pay-grid mt-4">
-              <label v-for="p in payments" :key="p.code" class="pay-opt" :class="{ active: paymentCode === p.code }">
-                <input type="radio" :value="p.code" v-model="paymentCode" hidden />
-                <div class="flex-grow-1">
-                  <div class="pay-name">{{ p.name }}</div>
-                  <div class="pay-desc">{{ p.desc }}</div>
-                </div>
-                <div class="pay-check"></div>
-              </label>
-            </div>
-          </div>
-        </div>
+            <div v-if="couponError" class="text-xs text-red-600 mb-2">{{ couponError }}</div>
 
-        <!-- Tóm tắt đơn hàng -->
-        <div class="col-lg-5">
-          <div class="co-summary-box">
-            <h6 class="summary-title">ĐƠN HÀNG ({{ cartCount }})</h6>
-
-            <div class="co-items mt-4">
-              <div class="co-item" v-for="item in cartItems" :key="item.id_product_detail">
-                <div class="co-item-img-wrap">
-                  <div class="co-item-img">
-                    <img :src="item.product?.image_url" :alt="item.product?.product_name || 'Product'" />
-                  </div>
-                  <span class="co-qty">{{ item.quantity }}</span>
-                </div>
-                <div class="flex-grow-1">
-                  <div class="co-item-name">{{ item.product?.product_name }}</div>
-                  <div class="co-item-attr">Size {{ item.size?.size_name || item.size }} · {{ item.color?.color_label || item.color?.color_name || item.color }}</div>
-                </div>
-                <div class="co-item-price">{{ formatCurrency(item.subtotal) }}</div>
+            <!-- Thẻ mã đã áp dụng -->
+            <div v-if="appliedCoupon" class="flex items-center justify-between p-2.5 mb-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div class="min-w-0 text-xs">
+                <span class="font-bold text-emerald-800 tracking-wide uppercase">{{ appliedCoupon.code }}</span>
+                <span class="text-emerald-700 ml-1.5">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
               </div>
+              <button type="button" @click="removeCoupon" class="text-emerald-600 hover:text-emerald-900 text-xs font-bold cursor-pointer p-1 border-none bg-transparent">✕</button>
             </div>
 
-            <!-- Mã giảm giá: hiển thị đầy đủ ưu đãi; ô nhập là thao tác phụ -->
-            <div class="coupon-section mt-4">
-              <div class="coupon-heading">
-                <div>
-                  <div class="coupon-label">MÃ GIẢM GIÁ</div>
-                  <div class="coupon-subtitle">Chọn ưu đãi phù hợp cho đơn hàng</div>
-                </div>
+            <!-- Gợi ý mã có sẵn -->
+            <div v-if="dbCoupons.length > 0 && !appliedCoupon" class="mb-2">
+              <div class="text-[10px] font-bold text-[#737373] uppercase tracking-wider mb-1.5">Mã ưu đãi có sẵn:</div>
+              <div class="flex flex-wrap gap-1.5">
                 <button
-                  type="button"
-                  class="coupon-add-btn"
-                  :class="{ active: showCouponInput }"
-                  @click="showCouponInput = !showCouponInput"
-                  :aria-expanded="showCouponInput"
-                  aria-label="Nhập mã giảm giá khác"
-                  title="Nhập mã giảm giá khác"
-                ><i class="bi" :class="showCouponInput ? 'bi-dash-lg' : 'bi-plus-lg'"></i></button>
-              </div>
-
-              <div v-if="appliedCoupon" class="coupon-applied mt-3">
-                <div class="ca-info">
-                  <div class="ca-status"><i class="bi bi-check-circle-fill"></i> Đã áp dụng</div>
-                  <span class="ca-code">{{ appliedCoupon.code }}</span>
-                  <span class="ca-desc">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
-                </div>
-                <button type="button" class="ca-remove" @click="removeCoupon" aria-label="Bỏ mã giảm giá"><i class="bi bi-x-lg"></i></button>
-              </div>
-
-              <div v-if="couponsLoading" class="coupon-loading mt-3">Đang tải ưu đãi...</div>
-              <div v-else-if="dbCoupons.length > 0" class="coupon-list mt-3">
-                <button
-                  v-for="c in dbCoupons"
+                  v-for="c in dbCoupons.slice(0, 4)"
                   :key="c.id"
                   type="button"
-                  class="coupon-card"
-                  :class="{ selected: appliedCoupon?.code === c.code }"
                   @click="selectCoupon(c)"
+                  class="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-dashed border-[#0E0E0E]/40 text-[#0E0E0E] hover:bg-[#0E0E0E] hover:text-white transition-colors cursor-pointer bg-white"
+                  :title="c.name"
                 >
-                  <span class="coupon-card-accent"></span>
-                  <span class="coupon-card-main">
-                    <span class="coupon-card-top">
-                      <strong class="coupon-code">{{ c.code }}</strong>
-                      <span class="coupon-value">{{ couponValueLabel(c) }}</span>
-                    </span>
-                    <span class="coupon-name">{{ c.name || 'Ưu đãi dành riêng cho bạn' }}</span>
-                    <span v-if="c.description" class="coupon-description">{{ c.description }}</span>
-                    <span class="coupon-meta"><span>{{ couponMinOrderLabel(c) }}</span><span>·</span><span>{{ couponExpiryLabel(c) }}</span><span>·</span><span>{{ couponUsageLabel(c) }}</span></span>
-                  </span>
-                  <span class="coupon-card-action">{{ appliedCoupon?.code === c.code ? 'Đã chọn' : 'Chọn mã' }}</span>
+                  {{ c.code }} ({{ couponValueLabel(c) }})
                 </button>
               </div>
-              <div v-else class="coupon-empty mt-3">Hiện chưa có mã giảm giá phù hợp.</div>
-
-              <div v-if="showCouponInput" class="coupon-input-box mt-3">
-                <div class="coupon-input-label">Nhập mã bạn có</div>
-                <div class="coupon-input-row">
-                  <input v-model="couponCode" class="sg-input flex-grow-1 uppercase" placeholder="Nhập mã..." @keyup.enter="applyCoupon" />
-                  <button type="button" class="btn-sg-outline" @click="applyCoupon" :disabled="couponsLoading">
-                    {{ couponsLoading ? '...' : 'ÁP DỤNG' }}
-                  </button>
-                </div>
-              </div>
-
-              <div v-if="couponError" class="text-danger mt-2 small-error">{{ couponError }}</div>
             </div>
+          </div>
 
-            <hr class="summary-divider mt-4" />
-
-            <div class="sum-row mt-4">
-              <span>Tạm tính</span>
-              <span>{{ formatCurrency(cartSubtotal) }}</span>
+          <!-- Bảng tính tiền chi tiết -->
+          <div class="space-y-2.5 pb-4 border-t border-[#E5E5E5] pt-4">
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-[#737373]">Tổng tiền {{ cartCount }} mặt hàng</span>
+              <span class="font-semibold text-[#0E0E0E]">{{ formatCurrency(cartSubtotal) }}</span>
             </div>
-            <div class="sum-row">
-              <span>Phí vận chuyển</span>
-              <span>{{ formatCurrency(shippingFee) }}</span>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-[#737373] inline-flex items-center gap-1">
+                Vận chuyển
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="text-[#B0B0B0]"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              </span>
+              <span class="font-semibold text-[#0E0E0E]">
+                {{ shippingFee === 0 ? 'MIỄN PHÍ' : formatCurrency(shippingFee) }}
+              </span>
             </div>
-            <div v-if="appliedCoupon" class="sum-row text-success">
+            <div v-if="appliedCoupon" class="flex items-center justify-between text-sm text-emerald-600 font-medium">
               <span>Giảm giá ({{ appliedCoupon.code }})</span>
               <span>-{{ formatCurrency(discountAmount) }}</span>
             </div>
-            <div class="sum-row">
-              <span>Dự kiến giao</span>
+            <div class="flex items-center justify-between text-xs text-[#737373]">
+              <span>Dự kiến nhận hàng</span>
               <span>{{ etaText }}</span>
             </div>
+          </div>
 
-            <hr class="summary-divider" />
-
-            <div class="sum-row total">
-              <span>TỔNG THANH TOÁN</span>
-              <strong>{{ formatCurrency(total) }}</strong>
-            </div>
-
-            <button class="btn-sg-warm w-100 mt-4" :disabled="placing" @click="placeOrder">
-              {{ placing ? 'ĐANG XỬ LÝ...' : 'ĐẶT HÀNG' }}
-            </button>
+          <!-- Dòng Tổng thanh toán lớn -->
+          <div class="flex items-end justify-between pt-4 border-t border-[#E5E5E5]">
+            <span class="text-base font-bold text-[#0E0E0E]">Tổng</span>
+            <span class="flex items-baseline gap-1.5">
+              <span class="text-xs text-[#737373] font-medium">VND</span>
+              <span class="text-2xl font-bold text-[#0E0E0E]">{{ formatCurrency(total) }}</span>
+            </span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Modal Thêm Địa Chỉ Mới (Có Tìm Kiếm Tỉnh/Xã) -->
+    <!-- ── Modal Thêm địa chỉ mới vào sổ ── -->
     <transition name="suc">
       <div v-if="addrModal.open" class="modal-overlay" @click.self="addrModal.open = false">
-        <div class="sg-card modal-box">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">Thêm địa chỉ mới</h5>
-            <button class="btn-close-modal" @click="addrModal.open = false"><i class="bi bi-x-lg"></i></button>
+        <div class="modal-box">
+          <div class="flex justify-between items-center mb-4">
+            <h3 style="font-family:'Fraunces',serif" class="text-xl font-semibold text-[#0E0E0E] m-0">Thêm địa chỉ mới</h3>
+            <button class="btn-close-modal" @click="addrModal.open = false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
           </div>
 
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="co-label">Tên người nhận <span class="text-danger">*</span></label>
-              <input v-model="addrModal.recipient" class="sg-input w-100" placeholder="Ví dụ: Nguyễn Văn A">
+          <div class="grid grid-cols-12 gap-3">
+            <div class="col-span-12 md:col-span-6">
+              <label class="block text-xs font-semibold text-[#737373] mb-1.5">Tên người nhận <span class="text-red-500">*</span></label>
+              <input v-model="addrModal.recipient" class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white" placeholder="Ví dụ: Nguyễn Văn A">
             </div>
-            <div class="col-md-6">
-              <label class="co-label">Số điện thoại <span class="text-danger">*</span></label>
+            <div class="col-span-12 md:col-span-6">
+              <label class="block text-xs font-semibold text-[#737373] mb-1.5">Số điện thoại <span class="text-red-500">*</span></label>
               <input
                 v-model="addrModal.phone"
-                class="sg-input w-100"
+                class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white"
                 maxlength="10"
                 placeholder="Ví dụ: 0901234567"
                 @input="addrModal.phone = addrModal.phone.replace(/[^0-9]/g, '')"
               >
             </div>
 
-            <!-- Tỉnh / Thành phố (Có tìm kiếm) -->
-            <div class="col-md-6 position-relative">
-              <label class="co-label">Tỉnh / Thành phố <span class="text-danger">*</span></label>
+            <!-- Tỉnh / Thành phố -->
+            <div class="col-span-12 md:col-span-6 relative">
+              <label class="block text-xs font-semibold text-[#737373] mb-1.5">Tỉnh / Thành phố <span class="text-red-500">*</span></label>
               <div class="search-input-wrapper">
                 <input
                   type="text"
                   v-model="searchProvince"
-                  class="sg-input w-100 pe-4"
+                  class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 pr-8 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white"
                   placeholder="Nhập để tìm Tỉnh/TP..."
                   @focus="showProvinceDropdown = true"
                   @blur="showProvinceDropdown = false"
                   @input="showProvinceDropdown = true; addrModal.provinceId = ''"
                 />
-                <i class="bi bi-chevron-down select-arrow"></i>
+                <svg class="select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </div>
-
-              <!-- Dropdown gợi ý Tỉnh/TP -->
               <ul v-if="showProvinceDropdown" class="dropdown-search-list">
-                <li
-                  v-for="p in filteredProvinces"
-                  :key="p.code"
-                  :class="{ selected: String(addrModal.provinceId) === String(p.code) }"
-                  @mousedown.prevent="selectProvince(p)"
-                >
-                  {{ p.name }}
-                </li>
-                <li v-if="filteredProvinces.length === 0" class="no-result">
-                  ❌ Không tìm thấy tỉnh/thành phù hợp
-                </li>
+                <li v-for="p in filteredProvinces" :key="p.code" :class="{ selected: String(addrModal.provinceId) === String(p.code) }" @mousedown.prevent="selectProvince(p)">{{ p.name }}</li>
+                <li v-if="filteredProvinces.length === 0" class="no-result">❌ Không tìm thấy tỉnh/thành</li>
               </ul>
             </div>
 
-            <!-- Phường / Xã (Có tìm kiếm) -->
-            <div class="col-md-6 position-relative">
-              <label class="co-label">Phường / Xã <span class="text-danger">*</span></label>
+            <!-- Phường / Xã -->
+            <div class="col-span-12 md:col-span-6 relative">
+              <label class="block text-xs font-semibold text-[#737373] mb-1.5">Phường / Xã <span class="text-red-500">*</span></label>
               <div class="search-input-wrapper">
                 <input
                   type="text"
                   v-model="searchCommune"
-                  class="sg-input w-100 pe-4"
+                  class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 pr-8 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white"
                   :disabled="!addrModal.provinceId || loadingCommunes"
-                  :placeholder="loadingCommunes ? 'Đang tải dữ liệu...' : 'Nhập để tìm Phường/Xã...'"
+                  :placeholder="loadingCommunes ? 'Đang tải...' : 'Nhập để tìm Phường/Xã...'"
                   @focus="showCommuneDropdown = true"
                   @blur="showCommuneDropdown = false"
                   @input="showCommuneDropdown = true; addrModal.communeId = ''"
                 />
-                <i class="bi bi-chevron-down select-arrow"></i>
+                <svg class="select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </div>
-
-              <!-- Dropdown gợi ý Phường/Xã -->
               <ul v-if="showCommuneDropdown && addrModal.provinceId" class="dropdown-search-list">
-                <li
-                  v-for="w in filteredCommunes"
-                  :key="w.code"
-                  :class="{ selected: String(addrModal.communeId) === String(w.code) }"
-                  @mousedown.prevent="selectCommune(w)"
-                >
-                  {{ w.name }}
-                </li>
-                <li v-if="filteredCommunes.length === 0 && !loadingCommunes" class="no-result">
-                  ❌ Không tìm thấy phường/xã phù hợp
-                </li>
+                <li v-for="w in filteredCommunes" :key="w.code" :class="{ selected: String(addrModal.communeId) === String(w.code) }" @mousedown.prevent="selectCommune(w)">{{ w.name }}</li>
+                <li v-if="filteredCommunes.length === 0 && !loadingCommunes" class="no-result">❌ Không tìm thấy phường/xã</li>
               </ul>
             </div>
 
-            <!-- Địa chỉ cụ thể -->
-            <div class="col-12">
-              <label class="co-label">Số nhà, ngõ, tên đường <span class="text-danger">*</span></label>
-              <input v-model="addrModal.line" class="sg-input w-100" placeholder="Ví dụ: Số 123 Đường Cầu Giấy">
+            <!-- Số nhà, tên đường -->
+            <div class="col-span-12">
+              <label class="block text-xs font-semibold text-[#737373] mb-1.5">Số nhà, ngõ, tên đường <span class="text-red-500">*</span></label>
+              <input v-model="addrModal.line" class="w-full border border-[#D9D9D9] rounded-lg px-3.5 py-2.5 text-sm outline-none focus:border-[#0E0E0E] transition-colors bg-white" placeholder="Ví dụ: Số 123 Đường Cầu Giấy">
             </div>
 
-            <div class="col-12">
-              <label class="check-row">
-                <input type="checkbox" v-model="addrModal.isDefault">
-                <span class="fw-semibold">Lưu làm địa chỉ nhận hàng mặc định</span>
+            <div class="col-span-12 mt-1">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" v-model="addrModal.isDefault" class="w-4 h-4 accent-[#16a34a] cursor-pointer">
+                <span class="text-xs font-semibold text-[#0E0E0E]">Lưu làm địa chỉ nhận hàng mặc định</span>
               </label>
             </div>
           </div>
 
-          <div class="d-flex gap-2 mt-4 justify-content-end">
-            <button class="btn-sg-outline" @click="addrModal.open = false">Hủy bỏ</button>
-            <button class="btn-sg" :disabled="addressSaving" @click="saveNewAddress">
-              <i class="bi bi-save me-1"></i>{{ addressSaving ? 'Đang lưu…' : 'Lưu & Chọn' }}
+          <div class="flex gap-2 mt-6 justify-end">
+            <button class="px-5 py-2.5 text-sm font-semibold border border-[#D9D9D9] rounded-lg text-[#737373] hover:text-[#0E0E0E] hover:border-[#0E0E0E] transition-colors cursor-pointer bg-white" @click="addrModal.open = false">Hủy bỏ</button>
+            <button class="px-6 py-2.5 text-sm font-semibold bg-[#0E0E0E] text-white rounded-lg hover:bg-[#333] transition-colors cursor-pointer disabled:opacity-50 border-none" :disabled="addressSaving" @click="saveNewAddress">
+              {{ addressSaving ? 'Đang lưu…' : 'Lưu & Chọn' }}
             </button>
           </div>
         </div>
       </div>
     </transition>
 
-    <!-- QR Modal Bank Transfer -->
+    <!-- ── Modal QR Chuyển khoản ngân hàng (VietQR) ── -->
     <transition name="suc">
       <div v-if="payModal.open" class="modal-overlay" @click.self="payLater">
-        <div class="sg-card modal-box text-center">
-          <h5 class="fw-bold mb-2">Thanh toán đơn hàng</h5>
-          <p class="text-secondary mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
+        <div class="modal-box text-center max-w-[460px]">
+          <h3 style="font-family:'Fraunces',serif" class="text-xl font-semibold text-[#0E0E0E] mb-2">Thanh toán đơn hàng</h3>
+          <p class="text-xs text-[#737373] mb-4">Mã đơn: <strong class="text-[#0E0E0E]">#{{ payModal.orderId }}</strong></p>
           <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" />
-          <h4 class="fw-bold text-danger mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-secondary small mb-4">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
-          <div class="d-flex flex-column gap-2">
-            <button class="btn-sg-warm w-100" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="btn-sg-outline w-100" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
+          <h4 style="font-family:'Fraunces',serif" class="text-2xl font-bold text-[#0E0E0E] mb-3">{{ formatCurrency(payModal.total) }}</h4>
+          <p class="text-xs text-[#737373] mb-5 leading-relaxed">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
+          <div class="flex flex-col gap-2.5">
+            <button class="w-full py-3.5 bg-[#0E0E0E] text-white rounded-lg text-sm font-semibold hover:bg-[#333] transition-colors border-none cursor-pointer" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
+            <button class="w-full py-3 border border-[#E5E5E5] text-[#737373] hover:text-[#0E0E0E] hover:border-[#0E0E0E] rounded-lg text-sm font-semibold transition-colors bg-white cursor-pointer" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
           </div>
         </div>
       </div>
@@ -1006,105 +1119,49 @@ const placeOrder = async () => {
 </template>
 
 <style scoped>
-.checkout-page { background: #ffffff; min-height: 100vh; }
-.page-container { max-width: 1200px; margin: 0 auto; }
-.co-title { font-weight: 700; font-size: 1.5rem; letter-spacing: 0.12em; color: #1a1a1a; margin: 0 0 4px; }
-.uppercase { text-transform: uppercase; }
-.small-error { font-size: 0.8rem; }
-
-.input-error { border-color: #0A0A0A !important; background: #f9fafb; }
-.field-error { color: #0A0A0A; font-size: 0.78rem; margin-top: 4px; font-weight: 500; }
-
-.empty-state { text-align: center; padding: 80px 20px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 12px; }
-.empty-state i { font-size: 2.5rem; color: #ccc; display: block; margin-bottom: 16px; }
-
-.co-block { margin-bottom: 40px; }
-.co-h { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.1em; color: #1a1a1a; display: flex; align-items: center; gap: 12px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
-.co-num { width: 24px; height: 24px; background: #0A0A0A; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; border-radius: 6px; }
-.co-label { font-weight: 600; font-size: 0.75rem; letter-spacing: 0.05em; color: #555; margin-bottom: 8px; display: block; }
-.addr-status { font-size: 0.8rem; font-weight: 500; }
-
-.btn-add-quick:hover { text-decoration: underline; cursor: pointer; }
-
-.map-wrap { border: 1px solid #e5e5e5; border-radius: 12px; overflow: hidden; }
-.map-wrap iframe { width: 100%; height: 250px; border: 0; display: block; }
-
-.ship-grid, .pay-grid { display: flex; flex-direction: column; gap: 12px; }
-.ship-opt, .pay-opt { display: flex; align-items: center; gap: 16px; border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px 20px; cursor: pointer; transition: all 0.2s; background: #fff; }
-.ship-opt:hover, .pay-opt:hover { border-color: #0A0A0A; background: #fafafa; }
-.ship-opt.active, .pay-opt.active { border-color: #0A0A0A; border-width: 1.5px; padding: 16.5px 20.5px; background: #f9fafb; }
-
-.ship-name, .pay-name { font-weight: 700; font-size: 0.9rem; color: #1a1a1a; margin-bottom: 4px; }
-.ship-desc, .pay-desc { font-size: 0.8rem; color: #666; }
-.ship-eta { font-size: 0.75rem; color: #1a1a1a; font-weight: 600; margin-top: 6px; }
-.ship-distance { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
-.shipping-quote-warning { padding: 10px 12px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 0.8rem; }
-.ship-fee { font-weight: 600; color: #1a1a1a; font-size: 0.95rem; margin-right: 16px; }
-
-.ship-check, .pay-check { width: 20px; height: 20px; border: 1.5px solid #d1d5db; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ship-opt.active .ship-check, .pay-opt.active .pay-check { border: 6px solid #0A0A0A; background: #fff; }
-
-.co-summary-box { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 16px; padding: 28px; position: sticky; top: 100px; overflow: visible; }
-.summary-title { font-weight: 700; font-size: 0.9rem; letter-spacing: 0.1em; color: #1a1a1a; margin: 0; }
-.co-items { display: flex; flex-direction: column; gap: 16px; max-height: 400px; overflow-y: auto; overflow-x: visible; padding: 6px 8px 2px 0; margin: -6px 0 0 0; }
-.co-item { display: flex; gap: 16px; align-items: center; overflow: visible; }
-.co-item-img-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; overflow: visible; }
-.co-item-img { width: 100%; height: 100%; background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; overflow: hidden; }
-.co-item-img img { width: 100%; height: 100%; object-fit: cover; }
-.co-qty { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; background: #0A0A0A; color: #fff; border-radius: 6px; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fff; z-index: 1; line-height: 1; }
-.co-item-name { font-weight: 600; font-size: 0.9rem; line-height: 1.3; color: #1a1a1a; }
-.co-item-attr { font-size: 0.8rem; color: #666; margin-top: 4px; }
-.co-item-price { font-weight: 600; font-size: 0.9rem; color: #1a1a1a; }
-
-.coupon-section { border-top: 1px solid #e5e5e5; padding-top: 24px; }
-.coupon-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.coupon-label { font-weight: 800; font-size: 0.8rem; letter-spacing: 0.08em; color: #1a1a1a; }
-.coupon-subtitle { color: #8a8f98; font-size: .74rem; margin-top: 4px; }
-.coupon-add-btn { width: 34px; height: 34px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #d7dbe0; border-radius: 50%; background: #fff; color: #111827; cursor: pointer; transition: background .2s ease, color .2s ease, border-color .2s ease, transform .2s ease; }
-.coupon-add-btn:hover, .coupon-add-btn.active { background: #0A0A0A; color: #fff; border-color: #0A0A0A; transform: rotate(90deg); }
-.coupon-applied { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #f4fbf6; border: 1px solid #9bd2aa; padding: 12px 14px; border-radius: 12px; }
-.ca-info { min-width: 0; }
-.ca-status { color: #16803a; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-.ca-status i { margin-right: 4px; }
-.ca-code { font-weight: 900; font-size: 0.92rem; color: #1a1a1a; display: block; letter-spacing: .04em; }
-.ca-desc { font-size: 0.78rem; color: #4b5563; display: block; margin-top: 2px; }
-.ca-remove { border: 0; background: transparent; color: #6b7280; font-size: .9rem; cursor: pointer; padding: 6px; border-radius: 6px; }
-.ca-remove:hover { color: #0A0A0A; background: #e5f3e8; }
-.coupon-list { display: flex; flex-direction: column; gap: 10px; }
-.coupon-card { position: relative; display: flex; align-items: stretch; width: 100%; min-width: 0; padding: 0; overflow: hidden; text-align: left; border: 1px solid #e1e5ea; border-radius: 12px; background: #fff; color: #111827; cursor: pointer; transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
-.coupon-card:hover { border-color: #9aa2ad; box-shadow: 0 6px 18px rgba(15,23,42,.08); transform: translateY(-1px); }
-.coupon-card.selected { border-color: #0A0A0A; box-shadow: 0 0 0 1px #0A0A0A; background: #fcfcfc; }
-.coupon-card-accent { width: 5px; flex: 0 0 5px; background: #0A0A0A; }
-.coupon-card-main { display: flex; flex-direction: column; min-width: 0; flex: 1; padding: 11px 12px; }
-.coupon-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.coupon-code { font-size: .84rem; letter-spacing: .05em; }
-.coupon-value { flex: 0 0 auto; color: #d73939; font-size: .76rem; font-weight: 900; }
-.coupon-name { margin-top: 4px; font-size: .8rem; font-weight: 700; color: #27313b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coupon-description { margin-top: 3px; color: #6b7280; font-size: .72rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.coupon-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; color: #8a8f98; font-size: .68rem; line-height: 1.3; }
-.coupon-card-action { align-self: center; flex: 0 0 auto; margin-right: 12px; color: #111827; font-size: .7rem; font-weight: 800; white-space: nowrap; }
-.coupon-card.selected .coupon-card-action { color: #16803a; }
-.coupon-loading, .coupon-empty { border: 1px dashed #d7dbe0; border-radius: 10px; padding: 12px; color: #8a8f98; font-size: .76rem; text-align: center; background: #fafbfc; }
-.coupon-input-box { padding: 12px; border: 1px dashed #c7ccd3; border-radius: 10px; background: #fafbfc; }
-.coupon-input-label { margin-bottom: 7px; color: #6b7280; font-size: .72rem; font-weight: 700; }
-.coupon-input-row { display: flex; gap: 8px; }
-.coupon-input-row .sg-input { min-width: 0; }
-
-.summary-divider { border-top: 1px solid #e5e5e5; margin: 0; }
-.sum-row { display: flex; justify-content: space-between; margin-bottom: 12px; color: #555; font-size: 0.95rem; }
-.sum-row.total { font-size: 1.1rem; color: #1a1a1a; font-weight: 600; }
-
-.modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,0.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.modal-box { max-width: 600px; width: 100%; padding: 28px; border-radius: 16px; background: #fff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
-.btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; padding: 4px; }
-.check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.check-row input { width: 16px; height: 16px; accent-color: #0A0A0A; cursor: pointer; }
-
-/* Styles cho Dropdown tìm kiếm thông minh */
-.position-relative { position: relative; }
-.search-input-wrapper { position: relative; display: flex; align-items: center; }
-.search-input-wrapper input { width: 100%; }
-.select-arrow { position: absolute; right: 12px; pointer-events: none; font-size: 0.75rem; color: #888; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(10, 20, 45, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.modal-box {
+  max-width: 600px;
+  width: 100%;
+  padding: 28px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+.btn-close-modal {
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+}
+.btn-close-modal:hover {
+  color: #0E0E0E;
+}
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-input-wrapper input {
+  width: 100%;
+}
+.select-arrow {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  color: #888;
+}
 .dropdown-search-list {
   position: absolute;
   top: calc(100% + 4px);
@@ -1114,7 +1171,7 @@ const placeOrder = async () => {
   overflow-y: auto;
   background: #ffffff;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 8px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
   z-index: 9999;
   list-style: none;
@@ -1133,7 +1190,7 @@ const placeOrder = async () => {
   font-weight: 600;
 }
 .dropdown-search-list li.selected {
-  background: #0A0A0A;
+  background: #0E0E0E;
   color: #ffffff;
   font-weight: 700;
 }
@@ -1144,15 +1201,10 @@ const placeOrder = async () => {
   padding: 12px;
   cursor: default;
 }
-
-.qr-img { width: 200px; height: 200px; object-fit: contain; }
-.suc-enter-active, .suc-leave-active { transition: opacity 0.3s; }
-.suc-enter-from, .suc-leave-to { opacity: 0; }
-
-/* ——— Checkout chuyên nghiệp đen/trắng bo góc ——— */
-:deep(.sg-input) { border-radius: 10px !important; }
-:deep(.btn-sg), :deep(.btn-sg-warm) { border-radius: 12px !important; background: #0A0A0A !important; border-color: #0A0A0A !important; color: #fff !important; }
-:deep(.btn-sg:hover), :deep(.btn-sg-warm:hover) { background: #000 !important; }
-:deep(.btn-sg-outline) { border-radius: 10px !important; border-color: #0A0A0A !important; color: #0A0A0A !important; }
-:deep(.btn-sg-outline:hover) { background: #0A0A0A !important; color: #fff !important; }
+.suc-enter-active, .suc-leave-active {
+  transition: opacity 0.3s ease;
+}
+.suc-enter-from, .suc-leave-to {
+  opacity: 0;
+}
 </style>

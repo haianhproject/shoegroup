@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Be Vietnam Pro', sans-serif;
+
+  --color-background: #FFFFFF;
+  --color-foreground: #0E0E0E;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0E0E0E;
+  --color-primary: #0E0E0E;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #F0F0F0;
+  --color-secondary-foreground: #0E0E0E;
+  --color-muted: #D4D4D4;
+  --color-muted-foreground: #737373;
+  --color-accent: #0E0E0E;
+  --color-accent-foreground: #FFFFFF;
+  --color-border: #E5E5E5;
+  --color-ring: #0E0E0E;
+  --radius: 4px;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: #FFFFFF;
+  color: #0E0E0E;
+  font-family: 'Be Vietnam Pro', sans-serif;
+}
+
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
