@@ -61,7 +61,6 @@ const sections = [
   { title: 'Không gian làm việc', items: [
     { to: '/admin/panel/dashboard', icon: 'grid', label: 'Tổng quan' },
     { to: '/admin/panel/payments', icon: 'payment', label: 'Đơn hàng & thanh toán', badge: () => incompleteOrdersCount.value, attention: true },
-    { to: '/admin/panel/returns', icon: 'return', label: 'Đổi trả hàng', badge: () => pendingReturnsCount.value, attention: true },
     { to: '/admin/panel/pos', icon: 'shop', label: 'Bán hàng tại quầy' },
   ] },
   { title: 'Sản phẩm', items: [
