@@ -7,12 +7,12 @@ import {
   posSearch, posVariants, addToCart, removeCartItem,
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
-  posCustomerSearch, posCustomerResults, pickPosCustomer, savePosCustomer,
-  checkoutPos, formatPrice, validateCartItemQty, posSubmitting,
+  posCustomerSearch, posCustomerResults, pickPosCustomer,
+  checkoutPos, formatPrice, formatDate, validateCartItemQty, posSubmitting,
+  posInvoiceModal, closePosInvoice, printPosInvoice,
 } from '../adminStore'
 
 const qtyInputs = ref({})
-const savingCustomer = ref(false)
 function addWithQty(v) {
   const n = Number(qtyInputs.value[v.id]) || 1
   addToCart(v, n)
@@ -29,29 +29,22 @@ function addWithQty(v) {
         <div class="bg-white rounded-1 shadow-sm p-4 mb-4">
           <div class="flex justify-between items-center mb-3">
             <h6 class="font-bold mb-0 text-gray-900"><i class="icon icon-person-circle mr-2"></i>Khách hàng</h6>
-            
           </div>
           <div class="flex gap-2 mb-3">
             <button @click="activePosOrder.customer_type = 'Có tài khoản'" class="btn btn-sm rounded-1 px-3 border" :class="activePosOrder.customer_type === 'Có tài khoản' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'">Có tài khoản</button>
             <button @click="activePosOrder.customer_type = 'Khách lẻ'" class="btn btn-sm rounded-1 px-3 border" :class="activePosOrder.customer_type === 'Khách lẻ' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'">Khách lẻ</button>
           </div>
 
-          <!-- Khách lẻ: nút "Lưu thông tin" nằm NGAY BÊN DƯỚI trong khung khách lẻ -->
+          <!-- Khách lẻ: không cần nút lưu thủ công, hệ thống tự động lưu đơn hàng khi thanh toán -->
           <div v-if="activePosOrder.customer_type === 'Khách lẻ'" class="grid grid-cols-12 gap-3">
-            <div class="md:col-span-6"><label class="block text-sm font-medium text-sm font-medium uppercase text-gray-600">Tên khách</label><input v-model="activePosOrder.customer_name" type="text" class="sg-input rounded-2" placeholder="Họ tên khách hàng"></div>
-            <div class="md:col-span-6"><label class="block text-sm font-medium text-sm font-medium uppercase text-gray-600">Số điện thoại</label><input v-model="activePosOrder.customer_phone" type="tel" class="sg-input rounded-2" placeholder="VD: 0901234567" maxlength="11"></div>
-            <div class="col-span-12"><label class="block text-sm font-medium text-sm font-medium uppercase text-gray-600">Ghi chú</label><textarea v-model="activePosOrder.customer_note" rows="2" class="sg-input rounded-2" placeholder="Ghi chú đơn hàng..."></textarea></div>
-            <div class="col-span-12 flex justify-end items-center gap-2 pt-1 border-t">
-              <span class="text-gray-600 text-sm ml-auto">Lưu khách này vào trang Khách hàng (CRM)</span>
-              <button @click="savePosCustomer()" :disabled="savingCustomer" class="btn btn-sm btn-dark rounded-1 px-3">
-                <i class="icon icon-save mr-1"></i>Lưu thông tin
-              </button>
-            </div>
+            <div class="md:col-span-6"><label class="block text-sm font-medium uppercase text-gray-600">Tên khách (tùy chọn)</label><input v-model="activePosOrder.customer_name" type="text" class="sg-input rounded-2" placeholder="Khách lẻ"></div>
+            <div class="md:col-span-6"><label class="block text-sm font-medium uppercase text-gray-600">Số điện thoại (tùy chọn)</label><input v-model="activePosOrder.customer_phone" type="tel" class="sg-input rounded-2" placeholder="VD: 0901234567" maxlength="11"></div>
+            <div class="col-span-12"><label class="block text-sm font-medium uppercase text-gray-600">Ghi chú</label><textarea v-model="activePosOrder.customer_note" rows="2" class="sg-input rounded-2" placeholder="Ghi chú đơn hàng..."></textarea></div>
           </div>
 
           <!-- Có tài khoản: chỉ hiện danh sách KHI ĐÃ TÌM KIẾM -->
           <div v-else>
-            <label class="block text-sm font-medium text-sm font-medium uppercase text-gray-600">Tìm khách hàng</label>
+            <label class="block text-sm font-medium uppercase text-gray-600">Tìm khách hàng</label>
             <div class="relative mb-2">
               <i class="icon icon-search absolute text-gray-600" style="left:12px;top:50%;transform:translateY(-50%);"></i>
               <input v-model="posCustomerSearch" type="text" class="sg-input rounded-2 pl-5" placeholder="Nhập tên hoặc SĐT để tìm...">
@@ -116,6 +109,16 @@ function addWithQty(v) {
           <div class="flex justify-between items-center mb-3">
             <h6 class="font-bold mb-0 text-gray-900"><i class="icon icon-receipt mr-2"></i>Đơn hiện tại</h6>
             <div class="flex items-center gap-2">
+              <button
+                v-if="posInvoiceModal.orderId"
+                type="button"
+                @click="posInvoiceModal.open = true"
+                class="btn btn-sm btn-outline-dark rounded-1 px-2 flex items-center gap-1"
+                title="Xem lại hóa đơn vừa xuất"
+              >
+                <i class="icon icon-receipt"></i>
+                <span style="font-size:0.75rem;">Hóa đơn vừa xuất</span>
+              </button>
               <span class="badge rounded-1 bg-gray-100 text-gray-600 border" v-text="'#' + activePosOrder.code"></span>
               <button @click="resetPosOrder()" class="btn btn-sm btn-white border rounded-1 px-3" title="Làm mới đơn">
                 <i class="icon icon-arrow-counterclockwise"></i>
@@ -183,6 +186,119 @@ function addWithQty(v) {
               <button @click="confirmPosPaid()" class="btn btn-dark rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>Đã thanh toán</button>
               <button @click="cancelPosPay()" class="btn btn-light border rounded-2">Hủy</button>
             </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- MODAL HÓA ĐƠN sau khi thanh toán thành công -->
+    <Teleport to="body">
+      <div v-if="posInvoiceModal.open" class="custom-modal-overlay" style="z-index:1060;" @click.self="closePosInvoice()">
+        <div class="custom-modal-box fade-in-scale" style="max-width:520px;" role="dialog" aria-modal="true" aria-label="Hóa đơn thanh toán">
+          <!-- Header hóa đơn -->
+          <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2">
+            <div class="flex items-center gap-2">
+              <span class="rounded-full bg-black text-white inline-flex items-center justify-center shrink-0" style="width:32px;height:32px;">
+                <i class="icon icon-receipt text-sm"></i>
+              </span>
+              <div>
+                <h6 class="font-bold mb-0 text-gray-900 leading-tight">HÓA ĐƠN BÁN HÀNG</h6>
+                <small class="text-gray-600" style="font-size:0.72rem;">Cửa hàng giày dép ShoeGroup</small>
+              </div>
+            </div>
+            <button @click="closePosInvoice()" class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hóa đơn">
+              <i class="icon icon-x-lg"></i>
+            </button>
+          </div>
+
+          <!-- Thân hóa đơn -->
+          <div class="p-4" style="max-height:72vh;overflow-y:auto;">
+            <!-- Badge trạng thái thành công -->
+            <div class="text-center mb-4 pb-3 border-b">
+              <div class="mx-auto mb-2 rounded-full inline-flex items-center justify-center bg-green-50 text-green-700" style="width:50px;height:50px;">
+                <i class="icon icon-check-circle-fill" style="font-size:1.75rem;"></i>
+              </div>
+              <h6 class="font-bold text-gray-900 mb-0">Thanh toán thành công!</h6>
+              <p class="text-gray-600 text-sm mb-0">Mã đơn hàng: <strong class="text-gray-900">#{{ posInvoiceModal.orderId }}</strong></p>
+            </div>
+
+            <!-- Thông tin đơn hàng & Khách hàng -->
+            <div class="bg-light-gray rounded-2 p-3 mb-3 text-sm">
+              <div class="flex justify-between mb-1.5">
+                <span class="text-gray-600">Thời gian:</span>
+                <span class="font-medium text-gray-900">{{ formatDate(posInvoiceModal.created_at) }}</span>
+              </div>
+              <div class="flex justify-between mb-1.5">
+                <span class="text-gray-600">Khách hàng:</span>
+                <span class="font-medium text-gray-900">{{ posInvoiceModal.customer_name || 'Khách lẻ' }}</span>
+              </div>
+              <div v-if="posInvoiceModal.customer_phone" class="flex justify-between mb-1.5">
+                <span class="text-gray-600">Số điện thoại:</span>
+                <span class="font-medium text-gray-900">{{ posInvoiceModal.customer_phone }}</span>
+              </div>
+              <div class="flex justify-between mb-1.5">
+                <span class="text-gray-600">Phương thức:</span>
+                <span class="font-medium text-gray-900">{{ posInvoiceModal.payment_method }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-600">Thu ngân:</span>
+                <span class="font-medium text-gray-900">{{ posInvoiceModal.handled_by || 'Quầy' }}</span>
+              </div>
+            </div>
+
+            <!-- Danh sách sản phẩm -->
+            <div class="text-gray-600 uppercase mb-2" style="font-size:0.68rem;letter-spacing:0.5px;">Chi tiết sản phẩm</div>
+            <div class="border rounded-2 mb-3 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-gray-100 text-gray-600 border-b" style="font-size:0.75rem;">
+                    <th class="py-2 px-3 text-start">Sản phẩm</th>
+                    <th class="py-2 px-2 text-center" style="width:48px;">SL</th>
+                    <th class="py-2 px-3 text-end" style="width:90px;">Đơn giá</th>
+                    <th class="py-2 px-3 text-end" style="width:100px;">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, i) in posInvoiceModal.items" :key="i" class="border-b last:border-b-0">
+                    <td class="py-2 px-3">
+                      <div class="font-medium text-gray-900 leading-snug">{{ item.name }}</div>
+                      <div class="text-gray-600" style="font-size:0.72rem;">{{ [item.color, item.size ? 'Size ' + item.size : ''].filter(Boolean).join(' · ') }}</div>
+                    </td>
+                    <td class="py-2 px-2 text-center text-gray-700">{{ item.quantity }}</td>
+                    <td class="py-2 px-3 text-end text-gray-700">{{ formatPrice(item.price) }}</td>
+                    <td class="py-2 px-3 text-end font-medium text-gray-900">{{ formatPrice(item.price * item.quantity) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Tổng kết tiền -->
+            <div class="border-t pt-2.5 text-sm space-y-1.5">
+              <div class="flex justify-between text-gray-600">
+                <span>Tạm tính:</span>
+                <span class="font-medium text-gray-900">{{ formatPrice(posInvoiceModal.subtotal) }}</span>
+              </div>
+              <div v-if="posInvoiceModal.discount > 0" class="flex justify-between text-red-600">
+                <span>Giảm giá:</span>
+                <span class="font-medium">- {{ formatPrice(posInvoiceModal.discount) }}</span>
+              </div>
+              <div class="flex justify-between items-baseline pt-2 border-t mt-2">
+                <span class="font-bold text-gray-900 text-base">Tổng thanh toán:</span>
+                <h4 class="font-extrabold text-gray-900 mb-0">{{ formatPrice(posInvoiceModal.total) }}</h4>
+              </div>
+            </div>
+
+            <p class="text-center text-gray-600 text-xs fst-italic mt-4 mb-0">Cảm ơn quý khách đã mua hàng tại ShoeGroup!</p>
+          </div>
+
+          <!-- Nút bấm Xem / In / Đóng -->
+          <div class="p-4 border-t flex gap-2 bg-gray-50 rounded-b-2">
+            <button @click="closePosInvoice()" type="button" class="btn btn-light border rounded-2 grow font-medium">
+              <i class="icon icon-x-lg mr-1"></i> Đóng
+            </button>
+            <button @click="printPosInvoice()" type="button" class="btn btn-dark rounded-2 grow font-bold">
+              <i class="icon icon-printer mr-1"></i> In hóa đơn
+            </button>
           </div>
         </div>
       </div>

@@ -21,7 +21,6 @@ import {
   handleLogout,
   incompleteOrdersCount,
   pendingReturnsCount,
-  lowStockCount,
   activeProductCount,
   formatPrice,
   formatDate,
@@ -65,7 +64,6 @@ const sections = [
   ] },
   { title: 'Sản phẩm', items: [
     { to: '/admin/panel/products', icon: 'box', label: 'Tất cả sản phẩm', badge: () => activeProductCount.value },
-    { to: '/admin/panel/inventory', icon: 'warehouse', label: 'Kho hàng', badge: () => lowStockCount.value, attention: true },
     { to: '/admin/panel/categories', icon: 'category', label: 'Danh mục' },
     { to: '/admin/panel/brands', icon: 'award', label: 'Thương hiệu' },
     { to: '/admin/panel/collections', icon: 'collection', label: 'Bộ sưu tập' },
@@ -94,7 +92,6 @@ const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   returns: 'Tiếp nhận, kiểm tra và theo dõi các yêu cầu đổi trả.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
-  inventory: 'Theo dõi tồn kho và chủ động bổ sung từng biến thể sản phẩm.',
   categories: 'Sắp xếp sản phẩm theo bộ môn để khách hàng dễ dàng khám phá.',
   brands: 'Quản lý các thương hiệu trong danh mục của ShoeGroup.',
   collections: 'Tổ chức các bộ sưu tập và câu chuyện sản phẩm của cửa hàng.',
