@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -551,11 +551,24 @@ onUnmounted(() => {
           </div>
 
           <!-- Quick actions (always visible) -->
-          <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+          <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="icon icon-qr-code-scan mr-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
-            <button v-if="['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="icon icon-arrow-return-left mr-1"></i>Báo chưa nhận hàng / hỗ trợ giao</button>
-            <button v-if="['DELIVERED', 'RECEIVED'].includes(o.status)" class="btn-sg-outline" @click.stop="goReturn(o)"><i class="icon icon-arrow-return-left mr-1"></i>Yêu cầu trả hàng</button>
+            <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
+            <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
+              <span style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;">
+                <i class="icon icon-check-circle-fill"></i> Đã giao thành công
+              </span>
+              <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:6px;background:#0068ff;color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
+                <svg width="16" height="16" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+                  <rect width="40" height="40" rx="10" fill="#fff"/>
+                  <path d="M20 6C12.268 6 6 11.82 6 19c0 4.08 1.98 7.72 5.08 10.18L9.5 34l5.1-1.6C16.5 33.44 18.2 33.8 20 33.8c7.732 0 14-5.82 14-13S27.732 6 20 6z" fill="#0068ff"/>
+                  <path d="M14 17h7M14 21h4m-4-8h7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Sản phẩm có vấn đề?
+              </a>
+            </template>
             <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="icon icon-arrow-repeat mr-1"></i>Đặt lại</button>
           </div>
 

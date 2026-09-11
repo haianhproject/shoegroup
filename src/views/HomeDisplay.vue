@@ -196,6 +196,8 @@
         </div>
       </section>
 
+      <!-- Zalo floating button (component) -->
+      <ZaloChat />
     </div>
 </template>
 
@@ -207,6 +209,7 @@ import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
 import { notify } from '../stores/uiStore'
 import { homeMedia } from '../data/homeMedia'
+import ZaloChat from '../components/ZaloChat.vue'
 
 const router = useRouter()
 const email = ref('')
