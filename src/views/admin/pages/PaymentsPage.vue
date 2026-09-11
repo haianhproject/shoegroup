@@ -181,7 +181,7 @@ function transitionMessage() {
     <div v-if="!orderDetail.open">
       <div class="payments-intro">
         <div>
-          <p class="payments-intro-description">{{ queueView === 'ACTIVE' ? 'Ưu tiên xử lý những đơn được đặt trước trong hàng đợi.' : 'Tra cứu tất cả đơn hàng, từ mới nhất đến cũ nhất.' }}</p>
+          <p v-if="queueView === 'ALL'" class="payments-intro-description">Tra cứu tất cả đơn hàng, từ mới nhất đến cũ nhất.</p>
           <p v-if="apiErrors.length" class="payments-sync-note" role="status">
             Hàng đợi vẫn hiển thị; một số dữ liệu phụ đang tạm thời chưa đồng bộ.
           </p>

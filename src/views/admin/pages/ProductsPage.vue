@@ -122,8 +122,7 @@ function onProductImageError(event) {
                 <span class="products-material" v-text="getMaterialName(p.material_id)"></span>
               </td>
               <td class="products-price">
-                <strong>{{ formatPrice(p.sale_price || p.price) }}</strong>
-                <del v-if="p.sale_price && Number(p.sale_price) < Number(p.price)">{{ formatPrice(p.price) }}</del>
+                <strong>{{ formatPrice(p.price) }}</strong>
               </td>
               <td class="text-center products-variant-count" v-text="productVariantCount(p.id)"></td>
               <td class="text-center">
@@ -244,7 +243,7 @@ function onProductImageError(event) {
                 ></option>
               </select>
             </div>
-            <div class="col-span-12 md:col-span-6">
+            <div class="col-span-12">
               <label for="product-price" class="block text-sm font-medium">Giá bán (VNĐ)</label
               ><input
                 id="product-price"
@@ -253,17 +252,7 @@ function onProductImageError(event) {
                 class="sg-input rounded-2"
               />
             </div>
-            <div class="col-span-12 md:col-span-6">
-              <label for="product-sale-price" class="block text-sm font-medium"
-                >Giá khuyến mãi (VNĐ)</label
-              ><input
-                id="product-sale-price"
-                v-model.number="productForm.sale_price"
-                type="number"
-                class="sg-input rounded-2"
-              />
-            </div>
-          </div>
+        </div>
         </div>
 
         <div class="product-form-panel">
@@ -651,24 +640,9 @@ function onProductImageError(event) {
               v-text="formatPrice(productDetailModal.product.price)"
             ></p>
           </div>
-          <div
-            v-if="productDetailModal.product.sale_price"
-            class="bg-light-gray rounded-2 p-2 px-3"
-          >
-            <p class="text-gray-600 mb-0" style="font-size: 0.7rem">Giá KM</p>
-            <p
-              class="font-bold mb-0 text-red-600"
-              v-text="formatPrice(productDetailModal.product.sale_price)"
-            ></p>
-          </div>
           <div class="bg-light-gray rounded-2 p-2 px-3">
-            <p class="text-gray-600 mb-0" style="font-size: 0.7rem">
-              Tổng tồn kho
-            </p>
-            <p
-              class="font-bold mb-0"
-              v-text="productStockTotal(productDetailModal.product.id)"
-            ></p>
+            <p class="text-gray-600 mb-0" style="font-size: 0.7rem">Tổng tồn kho</p>
+            <p class="font-bold mb-0" v-text="productStockTotal(productDetailModal.product.id)"></p>
           </div>
         </div>
 

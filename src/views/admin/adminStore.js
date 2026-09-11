@@ -1,4 +1,4 @@
-/*
+﻿/*
  * adminStore.js
  * ------------------------------------------------------------------
  * Kho dữ liệu & logic dùng chung cho toàn bộ khu vực quản trị (Admin).
@@ -1827,6 +1827,47 @@ export async function confirmPosPaid() {
   await finalizePosOrder();
 }
 
+
+// Modal hóa đơn hiển thị ngay sau khi thanh toán thành công tại quầy
+export const posInvoiceModal = reactive({
+  open: false,
+  orderId: null,
+  code: "",
+  customer_name: "",
+  customer_phone: "",
+  payment_method: "",
+  items: [],
+  subtotal: 0,
+  discount: 0,
+  total: 0,
+  handled_by: "",
+  created_at: null,
+});
+export function closePosInvoice() {
+  posInvoiceModal.open = false;
+}
+export function openLastPosInvoice() {
+  if (posInvoiceModal.orderId) {
+    posInvoiceModal.open = true;
+  }
+}
+export function printPosInvoice() {
+  if (!posInvoiceModal.orderId) return;
+  printInvoice({
+    id: posInvoiceModal.orderId,
+    tracking_code: posInvoiceModal.code,
+    customer_name: posInvoiceModal.customer_name,
+    customer_phone: posInvoiceModal.customer_phone,
+    payment_method: posInvoiceModal.payment_method,
+    total: posInvoiceModal.total,
+    products: posInvoiceModal.items,
+    channel: 'Offline',
+    handled_by: posInvoiceModal.handled_by,
+    created_at: posInvoiceModal.created_at,
+    date: posInvoiceModal.created_at,
+    status: 'Đã nhận hàng',
+  });
+}
 export const posSearch = ref("");
 export const posVariants = computed(() => {
   const q = posSearch.value.trim().toLowerCase();
@@ -2223,7 +2264,28 @@ async function finalizePosOrder() {
       { status: "Đã nhận hàng", date: nowIso, note: "Bán tại quầy" },
     ],
   });
-  notify("Tạo đơn thành công: " + formatPrice(created.totalAmount), "success");
+  notify("Thanh toán thành công!", "success");
+  // Mo man hinh hoa don ngay sau khi thanh toan thanh cong tai quay
+  Object.assign(posInvoiceModal, {
+    open: true,
+    orderId: newId,
+    code: o.code,
+    customer_name: payload.customer_name,
+    customer_phone: payload.customer_phone || "",
+    payment_method: payload.payment_method,
+    items: payload.products.map((p) => ({
+      name: p.name,
+      color: p.color,
+      size: p.size,
+      quantity: p.quantity,
+      price: p.price,
+    })),
+    subtotal: posSubtotal.value,
+    discount: posDiscountAmount.value,
+    total: posGrandTotal.value,
+    handled_by: getDisplayName.value || "Quầy",
+    created_at: nowIso,
+  });
   resetPosOrder();
   } finally { posSubmitting.value = false; }
 }
