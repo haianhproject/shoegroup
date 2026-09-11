@@ -179,15 +179,7 @@ function transitionMessage() {
 
     <!-- ================= DANH SÁCH ================= -->
     <div v-if="!orderDetail.open">
-      <div class="payments-intro">
-        <div>
-          <p v-if="queueView === 'ALL'" class="payments-intro-description">Tra cứu tất cả đơn hàng, từ mới nhất đến cũ nhất.</p>
-          <p v-if="apiErrors.length" class="payments-sync-note" role="status">
-            Hàng đợi vẫn hiển thị; một số dữ liệu phụ đang tạm thời chưa đồng bộ.
-          </p>
-        </div>
-        <span class="payments-total"><strong>{{ paymentTotalCount }}</strong> đơn hàng</span>
-      </div>
+      
 
       <div class="admin-surface payments-list-panel">
         <!-- Tabs Online / Offline + Tìm kiếm -->
@@ -218,25 +210,29 @@ function transitionMessage() {
 
         <!-- Bảng đơn hàng -->
         <div class="queue-summary" role="status">
-          <span><strong>{{ displayedOrders.length }}</strong> đơn trong danh sách</span>
-          <span><strong>{{ actionableCount }}</strong> đơn có thể xử lý ngay</span>
+          <span>Tổng đơn: <strong>{{ paymentTotalCount }}</strong></span>
+          <span>Đang hiển thị: <strong>{{ displayedOrders.length }}</strong></span>
+          <span>Cần xử lý ngay: <strong>{{ actionableCount }}</strong></span>
+          <span v-if="apiErrors.length" class="text-amber-700 ml-auto" style="font-size:11px;">
+            <i class="icon icon-exclamation-circle mr-1"></i>Một số dữ liệu phụ đang đồng bộ
+          </span>
         </div>
 
         <div v-if="displayedOrders.length === 0" class="admin-empty">
           <strong>Không có đơn cần xử lý</strong>
           <span>Thử đổi kênh bán, phạm vi hoặc từ khóa tìm kiếm.</span>
         </div>
-        <div v-else class="table-responsive payments-table-scroll" tabindex="0" role="region" aria-label="Danh sách đơn hàng, có thể cuộn ngang">
+        <div v-else class="payments-table-wrap">
           <table class="table align-middle mb-0 payments-table">
             <thead>
               <tr class="text-gray-600 text-sm uppercase bg-gray-100">
-                <th scope="col" style="width:60px;">STT</th>
-                <th scope="col">Đơn hàng</th>
-                <th scope="col">Phương thức</th>
-                <th scope="col">Thanh toán</th>
-                <th scope="col">Trạng thái đơn</th>
-                <th scope="col" class="text-end">Tổng tiền</th>
-                <th scope="col" class="text-end">Thao tác</th>
+                <th scope="col" style="width:46px;" class="text-center">STT</th>
+                <th scope="col" style="min-width:170px;">Đơn hàng</th>
+                <th scope="col" style="width:110px;">Phương thức</th>
+                <th scope="col" style="width:125px;">Thanh toán</th>
+                <th scope="col" style="min-width:130px;">Trạng thái đơn</th>
+                <th scope="col" class="text-end" style="width:105px;">Tổng tiền</th>
+                <th scope="col" class="text-end" style="width:90px;">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -478,29 +474,25 @@ function transitionMessage() {
 .payment-detail,
 .payment-main-column,
 .payment-status-column { min-width: 0; }
-.payments-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-.payments-intro-description { margin: 0; color: #737373; font-size: 12px; line-height: 1.7; }
-.payments-sync-note { margin: 5px 0 0; color: #846018; font-size: 12px; line-height: 1.7; }
-.payments-total { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 7px 11px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fff; color: #737373; font-size: 11px; }
-.payments-total strong { color: #0e0e0e; font-size: 14px; font-variant-numeric: tabular-nums; }
-.payments-list-panel { padding: 20px; overflow: hidden; }
-.payments-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 18px; }
+.payments-list-panel { padding: 14px 18px; overflow: visible; border-radius: 10px; }
+.payments-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
 .payments-toggle-group { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .payments-toggle-group .btn { min-height: 38px; white-space: nowrap; }
 .payments-scope { margin-left: auto; }
 .payments-search { position: relative; flex: 1 1 220px; max-width: 300px; min-width: 0; }
 .payments-search > .icon { position: absolute; top: 50%; left: 12px; color: #848489; transform: translateY(-50%); pointer-events: none; }
 .payments-search .sg-input { width: 100%; min-width: 0; min-height: 38px; padding-left: 36px; font-size: 12px; }
-.payments-table-scroll { max-width: 100%; }
-.payments-table { min-width: 980px; }
-.payments-table th { font-size: 11px; letter-spacing: .04em; font-weight: 600; }
-.payments-table td { border-color: #ededee; }
-.payments-table td:nth-child(2) { min-width: 250px; }
+.payments-table-wrap { width: 100%; overflow-x: hidden; }
+.payments-table { width: 100%; min-width: 0; table-layout: auto; }
+.payments-table th { font-size: 11px; letter-spacing: .03em; font-weight: 600; padding: 9px 8px; white-space: nowrap; }
+.payments-table td { border-color: #ededee; padding: 10px 8px; }
+.payments-table td:nth-child(2) { min-width: 0; }
 .payments-table td:nth-child(6) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.payments-table td:nth-child(7) { white-space: nowrap; text-align: right; }
 .payments-table .badge,
 .payment-detail .badge { border-radius: 6px !important; }
 
-.queue-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; background: #f7f7f8; padding: 12px 15px; border-radius: 8px; font-size: 12px; color: #737373; border: 1px solid #ededee; }
+.queue-summary { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; background: #f7f7f8; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #555; border: 1px solid #ededee; }
 .queue-summary > span { display: flex; align-items: center; gap: 6px; }
 .queue-summary strong { color: #0e0e0e; font-weight: 650; }
 .queue-summary > span:not(:last-child)::after { content: "•"; color: #ccc; margin-left: 10px; }
