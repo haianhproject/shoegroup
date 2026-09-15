@@ -423,10 +423,10 @@ const refreshCartStockFromServer = async () => {
 
       // Đồng bộ ảnh biến thể và màu mới nhất từ server nếu admin vừa cập nhật
       if (product) {
-        // Cart prices are estimates until order creation. Refresh from the same
-        // product sale/base price used by the server before the customer submits.
-        const basePrice = Number(product.price ?? product.BasePrice);
-        const salePrice = Number(product.sale_price ?? product.SalePrice ?? 0);
+        // Giá trong giỏ bám theo đúng biến thể màu; trường sale_price ở cấp
+        // sản phẩm chỉ là giá tối thiểu để hiển thị danh sách.
+        const basePrice = Number(variant?.price ?? product.price ?? product.BasePrice);
+        const salePrice = Number(variant?.sale_price ?? (variants.length ? 0 : product.sale_price) ?? 0);
         const currentPrice = salePrice > 0 ? salePrice : basePrice;
         if (Number.isFinite(currentPrice) && currentPrice >= 0 && item.unitPrice !== currentPrice) {
           priceChanged.push({ id: item.id_product_detail, previousPrice: item.unitPrice, currentPrice });

@@ -1283,19 +1283,46 @@ app.post("/api/orders", async (req, res) => {
           const priceRequest = new sql.Request(transaction)
             .input("pid", sql.Int, productId)
             .input("vid", sql.Int, variantId)
-            .input("pos", sql.Bit, isAdminOrder ? 1 : 0)
+            .input("qty", sql.Int, quantity)
             .input("sz", sql.NVarChar, size)
             .input("clr", sql.NVarChar, color);
           const pricedVariant = await priceRequest.query(`
             SELECT TOP 1
                    p.ProductName as name,
-                   CAST((CASE WHEN ISNULL(p.SalePrice, 0)>0 THEN p.SalePrice ELSE p.BasePrice END)
-                     + CASE WHEN @pos=1 THEN ISNULL(v.PriceAdjustment,0) ELSE 0 END AS decimal(18,2)) as price,
+                   CAST(CASE
+                     WHEN promo.VariantDiscountID IS NULL THEN p.BasePrice + ISNULL(v.PriceAdjustment,0)
+                     WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice + ISNULL(v.PriceAdjustment,0)
+                       THEN promo.DiscountValue
+                     WHEN promo.DiscountKind=N'percent' THEN
+                       (p.BasePrice + ISNULL(v.PriceAdjustment,0)) -
+                       CASE
+                         WHEN promo.MaxDiscountAmount > 0 AND
+                              (p.BasePrice + ISNULL(v.PriceAdjustment,0)) * promo.DiscountValue / 100.0 > promo.MaxDiscountAmount
+                           THEN promo.MaxDiscountAmount
+                         ELSE (p.BasePrice + ISNULL(v.PriceAdjustment,0)) * promo.DiscountValue / 100.0
+                       END
+                     ELSE p.BasePrice + ISNULL(v.PriceAdjustment,0)
+                   END AS decimal(18,2)) as price,
                    v.ProductVariantID as variantId,
                    ISNULL(v.Size, N'') as size,
-                   ISNULL(v.ColorName, N'') as color
+                   ISNULL(v.ColorName, N'') as color,
+                   promo.VariantDiscountID as variantDiscountId
             FROM Products p
             JOIN ProductVariants v WITH (UPDLOCK, HOLDLOCK) ON v.ProductID=p.ProductID
+            OUTER APPLY (
+              SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
+                     CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
+                          THEN N'percent' ELSE N'fixed' END AS DiscountKind
+              FROM VariantDiscounts vd WITH (UPDLOCK, HOLDLOCK)
+              WHERE vd.ProductID=v.ProductID
+                AND (ISNULL(vd.ColorName,N'')=ISNULL(v.ColorName,N'') OR
+                     (NULLIF(vd.ColorName,N'') IS NULL AND vd.ProductVariantID=v.ProductVariantID))
+                AND ISNULL(vd.IsActive,1)=1
+                AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
+                AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())
+                AND (ISNULL(vd.Quantity,0)<=0 OR ISNULL(vd.UsedCount,0)+@qty<=vd.Quantity)
+              ORDER BY vd.StartDate DESC, vd.VariantDiscountID DESC
+            ) promo
             WHERE p.ProductID=@pid
               AND ISNULL(p.IsActive, 1)=1
               AND ISNULL(v.IsActive, 1)=1
@@ -1323,6 +1350,9 @@ app.post("/api/orders", async (req, res) => {
           item.name = canonicalItem.name || "San pham";
           item.size = canonicalItem.size || size;
           item.color = canonicalItem.color || color;
+          item.variant_discount_id = canonicalItem.variantDiscountId == null
+            ? null
+            : Number(canonicalItem.variantDiscountId);
           canonicalSubtotal += item.price * quantity;
         }
 
@@ -1488,6 +1518,20 @@ app.post("/api/orders", async (req, res) => {
             INSERT INTO OrderDetails (OrderID, ProductID, ProductVariantID, Quantity, UnitPrice, Size, Color, ProductNameSnapshot)
             VALUES (@oid, @pid, @vid, @qty, @price, @sz, @clr, @nm)
           `);
+        if (item.variant_discount_id) {
+          const promotionUpdate = await new sql.Request(transaction)
+            .input("id", sql.Int, item.variant_discount_id)
+            .input("qty", sql.Int, quantity)
+            .query(`
+              UPDATE VariantDiscounts
+              SET UsedCount=ISNULL(UsedCount,0)+@qty
+              WHERE VariantDiscountID=@id
+                AND (ISNULL(Quantity,0)<=0 OR ISNULL(UsedCount,0)+@qty<=Quantity)
+            `);
+          if (Number(promotionUpdate.rowsAffected?.[0] || 0) !== 1) {
+            throw Object.assign(new Error("Giảm giá biến thể vừa hết lượt. Vui lòng thử lại."), { statusCode: 409 });
+          }
+        }
       }
 
       // B3: TRU TON KHO (FIX) - truoc day ban tai quay khong he tru StockQuantity
@@ -2223,7 +2267,7 @@ app.get("/api/products", async (req, res) => {
     await poolConnect;
     let r = await pool.request().query(
       `SELECT p.ProductID as id, p.ProductName as name, p.BasePrice as price,
-              p.SalePrice as sale_price,
+              CAST(0 AS decimal(18,2)) as sale_price,
               p.CategoryID as category_id, c.CategoryName as category,
               p.BrandID as brand_id, b.BrandName as brand,
               p.CollectionID as collection_id, p.MaterialID as material_id,
@@ -2239,14 +2283,47 @@ app.get("/api/products", async (req, res) => {
     // FIX: ep kieu StockQuantity ve INT va bo qua bien the da tat (IsActive = 0)
     // Truoc day tra ve NULL -> frontend doc thanh 0 nen san pham nao cung "het hang".
     const vr = await pool.request().query(
-      `SELECT ProductVariantID as id, ProductID as product_id, Size as size,
-              ColorName as color, ColorHex as hex, ChildSKU as sku,
-              CAST(ISNULL(StockQuantity, 0) AS INT) as stock,
-              ISNULL(Version,0) as version,
-              CAST(ISNULL(IsActive, 1) AS BIT) as active
-       FROM ProductVariants
-       WHERE ISNULL(IsActive, 1) = 1
-       ORDER BY ProductVariantID`,
+      `SELECT v.ProductVariantID as id, v.ProductID as product_id, v.Size as size,
+              v.ColorName as color, v.ColorHex as hex, v.ChildSKU as sku,
+              CAST(ISNULL(v.StockQuantity, 0) AS INT) as stock,
+              ISNULL(v.Version,0) as version,
+              CAST(ISNULL(v.IsActive, 1) AS BIT) as active,
+              CAST(p.BasePrice + ISNULL(v.PriceAdjustment, 0) AS decimal(18,2)) as price,
+              CAST(CASE
+                WHEN promo.VariantDiscountID IS NULL THEN 0
+                WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice + ISNULL(v.PriceAdjustment,0)
+                  THEN promo.DiscountValue
+                WHEN promo.DiscountKind=N'percent' THEN
+                  (p.BasePrice + ISNULL(v.PriceAdjustment,0)) -
+                  CASE
+                    WHEN promo.MaxDiscountAmount > 0 AND
+                         (p.BasePrice + ISNULL(v.PriceAdjustment,0)) * promo.DiscountValue / 100.0 > promo.MaxDiscountAmount
+                      THEN promo.MaxDiscountAmount
+                    ELSE (p.BasePrice + ISNULL(v.PriceAdjustment,0)) * promo.DiscountValue / 100.0
+                  END
+                ELSE 0
+              END AS decimal(18,2)) as sale_price,
+              promo.VariantDiscountID as variant_discount_id,
+              promo.DiscountKind as variant_discount_type,
+              promo.DiscountValue as variant_discount_value
+       FROM ProductVariants v
+       JOIN Products p ON p.ProductID=v.ProductID
+       OUTER APPLY (
+         SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
+                CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
+                     THEN N'percent' ELSE N'fixed' END AS DiscountKind
+         FROM VariantDiscounts vd
+         WHERE vd.ProductID=v.ProductID
+           AND (ISNULL(vd.ColorName,N'')=ISNULL(v.ColorName,N'') OR
+                (NULLIF(vd.ColorName,N'') IS NULL AND vd.ProductVariantID=v.ProductVariantID))
+           AND ISNULL(vd.IsActive,1)=1
+           AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
+           AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())
+           AND (ISNULL(vd.Quantity,0)<=0 OR ISNULL(vd.UsedCount,0)<vd.Quantity)
+         ORDER BY vd.StartDate DESC, vd.VariantDiscountID DESC
+       ) promo
+       WHERE ISNULL(v.IsActive, 1) = 1
+       ORDER BY v.ProductVariantID`,
     );
     const ir = await pool.request().query(
       `SELECT ProductID as product_id, ColorName as color, ImageURL as image, IsPrimary as is_primary
@@ -2271,6 +2348,12 @@ app.get("/api/products", async (req, res) => {
     }
     for (const p of products) {
       const vs = variantsByProduct.get(String(p.id)) || [];
+      if (vs.length) {
+        const discounted = vs
+          .map((v) => Number(v.sale_price) || 0)
+          .filter((value, index) => value > 0 && value < Number(vs[index].price || p.price));
+        p.sale_price = discounted.length ? Math.min(...discounted) : 0;
+      }
       const productImages = imagesByProduct.get(String(p.id)) || [];
       p.variants = vs;
       p.sizes = [...new Set(vs.map((v) => v.size).filter(Boolean))];
@@ -2441,7 +2524,9 @@ function bindProduct(request, b) {
   return request
     .input("n", sql.NVarChar, b.name)
     .input("p", sql.Decimal(18, 0), b.price || 0)
-    .input("sp", sql.Decimal(18, 0), b.sale_price || 0)
+    // Không còn giảm giá ở cấp Products; cột SalePrice được giữ để tương
+    // thích schema cũ nhưng luôn được xóa khi tạo/cập nhật sản phẩm.
+    .input("sp", sql.Decimal(18, 0), 0)
     .input("c", sql.Int, b.category_id || null)
     .input("br", sql.Int, b.brand_id || null)
     .input("col", sql.Int, b.collection_id || null)
@@ -4187,22 +4272,31 @@ app.post("/api/variantDiscounts", async (req, res) => {
     const variant = await pool.request()
       .input("vid", sql.Int, d.variantId)
       .input("pid", sql.Int, d.productId)
-      .query("SELECT TOP 1 ProductID, ColorName, ColorHex FROM ProductVariants WHERE ProductVariantID=@vid AND ProductID=@pid");
+      .query(`SELECT TOP 1 v.ProductID, v.ColorName, v.ColorHex,
+                     p.BasePrice + ISNULL(v.PriceAdjustment,0) AS VariantBasePrice
+              FROM ProductVariants v
+              JOIN Products p ON p.ProductID=v.ProductID
+              WHERE v.ProductVariantID=@vid AND v.ProductID=@pid`);
     if (!variant.recordset.length) {
       return res.status(400).json({ success: false, message: "Biến thể không thuộc sản phẩm đã chọn." });
     }
-    const duplicate = await pool.request().input("vid", sql.Int, d.variantId).query(
-      "SELECT TOP 1 VariantDiscountID FROM VariantDiscounts WHERE ProductVariantID=@vid AND IsActive=1",
-    );
+    const row = variant.recordset[0];
+    if (d.type === "fixed" && d.value >= Number(row.VariantBasePrice || 0)) {
+      return res.status(400).json({ success: false, message: "Giá cố định phải nhỏ hơn giá gốc của biến thể màu." });
+    }
+    const duplicate = await pool.request()
+      .input("pid", sql.Int, d.productId)
+      .input("cn", sql.NVarChar(50), row.ColorName || "")
+      .query(`SELECT TOP 1 VariantDiscountID FROM VariantDiscounts
+              WHERE ProductID=@pid AND ISNULL(ColorName,N'')=@cn AND IsActive=1`);
     if (duplicate.recordset.length) {
       return res.status(409).json({ success: false, message: "Biến thể này đã có giảm giá đang hoạt động." });
     }
-    const row = variant.recordset[0];
     const result = await pool.request()
       .input("vid", sql.Int, d.variantId)
       .input("pid", sql.Int, d.productId)
-      .input("cn", sql.NVarChar(50), d.colorName || row.ColorName || null)
-      .input("ch", sql.VarChar(20), d.colorHex || row.ColorHex || null)
+      .input("cn", sql.NVarChar(50), row.ColorName || null)
+      .input("ch", sql.VarChar(20), row.ColorHex || null)
       .input("dt", sql.NVarChar(20), d.type === "percent" ? "Theo phần trăm" : "Cố định")
       .input("dv", sql.Decimal(18, 2), d.value)
       .input("dp", sql.Int, d.percent)
@@ -4238,24 +4332,34 @@ app.put("/api/variantDiscounts/:id", async (req, res) => {
     const variant = await pool.request()
       .input("vid", sql.Int, d.variantId)
       .input("pid", sql.Int, d.productId)
-      .query("SELECT TOP 1 ProductID, ColorName, ColorHex FROM ProductVariants WHERE ProductVariantID=@vid AND ProductID=@pid");
+      .query(`SELECT TOP 1 v.ProductID, v.ColorName, v.ColorHex,
+                     p.BasePrice + ISNULL(v.PriceAdjustment,0) AS VariantBasePrice
+              FROM ProductVariants v
+              JOIN Products p ON p.ProductID=v.ProductID
+              WHERE v.ProductVariantID=@vid AND v.ProductID=@pid`);
     if (!variant.recordset.length) {
       return res.status(400).json({ success: false, message: "Biến thể không thuộc sản phẩm đã chọn." });
     }
+    const row = variant.recordset[0];
+    if (d.type === "fixed" && d.value >= Number(row.VariantBasePrice || 0)) {
+      return res.status(400).json({ success: false, message: "Giá cố định phải nhỏ hơn giá gốc của biến thể màu." });
+    }
     const duplicate = await pool.request()
-      .input("vid", sql.Int, d.variantId)
+      .input("pid", sql.Int, d.productId)
+      .input("cn", sql.NVarChar(50), row.ColorName || "")
       .input("id", sql.Int, id)
-      .query("SELECT TOP 1 VariantDiscountID FROM VariantDiscounts WHERE ProductVariantID=@vid AND IsActive=1 AND VariantDiscountID<>@id");
+      .query(`SELECT TOP 1 VariantDiscountID FROM VariantDiscounts
+              WHERE ProductID=@pid AND ISNULL(ColorName,N'')=@cn
+                AND IsActive=1 AND VariantDiscountID<>@id`);
     if (duplicate.recordset.length) {
       return res.status(409).json({ success: false, message: "Biến thể này đã có giảm giá đang hoạt động." });
     }
-    const row = variant.recordset[0];
     const result = await pool.request()
       .input("id", sql.Int, id)
       .input("vid", sql.Int, d.variantId)
       .input("pid", sql.Int, d.productId)
-      .input("cn", sql.NVarChar(50), d.colorName || row.ColorName || null)
-      .input("ch", sql.VarChar(20), d.colorHex || row.ColorHex || null)
+      .input("cn", sql.NVarChar(50), row.ColorName || null)
+      .input("ch", sql.VarChar(20), row.ColorHex || null)
       .input("dt", sql.NVarChar(20), d.type === "percent" ? "Theo phần trăm" : "Cố định")
       .input("dv", sql.Decimal(18, 2), d.value)
       .input("dp", sql.Int, d.percent)

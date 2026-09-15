@@ -73,9 +73,12 @@ test('cart checks exact variant, preserves requested quantity, and flags stale s
   assert.equal(cart.cartState.items[0].stockQuantity, 7);
 });
 
-test('cart refresh persists items and current sale price', async () => {
+test('cart refresh persists items and current color-variant sale price', async () => {
   const localStorage = storage();
-  const cart = loadCart([{ ...product(7, 600000), sale_price: 550000 }], localStorage);
+  const discounted = product(7, 600000);
+  discounted.variants[0].price = 600000;
+  discounted.variants[0].sale_price = 550000;
+  const cart = loadCart([discounted], localStorage);
   cart.cartState.items.push(cartLine(1));
   await vue.nextTick();
   const result = await cart.refreshCartAvailability();

@@ -123,11 +123,11 @@ const fetchRelatedProducts = async (currentId, categoryId, brandId) => {
 }
 
 const originalPrice = computed(() => {
-  const value = Number(product.value?.price ?? product.value?.BasePrice ?? 0)
+  const value = Number(selectedVariant.value?.price ?? product.value?.price ?? product.value?.BasePrice ?? 0)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 const salePrice = computed(() => {
-  const value = Number(product.value?.sale_price ?? product.value?.SalePrice ?? 0)
+  const value = Number(selectedVariant.value?.sale_price ?? product.value?.sale_price ?? 0)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 const hasDiscount = computed(() =>
@@ -878,7 +878,11 @@ const handleAdd = ({ openDrawer = true } = {}) => {
   // ----------------------------------------------------------
 
   const payload = {
-    product: product.value,
+    product: {
+      ...product.value,
+      price: selectedVariant.value?.price ?? product.value?.price,
+      sale_price: selectedVariant.value?.sale_price ?? 0,
+    },
 
     quantity:
       Number(qty.value),

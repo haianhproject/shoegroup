@@ -1,6 +1,6 @@
 # ShoeGroup customer UI — Figma design system
 
-Nguồn chuẩn: `all figma bán giày/src/App.vue`, `src/ProductCard.vue` và `src/index.css`.
+Thiết kế Figma đã được tích hợp vào các component Vue đang chạy trong `src/`; thư mục prototype độc lập đã được lưu ngoài repository.
 
 ## Tokens
 

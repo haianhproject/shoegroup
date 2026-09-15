@@ -60,12 +60,6 @@ const adminRoutes = [
         meta: { title: "Quản Lý Sản Phẩm" },
       },
       {
-        path: "inventory",
-        name: "admin-inventory",
-        component: () => import("./pages/InventoryPage.vue"),
-        meta: { title: "Quản Lý Kho Hàng" },
-      },
-      {
         path: "categories",
         name: "admin-categories",
         component: () => import("./pages/CategoriesPage.vue"),

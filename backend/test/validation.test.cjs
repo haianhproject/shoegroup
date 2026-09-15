@@ -26,8 +26,8 @@ test("catalog payload requires a bounded name and valid state", () => {
   assert.deepEqual(valid.value, { name: "Sneaker", active: false, sortOrder: 0 });
 });
 
-test("product payload validates prices, variants and duplicate combinations", () => {
-  assert.equal(validateProductPayload({ name: "Shoe", price: 100, sale_price: 120 }).ok, false);
+test("product payload validates base price, ignores legacy sale price, and rejects duplicate variants", () => {
+  assert.equal(validateProductPayload({ name: "Shoe", price: -1 }).ok, false);
   assert.equal(validateProductPayload({
     name: "Shoe", price: 100, variants: [
       { color: "Black", size: "42", stock: 3 },
@@ -40,6 +40,7 @@ test("product payload validates prices, variants and duplicate combinations", ()
   }, { requireVariants: true });
   assert.equal(valid.ok, true);
   assert.equal(valid.value.price, 100);
+  assert.equal(valid.value.salePrice, 0);
   assert.equal(valid.value.variants.length, 1);
 });
 

@@ -37,6 +37,7 @@ import {
   productStockTotal,
   getMaterialName,
   getBrandName,
+  getCollectionName,
   LOW_STOCK_THRESHOLD,
   productFormVariantCount,
   productFormStockTotal,
@@ -134,6 +135,7 @@ function onProductImageError(event) {
               </td>
               <td>
                 <div class="products-actions">
+                  <button @click="openProductDetail(p)" type="button" class="products-action products-action-view" :aria-label="'Xem chi tiết ' + p.name" title="Xem chi tiết sản phẩm"><i class="icon icon-eye" aria-hidden="true"></i></button>
                   <button @click="openProductForm(p)" type="button" class="products-action" :aria-label="'Chỉnh sửa ' + p.name" title="Chỉnh sửa sản phẩm"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                   <button v-if="isProductSoftDeleted(p)" @click="restoreItem('products', p)" type="button" class="products-action" :aria-label="'Khôi phục ' + p.name" title="Khôi phục sản phẩm"><i class="icon icon-arrow-counterclockwise" aria-hidden="true"></i></button>
                   <button @click="deleteProduct(p)" type="button" class="products-action products-action-danger" :aria-label="(isProductSoftDeleted(p) ? 'Xóa vĩnh viễn ' : 'Ẩn ') + p.name" :title="isProductSoftDeleted(p) ? 'Xóa vĩnh viễn sản phẩm' : 'Ẩn sản phẩm'"><i class="icon" :class="isProductSoftDeleted(p) ? 'icon-trash-fill' : 'icon-eye-slash'" aria-hidden="true"></i></button>
@@ -562,128 +564,85 @@ function onProductImageError(event) {
     </div>
   </div>
 
-  <!-- MODAL CHI TIẾT SẢN PHẨM (đầy đủ thuộc tính) -->
+  <!-- MODAL CHI TIẾT SẢN PHẨM (thông tin + biến thể + tồn kho trong một nơi) -->
   <div
     v-if="productDetailModal.open"
     class="custom-modal-overlay product-detail-overlay"
     @click.self="closeProductDetail"
   >
-    <div class="custom-modal-box fade-in-scale product-detail-dialog" style="max-width: 760px" role="dialog" aria-modal="true" aria-label="Chi tiết sản phẩm">
-      <div v-if="productDetailModal.product">
-        <div class="flex justify-between items-start mb-3">
-          <div class="flex gap-3">
+    <div class="custom-modal-box fade-in-scale product-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+      <div v-if="productDetailModal.product" class="product-detail-layout">
+        <header class="product-detail-header">
+          <div class="product-detail-identity">
             <img
               :src="
                 productDetailModal.product.image_url ||
                 productImagePlaceholder
               "
               :alt="productDetailModal.product.name"
-              class="rounded-2 border"
-              style="width: 72px; height: 72px; object-fit: cover"
+              class="product-detail-cover"
               @error="onProductImageError"
             />
-            <div>
-              <h5
-                class="font-bold mb-1 text-gray-900"
+            <div class="product-detail-title-group">
+              <p class="product-detail-eyebrow">CHI TIẾT SẢN PHẨM</p>
+              <h2
+                id="product-detail-title"
                 v-text="productDetailModal.product.name"
-              ></h5>
-              <p
-                class="text-gray-600 text-sm mb-1"
-                v-text="
-                  '#' +
-                  productDetailModal.product.id +
-                  ' · SKU: ' +
-                  (productDetailModal.product.parent_sku || '—')
-                "
-              ></p>
-              <span
-                class="badge rounded-1"
-                :class="
-                  productDetailModal.product.active
-                    ? 'badge-active'
-                    : 'bg-secondary-subtle text-gray-600'
-                "
-                v-text="
-                  productDetailModal.product.active ? 'Đang hoạt động' : 'Đã ẩn'
-                "
-              ></span>
-              <span
-                v-if="productDetailModal.product.is_featured"
-                class="badge rounded-1 bg-gray-100 text-gray-900 ml-1"
-                >Nổi bật</span
-              >
+              ></h2>
+              <div class="product-detail-meta">
+                <span>#{{ productDetailModal.product.id }}</span>
+                <span>SKU cha: {{ productDetailModal.product.parent_sku || 'Chưa thiết lập' }}</span>
+              </div>
+              <div class="product-detail-badges">
+                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Đang hiển thị' : 'Đã ẩn' }}</span>
+                <span v-if="productDetailModal.product.is_featured" class="product-detail-featured"><i class="icon icon-star-fill" aria-hidden="true"></i>Nổi bật</span>
+              </div>
             </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button
-              @click="openProductForm(productDetailModal.product); closeProductDetail()"
-              class="btn btn-sm btn-dark rounded-2 font-bold px-3 shadow-sm"
-              title="Mở form chỉnh sửa sản phẩm và biến thể"
-            >
-              <i class="icon icon-pencil-square mr-1"></i> Sửa Sản Phẩm &amp; Biến Thể
-            </button>
-            <button
-              @click="closeProductDetail"
-              class="btn btn-light border rounded-2"
-              aria-label="Đóng chi tiết sản phẩm"
-            >
-              <i class="icon icon-x-lg"></i>
-            </button>
-          </div>
-        </div>
+          <button @click="closeProductDetail" type="button" class="products-action product-detail-close" aria-label="Đóng chi tiết sản phẩm" title="Đóng"><i class="icon icon-x-lg" aria-hidden="true"></i></button>
+        </header>
 
-        <div class="flex gap-3 mb-3">
-          <div class="bg-light-gray rounded-2 p-2 px-3">
-            <p class="text-gray-600 mb-0" style="font-size: 0.7rem">Giá bán</p>
-            <p
-              class="font-bold mb-0"
-              v-text="formatPrice(productDetailModal.product.price)"
-            ></p>
-          </div>
-          <div class="bg-light-gray rounded-2 p-2 px-3">
-            <p class="text-gray-600 mb-0" style="font-size: 0.7rem">Tổng tồn kho</p>
-            <p class="font-bold mb-0" v-text="productStockTotal(productDetailModal.product.id)"></p>
-          </div>
-        </div>
+        <div class="product-detail-body">
+          <section class="product-detail-summary" aria-label="Tổng quan sản phẩm">
+            <div><span>Giá bán</span><strong>{{ formatPrice(productDetailModal.product.price) }}</strong></div>
+            <div><span>Số biến thể</span><strong>{{ productVariantCount(productDetailModal.product.id) }}</strong></div>
+            <div><span>Tổng tồn kho</span><strong :class="{ 'is-low': productStockTotal(productDetailModal.product.id) <= LOW_STOCK_THRESHOLD }">{{ productStockTotal(productDetailModal.product.id) }}</strong></div>
+          </section>
 
-        <p
-          v-if="productDetailModal.product.description"
-          class="text-sm text-gray-600"
-          v-text="productDetailModal.product.description"
-        ></p>
+          <section class="product-detail-information" aria-labelledby="product-information-title">
+            <div>
+              <h3 id="product-information-title">Thông tin sản phẩm</h3>
+              <dl class="product-detail-attributes">
+                <div><dt>Danh mục</dt><dd>{{ productDetailModal.product.category || '—' }}</dd></div>
+                <div><dt>Thương hiệu</dt><dd>{{ productDetailModal.product.brand || getBrandName(productDetailModal.product.brand_id) }}</dd></div>
+                <div><dt>Bộ sưu tập</dt><dd>{{ getCollectionName(productDetailModal.product.collection_id) }}</dd></div>
+                <div><dt>Chất liệu</dt><dd>{{ getMaterialName(productDetailModal.product.material_id) }}</dd></div>
+              </dl>
+            </div>
+            <div class="product-detail-description">
+              <h3>Mô tả</h3>
+              <p>{{ productDetailModal.product.description || 'Chưa có mô tả cho sản phẩm này.' }}</p>
+            </div>
+          </section>
 
-        <h6 class="font-bold mb-2 text-gray-900">Thuộc Tính</h6>
-        <div class="grid grid-cols-12 gap-2 mb-3 text-sm">
-          <div class="col-span-6">
-            <span class="text-gray-600">Danh mục: </span
-            ><span v-text="productDetailModal.product.category || '—'"></span>
-          </div>
-          <div class="col-span-6">
-            <span class="text-gray-600">Thương hiệu: </span
-            ><span
-              v-text="
-                productDetailModal.product.brand ||
-                getBrandName(productDetailModal.product.brand_id)
-              "
-            ></span>
-          </div>
-          <div class="col-span-6">
-            <span class="text-gray-600">Chất liệu: </span
-            ><span
-              v-text="getMaterialName(productDetailModal.product.material_id)"
-            ></span>
-          </div>
-        </div>
-
-        <h6 class="font-bold mb-2 text-gray-900">Biến Thể &amp; Tồn Kho</h6>
-        <div class="table-responsive border rounded-2">
-          <table class="table table-sm mb-0 align-middle">
+          <section class="product-detail-variants" aria-labelledby="product-variants-title">
+            <div class="product-detail-section-head">
+              <div>
+                <p class="product-detail-section-kicker">DANH SÁCH BIẾN THỂ</p>
+                <h3 id="product-variants-title">Màu sắc kích cỡ và tồn kho</h3>
+              </div>
+              <span>{{ productVariantCount(productDetailModal.product.id) }} biến thể</span>
+            </div>
+            <div class="table-responsive product-detail-table-wrap" tabindex="0" role="region" aria-label="Danh sách biến thể sản phẩm, có thể cuộn ngang">
+              <table class="table mb-0 align-middle product-detail-table">
             <thead>
-              <tr class="text-gray-600 text-sm uppercase">
-                <th class="pl-3">Màu</th>
-                <th>Size</th>
+              <tr>
+                <th>Ảnh</th>
+                <th>Màu sắc</th>
+                <th>Kích cỡ</th>
                 <th>SKU</th>
-                <th class="text-end pr-3">Tồn</th>
+                <th>Giá bán</th>
+                <th class="text-end">Tồn kho</th>
               </tr>
             </thead>
             <tbody>
@@ -691,54 +650,37 @@ function onProductImageError(event) {
                 v-for="v in productVariants(productDetailModal.product.id)"
                 :key="v.id"
               >
-                <td class="pl-3">
-                  <span
-                    class="color-dot mr-1"
-                    :style="{ background: v.color_hex || '#ccc' }"
-                  ></span
-                  ><span v-text="v.color"></span>
+                <td><img :src="v.image_url || productDetailModal.product.image_url || productImagePlaceholder" :alt="'Biến thể ' + (v.color || '') + ' ' + (v.size || '')" class="product-detail-variant-image" @error="onProductImageError" /></td>
+                <td>
+                  <span class="product-detail-color"><span class="color-dot" :style="{ background: v.color_hex || '#ccc' }" aria-hidden="true"></span><span>{{ v.color || 'Mặc định' }}</span></span>
                 </td>
                 <td v-text="v.size"></td>
-                <td class="text-gray-600" v-text="v.sku"></td>
-                <td
-                  class="text-end pr-3 font-medium"
-                  :class="
-                    Number(v.stock) <= 0
-                      ? 'text-red-600'
-                      : Number(v.stock) <= LOW_STOCK_THRESHOLD
-                        ? 'text-gray-900'
-                        : ''
-                  "
-                  v-text="v.stock"
-                ></td>
+                <td class="product-detail-sku">{{ v.sku || '—' }}</td>
+                <td class="product-detail-variant-price">{{ formatPrice(Number(productDetailModal.product.price) + (Number(v.price_adjustment) || 0)) }}</td>
+                <td class="text-end"><span class="product-detail-stock" :class="{ 'is-empty': Number(v.stock) <= 0, 'is-low': Number(v.stock) > 0 && Number(v.stock) <= LOW_STOCK_THRESHOLD }">{{ v.stock }}</span></td>
               </tr>
               <tr v-if="!productVariants(productDetailModal.product.id).length">
-                <td colspan="4" class="text-center text-gray-600 py-3 text-sm">
-                  Chưa có biến thể. Thêm màu/size và tạo biến thể trong màn
-                  chỉnh sửa.
-                </td>
+                <td colspan="6"><div class="product-detail-empty"><i class="icon icon-box-seam" aria-hidden="true"></i><strong>Chưa có biến thể</strong><span>Chỉnh sửa sản phẩm để thêm màu sắc, kích cỡ và số lượng.</span></div></td>
               </tr>
             </tbody>
-          </table>
+              </table>
+            </div>
+          </section>
         </div>
 
-        <div class="flex justify-end gap-2 mt-3">
-          <button
-            @click="closeProductDetail"
-            class="btn btn-white border rounded-2"
-          >
-            Đóng
-          </button>
+        <footer class="product-detail-footer">
+          <button @click="closeProductDetail" type="button" class="btn btn-light border rounded-2">Đóng</button>
           <button
             @click="
               openProductForm(productDetailModal.product);
               closeProductDetail();
             "
+            type="button"
             class="btn btn-dark rounded-2"
           >
-            <i class="icon icon-pencil mr-1"></i> Chỉnh sửa
+            <i class="icon icon-pencil mr-1" aria-hidden="true"></i> Chỉnh sửa sản phẩm
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   </div>
@@ -1003,6 +945,8 @@ function onProductImageError(event) {
   transition: border-color 0.15s, background 0.15s;
 }
 .products-action:hover { border-color: #c8c8ce; background: #f5f5f6; color: #0e0e0e; }
+.products-action-view { border-color: #d8d8dc; color: #242428; }
+.products-action-view:hover { border-color: #0e0e0e; background: #0e0e0e; color: #fff; }
 .products-action-danger:hover { border-color: #efc9ce; background: #fff3f4; color: #d4001a; }
 .products-table-footer { padding: 15px 22px; border-top: 1px solid #ededee; color: #84848b; font-size: 11px; }
 .products-empty { display: flex; flex-direction: column; align-items: center; padding: 48px 20px; text-align: center; }
@@ -1024,6 +968,90 @@ function onProductImageError(event) {
 .product-help { margin: 11px 0 0; color: #85858c; font-size: 10px; line-height: 1.8; }
 .product-editor-save { display: grid; gap: 9px; margin-top: 16px; }
 .product-editor-save .btn { min-height: 42px; font-size: 12px; }
+
+.product-detail-overlay.custom-modal-overlay { overflow: hidden; }
+.product-detail-overlay > .product-detail-dialog {
+  display: flex;
+  width: 100%;
+  max-width: 920px;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+.product-detail-layout {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: inherit;
+}
+.product-detail-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 26px;
+  border-bottom: 1px solid #ededee;
+}
+.product-detail-identity { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.product-detail-cover { flex: 0 0 82px; width: 82px; height: 82px; border: 1px solid #e5e5e7; border-radius: 10px; object-fit: cover; background: #f7f7f8; }
+.product-detail-title-group { min-width: 0; }
+.product-detail-eyebrow,
+.product-detail-section-kicker { margin: 0 0 6px; color: #85858c; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
+.product-detail-title-group h2 { margin: 0; color: #151518; font-size: 20px; font-weight: 700; line-height: 1.35; }
+.product-detail-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 5px; color: #7b7b82; font-size: 10px; }
+.product-detail-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.product-detail-featured { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid #ece4d6; border-radius: 6px; background: #fff9ed; color: #8a6320; font-size: 10px; }
+.product-detail-close { flex: 0 0 auto; }
+.product-detail-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 22px;
+  min-height: 0;
+  padding: 22px 26px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.product-detail-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.product-detail-summary > div { padding: 15px 17px; border: 1px solid #e8e8ea; border-radius: 9px; background: #fafafa; }
+.product-detail-summary span { display: block; margin-bottom: 7px; color: #7a7a82; font-size: 10px; }
+.product-detail-summary strong { display: block; color: #18181b; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.product-detail-summary strong.is-low { color: #b80017; }
+.product-detail-information { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(240px, .75fr); gap: 24px; }
+.product-detail-information h3,
+.product-detail-variants h3 { margin: 0 0 13px; color: #202024; font-size: 12px; font-weight: 700; }
+.product-detail-attributes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin: 0; }
+.product-detail-attributes > div { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f0f0f1; }
+.product-detail-attributes dt { color: #7d7d84; font-size: 10px; font-weight: 500; }
+.product-detail-attributes dd { margin: 0; color: #29292d; font-size: 11px; font-weight: 600; }
+.product-detail-description { padding-left: 24px; border-left: 1px solid #ededee; }
+.product-detail-description p { margin: 0; color: #707078; font-size: 11px; line-height: 1.8; }
+.product-detail-variants { min-width: 0; }
+.product-detail-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.product-detail-section-head h3 { margin-bottom: 0; }
+.product-detail-section-head > span { color: #7b7b83; font-size: 10px; white-space: nowrap; }
+.product-detail-table-wrap { width: 100%; max-width: 100%; overflow-x: auto; border: 1px solid #e5e5e7; border-radius: 9px; }
+.product-detail-table { min-width: 700px; }
+.product-detail-table thead th { padding: 10px 13px; border-bottom: 1px solid #e8e8ea; background: #fafafa; color: #797981; font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.product-detail-table tbody td { padding: 10px 13px; border-bottom: 1px solid #f0f0f1; color: #343438; font-size: 10px; vertical-align: middle; }
+.product-detail-table tbody tr:last-child td { border-bottom: 0; }
+.product-detail-variant-image { width: 36px; height: 36px; border: 1px solid #ededee; border-radius: 6px; object-fit: cover; background: #f7f7f8; }
+.product-detail-color { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; white-space: nowrap; }
+.product-detail-sku { color: #74747c !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.product-detail-variant-price { font-weight: 600; white-space: nowrap; }
+.product-detail-stock { display: inline-flex; min-width: 32px; justify-content: center; padding: 4px 7px; border-radius: 5px; background: #eff7f1; color: #36744c; font-weight: 700; font-variant-numeric: tabular-nums; }
+.product-detail-stock.is-low { background: #fff8e8; color: #946a15; }
+.product-detail-stock.is-empty { background: #fff0f2; color: #b80017; }
+.product-detail-empty { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 24px; color: #85858c; text-align: center; }
+.product-detail-empty .icon { font-size: 22px; }
+.product-detail-empty strong { color: #37373c; font-size: 11px; }
+.product-detail-empty span { font-size: 10px; }
+.product-detail-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 9px; padding: 16px 26px; border-top: 1px solid #ededee; background: #fafafa; }
+.product-detail-footer .btn { min-height: 38px; padding: 8px 14px; font-size: 11px; }
 
 .products-page :is(button, input, select, [tabindex]):focus-visible,
 .product-editor :is(button, input, select, textarea):focus-visible { outline: 2px solid #0e0e0e; outline-offset: 3px; }
@@ -1049,7 +1077,20 @@ function onProductImageError(event) {
   .product-editor-head { flex-wrap: nowrap; align-items: flex-start; gap: 12px; }
   .product-editor-head h1 { font-size: 23px; }
   .product-form-panel { padding: 18px; }
-  .product-detail-dialog > div > .flex:first-child { flex-wrap: wrap; gap: 16px; }
-  .product-detail-dialog > div > .flex { flex-wrap: wrap; }
+  .product-detail-overlay > .product-detail-dialog {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .product-detail-header { gap: 14px; padding: 18px; }
+  .product-detail-cover { flex-basis: 64px; width: 64px; height: 64px; }
+  .product-detail-title-group h2 { font-size: 17px; }
+  .product-detail-body { gap: 18px; padding: 18px; }
+  .product-detail-summary { grid-template-columns: 1fr; gap: 8px; }
+  .product-detail-summary > div { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
+  .product-detail-summary span { margin-bottom: 0; }
+  .product-detail-information { grid-template-columns: 1fr; gap: 18px; }
+  .product-detail-description { padding: 0; border-left: 0; }
+  .product-detail-attributes { grid-template-columns: 1fr; }
+  .product-detail-footer { padding: 14px 18px; }
 }
 </style>

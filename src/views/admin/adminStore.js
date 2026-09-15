@@ -1869,6 +1869,37 @@ export function printPosInvoice() {
   });
 }
 export const posSearch = ref("");
+
+function activeColorDiscount(productId, color) {
+  const now = Date.now();
+  return db.variantDiscounts
+    .filter((discount) => {
+      if (String(discount.product_id) !== String(productId)) return false;
+      if (String(discount.color || "") !== String(color || "")) return false;
+      if (discount.active === false || discount.active === 0) return false;
+      const start = discount.start_date ? new Date(discount.start_date).getTime() : null;
+      const end = discount.end_date ? new Date(discount.end_date).getTime() : null;
+      if ((start && start > now) || (end && end < now)) return false;
+      const limit = Number(discount.quantity || 0);
+      return limit <= 0 || Number(discount.used || 0) < limit;
+    })
+    .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null;
+}
+
+function effectiveVariantPrice(product, variant) {
+  const base = Math.max(0, (Number(product?.price) || 0) + (Number(variant?.price_adjustment) || 0));
+  const discount = activeColorDiscount(variant?.product_id ?? product?.id, variant?.color);
+  if (!discount) return base;
+  const value = Number(discount.value) || 0;
+  if (discount.discount_type === "Cố định") {
+    return value > 0 && value < base ? value : base;
+  }
+  let reduction = (base * value) / 100;
+  const cap = Number(discount.max_discount) || 0;
+  if (cap > 0) reduction = Math.min(reduction, cap);
+  return Math.max(0, base - reduction);
+}
+
 export const posVariants = computed(() => {
   const q = posSearch.value.trim().toLowerCase();
   const list = [];
@@ -1878,7 +1909,6 @@ export const posVariants = computed(() => {
     covered.add(String(v.product_id));
     const p = db.products.find((x) => String(x.id) === String(v.product_id));
     if (p && p.active === false) return;
-    const base = p ? (Number(p.sale_price) > 0 ? Number(p.sale_price) : (Number(p.price) || 0)) : 0;
     const inCart = activePosOrder.value.cart.find((c) => String(c.key) === String(v.id));
     const cartQty = inCart ? inCart.quantity : 0;
     list.push({
@@ -1892,7 +1922,7 @@ export const posVariants = computed(() => {
       sku: v.sku,
       stock: Math.max(0, (Number(v.stock) || 0) - cartQty),
       image: v.image_url || (p ? p.image_url : ""),
-      price: base + (Number(v.price_adjustment) || 0),
+      price: effectiveVariantPrice(p, v),
     });
   });
   // 2) Sản phẩm chưa có biến thể trong kho -> hiển thị 1 thẻ sản phẩm
@@ -1916,7 +1946,7 @@ export const posVariants = computed(() => {
       stock: Math.max(0, (Number(p.stock ?? p.total_stock ?? 0) || 0) - cartQty),
       no_variant: true,
       image: p.image_url || "",
-      price: Number(p.sale_price) > 0 ? Number(p.sale_price) : (Number(p.price) || 0),
+      price: Number(p.price) || 0,
     });
   });
   return list.filter(
@@ -2313,7 +2343,6 @@ function emptyProduct() {
     collection_id: "",
     material_id: "",
     price: 0,
-    sale_price: 0,
     image_url: "",
     is_featured: false,
     active: true,
@@ -2618,24 +2647,13 @@ export async function saveProduct() {
     return;
   }
   const basePrice = Number(productForm.price);
-  const salePrice = Number(productForm.sale_price || 0);
   if (!Number.isFinite(basePrice) || basePrice < 0) {
     notify("Giá bán không được nhỏ hơn 0", "error");
     return;
   }
-  if (!Number.isFinite(salePrice) || salePrice < 0) {
-    notify("Giá khuyến mãi không hợp lệ", "error");
-    return;
-  }
-  if (
-    salePrice > 0 &&
-    salePrice > basePrice
-  ) {
-    notify("Giá khuyến mãi phải nhỏ hơn hoặc bằng giá bán", "error");
-    return;
-  }
   const isEdit = !!productForm.id;
   const payload = JSON.parse(JSON.stringify(productForm));
+  payload.sale_price = 0;
   /* BẢO VỆ BIẾN THỂ: nếu người dùng chỉ chọn màu + chọn size ở danh sách chung
      mà chưa bấm size cho từng màu thì trước đây sản phẩm lưu ra 0 biến thể
      (lỗi "sản phẩm không có biến thể / số lượng = 0").
@@ -3003,6 +3021,8 @@ export const variantColorOptions = computed(() => {
         color_hex: v.color_hex || "#d1d5db",
         sku: v.sku || "",
         stock: 0,
+        base_price: (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0)
+          + (Number(v.price_adjustment) || 0),
       };
     }
     map[key].stock += Number(v.stock) || 0;
@@ -3029,7 +3049,7 @@ export function getVariantInfo(vd) {
   };
 }
 export function formatVariantDiscountValue(vd) {
-  if (vd.discount_type === "Cố định") return formatPrice(vd.value);
+  if (vd.discount_type === "Cố định") return "Giá bán " + formatPrice(vd.value);
   let s = (Number(vd.value) || 0) + "%";
   if (Number(vd.max_discount) > 0)
     s += " · Tối đa " + formatPrice(vd.max_discount);
@@ -3044,9 +3064,12 @@ export function getVariantDiscountStatus(vd) {
 }
 export function variantAlreadyDiscounted(variantId) {
   if (!variantId) return false;
+  const option = variantColorOptions.value.find((item) => String(item.variant_id) === String(variantId));
+  if (!option) return false;
   return db.variantDiscounts.some(
     (v) =>
-      String(v.variant_id) === String(variantId) &&
+      String(v.product_id) === String(option.product_id) &&
+      String(v.color || "") === String(option.color || "") &&
       v.active &&
       !isExpired(v.end_date),
   );
@@ -3116,6 +3139,10 @@ export async function saveVariantDiscount() {
   }
   if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && val > 100) || !Number.isFinite(maxDiscount) || maxDiscount < 0 || !Number.isSafeInteger(quantity) || quantity < 0) {
     notify("Giá trị giảm, mức tối đa hoặc số lượng không hợp lệ", "error");
+    return;
+  }
+  if (d.discount_type === "Cố định" && val >= Number(info?.base_price || 0)) {
+    notify("Giá bán cố định phải nhỏ hơn giá gốc của biến thể màu", "error");
     return;
   }
   const payload = {
