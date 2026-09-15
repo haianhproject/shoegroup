@@ -1,0 +1,71 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="Electron" modified="2026-09-14T23:06:06+07:00" agent="Codex" version="31.4.5" type="device" compressed="false">
+  <diagram id="activity-uc-4-2-cap-nhat-du-lieu-thuoc-tinh" name="Activity UC-4.2 - Cập nhật dữ liệu thuộc tính">
+    <mxGraphModel dx="1400" dy="876" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="876" math="0" shadow="0" background="#FFFFFF">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lane-divider" value="" style="edgeStyle=none;html=1;strokeColor=#000000;strokeWidth=1.2;endArrow=none;startArrow=none;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="700" y="144" as="sourcePoint" />
+            <mxPoint x="700" y="848" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="start-link" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="start" target="action-1">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="flow-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="action-1" target="action-2">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="flow-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="action-2" target="action-3">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="flow-3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="action-3" target="action-4">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="flow-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="action-4" target="action-5">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="end-link" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=18;html=1;strokeColor=#000000;strokeWidth=1.25;dashed=0;endArrow=open;endFill=0;startArrow=none;fontFamily=Arial;fontSize=14;fontColor=#000000;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="action-5" target="end-outer">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="title" value="UC-4.2 - CẬP NHẬT DỮ LIỆU THUỘC TÍNH" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Arial;fontSize=26;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="60" y="18" width="1280" height="50" />
+        </mxCell>
+        <mxCell id="activity-boundary" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#000000;strokeWidth=1.5;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="60" y="86" width="1280" height="762" />
+        </mxCell>
+        <mxCell id="actor-header" value="Quản trị viên" style="rounded=0;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="60" y="86" width="640" height="58" />
+        </mxCell>
+        <mxCell id="system-header" value="Hệ thống ShoeGroup" style="rounded=0;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="700" y="86" width="640" height="58" />
+        </mxCell>
+        <mxCell id="start" value="" style="ellipse;aspect=fixed;html=1;strokeColor=#000000;fillColor=#000000;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="368" y="170" width="24" height="24" />
+        </mxCell>
+        <mxCell id="action-1" value="Chọn bản ghi." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=16;spacing=7;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="130" y="228" width="500" height="82" />
+        </mxCell>
+        <mxCell id="action-2" value="Hệ thống hiển thị dữ liệu hiện tại." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=16;spacing=7;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="770" y="340" width="500" height="82" />
+        </mxCell>
+        <mxCell id="action-3" value="Cập nhật giá trị hợp lệ." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=16;spacing=7;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="130" y="452" width="500" height="82" />
+        </mxCell>
+        <mxCell id="action-4" value="Backend lưu và trả kết quả." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=16;spacing=7;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="770" y="564" width="500" height="82" />
+        </mxCell>
+        <mxCell id="action-5" value="Giao diện tải lại danh sách." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeColor=#000000;strokeWidth=1.25;fillColor=#FFFFFF;fontColor=#000000;fontFamily=Arial;fontSize=16;spacing=7;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="770" y="676" width="500" height="82" />
+        </mxCell>
+        <mxCell id="end-outer" value="" style="ellipse;aspect=fixed;html=1;strokeColor=#000000;fillColor=#FFFFFF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1005" y="801" width="30" height="30" />
+        </mxCell>
+        <mxCell id="end-inner" value="" style="ellipse;aspect=fixed;html=1;strokeColor=#000000;fillColor=#000000;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1012" y="808" width="16" height="16" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

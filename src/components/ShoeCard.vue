@@ -86,16 +86,20 @@ const selectedVariantId = computed(() => {
   const v = getVariant(selectedColor.value.name, selectedSize.value)
   return v?.id ?? null
 })
+const selectedVariant = computed(() => {
+  if (!selectedColor.value || !selectedSize.value) return null
+  return getVariant(selectedColor.value.name, selectedSize.value)
+})
 
 const hasVariants = computed(() => (props.product.variants || []).length > 0)
 const previewImage = computed(() => selectedColor.value?.image || props.product.image_url || "")
 
 const originalPrice = computed(() => {
-  const value = Number(props.product.price ?? props.product.BasePrice ?? 0)
+  const value = Number(selectedVariant.value?.price ?? props.product.price ?? props.product.BasePrice ?? 0)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 const salePrice = computed(() => {
-  const value = Number(props.product.sale_price ?? props.product.SalePrice ?? 0)
+  const value = Number(selectedVariant.value?.sale_price ?? props.product.sale_price ?? 0)
   return Number.isFinite(value) && value > 0 ? value : 0
 })
 const hasDiscount = computed(() =>
@@ -232,7 +236,11 @@ function confirmAddToCart() {
     stockQty = isNaN(Number(ts)) ? 0 : Number(ts)
   }
   const result = addToCart({
-    product: props.product, quantity: selectedQty.value,
+    product: {
+      ...props.product,
+      price: selectedVariant.value?.price ?? props.product.price,
+      sale_price: selectedVariant.value?.sale_price ?? 0,
+    }, quantity: selectedQty.value,
     size: sizeObj, color: colorObj,
     variantId: selectedVariantId.value,
     stockQuantity: stockQty,
@@ -269,7 +277,11 @@ function handleBuyNow() {
     stockQty = isNaN(Number(ts)) ? 0 : Number(ts)
   }
   const result = addToCart({
-    product: props.product, quantity: selectedQty.value,
+    product: {
+      ...props.product,
+      price: selectedVariant.value?.price ?? props.product.price,
+      sale_price: selectedVariant.value?.sale_price ?? 0,
+    }, quantity: selectedQty.value,
     size: sizeObj, color: colorObj,
     variantId: selectedVariantId.value,
     stockQuantity: stockQty,
