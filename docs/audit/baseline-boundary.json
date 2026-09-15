@@ -1,0 +1,106 @@
+{
+  "time": "2026-09-09T05:43:02.749Z",
+  "port": "5101",
+  "results": [
+    {
+      "id": "B01",
+      "scenario": "Stale inventory editor after sale",
+      "expected": "409 and stock remains 9; refreshed edit succeeds",
+      "actual": "{\"status\":200,\"data\":{\"success\":true,\"stock\":10}}\n\n200 !== 409\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "B02",
+      "scenario": "Stale product form cannot overwrite sold inventory",
+      "expected": "409; product and stock both unchanged",
+      "actual": "{\"status\":200,\"data\":{\"success\":true}}\n\n200 !== 409\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "B03",
+      "scenario": "Payment hold is 24 real hours, DB clock maps correctly",
+      "expected": "24 hours (+/- 5 seconds), DB time within 2s",
+      "actual": "{\"hours\":16.99999138888889,\"row\":{\"PaymentDueAt\":\"2026-09-09T22:42:52.100Z\",\"localTime\":\"2026-09-09T05:42:52.127Z\"}}",
+      "result": "FAIL"
+    },
+    {
+      "id": "B04",
+      "scenario": "Same SKU group requested in reverse order by 5 users",
+      "expected": "all success with sufficient stock; no deadlock",
+      "actual": "[{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":200,\"data\":{\"success\":true,\"orderId\":66,\"OrderID\":66,\"subtotalAmount\":1000000,\"shippingFee\":75000,\"discountAmount\":0,\"totalAmount\":1075000,\"shippingMethodCode\":\"STANDARD\",\"shippingMethodId\":1,\"distanceKm\":1720,\"eta\":\"4-5 ngày\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}},{\"status\":500,\"data\":{\"success\":false,\"message\":\"Transaction has been aborted.\",\"code\":\"EABORT\"}}]",
+      "result": "FAIL"
+    },
+    {
+      "id": "B05",
+      "scenario": "Failure after order/items/stock/coupon counter mutation",
+      "expected": "all changes rolled back; same idempotency key can retry",
+      "actual": "The object 'dbo.CouponRedemptions' does not exist or is invalid for this operation.",
+      "result": "FAIL"
+    },
+    {
+      "id": "B06",
+      "scenario": "Manual confirmation amount/currency mismatch",
+      "expected": "409, order remains unpaid",
+      "actual": "{\"status\":200,\"data\":{\"success\":true,\"payment_status\":\"Đã thanh toán\"}}\n\n200 !== 409\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "B07",
+      "scenario": "Coupon start/end exact boundaries use persisted instants",
+      "expected": "before start false; start true; before end true; end true; after end false",
+      "actual": [
+        0,
+        1,
+        1,
+        1,
+        0
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B08",
+      "scenario": "Coupon minimum and maximum discount cap",
+      "expected": "below min 409, max discount 20000",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Don hang chua dat gia tri toi thieu cua ma giam gia."
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "orderId": 70,
+            "OrderID": 70,
+            "subtotalAmount": 1000000,
+            "shippingFee": 75000,
+            "discountAmount": 20000,
+            "totalAmount": 1055000,
+            "shippingMethodCode": "STANDARD",
+            "shippingMethodId": 1,
+            "distanceKm": 1720,
+            "eta": "4-5 ngày"
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B09",
+      "scenario": "Old admin JWT after demotion",
+      "expected": "403 admin access",
+      "actual": "{\"status\":200,\"data\":[{\"id\":6,\"product_id\":4,\"product_name\":\"AT-mttnjv3c-1\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-1\",\"stock\":7,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":15,\"product_id\":13,\"product_name\":\"AT-mttnjv3c-10\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-10\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":16,\"product_id\":14,\"product_name\":\"AT-mttnjv3c-11\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-11\",\"stock\":0,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":17,\"product_id\":15,\"product_name\":\"AT-mttnjv3c-12\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-12\",\"stock\":0,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":18,\"product_id\":16,\"product_name\":\"AT-mttnjv3c-13\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-13\",\"stock\":0,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":19,\"product_id\":17,\"product_name\":\"AT-mttnjv3c-14\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-14\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":20,\"product_id\":18,\"product_name\":\"AT-mttnjv3c-15\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-15\",\"stock\":19,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":21,\"product_id\":19,\"product_name\":\"AT-mttnjv3c-16\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-16\",\"stock\":7,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":22,\"product_id\":20,\"product_name\":\"AT-mttnjv3c-17\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-17\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":23,\"product_id\":21,\"product_name\":\"AT-mttnjv3c-19\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-19\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":7,\"product_id\":5,\"product_name\":\"AT-mttnjv3c-2\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-2\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":24,\"product_id\":22,\"product_name\":\"AT-mttnjv3c-21\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-21\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":25,\"product_id\":23,\"product_name\":\"AT-mttnjv3c-22\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-22\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":26,\"product_id\":24,\"product_name\":\"AT-mttnjv3c-23\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-23\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":27,\"product_id\":25,\"product_name\":\"AT-mttnjv3c-24\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-24\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":28,\"product_id\":26,\"product_name\":\"AT-mttnjv3c-25\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-25\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":29,\"product_id\":27,\"product_name\":\"AT-mttnjv3c-26\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-26\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":30,\"product_id\":28,\"product_name\":\"AT-mttnjv3c-27\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-27\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":31,\"product_id\":29,\"product_name\":\"AT-mttnjv3c-28\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-28\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":8,\"product_id\":6,\"product_name\":\"AT-mttnjv3c-3\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-3\",\"stock\":0,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":9,\"product_id\":7,\"product_name\":\"AT-mttnjv3c-4\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-4\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":10,\"product_id\":8,\"product_name\":\"AT-mttnjv3c-5\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-5\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":11,\"product_id\":9,\"product_name\":\"AT-mttnjv3c-6\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-6\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":12,\"product_id\":10,\"product_name\":\"AT-mttnjv3c-7\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-7\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":14,\"product_id\":12,\"product_name\":\"AT-mttnjv3c-9\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnjv3c-9\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":33,\"product_id\":31,\"product_name\":\"AT-mttnzwix-1\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-1\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":40,\"product_id\":38,\"product_name\":\"AT-mttnzwix-10\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-10\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":41,\"product_id\":39,\"product_name\":\"AT-mttnzwix-11\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-11\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":42,\"product_id\":40,\"product_name\":\"AT-mttnzwix-12\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-12\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":44,\"product_id\":42,\"product_name\":\"AT-mttnzwix-13\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-13\",\"stock\":11,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":45,\"product_id\":43,\"product_name\":\"AT-mttnzwix-14\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-14\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":34,\"product_id\":32,\"product_name\":\"AT-mttnzwix-3\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-3\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":35,\"product_id\":33,\"product_name\":\"AT-mttnzwix-5\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-5\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":36,\"product_id\":34,\"product_name\":\"AT-mttnzwix-6\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-6\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":37,\"product_id\":35,\"product_name\":\"AT-mttnzwix-7\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-7\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":38,\"product_id\":36,\"product_name\":\"AT-mttnzwix-8\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-8\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":39,\"product_id\":37,\"product_name\":\"AT-mttnzwix-9\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mttnzwix-9\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":46,\"product_id\":44,\"product_name\":\"AT-mtto9ih0-1\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-1\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":53,\"product_id\":51,\"product_name\":\"AT-mtto9ih0-10\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-10\",\"stock\":8,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":48,\"product_id\":46,\"product_name\":\"AT-mtto9ih0-3\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-3\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":49,\"product_id\":47,\"product_name\":\"AT-mtto9ih0-4\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-4\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":50,\"product_id\":48,\"product_name\":\"AT-mtto9ih0-5\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-5\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":51,\"product_id\":49,\"product_name\":\"AT-mtto9ih0-6\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-6\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":52,\"product_id\":50,\"product_name\":\"AT-mtto9ih0-8\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AT-mtto9ih0-8\",\"stock\":9,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":43,\"product_id\":41,\"product_name\":\"Atomic-1788932125350\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"Atomic-1788932125350\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"https://example.test/image.png\"},{\"id\":4,\"product_id\":3,\"product_name\":\"Audit Disabled Product\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AUDIT-D-M\",\"stock\":100,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":2,\"product_id\":1,\"product_name\":\"Audit Product A\",\"size\":\"L\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AUDIT-A-L\",\"stock\":0,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":1,\"product_id\":1,\"product_name\":\"Audit Product A\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AUDIT-A-M\",\"stock\":100,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":3,\"product_id\":2,\"product_name\":\"Audit Product B\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"AUDIT-B-M\",\"stock\":100,\"price_adjustment\":0,\"image_url\":\"\"},{\"id\":47,\"product_id\":45,\"product_name\":\"Changed by stale form\",\"size\":\"M\",\"color\":\"Black\",\"color_hex\":\"\",\"sku\":\"\",\"stock\":10,\"price_adjustment\":0,\"image_url\":\"\"}]}\n\n200 !== 403\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "B10",
+      "scenario": "POS creates real internal collection ledger and revenue deadline",
+      "expected": "one collection and 14-day eligibility",
+      "actual": "Expected values to be strictly equal:\n\n0 !== 1\n",
+      "result": "FAIL"
+    }
+  ]
+}

@@ -5,9 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "node --watch-path=./server.js --watch-path=./src --watch-preserve-output server.js",
     "check": "node --check server.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.cjs"
   },
   "keywords": [
     "shoegroup",

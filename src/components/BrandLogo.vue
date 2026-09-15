@@ -7,7 +7,7 @@ defineProps({
 
 <template>
   <span style="display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;" aria-label="ShoeGroup">
-    <img src="/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; max-height: 50px; display: block;" />
+    <img src="/img/logogiay.png" alt="ShoeGroup" style="width: auto; height: auto; max-height: 50px; display: block;" />
   </span>
 </template>
 

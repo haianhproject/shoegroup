@@ -1,0 +1,34 @@
+{
+  "database": "ShoegroupAudit_20260909_fixed",
+  "time": "2026-09-09T10:25:26.286Z",
+  "results": [
+    {
+      "id": "G01",
+      "scenario": "Active variant promotion actually affects checkout",
+      "expected": "apply 10% promotion or explicitly reject unsupported promotion",
+      "actual": "Promotion created (201); checkout UnitPrice=500000, expected 450000\n\n500000 !== 450000\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "G02",
+      "scenario": "Order address moves from HCMC to Hanoi",
+      "expected": "reject price-changing move or update fee consistently",
+      "actual": "Changed address retained fee=75000; same new address quotes 30000\n\n75000 !== 30000\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "G03",
+      "scenario": "Wallet withdrawal with no payout integration",
+      "expected": "fail before holding balance if no executor exists",
+      "actual": "No payout implementation; endpoint returned 201 {\"success\":true,\"withdrawal_id\":1,\"balance\":8999999,\"status\":\"Chờ xử lý\"}\n\n201 !== 503\n",
+      "result": "FAIL"
+    },
+    {
+      "id": "G04",
+      "scenario": "Visa test destination storage",
+      "expected": "store a provider token instead of raw PAN",
+      "actual": "Synthetic Visa PAN persisted verbatim in Destination",
+      "result": "FAIL"
+    }
+  ]
+}

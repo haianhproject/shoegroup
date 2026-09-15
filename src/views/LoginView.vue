@@ -11,6 +11,7 @@ const showPwd = ref(false)
 const loading = ref(false)
 
 const submit = async () => {
+  if (loading.value) return
   if (!form.email || !form.password) { notify({ type: 'error', message: 'Vui lòng nhập email và mật khẩu.' }); return }
   loading.value = true
   const r = await login({ email: form.email, password: form.password })
@@ -40,7 +41,7 @@ const submit = async () => {
         <div class="in-wrap"><input v-model="form.email" type="email" class="auth-input" placeholder="you@example.com" @keyup.enter="submit"></div>
 
         <label class="co-label">MẬT KHẨU</label>
-        <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="••••••••" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="bi" :class="showPwd ? 'bi-eye-slash' : 'bi-eye'"></i></button></div>
+        <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="••••••••" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="icon" :class="showPwd ? 'icon-eye-slash' : 'icon-eye'"></i></button></div>
 
         <div class="auth-row">
           <label class="remember"><input type="checkbox" checked> <span>Ghi nhớ trên trình duyệt này</span></label>
@@ -82,7 +83,7 @@ const submit = async () => {
 }
 .auth-logo-text { font-family: "Inter", sans-serif; font-size: 1.25rem; }
 .auth-logo-text .logo-shoe { color: #0A0A0A; }
-.auth-logo-text .logo-group { color: #D4001A; }
+.auth-logo-text .logo-group { color: #0A0A0A; }
 .auth-title {
   font-weight: 700;
   font-size: 1.75rem;
@@ -162,7 +163,7 @@ const submit = async () => {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.forgot-link:hover { color: #D4001A; }
+.forgot-link:hover { color: #666; }
 .auth-btn {
   width: 100%;
   padding: 15px 24px;
@@ -193,7 +194,7 @@ const submit = async () => {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.auth-foot a:hover { color: #D4001A; }
+.auth-foot a:hover { color: #666; }
 
 @media (max-width: 520px) {
   .auth-page { padding: 24px 20px; }

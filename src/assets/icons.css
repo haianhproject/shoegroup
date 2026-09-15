@@ -1,0 +1,97 @@
+/* Local, dependency-free icon set.
+   The old icon font was tied to the previous UI framework. These small
+   glyphs keep every existing action readable while the views move to
+   Tailwind utilities. */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  font-style: normal;
+  font-weight: 600;
+  text-align: center;
+  vertical-align: -.12em;
+}
+.icon::before { content: '•'; }
+.icon-search::before { content: '⌕'; }
+.icon-x::before, .icon-x-lg::before { content: '×'; }
+.icon-chevron-down::before { content: '⌄'; }
+.icon-chevron-left::before { content: '‹'; }
+.icon-chevron-right::before { content: '›'; }
+.icon-arrow-left::before { content: '←'; }
+.icon-arrow-right::before { content: '→'; }
+.icon-arrow-counterclockwise::before, .icon-arrow-repeat::before { content: '↻'; }
+.icon-arrow-return-left::before { content: '↩'; }
+.icon-arrow-up-right-circle::before { content: '↗'; }
+.icon-activity::before { content: '⌁'; }
+.icon-award-fill::before { content: '★'; }
+.icon-plus::before, .icon-plus-lg::before { content: '+'; }
+.icon-dash::before, .icon-dash-lg::before { content: '−'; }
+.icon-check-lg::before, .icon-check2::before, .icon-check2-circle::before,
+.icon-check-circle::before, .icon-check-circle-fill::before { content: '✓'; }
+.icon-x-circle::before, .icon-x-circle-fill::before { content: '⊗'; }
+.icon-bag::before, .icon-bag-check::before, .icon-bag-plus::before { content: '🛍'; font-size: .85em; }
+.icon-bank::before { content: '▥'; }
+.icon-box-arrow-right::before { content: '⇥'; }
+.icon-box-seam::before, .icon-box-seam-fill::before { content: '▣'; }
+.icon-cart-plus::before, .icon-cart-check-fill::before { content: '🛒'; font-size: .85em; }
+.icon-person::before, .icon-person-circle::before, .icon-person-check-fill::before,
+.icon-person-badge::before, .icon-person-plus::before { content: '♙'; }
+.icon-bell-slash::before { content: '♢'; }
+.icon-eye::before { content: '◉'; }
+.icon-eye-slash::before { content: '⊘'; }
+.icon-envelope::before, .icon-envelope-fill::before, .icon-envelope-check::before { content: '✉'; }
+.icon-telephone::before, .icon-telephone-fill::before { content: '☎'; }
+.icon-geo-alt::before, .icon-geo-alt-fill::before { content: '⌖'; }
+.icon-clock::before, .icon-clock-fill::before, .icon-clock-history::before { content: '◷'; }
+.icon-calendar3::before { content: '▦'; }
+.icon-cash-coin::before, .icon-cash-stack::before, .icon-wallet2::before { content: '₫'; }
+.icon-circle-half::before { content: '◐'; }
+.icon-collection::before { content: '▤'; }
+.icon-credit-card-2-front-fill::before { content: '▭'; }
+.icon-copy::before { content: '▢'; }
+.icon-truck::before { content: '▰'; }
+.icon-shield-check::before, .icon-shield-fill-check::before, .icon-shield-lock::before,
+.icon-shield-lock-fill::before { content: '⬟'; }
+.icon-trash::before, .icon-trash-fill::before, .icon-trash3::before { content: '⌫'; }
+.icon-pencil::before, .icon-pencil-square::before { content: '✎'; }
+.icon-funnel::before { content: '▽'; }
+.icon-grid::before, .icon-grid-1x2-fill::before { content: '▦'; }
+.icon-diagram-3::before, .icon-diagram-3-fill::before { content: '⌘'; }
+.icon-graph-down-arrow::before { content: '↘'; }
+.icon-headset::before { content: '◉'; }
+.icon-hourglass-split::before { content: '⌛'; }
+.icon-inbox::before { content: '▱'; }
+.icon-journal-bookmark-fill::before { content: '▤'; }
+.icon-key::before { content: '⚿'; }
+.icon-layers::before, .icon-layers-fill::before { content: '▱'; }
+.icon-list::before { content: '☷'; }
+.icon-lock::before, .icon-lock-fill::before { content: '▣'; }
+.icon-moon-stars::before { content: '☾'; }
+.icon-palette::before, .icon-palette-fill::before { content: '◉'; }
+.icon-patch-check-fill::before { content: '✓'; }
+.icon-people::before, .icon-people-fill::before { content: '♙'; }
+.icon-percent::before { content: '%'; }
+.icon-person-vcard::before { content: '♙'; }
+.icon-qr-code::before, .icon-qr-code-scan::before { content: '▦'; }
+.icon-receipt::before { content: '▤'; }
+.icon-rulers::before { content: '↔'; }
+.icon-save::before { content: '▣'; }
+.icon-send::before { content: '➤'; }
+.icon-shop::before, .icon-shop-window::before { content: '⌂'; }
+.icon-sliders::before, .icon-sliders2::before { content: '☷'; }
+.icon-speedometer2::before { content: '◔'; }
+.icon-sun::before { content: '☼'; }
+.icon-info-circle::before, .icon-info-circle-fill::before { content: 'ⓘ'; }
+.icon-exclamation-triangle::before, .icon-exclamation-triangle-fill::before { content: '⚠'; }
+.icon-question-circle::before { content: '?'; }
+.icon-star::before, .icon-stars::before { content: '✦'; }
+.icon-tag::before { content: '◇'; }
+.icon-ticket-perforated::before, .icon-ticket-perforated-fill::before { content: '▤'; }
+.icon-upload::before { content: '↑'; }
+.icon-download::before { content: '↓'; }
+.icon-gift::before, .icon-gift-fill::before { content: '🎁'; font-size: .82em; }
+.icon-facebook::before { content: 'f'; }
+.icon-instagram::before { content: '◎'; }
+.icon-tiktok::before { content: '♪'; }
+.icon-youtube::before { content: '▶'; font-size: .8em; }

@@ -1,0 +1,343 @@
+/* Outline icons for legacy admin markup. Inline SVG masks inherit currentColor
+   and scale with text; unknown glyphs retain the global icon fallback. */
+.admin-shell .icon:is(
+  .icon-search,
+  .icon-plus,
+  .icon-plus-lg,
+  .icon-dash,
+  .icon-dash-lg,
+  .icon-pencil,
+  .icon-pencil-square,
+  .icon-trash,
+  .icon-trash-fill,
+  .icon-trash3,
+  .icon-check-lg,
+  .icon-check2,
+  .icon-check2-circle,
+  .icon-check-circle,
+  .icon-check-circle-fill,
+  .icon-x,
+  .icon-x-lg,
+  .icon-x-circle,
+  .icon-x-circle-fill,
+  .icon-arrow-left,
+  .icon-arrow-right,
+  .icon-arrow-counterclockwise,
+  .icon-arrow-repeat,
+  .icon-arrow-return-left,
+  .icon-arrow-up-right-circle,
+  .icon-chevron-down,
+  .icon-chevron-left,
+  .icon-chevron-right,
+  .icon-download,
+  .icon-upload,
+  .icon-cart-plus,
+  .icon-cart-check-fill,
+  .icon-bag,
+  .icon-bag-check,
+  .icon-bag-plus,
+  .icon-cash-coin,
+  .icon-cash-stack,
+  .icon-wallet2,
+  .icon-calendar3,
+  .icon-calendar,
+  .icon-clock,
+  .icon-clock-fill,
+  .icon-clock-history,
+  .icon-person,
+  .icon-person-circle,
+  .icon-people,
+  .icon-people-fill,
+  .icon-person-plus,
+  .icon-person-badge,
+  .icon-person-vcard,
+  .icon-box-seam,
+  .icon-box-seam-fill,
+  .icon-award,
+  .icon-award-fill,
+  .icon-patch-check-fill,
+  .icon-grid,
+  .icon-grid-1x2-fill,
+  .icon-diagram-3,
+  .icon-diagram-3-fill,
+  .icon-collection,
+  .icon-layers,
+  .icon-layers-fill,
+  .icon-palette,
+  .icon-palette-fill,
+  .icon-rulers,
+  .icon-shield-check,
+  .icon-shield-fill-check,
+  .icon-shield-lock,
+  .icon-shield-lock-fill,
+  .icon-lock,
+  .icon-lock-fill,
+  .icon-eye,
+  .icon-eye-slash,
+  .icon-envelope,
+  .icon-envelope-fill,
+  .icon-envelope-check,
+  .icon-telephone,
+  .icon-telephone-fill,
+  .icon-geo-alt,
+  .icon-geo-alt-fill,
+  .icon-bank,
+  .icon-truck,
+  .icon-qr-code,
+  .icon-qr-code-scan,
+  .icon-receipt,
+  .icon-save,
+  .icon-ticket-perforated,
+  .icon-ticket-perforated-fill,
+  .icon-tag,
+  .icon-image,
+  .icon-info-circle,
+  .icon-info-circle-fill,
+  .icon-question-circle,
+  .icon-exclamation-triangle,
+  .icon-exclamation-triangle-fill,
+  .icon-graph-down-arrow,
+  .icon-box-arrow-right,
+  .icon-shop,
+  .icon-shop-window,
+  .icon-speedometer2,
+  .icon-funnel,
+  .icon-list,
+  .icon-copy
+)::before {
+  content: "";
+  display: block;
+  width: 1em;
+  height: 1em;
+  font-size: 1em;
+  background-color: currentColor;
+  -webkit-mask: var(--admin-glyph) center / contain no-repeat;
+  mask: var(--admin-glyph) center / contain no-repeat;
+}
+
+.admin-shell .icon-search {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M10.5%203a7.5%207.5%200%201%200%200%2015%207.5%207.5%200%200%200%200-15ZM16%2016l5%205%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-plus,
+.admin-shell .icon-plus-lg {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%205v14M5%2012h14%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-dash,
+.admin-shell .icon-dash-lg {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%2012h14%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-pencil,
+.admin-shell .icon-pencil-square {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15%204%205%205M4%2020l5-1L21%207a2%202%200%200%200-5-5L4%2014l-1%207Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-trash,
+.admin-shell .icon-trash-fill,
+.admin-shell .icon-trash3 {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%206h18M9%206V3h6v3M5%206l1%2015h12l1-15M10%2010v7M14%2010v7%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-check-lg,
+.admin-shell .icon-check2 {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m5%2012%204%204L19%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-check2-circle,
+.admin-shell .icon-check-circle,
+.admin-shell .icon-check-circle-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M21%2011v1a9%209%200%201%201-5.3-8.2M9%2011l3%203L22%204%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-x,
+.admin-shell .icon-x-lg {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%206%2012%2012M6%2018%2018%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-x-circle,
+.admin-shell .icon-x-circle-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018%209%209%200%200%200%200-18Zm-3%206%206%206m-6%200%206-6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-arrow-left {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20%2012H4m6-6-6%206%206%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-arrow-right {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2012h16m-6-6%206%206-6%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-arrow-counterclockwise,
+.admin-shell .icon-arrow-repeat {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%204v6h6M3%2010a9%209%200%201%201%202%208%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-arrow-return-left {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m9%204-5%205%205%205M4%209h10a6%206%200%200%201%200%2012h-3%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-arrow-up-right-circle {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018%209%209%200%200%200%200-18ZM8%2016l8-8M8%208h8v8%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-chevron-down {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-chevron-left {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m15%206-6%206%206%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-chevron-right {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m9%206%206%206-6%206%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-download {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203v12m-5-5%205%205%205-5M4%2016v5h16v-5%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-upload {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2016V4m-5%205%205-5%205%205M4%2016v5h16v-5%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-cart-plus,
+.admin-shell .icon-cart-check-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M2%203h3l3%2012h11l3-8H6M9%2020h.01M18%2020h.01M13%203v6M10%206h6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-bag,
+.admin-shell .icon-bag-check,
+.admin-shell .icon-bag-plus {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%207h16l1%2014H3L4%207ZM8%208V6a4%204%200%200%201%208%200v2M8%2014l3%203%205-5%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-cash-coin,
+.admin-shell .icon-cash-stack,
+.admin-shell .icon-wallet2 {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%205h18v14H3zM3%209a4%204%200%200%200%204-4M17%205a4%204%200%200%200%204%204M3%2015a4%204%200%200%201%204%204M17%2019a4%204%200%200%201%204-4M12%209a3%203%200%201%200%200%206%203%203%200%200%200%200-6Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-calendar3,
+.admin-shell .icon-calendar {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%205h16v16H4zM8%203v4M16%203v4M4%2011h16%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-clock,
+.admin-shell .icon-clock-fill,
+.admin-shell .icon-clock-history {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018%209%209%200%200%200%200-18ZM12%207v5l3%202%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-person,
+.admin-shell .icon-person-circle {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a4%204%200%201%200%200%208%204%204%200%200%200%200-8ZM5%2021v-2a7%207%200%200%201%2014%200v2%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-people,
+.admin-shell .icon-people-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203a4%204%200%201%200%200%208%204%204%200%200%200%200-8ZM2%2021v-2a7%207%200%200%201%2014%200v2M16%204a4%204%200%200%201%200%208M22%2021v-2a7%207%200%200%200-4-6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-person-plus {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203a4%204%200%201%200%200%208%204%204%200%200%200%200-8ZM2%2021v-2a7%207%200%200%201%2014%200v2M19%208v6M16%2011h6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-person-badge,
+.admin-shell .icon-person-vcard {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%205h18v15H3zM9%208a2%202%200%201%200%200%204%202%202%200%200%200%200-4ZM5%2017a4%204%200%200%201%208%200M16%2010h2M16%2014h2%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-box-seam,
+.admin-shell .icon-box-seam-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%205v9l-9%205-9-5V8l9-5Zm0%2010%209-5M12%2013%203%208M12%2013v9M7.5%205.5l9%205%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-award,
+.admin-shell .icon-award-fill,
+.admin-shell .icon-patch-check-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a6%206%200%201%200%200%2012%206%206%200%200%200%200-12ZM8%2014l-1%207%205-3%205%203-1-7%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-grid,
+.admin-shell .icon-grid-1x2-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%204h6v6H4zM14%204h6v6h-6zM4%2014h6v6H4zM14%2014h6v6h-6z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-diagram-3,
+.admin-shell .icon-diagram-3-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203h6v6H9zM3%2016h6v5H3zM15%2016h6v5h-6zM12%209v4M6%2016v-3h12v3%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-collection {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%207h18v14H3zM6%203h12M5%205h14M9%2011h6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-layers,
+.admin-shell .icon-layers-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%2010%205-10%205L2%208l10-5ZM2%2012l10%205%2010-5M2%2016l10%205%2010-5%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-palette,
+.admin-shell .icon-palette-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018h1a2%202%200%200%200%201-4%202%202%200%200%201%201-4h3a3%203%200%200%200%203-3c0-4-4-7-9-7ZM7%2010h.01M10%206h.01M15%206h.01M6%2014h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-rulers {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%2016%2013-13%205%205L8%2021l-5-5ZM7%2012l2%202M10%209l2%202M13%206l2%202%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-shield-check,
+.admin-shell .icon-shield-fill-check,
+.admin-shell .icon-shield-lock,
+.admin-shell .icon-shield-lock-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%204v6c0%205-9%209-9%209s-9-4-9-9V7l9-4ZM8%2012l3%203%205-6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-lock,
+.admin-shell .icon-lock-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%2010h14v11H5zM8%2010V6a4%204%200%200%201%208%200v4M12%2014v3%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-eye {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M2%2012s4-7%2010-7%2010%207%2010%207-4%207-10%207S2%2012%202%2012ZM12%209a3%203%200%201%200%200%206%203%203%200%200%200%200-6Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-eye-slash {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%203%2018%2018M10%205a12%2012%200%200%201%202%200c6%200%2010%207%2010%207a20%2020%200%200%201-3%204M6%206a22%2022%200%200%200-4%206s4%207%2010%207a12%2012%200%200%200%205-1M10%2010a3%203%200%200%200%204%204%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-envelope,
+.admin-shell .icon-envelope-fill,
+.admin-shell .icon-envelope-check {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%205h18v14H3zM3%205l9%207%209-7%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-telephone,
+.admin-shell .icon-telephone-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%203H3v5c0%207%206%2013%2013%2013h5v-6l-5-2-2%203a12%2012%200%200%201-6-6l3-2-2-5H5Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-geo-alt,
+.admin-shell .icon-geo-alt-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2022s8-8%208-13a8%208%200%200%200-16%200c0%205%208%2013%208%2013ZM12%206a3%203%200%201%200%200%206%203%203%200%200%200%200-6Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-bank {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%207%209-5%209%205H3ZM5%2010v8M10%2010v8M14%2010v8M19%2010v8M3%2021h18%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-truck {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M2%205h12v12H2zM14%2010h4l4%204v3h-8M6%2017a2%202%200%201%200%200%204%202%202%200%200%200%200-4ZM18%2017a2%202%200%201%200%200%204%202%202%200%200%200%200-4Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-qr-code,
+.admin-shell .icon-qr-code-scan {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%203h6v6H3zM15%203h6v6h-6zM3%2015h6v6H3zM15%2015h3v3h3v3h-6v-3M12%203v3M3%2012h3M12%2012h3M18%2012h3M12%2018v3%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-receipt {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%203l2%202%202-2%203%202%203-2%202%202%202-2v18l-2-2-2%202-3-2-3%202-2-2-2%202V3ZM8%209h8M8%2013h8M8%2017h4%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-save {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%203h15l3%203v15H3zM7%203v6h10V3M7%2021v-8h10v8%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-ticket-perforated,
+.admin-shell .icon-ticket-perforated-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%206h18v4a2%202%200%200%200%200%204v4H3v-4a2%202%200%200%200%200-4V6ZM15%206v2M15%2011v2M15%2016v2%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-tag {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%203h8l10%2010-8%208L3%2011V3ZM7%207h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-image {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%203h18v18H3zM3%2017l6-6%205%205%203-3%204%204M16%207h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-info-circle,
+.admin-shell .icon-info-circle-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018%209%209%200%200%200%200-18ZM12%207h.01M11%2011h1v6h1%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-question-circle {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%203a9%209%200%201%200%200%2018%209%209%200%200%200%200-18ZM9%209a3%203%200%200%201%206%200c0%202-3%202-3%205M12%2017h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-exclamation-triangle,
+.admin-shell .icon-exclamation-triangle-fill {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%2010%2018H2L12%203ZM12%209v5M12%2017h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-graph-down-arrow {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%203v18h18M7%207l5%205%204-3%205%207M16%2016h5v-5%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-box-arrow-right {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M9%203H4v18h5M9%2012h12M17%208l4%204-4%204%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-shop,
+.admin-shell .icon-shop-window {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2010h18l-2-6H5l-2%206ZM4%2010v10h16V10M9%2020v-6h6v6%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-speedometer2 {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%2019a10%2010%200%201%201%2018%200H3ZM12%2015l5-7M6%2012h.01M8%207h.01M13%205h.01M19%2013h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-funnel {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M3%204h18l-7%208v7l-4%202v-9L3%204Z%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-list {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M8%206h13M8%2012h13M8%2018h13M3%206h.01M3%2012h.01M3%2018h.01%22%2F%3E%3C%2Fsvg%3E");
+}
+.admin-shell .icon-copy {
+  --admin-glyph: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M8%208h13v13H8zM16%208V3H3v13h5%22%2F%3E%3C%2Fsvg%3E");
+}
+

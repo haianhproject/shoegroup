@@ -12,14 +12,18 @@
  *  GET /api/v2/dashboard/summary   - so lieu tong quan 1 truy vấn
  * ============================================================ */
 const express = require("express");
+const revenueSql = require('../revenue');
 
 module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
   const router = express.Router();
 
   const toInt = (v, def, min, max) => {
-    const n = parseInt(v, 10);
-    if (Number.isNaN(n)) return def;
-    return Math.min(Math.max(n, min), max);
+    if (v === undefined || v === null || String(v).trim() === "") return def;
+    const raw = String(v).trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < min || n > max) return null;
+    return n;
   };
 
   router.get("/api/health", async (_req, res) => {
@@ -43,14 +47,16 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       await poolConnect;
       const page = toInt(req.query.page, 1, 1, 100000);
       const limit = toInt(req.query.limit, 12, 1, 100);
+      if (page === null || limit === null) return res.status(400).json({ success: false, message: "Phân trang không hợp lệ." });
       const offset = (page - 1) * limit;
       const search = (req.query.q || "").toString().slice(0, 100);
       const categoryId = req.query.categoryId ? toInt(req.query.categoryId, 0, 0, 1e9) : null;
       const brandId = req.query.brandId ? toInt(req.query.brandId, 0, 0, 1e9) : null;
+      if ((req.query.categoryId && categoryId === null) || (req.query.brandId && brandId === null)) return res.status(400).json({ success: false, message: "Bộ lọc danh mục/thương hiệu không hợp lệ." });
       const sortMap = {
         newest: "p.CreatedAt DESC, p.ProductID DESC",
-        price_asc: "ISNULL(p.SalePrice, p.BasePrice) ASC",
-        price_desc: "ISNULL(p.SalePrice, p.BasePrice) DESC",
+        price_asc: "COALESCE(NULLIF(pricing.MinSalePrice,0), pricing.MinPrice, p.BasePrice) ASC",
+        price_desc: "COALESCE(NULLIF(pricing.MinSalePrice,0), pricing.MinPrice, p.BasePrice) DESC",
         name: "p.ProductName ASC",
         popular: "ISNULL(p.ViewCount,0) DESC",
       };
@@ -73,16 +79,45 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       const r = await request.query(`
         SELECT COUNT(*) AS total FROM Products p ${where};
 
-        SELECT p.ProductID AS id, p.ProductName AS name, p.BasePrice AS price,
-               p.SalePrice AS sale_price, p.CategoryID AS category_id, c.CategoryName AS category,
+        SELECT p.ProductID AS id, p.ProductName AS name,
+               COALESCE(pricing.MinPrice,p.BasePrice) AS price,
+               ISNULL(pricing.MinSalePrice,0) AS sale_price,
+               p.CategoryID AS category_id, c.CategoryName AS category,
                p.BrandID AS brand_id, b.BrandName AS brand, p.ImageURL AS image_url,
                p.IsFeatured AS is_featured, p.IsActive AS active,
-               ISNULL(v.TotalStock, 0) AS stock
+               ISNULL(pricing.TotalStock, 0) AS stock
         FROM Products p
         LEFT JOIN Categories c ON c.CategoryID = p.CategoryID
         LEFT JOIN Brands b ON b.BrandID = p.BrandID
-        OUTER APPLY (SELECT SUM(pv.StockQuantity) AS TotalStock
-                     FROM ProductVariants pv WHERE pv.ProductID = p.ProductID) v
+        OUTER APPLY (
+          SELECT MIN(CAST(p.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
+                 MIN(CAST(CASE
+                   WHEN promo.VariantDiscountID IS NULL THEN NULL
+                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice+ISNULL(pv.PriceAdjustment,0)
+                     THEN promo.DiscountValue
+                   WHEN promo.DiscountKind=N'percent' THEN
+                     (p.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
+                     CASE WHEN promo.MaxDiscountAmount>0 AND
+                                    (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
+                          THEN promo.MaxDiscountAmount
+                          ELSE (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
+                   ELSE NULL END AS decimal(18,2))) AS MinSalePrice,
+                 SUM(ISNULL(pv.StockQuantity,0)) AS TotalStock
+          FROM ProductVariants pv
+          OUTER APPLY (
+            SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
+                   CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
+                        THEN N'percent' ELSE N'fixed' END AS DiscountKind
+            FROM VariantDiscounts vd
+            WHERE vd.ProductID=pv.ProductID AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N'')
+              AND ISNULL(vd.IsActive,1)=1
+              AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
+              AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())
+              AND (ISNULL(vd.Quantity,0)<=0 OR ISNULL(vd.UsedCount,0)<vd.Quantity)
+            ORDER BY vd.StartDate DESC, vd.VariantDiscountID DESC
+          ) promo
+          WHERE pv.ProductID=p.ProductID AND ISNULL(pv.IsActive,1)=1
+        ) pricing
         ${where}
         ORDER BY ${orderBy}
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;
@@ -103,10 +138,41 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
     try {
       await poolConnect;
       const limit = toInt(req.query.limit, 8, 1, 40);
+      if (limit === null) return res.status(400).json({ success: false, message: "Giới hạn sản phẩm không hợp lệ." });
       const r = await pool.request().input("limit", sql.Int, limit).query(`
-        SELECT TOP (@limit) p.ProductID AS id, p.ProductName AS name, p.BasePrice AS price,
-               p.SalePrice AS sale_price, p.ImageURL AS image_url, b.BrandName AS brand
+        SELECT TOP (@limit) p.ProductID AS id, p.ProductName AS name,
+               COALESCE(pricing.MinPrice,p.BasePrice) AS price,
+               ISNULL(pricing.MinSalePrice,0) AS sale_price,
+               p.ImageURL AS image_url, b.BrandName AS brand
         FROM Products p LEFT JOIN Brands b ON b.BrandID = p.BrandID
+        OUTER APPLY (
+          SELECT MIN(CAST(p.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
+                 MIN(CAST(CASE
+                   WHEN promo.VariantDiscountID IS NULL THEN NULL
+                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice+ISNULL(pv.PriceAdjustment,0)
+                     THEN promo.DiscountValue
+                   WHEN promo.DiscountKind=N'percent' THEN
+                     (p.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
+                     CASE WHEN promo.MaxDiscountAmount>0 AND
+                                    (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
+                          THEN promo.MaxDiscountAmount
+                          ELSE (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
+                   ELSE NULL END AS decimal(18,2))) AS MinSalePrice
+          FROM ProductVariants pv
+          OUTER APPLY (
+            SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
+                   CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
+                        THEN N'percent' ELSE N'fixed' END AS DiscountKind
+            FROM VariantDiscounts vd
+            WHERE vd.ProductID=pv.ProductID AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N'')
+              AND ISNULL(vd.IsActive,1)=1
+              AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
+              AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())
+              AND (ISNULL(vd.Quantity,0)<=0 OR ISNULL(vd.UsedCount,0)<vd.Quantity)
+            ORDER BY vd.StartDate DESC, vd.VariantDiscountID DESC
+          ) promo
+          WHERE pv.ProductID=p.ProductID AND ISNULL(pv.IsActive,1)=1
+        ) pricing
         WHERE ISNULL(p.IsActive,1) = 1
         ORDER BY ISNULL(p.IsFeatured,0) DESC, ISNULL(p.ViewCount,0) DESC, p.ProductID DESC
       `);
@@ -122,6 +188,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
       await poolConnect;
       const page = toInt(req.query.page, 1, 1, 100000);
       const limit = toInt(req.query.limit, 20, 1, 100);
+      if (page === null || limit === null) return res.status(400).json({ success: false, message: "Phân trang không hợp lệ." });
       const offset = (page - 1) * limit;
       const isAdmin = req.auth && req.auth.role === "Admin";
       // Khach hang chi thay don cua chinh minh
@@ -130,6 +197,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
           ? toInt(req.query.userId, 0, 0, 1e9)
           : null
         : Number(req.auth?.sub) || -1;
+      if (userId === null) return res.status(400).json({ success: false, message: "UserID không hợp lệ." });
       const statusCode = (req.query.statusCode || "").toString().slice(0, 30) || null;
 
       const hasStatusCode = await pool.request().query(`
@@ -156,12 +224,16 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                o.TotalAmount AS total, o.ShippingFee AS shippingFee,
                o.DiscountAmount AS discount, o.PaymentMethod AS paymentMethod,
                ISNULL(o.PaymentStatus, N'Chua thanh toan') AS payment_status,
+               o.PaymentDueAt AS payment_due_at,
+               o.PaymentConfirmedAt AS payment_confirmed_at,
                ${useCode ? "o.StatusCode AS status_code," : ""}
                ISNULL(o.Status, N'Chờ xác nhận') AS status,
                ISNULL(o.CancelReason, '') AS cancel_reason,
                o.OrderDate AS order_date,
                CONVERT(varchar, o.OrderDate, 103) + ' ' + CONVERT(varchar, o.OrderDate, 108) AS date,
-               (SELECT od.OrderDetailID AS id, COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
+               (SELECT od.OrderDetailID AS id, od.OrderDetailID AS order_detail_id,
+                       od.ProductID AS product_id, od.ProductVariantID AS variant_id,
+                       COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') AS name,
                        COALESCE(p.ImageURL, od.ImageURLSnapshot, '') AS image,
                        od.Quantity AS quantity, od.UnitPrice AS price,
                        ISNULL(od.Size,'') AS size, ISNULL(od.Color, N'') AS color
@@ -196,7 +268,7 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
         SELECT
           (SELECT COUNT(*) FROM Orders) AS totalOrders,
           (SELECT COUNT(*) FROM Orders WHERE OrderDate >= CAST(GETDATE() AS date)) AS ordersToday,
-          (SELECT ISNULL(SUM(TotalAmount),0) FROM Orders WHERE ISNULL(IsCountedAsRevenue,0) = 1) AS recognizedRevenue,
+          (SELECT ISNULL(SUM(${revenueSql.netAmount}),0) FROM Orders o ${revenueSql.refundJoin} WHERE ${revenueSql.recognizedWhere}) AS recognizedRevenue,
           (SELECT COUNT(*) FROM Products WHERE ISNULL(IsActive,1) = 1) AS activeProducts,
           (SELECT COUNT(*) FROM Users WHERE ISNULL(IsActive,1) = 1) AS activeUsers,
           (SELECT COUNT(*) FROM ProductVariants WHERE StockQuantity <= 5) AS lowStockVariants

@@ -1,0 +1,224 @@
+{
+  "time": "2026-09-09T10:23:56.051Z",
+  "port": "5100",
+  "results": [
+    {
+      "id": "B01",
+      "scenario": "Stale inventory editor after sale",
+      "expected": "409 and stock remains 9; refreshed edit succeeds",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "code": "STOCK_VERSION_CONFLICT",
+            "message": "Biến thể không còn tồn tại hoặc tồn kho đã thay đổi; hãy tải lại."
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "stock": 11,
+            "version": 2
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B02",
+      "scenario": "Stale product form cannot overwrite sold inventory",
+      "expected": "409; product and stock both unchanged",
+      "actual": {
+        "status": 409,
+        "data": {
+          "error": "Tồn kho đã thay đổi hoặc thiếu phiên bản. Hãy tải lại sản phẩm trước khi lưu."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "B03",
+      "scenario": "Payment hold is 24 real hours, DB clock maps correctly",
+      "expected": "24 hours (+/- 5 seconds), DB time within 2s",
+      "actual": {
+        "hours": 23.99998,
+        "row": {
+          "PaymentDueAt": "2026-09-10T10:23:55.077Z",
+          "localTime": "2026-09-09T10:23:55.147Z"
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "B04",
+      "scenario": "Same SKU group requested in reverse order by 5 users",
+      "expected": "all success with sufficient stock; no deadlock",
+      "actual": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B05",
+      "scenario": "Failure after order/items/stock/coupon counter mutation",
+      "expected": "all changes rolled back; same idempotency key can retry",
+      "actual": {
+        "failed": {
+          "status": 500,
+          "data": {
+            "success": false,
+            "message": "Audit injected coupon ledger failure",
+            "code": "EREQUEST"
+          }
+        },
+        "retry": {
+          "status": 200,
+          "data": {
+            "success": true,
+            "orderId": 155,
+            "OrderID": 155,
+            "subtotalAmount": 500000,
+            "shippingFee": 75000,
+            "discountAmount": 50000,
+            "totalAmount": 525000,
+            "shippingMethodCode": "STANDARD",
+            "shippingMethodId": 1,
+            "distanceKm": 1720,
+            "eta": "4-5 ngày"
+          }
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "B06",
+      "scenario": "Manual confirmation amount/currency mismatch",
+      "expected": "409, order remains unpaid",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Số tiền hoặc loại tiền không khớp với đơn hàng."
+          }
+        },
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Số tiền hoặc loại tiền không khớp với đơn hàng."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B07",
+      "scenario": "Coupon start/end exact boundaries use persisted instants",
+      "expected": "before start false; start true; before end true; end true; after end false",
+      "actual": [
+        0,
+        1,
+        1,
+        1,
+        0
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B08",
+      "scenario": "Coupon minimum and maximum discount cap",
+      "expected": "below min 409, max discount 20000",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "Don hang chua dat gia tri toi thieu cua ma giam gia."
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "orderId": 157,
+            "OrderID": 157,
+            "subtotalAmount": 1000000,
+            "shippingFee": 75000,
+            "discountAmount": 20000,
+            "totalAmount": 1055000,
+            "shippingMethodCode": "STANDARD",
+            "shippingMethodId": 1,
+            "distanceKm": 1720,
+            "eta": "4-5 ngày"
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B09",
+      "scenario": "Old admin JWT after demotion",
+      "expected": "403 admin access",
+      "actual": {
+        "status": 403,
+        "data": {
+          "success": false,
+          "message": "Ban khong co quyen thuc hien thao tac nay."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "B10",
+      "scenario": "POS creates real internal collection ledger and revenue deadline",
+      "expected": "one collection and 14-day eligibility",
+      "actual": [
+        {
+          "Provider": "POS_CASH",
+          "Amount": 500000,
+          "SignatureValid": false
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "B11",
+      "scenario": "Paid POS awaiting fulfillment has collection but no recognized revenue",
+      "expected": "one payment; no received/revenue date",
+      "actual": {
+        "state": {
+          "PaymentConfirmedAt": "2026-09-09T10:23:55.953Z",
+          "RevenueEligibleDate": null
+        },
+        "tx": [
+          {
+            "Amount": 500000
+          }
+        ]
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "B12",
+      "scenario": "Generic order status cannot bypass return approval and refund",
+      "expected": "409, no refund",
+      "actual": {
+        "status": 409,
+        "data": {
+          "success": false,
+          "code": "RETURN_FLOW_REQUIRED",
+          "error": "Trạng thái trả hàng phải được xử lý qua yêu cầu trả hàng.",
+          "message": "Trạng thái trả hàng phải được xử lý qua yêu cầu trả hàng."
+        }
+      },
+      "result": "PASS"
+    }
+  ]
+}

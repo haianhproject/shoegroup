@@ -1,10 +1,19 @@
 # Phu thuoc
 node_modules/
 
+# Du lieu lam viec cua Codex (luu ngoai repository)
+.codex-work/
+
+# Prototype Figma da duoc tich hop vao src/
+all figma*/
+
 # Ban build
 dist/
 build/
 coverage/
+
+# Tep tam va ket qua trung gian cua cac script bao cao
+tmp/
 
 # Bien moi truong - TUYET DOI khong commit (chua mat khau DB, JWT_SECRET, mat khau mail)
 .env

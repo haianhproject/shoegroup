@@ -40,10 +40,19 @@ loadEnvFile();
 const bool = (v, def = false) =>
   v === undefined ? def : /^(1|true|yes|on)$/i.test(String(v));
 
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProd = nodeEnv === "production";
+if (isProd && !process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET phai duoc cau hinh khi NODE_ENV=production.");
+}
+if (isProd && (process.env.AUTH_MODE || 'enforce').toLowerCase() !== 'enforce') {
+  throw new Error('Production requires AUTH_MODE=enforce.');
+}
+
 const config = {
   port: Number(process.env.PORT || 5000),
-  nodeEnv: process.env.NODE_ENV || "development",
-  isProd: (process.env.NODE_ENV || "") === "production",
+  nodeEnv,
+  isProd,
 
   db: {
     user: process.env.DB_USER || "sa",
@@ -55,15 +64,16 @@ const config = {
       encrypt: bool(process.env.DB_ENCRYPT, false),
       trustServerCertificate: bool(process.env.DB_TRUST_CERT, true),
       enableArithAbort: true,
+      // Legacy schema uses GETDATE() (local wall time), not UTC datetime2.
+      // Node and SQL Server must run in the same business timezone.
+      useUTC: bool(process.env.DB_USE_UTC, false),
     },
     pool: { max: 20, min: 0, idleTimeoutMillis: 30000 },
     requestTimeout: 30000,
   },
 
   jwt: {
-    secret:
-      process.env.JWT_SECRET ||
-      "shoegroup-dev-secret-doi-ngay-khi-len-production",
+    secret: process.env.JWT_SECRET || "shoegroup-dev-secret-doi-ngay-khi-len-production",
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
 
@@ -88,8 +98,12 @@ const config = {
 
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-    maxLogin: Number(process.env.RATE_LIMIT_MAX_LOGIN || 10),
-    maxApi: Number(process.env.RATE_LIMIT_MAX_API || 600),
+    maxLogin: Number(
+      process.env.RATE_LIMIT_MAX_LOGIN || process.env.LOGIN_RATE_LIMIT_MAX || 10,
+    ),
+    maxApi: Number(
+      process.env.RATE_LIMIT_MAX_API || process.env.RATE_LIMIT_MAX || 600,
+    ),
   },
 };
 

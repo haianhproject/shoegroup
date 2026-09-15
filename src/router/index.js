@@ -8,6 +8,12 @@ const router = createRouter({
     // --- ROUTE KHACH HANG ---
     { path: "/", name: "home", component: () => import("../views/HomeDisplay.vue") },
     { path: "/products", name: "products", component: () => import("../views/ProductsView.vue") },
+    // Các alias công khai này dùng cùng một trang danh sách Figma; giữ tương
+    // thích với những liên kết cũ và với URL trong design system.
+    { path: "/product", name: "product-list", component: () => import("../views/ProductsView.vue") },
+    { path: "/category", name: "category", component: () => import("../views/ProductsView.vue") },
+    { path: "/brand", name: "brand", component: () => import("../views/ProductsView.vue") },
+    { path: "/search", name: "search", component: () => import("../views/ProductsView.vue") },
     { path: "/about", name: "about", component: () => import("../views/AboutView.vue") },
     { path: "/contact", name: "contact", component: () => import("../views/ContactView.vue") },
     { path: "/product/:id", name: "ProductDetail", component: () => import("../views/ProductDetail.vue") },
@@ -19,6 +25,7 @@ const router = createRouter({
     { path: "/forgot-password", name: "forgot-password", component: () => import("../views/ForgotPasswordView.vue") },
     { path: "/reset-password", name: "reset-password", component: () => import("../views/ResetPasswordView.vue") },
     { path: "/account", name: "account", component: () => import("../views/AccountView.vue"), meta: { requiresAuth: true } },
+    { path: "/wallet", name: "wallet", redirect: { path: "/account" }, meta: { requiresAuth: true } },
     { path: "/orders", name: "orders", component: () => import("../views/MyOrders.vue"), meta: { requiresAuth: true } },
     { path: "/returns", name: "returns", component: () => import("../views/ReturnView.vue"), meta: { requiresAuth: true } },
     { path: "/returns/:orderId", name: "return-order", component: () => import("../views/ReturnView.vue"), meta: { requiresAuth: true } },
@@ -26,7 +33,9 @@ const router = createRouter({
     // --- ROUTE ADMIN ---
     ...adminRoutes,
   ],
-  scrollBehavior() {
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition;
+    if (to.path === from.path) return false;
     return { top: 0 };
   },
 });
@@ -51,6 +60,13 @@ router.beforeEach((to) => {
     if (!isAuthenticated.value) return { path: "/login", query: { redirect: path } };
     if (!isAdmin()) return { path: "/" };
     return true;
+  }
+
+  // Admin đã đăng nhập thì không được thao tác như khách hàng (đặt hàng, giỏ hàng...)
+  // Kể cả trang chào mừng cũng không được quay về trang chủ khách.
+  if (isAuthenticated.value && isAdmin()) {
+    // Chặn toàn bộ khu khách hàng khi đang là admin
+    return { path: "/admin" };
   }
 
   if (to.meta && to.meta.requiresAuth && !isAuthenticated.value) {

@@ -1,0 +1,233 @@
+{
+  "time": "2026-09-09T10:21:19.768Z",
+  "port": "5100",
+  "results": [
+    {
+      "id": "R01",
+      "scenario": "Full coupon refund uses paid goods value",
+      "expected": "450000 refund, no shipping",
+      "actual": {
+        "status": 201,
+        "data": {
+          "success": true,
+          "ReturnID": 15,
+          "OrderID": 121,
+          "ReturnType": "CUSTOMER",
+          "RefundAmount": 450000,
+          "Status": "Chờ xử lý"
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R02",
+      "scenario": "Discounted partial return missing allocation",
+      "expected": "409 BUSINESS RULE REQUIRED",
+      "actual": {
+        "status": 409,
+        "data": {
+          "success": false,
+          "message": "BUSINESS RULE REQUIRED: cần phân bổ ưu đãi theo sản phẩm trước khi hoàn trả đơn giảm giá này."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R03",
+      "scenario": "Partial quantity return then second return",
+      "expected": "paid order stays received; 2 separate wallet credits within paid amount",
+      "actual": {
+        "mid": {
+          "Status": "Đã nhận hàng",
+          "PaymentStatus": "Đã thanh toán"
+        },
+        "credits": [
+          {
+            "amount": 1500000,
+            "count": 2
+          }
+        ]
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R04",
+      "scenario": "Customer marks damaged/unknown return as unopened",
+      "expected": "no sellable restock without admin inspection",
+      "actual": {
+        "status": 200,
+        "data": {
+          "success": true,
+          "ReturnID": 18,
+          "status": "Đã hoàn tất",
+          "refund_amount": 500000
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R05",
+      "scenario": "Inspected saleable return and duplicate concurrent finalization",
+      "expected": "restore once, credit once, immutable refund",
+      "actual": [
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "ReturnID": 19,
+            "status": "Đã hoàn tất",
+            "refund_amount": 500000
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "ReturnID": 19,
+            "status": "Đã hoàn tất",
+            "refund_amount": 500000
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "R06",
+      "scenario": "Wallet credit failure rolls back refund/order/inventory",
+      "expected": "500; no wallet credit; request stays approved; stock stays deducted",
+      "actual": [
+        {
+          "Status": "Chấp nhận hoàn tiền",
+          "RefundedAt": null,
+          "RestockedAt": null
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "R07",
+      "scenario": "Return more than purchased and wrong owner",
+      "expected": "409/403, no return created",
+      "actual": [
+        {
+          "status": 409,
+          "data": {
+            "success": false,
+            "message": "So luong tra vuot qua so luong da mua (AT-mtty7k1h-9)."
+          }
+        },
+        {
+          "status": 403,
+          "data": {
+            "success": false,
+            "message": "Ban khong duoc tra don hang nay."
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "R08",
+      "scenario": "Return outside existing 14-day window",
+      "expected": "409",
+      "actual": {
+        "status": 409,
+        "data": {
+          "success": false,
+          "message": "Don hang da qua thoi han doi tra 14 ngay."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R09",
+      "scenario": "Failed COD delivery warehouse/reship repeated",
+      "expected": "no payment collected; restore/deduct exactly once",
+      "actual": [
+        {
+          "status": 200,
+          "data": {
+            "success": true
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true,
+            "unchanged": true
+          }
+        },
+        {
+          "status": 200,
+          "data": {
+            "success": true
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "R10",
+      "scenario": "Recognized revenue ignores stale flags and subtracts partial refunds",
+      "expected": "dashboard/chart equal SQL expected, no pending/cancelled money",
+      "actual": {
+        "expected": 2725000,
+        "actual": {
+          "totalOrders": 98,
+          "ordersToday": 98,
+          "recognizedRevenue": 2725000,
+          "activeProducts": 111,
+          "activeUsers": 13,
+          "lowStockVariants": 11
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R11",
+      "scenario": "Failed product image insert rolls back whole product",
+      "expected": "500 and no partially created product",
+      "actual": {
+        "status": 500,
+        "data": {
+          "error": "Audit injected image failure"
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R12",
+      "scenario": "Disabled account cannot reuse existing JWT",
+      "expected": "401 after disable",
+      "actual": {
+        "status": 401,
+        "data": {
+          "success": false,
+          "message": "Tài khoản không còn hoạt động."
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "R13",
+      "scenario": "Legacy SQL negative purchase quantity",
+      "expected": "rejected; stock unchanged",
+      "actual": [
+        {
+          "ok": false
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "R14",
+      "scenario": "Direct SQL quantity and payment transaction uniqueness constraints",
+      "expected": "invalid quantity and repeated provider reference rejected",
+      "actual": {
+        "qty": true,
+        "unique": true
+      },
+      "result": "PASS"
+    }
+  ]
+}
