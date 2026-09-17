@@ -4,11 +4,22 @@ const assert = require("node:assert/strict");
 const {
   positiveInt,
   booleanValue,
+  validateEmail,
   validateCatalogPayload,
   validateProductPayload,
   validateCouponPayload,
   validateVariantDiscountPayload,
 } = require("../src/validation");
+
+test("email validator accepts common providers and rejects malformed addresses", () => {
+  for (const email of ["user@gmail.com", "name@yahoo.com.vn", "first.last+shop@outlook.com"]) {
+    assert.equal(validateEmail(email), email);
+  }
+  for (const email of ["user@", "@gmail.com", "a..b@gmail.com", "user@-gmail.com", "user@gmail", "user gmail.com"]) {
+    assert.equal(validateEmail(email), null);
+  }
+  assert.equal(validateEmail("  User@Gmail.com  "), "user@gmail.com");
+});
 
 test("primitive validators reject ambiguous IDs and booleans", () => {
   assert.equal(positiveInt("12abc"), null);

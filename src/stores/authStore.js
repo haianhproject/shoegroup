@@ -143,7 +143,6 @@ export const updateProfile = async (data) => {
     // Dung api client de tu gan JWT. Khong gui role_id tu man hinh khach;
     // backend chan thay doi quyen va truoc day khien luu ho so bi 403.
     const response = await api.put(`/accounts/${data.id}`, {
-      username: data.email,
       name: data.full_name,
       phone: data.phone,
       ...(data.avatar_url !== undefined ? { avatar_url: data.avatar_url } : {}),

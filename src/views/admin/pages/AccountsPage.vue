@@ -1,7 +1,7 @@
 <!-- Trang: Quản lý tài khoản -->
 <script setup>
 import { ref, computed } from 'vue'
-import { db, openForm, getRoleBadgeClass, roleName, deleteItem, apiWrite } from '../adminStore'
+import { db, openForm, getRoleBadgeClass, roleName, toggleAccountLock, apiWrite } from '../adminStore'
 
 const search = ref('')
 const roleMsg = ref('')
@@ -114,7 +114,12 @@ async function changeRole(a, value) {
                 <td><span class="badge rounded-1" :class="a.active !== false ? 'badge-active' : 'bg-secondary-subtle text-gray-600'" v-text="a.active !== false ? 'Hoạt động' : 'Đã khóa'"></span></td>
                 <td class="text-end pr-4">
                   <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-2 mr-1" :aria-label="'Chỉnh sửa tài khoản ' + (a.name || a.username)" title="Chỉnh sửa tài khoản"><i class="icon icon-pencil" aria-hidden="true"></i></button>
-                  <button @click="deleteItem('accounts', a.id, a.username)" class="btn btn-sm btn-light border rounded-2 text-red-600" :aria-label="'Xóa tài khoản ' + (a.name || a.username)" title="Xóa tài khoản"><i class="icon icon-trash" aria-hidden="true"></i></button>
+                  <button
+                    @click="toggleAccountLock(a)"
+                    class="btn btn-sm btn-light border rounded-2 text-gray-700"
+                    :aria-label="(a.active !== false ? 'Khóa tài khoản ' : 'Mở khóa tài khoản ') + (a.name || a.username)"
+                    :title="a.active !== false ? 'Khóa tài khoản' : 'Mở khóa tài khoản'"
+                  ><i class="icon" :class="a.active !== false ? 'icon-lock' : 'icon-check-circle'" aria-hidden="true"></i></button>
                 </td>
               </tr>
               <tr v-if="!sec.rows.length">

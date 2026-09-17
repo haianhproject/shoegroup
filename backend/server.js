@@ -2759,22 +2759,16 @@ app.put("/api/accounts/:id", async (req, res) => {
     if (!isAdmin && (b.role_id !== undefined || b.active !== undefined)) {
       return res.status(403).json({ success: false, message: "Khach hang khong duoc thay doi vai tro hoac trang thai tai khoan." });
     }
+    if (b.active !== undefined && Number(req.auth && req.auth.sub) === id) {
+      return res.status(400).json({ success: false, message: "Bạn không thể khóa hoặc mở khóa tài khoản đang đăng nhập." });
+    }
+    if (b.username !== undefined || b.email !== undefined) {
+      return res.status(400).json({ success: false, message: "Email đăng nhập không thể thay đổi." });
+    }
     // Chi cap nhat nhung truong duoc gui len -> tranh ghi de/xoa nham
     // (vi du doi vai tro thi khong lam mat Phone/Address/Email cu).
     let rq = pool.request().input("id", sql.Int, id);
     const sets = [];
-    if (b.username !== undefined) {
-      const email = validateEmail(b.username);
-      if (!email) return res.status(400).json({ success: false, message: "Email khong hop le." });
-      rq = rq.input("e", sql.VarChar, email);
-      sets.push("Email=@e");
-    }
-    if (b.email !== undefined && b.username === undefined) {
-      const email = validateEmail(b.email);
-      if (!email) return res.status(400).json({ success: false, message: "Email khong hop le." });
-      rq = rq.input("e", sql.VarChar, email);
-      sets.push("Email=@e");
-    }
     if (b.name !== undefined) {
       const name = validateText(b.name, 100);
       if (!name || String(b.name).trim().length > 100) return res.status(400).json({ success: false, message: "Ho ten khong hop le." });
@@ -2842,21 +2836,7 @@ app.put("/api/accounts/:id", async (req, res) => {
 });
 
 app.delete("/api/accounts/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    const id = parseRouteId(res, req.params.id, "UserID");
-    if (!id) return;
-    const result = await pool
-      .request()
-      .input("id", sql.Int, id)
-      .query("UPDATE Users SET IsActive=0, UpdatedAt=GETDATE() WHERE UserID=@id");
-    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  res.status(405).json({ success: false, message: "Tài khoản chỉ có thể khóa hoặc mở khóa, không thể xóa." });
 });
 
 app.get("/api/categories", async (req, res) => {

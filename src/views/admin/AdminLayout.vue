@@ -511,6 +511,7 @@ onUnmounted(() => {
               v-else
               v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :type="f.type || 'text'"
+              :disabled="f.disabled"
               class="sg-input rounded-2"
             />
           </div>

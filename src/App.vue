@@ -1,40 +1,44 @@
 <script setup>
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'
-import FigmaCustomerLayout from './layouts/FigmaCustomerLayout.vue'
+
+import TheNavbar from './components/TheNavbar.vue'
+import TheFooter from './components/TheFooter.vue'
 import CenterNotify from './components/CenterNotify.vue'
 import PromoModal from './components/PromoModal.vue'
+import ZaloChat from './components/ZaloChat.vue'
 import CartDrawer from './components/CartDrawer.vue'
 
 const route = useRoute()
+
 const isAdmin = computed(() => route.path.startsWith('/admin'))
-// Giữ nguyên AdminLayout khi chỉ đổi route con để sidebar/header không bị
-// fade lại; AdminLayout tự chuyển mượt riêng vùng router-view bên phải.
-const routeTransitionKey = (routeRecord) => routeRecord?.path?.startsWith('/admin/panel')
-  ? (routeRecord?.matched?.[0]?.path || '/admin/panel')
-  : routeRecord?.fullPath
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col">
-    <router-view v-if="isAdmin" v-slot="{ Component, route }">
-      <Transition name="page" mode="out-in" appear>
-        <component :is="Component" :key="routeTransitionKey(route)" />
-      </Transition>
-    </router-view>
-    <FigmaCustomerLayout v-else>
-      <router-view v-slot="{ Component, route }">
-        <Transition name="page" mode="out-in" appear>
-          <component :is="Component" :key="routeTransitionKey(route)" />
-        </Transition>
-      </router-view>
-    </FigmaCustomerLayout>
+  <div class="d-flex flex-column min-vh-100">
 
-    <!-- Global overlays (customer side only) -->
+    <!-- NAVBAR CLIENT -->
+    <TheNavbar v-if="!isAdmin" />
+
+    <!-- CONTENT -->
+    <main class="flex-grow-1">
+      <router-view />
+    </main>
+
+    <!-- FOOTER CLIENT -->
+    <TheFooter v-if="!isAdmin" />
+
+    <!-- CUSTOMER SIDE ONLY -->
     <template v-if="!isAdmin">
-      <PromoModal />
       <CartDrawer />
+      <PromoModal />
+
+      <!-- BONG BÓNG CHAT ZALO -->
+      <ZaloChat />
     </template>
+
+    <!-- GLOBAL NOTIFICATION -->
     <CenterNotify />
+
   </div>
 </template>
