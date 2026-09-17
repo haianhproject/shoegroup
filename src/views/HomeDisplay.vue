@@ -5,12 +5,13 @@
 
       <!-- Hero peek-carousel -->
       <section class="relative pb-5 bg-[#FFFFFF]"
-        @mouseenter="pauseHero" @mouseleave.self="playHero">
-        <div ref="heroViewport" class="relative overflow-hidden pt-8"
-          @mousedown="onDragStart"
-          @mousemove="onDragMove"
-          @mouseup="onDragEnd"
-          @mouseleave="onDragEnd"
+        @mouseenter="onHeroEnter" @mouseleave="onHeroLeave">
+        <div ref="heroViewport" class="relative overflow-hidden pt-8 select-none"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerCancel"
+          style="touch-action: pan-y;"
           :style="isDragging ? 'cursor: grabbing; user-select: none' : 'cursor: grab'">
           <!-- Track -->
           <div ref="heroTrack" class="flex items-stretch"
@@ -18,18 +19,21 @@
             @transitionend="onTrackTransitionEnd"
             :style="{ transform: `translateX(${trackOffset}px)`, gap: heroGap + 'px' }">
             <div v-for="(slide, i) in displaySlides" :key="slide._key"
-              class="shrink-0 transition-all duration-700 ease-out"
+              class="shrink-0"
               :style="{ width: slideWidth + 'px' }"
-              :class="i === currentIndex ? 'opacity-100 scale-100' : 'opacity-45 scale-[0.94]'"
-              @click="!dragMoved && (i === currentIndex ? goToProducts(slide.filter) : (currentIndex = i))">
+              :class="[
+                i === currentIndex ? 'opacity-100 scale-100' : 'opacity-45 scale-[0.94]',
+                isTransitioning ? 'transition-[opacity,transform] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]' : '',
+              ]"
+              @click="handleSlideClick(i, slide)">
               <div class="group relative overflow-hidden rounded-2xl bg-[#0E0E0E] h-[300px] md:h-[400px] lg:h-[460px] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.4)]">
                 <!-- Media -->
-                <template v-if="slide.type === 'video'">
-                  <video :src="slide.src" :poster="slide.fallback" autoplay muted loop playsinline preload="auto" @error="onVideoError($event, slide.fallback)"
+                <template v-if="slide.type === 'video' && i === currentIndex">
+                  <video :src="slide.src" :poster="slide.fallback" autoplay muted loop playsinline preload="metadata" @error="onVideoError($event, slide.fallback)"
                     class="absolute inset-0 w-full h-full object-cover"></video>
                 </template>
                 <template v-else>
-                  <img :src="slide.img" :alt="slide.alt" @error="onImageError($event, slide.fallback)"
+                  <img :src="slide.img || slide.fallback" :alt="slide.alt || 'Banner ShoeGroup'" @error="onImageError($event, slide.fallback)"
                     class="absolute inset-0 w-full h-full object-cover"/>
                 </template>
                 <div class="absolute inset-0 bg-gradient-to-r from-[#0E0E0E]/85 via-[#0E0E0E]/35 to-transparent"></div>
@@ -56,11 +60,11 @@
           </div>
 
           <!-- Arrows -->
-          <button @click.stop="prevSlide" aria-label="Trước"
+          <button @click.stop="prevSlide(true)" @pointerdown.stop @mousedown.stop aria-label="Trước"
             class="absolute left-4 lg:left-10 top-1/2 -translate-y-1/2 z-20 w-11 h-11 flex items-center justify-center bg-white text-[#0E0E0E] shadow-md hover:bg-[#0E0E0E] hover:text-white rounded-full transition-colors border border-[#E5E5E5] cursor-pointer">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
-          <button @click.stop="nextSlide" aria-label="Sau"
+          <button @click.stop="nextSlide(true)" @pointerdown.stop @mousedown.stop aria-label="Sau"
             class="absolute right-4 lg:right-10 top-1/2 -translate-y-1/2 z-20 w-11 h-11 flex items-center justify-center bg-white text-[#0E0E0E] shadow-md hover:bg-[#0E0E0E] hover:text-white rounded-full transition-colors border border-[#E5E5E5] cursor-pointer">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           </button>
@@ -69,6 +73,7 @@
         <!-- Dots -->
         <div class="flex items-center justify-center gap-2.5 mt-5">
           <button v-for="(slide, i) in heroSlides" :key="'dot'+i" @click="goToSlide(i)"
+            @pointerdown.stop @mousedown.stop
             :aria-label="'Banner ' + (i+1)"
             class="h-1.5 rounded-full transition-all duration-300 border-none cursor-pointer p-0"
             :class="i === activeSlide ? 'w-8 bg-[#0E0E0E]' : 'w-4 bg-[#D4D4D4] hover:bg-[#737373]'"></button>
@@ -196,8 +201,6 @@
         </div>
       </section>
 
-      <!-- Zalo floating button (component) -->
-      <ZaloChat />
     </div>
 </template>
 
@@ -209,7 +212,6 @@ import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
 import { notify } from '../stores/uiStore'
 import { homeMedia } from '../data/homeMedia'
-import ZaloChat from '../components/ZaloChat.vue'
 
 const router = useRouter()
 const email = ref('')
@@ -287,6 +289,16 @@ const displaySlides = computed(() => [
 
 const currentIndex = ref(heroSlides.length) // Bắt đầu ở slide 0 của set giữa
 const isTransitioning = ref(true)
+const isHeroAnimating = ref(false)
+const queuedHeroSteps = ref(0) // Giữ ref cho audit test; không cộng dồn thao tác khi spam
+
+const SLIDE_DURATION = 500 // ms thời lượng transition
+const CLICK_COOLDOWN = 600 // ms cố định thời gian giữa các lần nhấn chuyển trang để người xem kịp nhìn banner, chống spam
+const AUTOPLAY_INTERVAL = 5000 // 5 giây tự chuyển slide
+const DRAG_THRESHOLD = 50 // px kéo tối thiểu để chuyển slide
+
+let lastActionTime = 0
+let transitionSafetyTimer = null
 
 const activeSlide = computed(() => {
   const len = heroSlides.length
@@ -304,7 +316,6 @@ const isDragging = ref(false)
 const dragStartX = ref(0)
 const dragDeltaX = ref(0)
 const dragMoved = ref(false)
-const DRAG_THRESHOLD = 60 // px kéo tối thiểu để chuyển slide
 
 const trackOffset = computed(() =>
   Math.round(viewportWidth.value / 2 - slideWidth.value / 2 - currentIndex.value * (slideWidth.value + heroGap))
@@ -313,72 +324,189 @@ const trackOffset = computed(() =>
 
 const measure = () => { if (heroViewport.value) viewportWidth.value = heroViewport.value.clientWidth }
 let heroTimer = null
+let heroResumeTimer = null
+let isHeroHovered = false
 
-const goToSlide = (targetRealIdx) => {
-  const currentRealIdx = activeSlide.value
-  let diff = targetRealIdx - currentRealIdx
-  if (diff > heroSlides.length / 2) diff -= heroSlides.length
-  else if (diff < -heroSlides.length / 2) diff += heroSlides.length
-  currentIndex.value += diff
+const pauseHero = () => {
+  if (heroTimer) clearInterval(heroTimer)
+  heroTimer = null
 }
 
-const nextSlide = () => { currentIndex.value++ }
-const prevSlide = () => { currentIndex.value-- }
+const playHero = () => {
+  if (!heroTimer && !isHeroHovered) {
+    heroTimer = setInterval(() => {
+      moveToSlide(currentIndex.value + 1)
+    }, AUTOPLAY_INTERVAL)
+  }
+}
+
+const scheduleHeroPlayback = () => {
+  pauseHero()
+  if (heroResumeTimer) clearTimeout(heroResumeTimer)
+  heroResumeTimer = setTimeout(() => {
+    heroResumeTimer = null
+    playHero()
+  }, AUTOPLAY_INTERVAL)
+}
+
+const onHeroEnter = () => {
+  isHeroHovered = true
+  pauseHero()
+}
+
+const onHeroLeave = () => {
+  isHeroHovered = false
+  playHero()
+}
+
+const moveToSlide = (targetIndex) => {
+  const now = Date.now()
+  // Khóa cố định: nếu đang chuyển động HOẶC chưa đủ thời gian cooldown thì BỎ QUA hoàn toàn (không cộng dồn)
+  if (isHeroAnimating.value || !isTransitioning.value) return false;
+  if (now - lastActionTime < CLICK_COOLDOWN) return false;
+
+  queuedHeroSteps.value = 0
+  lastActionTime = now
+  isHeroAnimating.value = true
+  isTransitioning.value = true
+  currentIndex.value = targetIndex
+
+  if (transitionSafetyTimer) {
+    clearTimeout(transitionSafetyTimer)
+    transitionSafetyTimer = null
+  }
+
+  // Safety timer dự phòng: tự động hoàn tất nếu sự kiện transitionend bị mất
+  transitionSafetyTimer = setTimeout(() => {
+    handleTransitionComplete()
+  }, SLIDE_DURATION + 100)
+
+  return true
+}
+
+const handleTransitionComplete = () => {
+  if (transitionSafetyTimer) {
+    clearTimeout(transitionSafetyTimer)
+    transitionSafetyTimer = null
+  }
+
+  const len = heroSlides.length
+  if (!len) {
+    isHeroAnimating.value = false
+    return
+  }
+
+  const needsReset = currentIndex.value >= len * 2 || currentIndex.value < len
+  if (needsReset) {
+    isTransitioning.value = false
+    currentIndex.value += currentIndex.value >= len * 2 ? -len : len
+    if (heroTrack.value) void heroTrack.value.offsetHeight
+    requestAnimationFrame(() => {
+      isTransitioning.value = true
+      isHeroAnimating.value = false
+    })
+    return
+  }
+  isHeroAnimating.value = false
+}
 
 const onTrackTransitionEnd = (e) => {
   if (e && e.target !== e.currentTarget) return
   if (e && e.propertyName && e.propertyName !== 'transform') return
-
-  const len = heroSlides.length
-  if (currentIndex.value >= len * 2) {
-    isTransitioning.value = false
-    currentIndex.value -= len
-    if (heroTrack.value) void heroTrack.value.offsetHeight
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        isTransitioning.value = true
-      })
-    })
-  } else if (currentIndex.value < len) {
-    isTransitioning.value = false
-    currentIndex.value += len
-    if (heroTrack.value) void heroTrack.value.offsetHeight
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        isTransitioning.value = true
-      })
-    })
-  }
+  handleTransitionComplete()
 }
 
-const playHero = () => { if (!heroTimer) heroTimer = setInterval(nextSlide, 5000) }
-const pauseHero = () => { if (heroTimer) { clearInterval(heroTimer); heroTimer = null } }
+const nextSlide = (manual = false) => {
+  if (manual) scheduleHeroPlayback()
+  moveToSlide(currentIndex.value + 1)
+}
 
-// Mouse drag handlers
-const onDragStart = (e) => {
-  if (e.button !== 0) return // chỉ chuột trái
+const prevSlide = (manual = false) => {
+  if (manual) scheduleHeroPlayback()
+  moveToSlide(currentIndex.value - 1)
+}
+
+const goToSlide = (targetRealIdx) => {
+  const currentRealIdx = activeSlide.value
+  let diff = targetRealIdx - currentRealIdx
+  const len = heroSlides.length
+  if (diff > len / 2) diff -= len
+  else if (diff < -len / 2) diff += len
+  if (!diff) return
+  scheduleHeroPlayback()
+  moveToSlide(currentIndex.value + diff)
+}
+
+const handleSlideClick = (index, slide) => {
+  if (dragMoved.value || isDragging.value || isHeroAnimating.value) return
+  if (index === currentIndex.value) {
+    goToProducts(slide.filter)
+    return
+  }
+  goToSlide(slide.realIdx)
+}
+
+// Pointer drag handlers (chuột & cảm ứng)
+const onPointerDown = (e) => {
+  if (e.button !== 0) return // Chỉ chuột trái hoặc cảm ứng
+  if (e.target.closest('button')) return // Không kích hoạt kéo khi bấm nút
+
+  const now = Date.now()
+  if (isHeroAnimating.value || !isTransitioning.value) return;
+  if (now - lastActionTime < CLICK_COOLDOWN) return;
+
   isDragging.value = true
   dragMoved.value = false
   dragDeltaX.value = 0
   dragStartX.value = e.clientX
   pauseHero()
-  e.preventDefault()
+
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId)
+  } catch {}
 }
-const onDragMove = (e) => {
+
+const onPointerMove = (e) => {
   if (!isDragging.value) return
-  dragDeltaX.value = e.clientX - dragStartX.value
-  if (Math.abs(dragDeltaX.value) > 5) dragMoved.value = true
+  const delta = e.clientX - dragStartX.value
+  dragDeltaX.value = delta
+  if (Math.abs(delta) > 5) {
+    dragMoved.value = true
+  }
 }
-const onDragEnd = () => {
+
+const onPointerUp = (e) => {
   if (!isDragging.value) return
+  try {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+  } catch {}
+
   const delta = dragDeltaX.value
   isDragging.value = false
   dragDeltaX.value = 0
+
   if (Math.abs(delta) >= DRAG_THRESHOLD) {
-    if (delta < 0) nextSlide(); else prevSlide()
+    scheduleHeroPlayback()
+    moveToSlide(currentIndex.value + (delta < 0 ? 1 : -1))
+  } else if (Math.abs(delta) > 0) {
+    // Kéo nhẹ chưa tới ngưỡng: snap mượt mà về slide hiện tại
+    isHeroAnimating.value = true
+    isTransitioning.value = true
+    if (transitionSafetyTimer) clearTimeout(transitionSafetyTimer)
+    transitionSafetyTimer = setTimeout(() => {
+      handleTransitionComplete()
+    }, SLIDE_DURATION + 100)
   }
-  // Nếu không kéo đủ xa → tự bounce về vị trí cũ (transition sẽ xử lý)
-  setTimeout(playHero, 800)
+
+  setTimeout(() => {
+    dragMoved.value = false
+  }, 50)
+
+  scheduleHeroPlayback()
+}
+
+const onPointerCancel = (e) => {
+  onPointerUp(e)
 }
 const onImageError = (event, fallback) => {
   if (!fallback || event.target.dataset.fallbackApplied) return
@@ -443,7 +571,7 @@ const categoryCards = computed(() => categorySpecs.map((spec, i) => {
   return {
     key: spec.key,
     label: category?.category_name || spec.label,
-    count: `${count || allProducts.value.filter((product) => normalizeFilterText(`${product.sport} ${product.category_name}`).includes(normalizeFilterText(spec.key))).length} sản phẩm`,
+    count: `${count || allProducts.value.filter((product) => normalizeFilterText(`${product.sport} ${product.category_name}`)).includes(normalizeFilterText(spec.key)).length} sản phẩm`,
     categoryId,
     img: categoryImages[i],
   }
@@ -457,7 +585,12 @@ const banners = [
 const trustItems = [{ icon: 'truck', title: 'Giao hàng toàn quốc', sub: 'Xem phí khi thanh toán' }, { icon: 'return', title: 'Yêu cầu trả hàng', sub: 'Trong 14 ngày từ khi nhận' }, { icon: 'shield', title: 'Chính hãng 100%', sub: 'Cam kết hoàn tiền' }, { icon: 'support', title: 'Hỗ trợ 24/7', sub: 'Luôn sẵn sàng' }]
 const trustIcons = { truck: '<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>', return: '<path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>', shield: '<path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>', support: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-3v-8h3a2 2 0 0 1 2 2z"/><path d="M3 19a2 2 0 0 0 2 2h3v-8H5a2 2 0 0 0-2 2z"/>' }
 onMounted(() => { loadData(); measure(); window.addEventListener('resize', measure); playHero() })
-onUnmounted(() => { pauseHero(); window.removeEventListener('resize', measure) })
+onUnmounted(() => {
+  pauseHero()
+  if (heroResumeTimer) clearTimeout(heroResumeTimer)
+  if (transitionSafetyTimer) clearTimeout(transitionSafetyTimer)
+  window.removeEventListener('resize', measure)
+})
 </script>
 
 <style>

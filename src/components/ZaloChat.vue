@@ -1,7 +1,7 @@
 <template>
   <a
     class="zalo-chat"
-    href="https://zalo.me/0961107075"
+    href="https://zalo.me/0375990871"
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Chat với shop qua Zalo"

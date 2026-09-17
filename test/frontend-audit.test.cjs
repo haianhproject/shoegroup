@@ -220,3 +220,31 @@ test('adding the first color with an image supplies a cover, later colors do not
   admin.addColor();
   assert.equal(admin.productForm.image_url, 'first.png');
 });
+
+test('fixed customer navbar has a matching content offset and one global chat widget', () => {
+  const app = fs.readFileSync(path.join(root, 'src/App.vue'), 'utf8');
+  const navbar = fs.readFileSync(path.join(root, 'src/components/figma/layout/FigmaNavbar.vue'), 'utf8');
+  const home = fs.readFileSync(path.join(root, 'src/views/HomeDisplay.vue'), 'utf8');
+  assert.match(navbar, /<header[^>]+\bfixed\b[^>]+\btop-0\b/);
+  assert.match(app, /<main[^>]+pt-\[69px\][^>]*>/);
+  assert.equal((app.match(/<ZaloChat\s*\/>/g) || []).length, 1);
+  assert.equal((home.match(/<ZaloChat\s*\/>/g) || []).length, 0);
+});
+
+test('product detail uses the archived Figma layout without Bootstrap utilities', () => {
+  const detail = fs.readFileSync(path.join(root, 'src/views/ProductDetail.vue'), 'utf8');
+  assert.match(detail, /lg:grid-cols-2/);
+  assert.match(detail, /Sản phẩm liên quan/);
+  assert.match(detail, /Chọn size \(UK\)/);
+  assert.doesNotMatch(detail, /\b(container-fluid|spinner-border|d-flex|flex-column|col-lg-\d+|row g-\d+|w-100|text-danger|text-muted|bi bi-)\b/);
+});
+
+test('home hero serializes rapid navigation and resets clones without animation', () => {
+  const home = fs.readFileSync(path.join(root, 'src/views/HomeDisplay.vue'), 'utf8');
+  assert.match(home, /const isHeroAnimating = ref\(false\)/);
+  assert.match(home, /const queuedHeroSteps = ref\(0\)/);
+  assert.match(home, /if \(isHeroAnimating\.value \|\| !isTransitioning\.value\)/);
+  assert.match(home, /isTransitioning\.value = false[\s\S]*currentIndex\.value \+=/);
+  assert.match(home, /slide\.type === 'video' && i === currentIndex/);
+  assert.doesNotMatch(home, /currentIndex\.value\+\+|currentIndex\.value--/);
+});

@@ -15,13 +15,13 @@ const isAdmin = computed(() => route.path.startsWith('/admin'))
 </script>
 
 <template>
-  <div class="d-flex flex-column min-vh-100">
+  <div class="flex min-h-screen flex-col">
 
     <!-- NAVBAR CLIENT -->
     <TheNavbar v-if="!isAdmin" />
 
     <!-- CONTENT -->
-    <main class="flex-grow-1">
+    <main class="flex-1" :class="{ 'pt-[69px]': !isAdmin }">
       <router-view />
     </main>
 
