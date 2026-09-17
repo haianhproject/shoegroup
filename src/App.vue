@@ -7,6 +7,7 @@ import TheFooter from './components/TheFooter.vue'
 import CenterNotify from './components/CenterNotify.vue'
 import PromoModal from './components/PromoModal.vue'
 import ZaloChat from './components/ZaloChat.vue'
+import CartDrawer from './components/CartDrawer.vue'
 
 const route = useRoute()
 
@@ -29,6 +30,7 @@ const isAdmin = computed(() => route.path.startsWith('/admin'))
 
     <!-- CUSTOMER SIDE ONLY -->
     <template v-if="!isAdmin">
+      <CartDrawer />
       <PromoModal />
 
       <!-- BONG BÓNG CHAT ZALO -->

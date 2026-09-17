@@ -10,7 +10,16 @@ const form = reactive({ fullName: '', email: '', password: '', confirm: '' })
 const showPwd = ref(false)
 const loading = ref(false)
 
-const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
+const isValidEmail = (value) => {
+  const email = String(value || '').trim()
+  const at = email.lastIndexOf('@')
+  if (at <= 0 || at !== email.indexOf('@') || email.length > 100) return false
+  const local = email.slice(0, at)
+  const domain = email.slice(at + 1)
+  if (local.length > 64 || !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local) || local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false
+  const labels = domain.split('.')
+  return domain.length <= 253 && labels.length > 1 && labels.at(-1).length >= 2 && labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
+}
 
 const submit = async () => {
   const name = form.fullName.trim()
@@ -45,7 +54,7 @@ const submit = async () => {
         <label class="co-label">HỌ VÀ TÊN</label>
         <div class="in-wrap"><input v-model="form.fullName" class="auth-input" placeholder="Nguyễn Văn A"></div>
         <label class="co-label">EMAIL</label>
-        <div class="in-wrap"><input v-model="form.email" type="email" class="auth-input" placeholder="you@example.com"></div>
+        <div class="in-wrap"><input v-model.trim="form.email" type="email" inputmode="email" autocomplete="email" maxlength="100" class="auth-input" placeholder="you@example.com"></div>
         <label class="co-label">MẬT KHẨU</label>
         <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="ít nhất 6 ký tự"><button class="eye" @click="showPwd = !showPwd"><i class="icon" :class="showPwd ? 'icon-eye-slash' : 'icon-eye'"></i></button></div>
         <label class="co-label">XÁC NHẬN MẬT KHẨU</label>

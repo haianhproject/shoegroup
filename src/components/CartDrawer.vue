@@ -1,6 +1,6 @@
 <script setup>
 import { onUnmounted, computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   cartState, cartItems, cartCount, cartSubtotal,
   formatCurrency, increaseQuantity, decreaseQuantity, removeFromCart, clearCart,
@@ -12,12 +12,17 @@ import { isAuthenticated } from '../stores/authStore'
 import { api } from '../services/apiClient'
 
 const router = useRouter()
+const route = useRoute()
 const isOpen = computed(() => cartState.isDrawerOpen)
 
 let stockPollTimer = null
 let lastUnavailableSignature = ''
 
 const close = () => hideDrawer()
+
+watch(() => route.fullPath, () => {
+  if (isOpen.value) hideDrawer()
+})
 
 const checkCartStock = async ({ announceCurrent = false } = {}) => {
   const result = await refreshCartAvailability()
@@ -54,6 +59,7 @@ watch(isOpen, async (open) => {
 })
 
 onUnmounted(() => {
+  hideDrawer()
   if (stockPollTimer) window.clearInterval(stockPollTimer)
   document.removeEventListener('visibilitychange', onVisible)
   window.removeEventListener('focus', onVisible)

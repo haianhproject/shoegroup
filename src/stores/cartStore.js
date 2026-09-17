@@ -1,5 +1,6 @@
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { currentUser } from "./authStore";
+import { api } from "../services/apiClient";
 
 // ============================================================
 // STORAGE
@@ -30,6 +31,24 @@ const getUserId = (user) => {
   }
 
   return `user_${String(id).trim()}`;
+};
+
+const sanitizeCartItem = (item) => {
+  if (!item || typeof item !== "object") return null;
+  const productId = Number(item.id_product ?? item.product_id ?? item.product?.id_product);
+  const quantity = Number(item.quantity);
+  const unitPrice = Number(item.unitPrice ?? item.price ?? item.product?.price);
+  if (!Number.isSafeInteger(productId) || productId <= 0) return null;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000) return null;
+  if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1e12) return null;
+  const variantRaw = item.variant_id;
+  const variantId = variantRaw === null || variantRaw === undefined || String(variantRaw).trim() === ""
+    ? null
+    : Number(variantRaw);
+  if (variantId !== null && (!Number.isSafeInteger(variantId) || variantId <= 0)) return null;
+  const detailId = String(item.id_product_detail ?? `${productId}_${variantId ?? "default"}`).trim();
+  if (!detailId || detailId.length > 300) return null;
+  return { ...item, id_product: productId, variant_id: variantId, id_product_detail: detailId, quantity, unitPrice };
 };
 
 // ============================================================
@@ -96,7 +115,7 @@ const loadCartForUser = (user) => {
     return [];
   }
 
-  return carts[userKey];
+  return carts[userKey].map(sanitizeCartItem).filter(Boolean);
 };
 
 // ============================================================
@@ -126,7 +145,11 @@ let activeUserKey = getUserId(currentUser.value);
 export const cartState = reactive({
   items: loadCartForUser(currentUser.value),
   isMiniCartOpen: false,
+  isDrawerOpen: false,
 });
+
+export const isCheckingCartStock = ref(false);
+let cartStockRefreshInFlight = null;
 
 // ============================================================
 // THEO DÕI ĐỔI TÀI KHOẢN
@@ -209,13 +232,21 @@ export const formatCurrency = (value) => {
 // ============================================================
 
 export const cartItems = computed(() => {
-  return cartState.items.map((item) => ({
-    ...item,
-
+  const items = cartState.items.map((item, index) => ({
+    item,
+    index,
     subtotal:
       Number(item.unitPrice || 0) *
       Number(item.quantity || 0),
   }));
+  // Giữ sản phẩm còn mua được ở đầu giỏ; biến thể vừa hết/không đủ kho
+  // được đẩy xuống cuối để khách dễ nhận biết và xử lý trước khi thanh toán.
+  items.sort((a, b) => {
+    const unavailableA = a.item.isOutOfStock || a.item.hasInsufficientStock ? 1 : 0;
+    const unavailableB = b.item.isOutOfStock || b.item.hasInsufficientStock ? 1 : 0;
+    return unavailableA - unavailableB || a.index - b.index;
+  });
+  return items.map(({ item, subtotal }) => ({ ...item, subtotal }));
 });
 
 // ============================================================
@@ -264,6 +295,200 @@ export const cartTotal = computed(() => {
 });
 
 // ============================================================
+// KIEM TRA TON KHO THAT
+// ============================================================
+
+const normalizeVariantText = (value) =>
+  String(value ?? "").trim().toLocaleLowerCase("vi-VN");
+
+const isEnabled = (value) =>
+  !(value === false || value === 0 || value === "0");
+
+export const cartUnavailableItems = computed(() =>
+  cartState.items.filter(
+    (item) => item.isOutOfStock === true || item.hasInsufficientStock === true,
+  ),
+);
+
+export const cartHasUnavailableItems = computed(
+  () => cartUnavailableItems.value.length > 0,
+);
+
+const refreshCartStockFromServer = async () => {
+  if (!cartState.items.length) {
+    return {
+      ok: true,
+      outOfStock: [],
+      insufficient: [],
+      newlyUnavailable: [],
+    };
+  }
+
+  const refreshUserKey = activeUserKey;
+  const requestedItems = new Map(
+    cartState.items.map((item) => [String(item.id_product_detail), item]),
+  );
+  isCheckingCartStock.value = true;
+  try {
+    const products = await api.get("/products");
+    if (!Array.isArray(products)) {
+      throw new Error("Du lieu ton kho khong hop le.");
+    }
+    // Tai khoan co the dang xuat/dang nhap trong luc request dang chay.
+    // Khong duoc ap ket qua cua gio cu sang gio cua tai khoan moi.
+    if (activeUserKey !== refreshUserKey) {
+      return {
+        ok: false,
+        cancelled: true,
+        message: "Gio hang da thay doi trong luc kiem tra ton kho.",
+        outOfStock: [],
+        insufficient: [],
+        newlyUnavailable: [],
+      };
+    }
+
+    const productsById = new Map(
+      products.map((product) => [
+        String(product.id ?? product.ProductID),
+        product,
+      ]),
+    );
+    const outOfStock = [];
+    const insufficient = [];
+    const newlyUnavailable = [];
+    const priceChanged = [];
+    const checkedAt = Date.now();
+
+    for (const item of cartState.items) {
+      if (requestedItems.get(String(item.id_product_detail)) !== item) continue;
+      const productId =
+        item.id_product ?? item.product?.id_product ?? item.product_id;
+      const product = productsById.get(String(productId));
+      const productActive = product && isEnabled(product.active ?? product.IsActive);
+      const variants = Array.isArray(product?.variants) ? product.variants : [];
+      const variantId = item.variant_id;
+      let variant = null;
+
+      if (variantId !== null && variantId !== undefined && String(variantId) !== "") {
+        // Variant ID la dinh danh chinh. Khong tu doi sang SKU khac neu ID cu mat.
+        variant = variants.find(
+          (candidate) => String(candidate.id ?? candidate.ProductVariantID) === String(variantId),
+        );
+      } else {
+        const wantedSize = normalizeVariantText(
+          item.size?.size_name ?? item.size,
+        );
+        const wantedColor = normalizeVariantText(
+          item.color?.color_label ?? item.color?.color_name ?? item.color,
+        );
+        variant = variants.find(
+          (candidate) =>
+            normalizeVariantText(candidate.size ?? candidate.Size) === wantedSize &&
+            normalizeVariantText(candidate.color ?? candidate.ColorName) === wantedColor,
+        );
+      }
+
+      const variantActive = variant && isEnabled(variant.active ?? variant.IsActive);
+      const stock = Math.max(
+        0,
+        Number(
+          variant?.stock ??
+            variant?.StockQuantity ??
+            (variants.length === 0
+              ? product?.total_stock ?? product?.stock_quantity ?? product?.stock
+              : 0),
+        ) || 0,
+      );
+      const variantFound = Boolean(variant) || Boolean(product && variants.length === 0);
+      const isOutOfStock =
+        !product ||
+        !productActive ||
+        !variantFound ||
+        (!variantActive && variants.length > 0) ||
+        stock <= 0;
+      const hasInsufficientStock =
+        !isOutOfStock && Number(item.quantity || 0) > stock;
+      const nextStatus = isOutOfStock
+        ? "out_of_stock"
+        : hasInsufficientStock
+          ? "insufficient"
+          : "available";
+      const previousStatus = item.stockAvailability || "available";
+
+      item.stockQuantity = stock;
+      item.isOutOfStock = isOutOfStock;
+      item.hasInsufficientStock = hasInsufficientStock;
+      item.stockAvailability = nextStatus;
+      item.stockCheckedAt = checkedAt;
+
+      // Đồng bộ ảnh biến thể và màu mới nhất từ server nếu admin vừa cập nhật
+      if (product) {
+        // Giá trong giỏ bám theo đúng biến thể màu; trường sale_price ở cấp
+        // sản phẩm chỉ là giá tối thiểu để hiển thị danh sách.
+        const basePrice = Number(variant?.price ?? product.price ?? product.BasePrice);
+        const salePrice = Number(variant?.sale_price ?? (variants.length ? 0 : product.sale_price) ?? 0);
+        const currentPrice = salePrice > 0 ? salePrice : basePrice;
+        if (Number.isFinite(currentPrice) && currentPrice >= 0 && item.unitPrice !== currentPrice) {
+          priceChanged.push({ id: item.id_product_detail, previousPrice: item.unitPrice, currentPrice });
+          item.unitPrice = currentPrice;
+        }
+        if (product.name && item.product) {
+          item.product.product_name = product.name;
+        }
+        if (product.image_url && item.product) {
+          item.product.image_url = product.image_url;
+        }
+        const colorName = item.color?.color_label || item.color?.color_name || variant?.color;
+        if (colorName) {
+          const colorObj = (product.colors || []).find(
+            (c) => normalizeVariantText(c.name || c.ColorName) === normalizeVariantText(colorName),
+          );
+          const freshImg = colorObj?.image || colorObj?.ImageURL || variant?.image || product.image_url;
+          if (freshImg) {
+            if (!item.color) item.color = {};
+            item.color.image = freshImg;
+            if (colorObj?.name) item.color.color_label = colorObj.name;
+            if (colorObj?.hex) item.color.hex = colorObj.hex;
+          }
+        }
+      }
+
+      if (isOutOfStock) outOfStock.push(item);
+      if (hasInsufficientStock) insufficient.push(item);
+      if (
+        previousStatus === "available" &&
+        (nextStatus === "out_of_stock" || nextStatus === "insufficient")
+      ) {
+        newlyUnavailable.push(item);
+      }
+    }
+
+    // Lưu giỏ hàng đã đồng bộ vào bộ nhớ
+    saveCartForUser(activeUserKey, cartState.items);
+
+    return { ok: true, outOfStock, insufficient, newlyUnavailable, priceChanged };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error?.message || "Khong the kiem tra ton kho luc nay.",
+      outOfStock: [],
+      insufficient: [],
+      newlyUnavailable: [],
+    };
+  } finally {
+    isCheckingCartStock.value = false;
+  }
+};
+
+export const refreshCartAvailability = () => {
+  if (cartStockRefreshInFlight) return cartStockRefreshInFlight;
+  cartStockRefreshInFlight = refreshCartStockFromServer().finally(() => {
+    cartStockRefreshInFlight = null;
+  });
+  return cartStockRefreshInFlight;
+};
+
+// ============================================================
 // ADD TO CART
 // ============================================================
 
@@ -296,6 +521,10 @@ export const addToCart = (payload) => {
     product.id_product ??
     product.id ??
     product.ProductID;
+  const normalizedProductId = Number(productId);
+  if (!Number.isSafeInteger(normalizedProductId) || normalizedProductId <= 0) {
+    return { ok: false, message: "Mã sản phẩm không hợp lệ." };
+  }
 
   // ----------------------------------------------------------
   // PRODUCT NAME
@@ -322,6 +551,9 @@ export const addToCart = (payload) => {
     product.SalePrice ??
     0,
   );
+  if (!Number.isFinite(basePrice) || basePrice < 0 || !Number.isFinite(salePrice) || salePrice < 0 || (salePrice > 0 && salePrice > basePrice)) {
+    return { ok: false, message: "Giá sản phẩm không hợp lệ." };
+  }
 
   const productPrice =
     salePrice > 0
@@ -377,6 +609,12 @@ export const addToCart = (payload) => {
     product.variant_id ??
     product.id_variant ??
     null;
+  const numericVariantId = normalizedVariantId === null || normalizedVariantId === undefined || String(normalizedVariantId).trim() === ""
+    ? null
+    : Number(normalizedVariantId);
+  if (numericVariantId !== null && (!Number.isSafeInteger(numericVariantId) || numericVariantId <= 0)) {
+    return { ok: false, message: "Mã biến thể không hợp lệ." };
+  }
 
   // ----------------------------------------------------------
   // ATTRIBUTES
@@ -435,6 +673,11 @@ export const addToCart = (payload) => {
   //
   // ==========================================================
 
+  const hasFreshStock =
+    (stockQuantity !== null && stockQuantity !== undefined) ||
+    (product.stock_quantity !== null && product.stock_quantity !== undefined) ||
+    (product.total_stock !== null && product.total_stock !== undefined);
+
   let stock = Number(
     stockQuantity ??
       product.stock_quantity ??
@@ -457,6 +700,7 @@ export const addToCart = (payload) => {
     !Number.isFinite(
       requestedQuantity,
     ) ||
+    !Number.isInteger(requestedQuantity) ||
     requestedQuantity < 1
   ) {
     return {
@@ -483,10 +727,9 @@ export const addToCart = (payload) => {
   // ==========================================================
 
   const detailId =
-    normalizedVariantId !== null &&
-    normalizedVariantId !== undefined
-      ? `${productId}_variant_${normalizedVariantId}`
-      : `${productId}_${String(sizeName)}_${String(colorName)}`;
+    numericVariantId !== null
+      ? `${normalizedProductId}_variant_${numericVariantId}`
+      : `${normalizedProductId}_${String(sizeName)}_${String(colorName)}`;
 
   // ==========================================================
   // TÌM ITEM ĐÃ CÓ
@@ -513,12 +756,9 @@ export const addToCart = (payload) => {
 
     // Nếu API không gửi stock mới,
     // dùng stock đã lưu trong cart.
-    const currentStock =
-      stock > 0
-        ? stock
-        : Number(
-            existingItem.stockQuantity || 0,
-          );
+    const currentStock = hasFreshStock
+      ? stock
+      : Number(existingItem.stockQuantity ?? 0);
 
     if (newQuantity > currentStock) {
       return {
@@ -535,6 +775,11 @@ export const addToCart = (payload) => {
     // Lưu snapshot tồn kho
     existingItem.stockQuantity =
       currentStock;
+
+    existingItem.isOutOfStock = false;
+    existingItem.hasInsufficientStock = false;
+    existingItem.stockAvailability = "available";
+    existingItem.stockCheckedAt = Date.now();
 
     existingItem.unitPrice =
       productPrice;
@@ -586,16 +831,16 @@ export const addToCart = (payload) => {
 
     // Product
     id_product:
-      productId,
+      normalizedProductId,
 
     // Variant thật
     variant_id:
-      normalizedVariantId,
+      numericVariantId,
 
     // Product snapshot
     product: {
       id_product:
-        productId,
+        normalizedProductId,
 
       product_name:
         productName,
@@ -645,6 +890,11 @@ export const addToCart = (payload) => {
 
     stockQuantity:
       stock,
+
+    isOutOfStock: false,
+    hasInsufficientStock: false,
+    stockAvailability: "available",
+    stockCheckedAt: Date.now(),
   });
 
   return {
@@ -673,6 +923,13 @@ export const increaseQuantity = (
       ok: false,
       message:
         "Không tìm thấy sản phẩm trong giỏ.",
+    };
+  }
+
+  if (item.isOutOfStock) {
+    return {
+      ok: false,
+      message: "Sản phẩm này đã hết hàng. Vui lòng chọn sản phẩm khác.",
     };
   }
 
@@ -742,6 +999,15 @@ export const decreaseQuantity = (
   item.quantity =
     quantity - 1;
 
+  const stock = Number(item.stockQuantity || 0);
+  item.hasInsufficientStock =
+    !item.isOutOfStock && quantity - 1 > stock;
+  item.stockAvailability = item.isOutOfStock
+    ? "out_of_stock"
+    : item.hasInsufficientStock
+      ? "insufficient"
+      : "available";
+
   return {
     ok: true,
     message:
@@ -799,4 +1065,24 @@ export const hideMiniCart = () => {
 export const toggleMiniCart = () => {
   cartState.isMiniCartOpen =
     !cartState.isMiniCartOpen;
+};
+
+// ============================================================
+// DRAWER CART (slide-over, không làm mất trang nền)
+// ============================================================
+
+export const showDrawer = () => {
+  cartState.isDrawerOpen = true;
+  cartState.isMiniCartOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = 'hidden';
+};
+
+export const hideDrawer = () => {
+  cartState.isDrawerOpen = false;
+  if (typeof document !== 'undefined') document.body.style.overflow = '';
+};
+
+export const toggleDrawer = () => {
+  if (cartState.isDrawerOpen) hideDrawer();
+  else showDrawer();
 };

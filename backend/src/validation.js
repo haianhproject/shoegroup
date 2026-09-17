@@ -6,7 +6,8 @@
  * hình dạng, miền giá trị và giới hạn dữ liệu trước khi chạm vào SQL.
  */
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL_LOCAL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i;
+const EMAIL_DOMAIN_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 const PHONE_RE = /^0(?:3|5|7|8|9)\d{8}$/;
 const HEX_RE = /^#[0-9a-f]{3,8}$/i;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -59,7 +60,16 @@ function dateValue(value, { required = false } = {}) {
 
 function validateEmail(value) {
   const email = text(value, 100).toLowerCase();
-  return EMAIL_RE.test(email) ? email : null;
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || at !== email.indexOf("@")) return null;
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (local.length > 64 || !EMAIL_LOCAL_RE.test(local) || local.startsWith(".") || local.endsWith(".") || local.includes("..")) return null;
+  if (domain.length > 253 || !domain.includes(".") || domain.includes("..")) return null;
+  const labels = domain.split(".");
+  if (labels.some((label) => !EMAIL_DOMAIN_LABEL_RE.test(label))) return null;
+  if (labels.at(-1).length < 2) return null;
+  return email;
 }
 
 function validatePhone(value, { required = false } = {}) {

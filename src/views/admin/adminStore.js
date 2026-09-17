@@ -3398,6 +3398,12 @@ export const formFields = computed(() => {
         disabled: !!formModal.data.id,
         options: ROLE_OPTIONS.map((r) => ({ ...r })),
       };
+    if (formModal.type === "accounts" && f.key === "username")
+      return {
+        ...f,
+        disabled: !!formModal.data.id,
+        label: formModal.data.id ? "Email đăng nhập (không thể thay đổi)" : f.label,
+      };
     return f;
   });
 });
@@ -3448,16 +3454,21 @@ export async function saveForm() {
     }
   }
   const isEdit = !!data.id;
+  const payload = { ...data };
+  if (type === "accounts" && isEdit) {
+    delete payload.username;
+    delete payload.email;
+  }
   const res = isEdit
     ? await apiWrite("/" + type + "/" + data.id, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
     : await apiWrite("/" + type, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
   if (!res.ok) {
     notify(
@@ -3499,6 +3510,30 @@ export function deleteItem(type, id, name) {
     'Bạn có chắc muốn xoá "' +
     (name || "#" + id) +
     '"? Hành động này không thể hoàn tác.';
+  confirmModal.open = true;
+}
+
+export function toggleAccountLock(account) {
+  confirmModal.type = "accounts";
+  confirmModal.id = account.id;
+  confirmModal.payload = { active: account.active === false };
+  if (account.active !== false) {
+    confirmModal.mode = "account-lock";
+    confirmModal.danger = false;
+    confirmModal.confirmLabel = "Khóa tài khoản";
+    confirmModal.title = "Khóa tài khoản?";
+    confirmModal.message =
+      'Khóa "' + (account.name || account.username || "#" + account.id) +
+      '"? Tài khoản sẽ không thể đăng nhập cho đến khi được mở khóa.';
+  } else {
+    confirmModal.mode = "account-unlock";
+    confirmModal.danger = false;
+    confirmModal.confirmLabel = "Mở khóa tài khoản";
+    confirmModal.title = "Mở khóa tài khoản?";
+    confirmModal.message =
+      'Mở khóa "' + (account.name || account.username || "#" + account.id) +
+      '"? Tài khoản sẽ có thể đăng nhập lại.';
+  }
   confirmModal.open = true;
 }
 
@@ -3589,6 +3624,23 @@ export async function executeConfirm() {
     await doRestoreItem(type, item);
     return;
   }
+  if (confirmModal.mode === "account-lock" || confirmModal.mode === "account-unlock") {
+    const mode = confirmModal.mode;
+    const res = await apiWrite("/accounts/" + confirmModal.id, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(confirmModal.payload),
+    });
+    if (!res.ok) {
+      notify(res.data?.message || "Không thể cập nhật trạng thái tài khoản.", "error");
+      return;
+    }
+    confirmModal.open = false;
+    confirmModal.payload = null;
+    notify(mode === "account-lock" ? "Đã khóa tài khoản" : "Đã mở khóa tài khoản", "success");
+    fetchAllData();
+    return;
+  }
   const suffix =
     confirmModal.type === "products" && confirmModal.mode === "soft"
       ? "?soft=1"
@@ -3599,11 +3651,12 @@ export async function executeConfirm() {
   );
   if (!res.ok) {
     notify(
-      "Xoá thất bại (máy chủ " +
-        (res.status || "không phản hồi") +
-        "). Kiểm tra API /" +
-        confirmModal.type +
-        ".",
+      res.data?.message ||
+        ("Thao tác thất bại (máy chủ " +
+          (res.status || "không phản hồi") +
+          "). Kiểm tra API /" +
+          confirmModal.type +
+          "."),
       "error",
     );
     return;
