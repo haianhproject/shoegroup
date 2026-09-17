@@ -90,20 +90,21 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
         LEFT JOIN Categories c ON c.CategoryID = p.CategoryID
         LEFT JOIN Brands b ON b.BrandID = p.BrandID
         OUTER APPLY (
-          SELECT MIN(CAST(p.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
+          SELECT MIN(CAST(priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
                  MIN(CAST(CASE
                    WHEN promo.VariantDiscountID IS NULL THEN NULL
-                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice+ISNULL(pv.PriceAdjustment,0)
+                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0)
                      THEN promo.DiscountValue
                    WHEN promo.DiscountKind=N'percent' THEN
-                     (p.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
+                     (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
                      CASE WHEN promo.MaxDiscountAmount>0 AND
-                                    (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
+                                    (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
                           THEN promo.MaxDiscountAmount
-                          ELSE (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
+                          ELSE (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
                    ELSE NULL END AS decimal(18,2))) AS MinSalePrice,
                  SUM(ISNULL(pv.StockQuantity,0)) AS TotalStock
           FROM ProductVariants pv
+          JOIN Products priceProduct ON priceProduct.ProductID=pv.ProductID
           OUTER APPLY (
             SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
                    CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
@@ -146,19 +147,20 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                p.ImageURL AS image_url, b.BrandName AS brand
         FROM Products p LEFT JOIN Brands b ON b.BrandID = p.BrandID
         OUTER APPLY (
-          SELECT MIN(CAST(p.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
+          SELECT MIN(CAST(priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0) AS decimal(18,2))) AS MinPrice,
                  MIN(CAST(CASE
                    WHEN promo.VariantDiscountID IS NULL THEN NULL
-                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < p.BasePrice+ISNULL(pv.PriceAdjustment,0)
+                   WHEN promo.DiscountKind=N'fixed' AND promo.DiscountValue < priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0)
                      THEN promo.DiscountValue
                    WHEN promo.DiscountKind=N'percent' THEN
-                     (p.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
+                     (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0)) -
                      CASE WHEN promo.MaxDiscountAmount>0 AND
-                                    (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
+                                    (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0>promo.MaxDiscountAmount
                           THEN promo.MaxDiscountAmount
-                          ELSE (p.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
+                          ELSE (priceProduct.BasePrice+ISNULL(pv.PriceAdjustment,0))*promo.DiscountValue/100.0 END
                    ELSE NULL END AS decimal(18,2))) AS MinSalePrice
           FROM ProductVariants pv
+          JOIN Products priceProduct ON priceProduct.ProductID=pv.ProductID
           OUTER APPLY (
             SELECT TOP 1 vd.VariantDiscountID, vd.DiscountValue, vd.MaxDiscountAmount,
                    CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
