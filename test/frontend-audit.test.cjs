@@ -238,3 +238,13 @@ test('product detail uses the archived Figma layout without Bootstrap utilities'
   assert.match(detail, /Chọn size \(UK\)/);
   assert.doesNotMatch(detail, /\b(container-fluid|spinner-border|d-flex|flex-column|col-lg-\d+|row g-\d+|w-100|text-danger|text-muted|bi bi-)\b/);
 });
+
+test('home hero serializes rapid navigation and resets clones without animation', () => {
+  const home = fs.readFileSync(path.join(root, 'src/views/HomeDisplay.vue'), 'utf8');
+  assert.match(home, /const isHeroAnimating = ref\(false\)/);
+  assert.match(home, /const queuedHeroSteps = ref\(0\)/);
+  assert.match(home, /if \(isHeroAnimating\.value \|\| !isTransitioning\.value\)/);
+  assert.match(home, /isTransitioning\.value = false[\s\S]*currentIndex\.value \+=/);
+  assert.match(home, /slide\.type === 'video' && i === currentIndex/);
+  assert.doesNotMatch(home, /currentIndex\.value\+\+|currentIndex\.value--/);
+});
