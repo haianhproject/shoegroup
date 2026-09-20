@@ -182,8 +182,7 @@ export function handleLogout() {
 }
 
 /* ---------------- BADGE COUNTS ---------------- */
-// Chuyển khoản online đã được khách xác nhận ở checkout thì coi là đã thanh toán
-// ngay cả với dữ liệu cũ còn lưu trạng thái "Chờ thanh toán".
+// Chuyển khoản online được ghi nhận thành công ngay khi khách xác nhận QR.
 export function isPaymentSettled(o) {
   const status = normalizeStatusText(o?.payment_status || "");
   return ["da thanh toan", "cho hoan tien", "hoan tien"].includes(status);
@@ -634,8 +633,8 @@ export function getDeliveryFailureOptions() {
     {
       key: "lost_delivery_cancel",
       text: "Thất lạc hàng khi vận chuyển",
-      next: "Đã hủy",
-      reason: "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.",
+      next: "Giao hàng thất bại",
+      reason: "Mất hàng khi vận chuyển - giao hàng thất bại, cần quản lý xử lý.",
       class: "btn-outline-danger",
     },
   ];
@@ -820,6 +819,20 @@ export async function runOrderAction(o, act) {
 
     const prev = o.status;
     o.status = act.next;
+    if (res.data?.stock_deducted) {
+      for (const line of o.products || []) {
+        const inventoryLine = db.inventory.find((variant) =>
+          (line.variant_id != null && String(variant.id) === String(line.variant_id))
+          || (String(variant.product_id) === String(line.product_id)
+            && String(variant.size || "") === String(line.size || "")
+            && String(variant.color || "") === String(line.color || ""))
+        );
+        if (inventoryLine) {
+          inventoryLine.stock = Math.max(0, Number(inventoryLine.stock || 0) - Number(line.quantity || 0));
+        }
+      }
+      o.stock_deducted_at = new Date().toISOString();
+    }
     if (
       act.next === "Đã giao hàng thành công" &&
       getPaymentMethodPill(o.payment_method).code === "Thu hộ"
@@ -1057,9 +1070,8 @@ export function getPaymentMethodPill(pm) {
 }
 
 // Pill trạng thái thanh toán
-// Suy ra trạng thái thanh toán theo nghiệp vụ: sau khi khách xác nhận chuyển
-// khoản ở checkout, cả trạng thái mới và trạng thái cũ "Chờ thanh toán" đều
-// được xem là đã thanh toán; admin không cần bấm xác nhận lần hai.
+// Suy ra trạng thái thanh toán theo nghiệp vụ; admin không cần xác nhận lần hai
+// sau khi khách đã hoàn tất bước QR.
 export function effectivePaymentStatus(o) {
   const rawStatus = String(o?.payment_status || "");
   if (normalizeStatusText(rawStatus) === "hoan tien") return "Hoàn tiền";
@@ -3698,6 +3710,7 @@ export function mapOrder(o) {
     is_counted_as_revenue: Boolean(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
     stock_issue_status: o.StockIssueStatus ?? o.stock_issue_status ?? null,
     stock_issue_reason: o.StockIssueReason ?? o.stock_issue_reason ?? "",
+    stock_deducted_at: o.StockDeductedAt ?? o.stock_deducted_at ?? null,
     stock_restored_at: o.StockRestoredAt ?? o.stock_restored_at ?? null,
     payment_method: o.PaymentMethod ?? o.payment_method ?? "COD",
     handled_by: o.HandledBy ?? o.handled_by ?? "",
@@ -3749,6 +3762,7 @@ function mergeOrders(existing, incoming) {
       old.address_changed !== fresh.address_changed ||
       old.stock_issue_status !== fresh.stock_issue_status ||
       old.stock_issue_reason !== fresh.stock_issue_reason ||
+      old.stock_deducted_at !== fresh.stock_deducted_at ||
       old.stock_restored_at !== fresh.stock_restored_at ||
       JSON.stringify(old._history || []) !== JSON.stringify(nextHistory);
     if (!changed) return old; // không đổi → giữ nguyên object cũ, Vue không re-render
@@ -3762,6 +3776,7 @@ function mergeOrders(existing, incoming) {
       address_changed: fresh.address_changed,
       stock_issue_status: fresh.stock_issue_status,
       stock_issue_reason: fresh.stock_issue_reason,
+      stock_deducted_at: fresh.stock_deducted_at,
       stock_restored_at: fresh.stock_restored_at,
       _history: nextHistory,
       customer_name: fresh.customer_name,

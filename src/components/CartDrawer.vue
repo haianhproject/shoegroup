@@ -79,8 +79,9 @@ const goCheckout = async () => {
 const attrsOf = (item) => {
   return [{ label: 'Size', value: item.size?.size_name }, { label: 'Màu', value: item.color?.color_label }].filter(x => x.value)
 }
-const handleIncrease = (item) => { const r = increaseQuantity(item.id_product_detail); if (!r.ok) notify({ type: 'warning', message: r.message }) }
-const handleDecrease = (id) => { const r = decreaseQuantity(id); if (!r.ok && r.message !== 'Số lượng tối thiểu là 1') notify({ type: 'warning', message: r.message }) }
+const handleIncrease = async (item) => { const r = await increaseQuantity(item.id_product_detail); if (!r.ok) notify({ type: 'warning', message: r.message }) }
+const handleDecrease = async (id) => { const r = await decreaseQuantity(id); if (!r.ok && r.message !== 'Số lượng tối thiểu là 1') notify({ type: 'warning', message: r.message }) }
+const handleRemove = async (item) => { const r = await removeFromCart(item.id_product_detail); if (!r.ok) notify({ type: 'warning', message: r.message }) }
 
 // Suggestions: 3 sản phẩm đầu trang
 const suggestions = ref([])
@@ -171,7 +172,7 @@ const addSuggestedToCart = async (p) => {
                     </div>
                     <div class="cc-unit-actions">
                       <span class="cc-unit">{{ formatCurrency(item.unitPrice) }} / sp</span>
-                      <button class="cc-remove" @click="removeFromCart(item.id_product_detail)" :aria-label="`Xóa ${item.product?.product_name}`" title="Xóa">
+                      <button class="cc-remove" @click="handleRemove(item)" :aria-label="`Xóa ${item.product?.product_name}`" title="Xóa">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
                       </button>
                     </div>

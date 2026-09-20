@@ -50,11 +50,11 @@ async function setup() {
     const source = bytes.toString(bytes[0] === 0xff && bytes[1] === 0xfe ? "utf16le" : "utf8").replace(/^\uFEFF/, "")
       .split(/\r?\n/).filter(line => !/^(USE\s|INSERT \[dbo\]|SET IDENTITY_INSERT\s)/i.test(line)).join("\n");
     await runBatches(pool, source);
-    for (const name of ["20260826_sales_flow.sql", "20260829_shipping_standard_only.sql", "20260829_profile_avatar.sql", "20260829_stock_race_hardening.sql"]) {
+    for (const name of ["20260826_sales_flow.sql", "20260829_shipping_standard_only.sql", "20260829_profile_avatar.sql", "20260829_stock_race_hardening.sql", "20260919_confirmation_stock_deduction.sql"]) {
       await runBatches(pool, fs.readFileSync(path.join(root, "database/migrations", name), "utf8"));
     }
     await runBatches(pool, fs.readFileSync(path.join(root, "database/shoegroup_wallet.sql"), "utf8"));
-    for (const name of ['20260909_checkout_idempotency.sql','20260909_coupon_redemptions.sql','20260909_audit_constraints.sql']) {
+    for (const name of ['20260909_checkout_idempotency.sql','20260909_coupon_redemptions.sql','20260909_audit_constraints.sql','20260920_legacy_order_confirmation_stock.sql','20260920_order_variant_image_snapshot.sql']) {
       await runBatches(pool, fs.readFileSync(path.join(root, 'database/migrations', name), 'utf8'));
     }
     const hash = await password.hash("Audit-Only-Password-2026");

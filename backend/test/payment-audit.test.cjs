@@ -50,13 +50,13 @@ function harness(answer = () => ({ recordset: [], rowsAffected: [1] })) {
 
 const unpaidOrder = { OrderID: 1, UserID: 2, PaymentMethod: 'Chuyển khoản ngân hàng', PaymentStatus: 'Chưa thanh toán', Status: 'Chờ xác nhận', TotalAmount: 500000 };
 
-test('payment: customer declaration never becomes collected money or successful payment', async () => {
+test('payment: customer bank confirmation completes payment immediately', async () => {
   const h = harness(({ query }) => query.includes('SELECT OrderID, UserID') ? { recordset: [{ ...unpaidOrder }] } : undefined);
   const res = await h.request('put /api/orders/:id/payment', { params: { id: '1' }, auth: { sub: 2, role: 'Customer' }, body: { payment_status: 'Đã thanh toán', amount: 1 } });
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.payment_status, 'Chờ thanh toán');
-  assert.equal(h.calls.some(c => /VALUES.*SUCCESS/s.test(c.query)), false);
-  assert.equal(vm.runInContext('isPaidPaymentStatus("Chờ thanh toán")', h.context), false);
+  assert.equal(res.body.payment_status, 'Đã thanh toán');
+  assert.equal(h.calls.some(c => /CUSTOMER_CONFIRMED[\s\S]*SUCCESS/s.test(c.query)), true);
+  assert.equal(vm.runInContext('isPaidPaymentStatus("Đã thanh toán")', h.context), true);
 });
 
 test('payment: customer cannot declare a cancelled order paid', async () => {

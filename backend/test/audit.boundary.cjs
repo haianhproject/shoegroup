@@ -4,22 +4,23 @@ const {fixture,order,stockOf,coupon,rows,check,results,setPool}=require('./audit
 let pool;
 async function main(){pool=await connection().connect();setPool(pool);
   await check('B01','Stale inventory editor after sale','409 and stock remains 9; refreshed edit succeeds',async()=>{
-    const item=await fixture();const old=(await rows(`SELECT Version FROM ProductVariants WHERE ProductVariantID=${item.productVariantId}`))[0].Version||0;await order(item);
+    const item=await fixture();const old=(await rows(`SELECT Version FROM ProductVariants WHERE ProductVariantID=${item.productVariantId}`))[0].Version||0;const placed=await order(item);await api(`/orders/${placed.data.orderId}/status`,{method:'PUT',user:admin,body:{status:'Đã xác nhận'}});
     const stale=await api(`/inventory/${item.productVariantId}`,{method:'PUT',user:admin,body:{stock:10,version:old}});assert.equal(stale.status,409,JSON.stringify(stale));assert.equal(await stockOf(item),9);
     const fresh=await api(`/inventory/${item.productVariantId}`,{method:'PUT',user:admin,body:{stock:11,version:old+1}});assert.equal(fresh.status,200,JSON.stringify(fresh));assert.equal(await stockOf(item),11);return [stale,fresh];
   });
   await check('B02','Stale product form cannot overwrite sold inventory','409; product and stock both unchanged',async()=>{
-    const item=await fixture();const before=(await rows(`SELECT p.ProductName,v.Version FROM Products p JOIN ProductVariants v ON v.ProductID=p.ProductID WHERE v.ProductVariantID=${item.productVariantId}`))[0];await order(item);
+    const item=await fixture();const before=(await rows(`SELECT p.ProductName,v.Version FROM Products p JOIN ProductVariants v ON v.ProductID=p.ProductID WHERE v.ProductVariantID=${item.productVariantId}`))[0];const placed=await order(item);await api(`/orders/${placed.data.orderId}/status`,{method:'PUT',user:admin,body:{status:'Đã xác nhận'}});
     const r=await api(`/products/${item.productId}`,{method:'PUT',user:admin,body:{name:'Changed by stale form',price:500000,variants:[{id:item.productVariantId,size:'M',color:'Black',stock:10,version:before.Version||0}]}});
     assert.equal(r.status,409,JSON.stringify(r));assert.equal(await stockOf(item),9);assert.equal((await rows(`SELECT ProductName FROM Products WHERE ProductID=${item.productId}`))[0].ProductName,before.ProductName);return r;
   });
-  await check('B03','Payment hold is 24 real hours, DB clock maps correctly','24 hours (+/- 5 seconds), DB time within 2s',async()=>{
+  await check('B03','Bank payment no longer has a 24-hour deadline','PaymentDueAt is null',async()=>{
     const item=await fixture();const r=await order(item,{extra:{paymentMethod:'BANK'}});const row=(await rows(`SELECT PaymentDueAt,GETDATE() AS localTime FROM Orders WHERE OrderID=${r.data.orderId}`))[0];
-    const hours=(new Date(row.PaymentDueAt)-Date.now())/3600000;assert.ok(Math.abs(hours-24)<5/3600,JSON.stringify({hours,row}));assert.ok(Math.abs(new Date(row.localTime)-Date.now())<2000,JSON.stringify(row));return {hours,row};
+    assert.equal(row.PaymentDueAt,null);assert.ok(Math.abs(new Date(row.localTime)-Date.now())<2000,JSON.stringify(row));return row;
   });
   await check('B04','Same SKU group requested in reverse order by 5 users','all success with sufficient stock; no deadlock',async()=>{
     const a=await fixture(10),b=await fixture(10);const r=await Promise.all(users.slice(0,5).map((user,i)=>order(i%2?[b,a]:[a,b],{user})));
-    assert.ok(r.every(x=>x.status===200),JSON.stringify(r));assert.equal(await stockOf(a),5);assert.equal(await stockOf(b),5);return r.map(x=>x.status);
+    assert.ok(r.every(x=>x.status===200),JSON.stringify(r));const confirmed=await Promise.all(r.map(x=>api(`/orders/${x.data.orderId}/status`,{method:'PUT',user:admin,body:{status:'Đã xác nhận'}})));
+    assert.ok(confirmed.every(x=>x.status===200),JSON.stringify(confirmed));assert.equal(await stockOf(a),5);assert.equal(await stockOf(b),5);return r.map(x=>x.status);
   });
   await check('B05','Failure after order/items/stock/coupon counter mutation','all changes rolled back; same idempotency key can retry',async()=>{
     const item=await fixture();const code=await coupon(100);const key=`rollback-${Date.now()}`;

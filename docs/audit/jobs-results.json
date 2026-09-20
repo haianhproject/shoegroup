@@ -1,18 +1,18 @@
 {
-  "database": "ShoegroupAudit_20260909_fixed",
-  "time": "2026-09-09T10:19:32.859Z",
+  "database": "ShoegroupAudit_20260909_verify",
+  "time": "2026-09-20T05:26:14.584Z",
   "results": [
     {
       "id": "J01",
-      "scenario": "Real scheduler releases expired bank hold and overdue COD",
-      "expected": "both cancelled; inventory restored once",
+      "scenario": "Scheduler ignores old bank deadlines and handles general order deadline",
+      "expected": "bank retained; overdue COD cancelled and restored",
       "actual": [
         {
-          "OrderID": 79,
-          "Status": "Đã hủy"
+          "OrderID": 88,
+          "Status": "Chờ xác nhận"
         },
         {
-          "OrderID": 82,
+          "OrderID": 91,
           "Status": "Đã hủy"
         }
       ],
@@ -24,14 +24,14 @@
       "expected": "paid and declared orders retained until general deadline",
       "actual": [
         {
-          "OrderID": 80,
+          "OrderID": 89,
           "Status": "Chờ xác nhận",
           "PaymentStatus": "Đã thanh toán"
         },
         {
-          "OrderID": 81,
+          "OrderID": 90,
           "Status": "Chờ xác nhận",
-          "PaymentStatus": "Chờ thanh toán"
+          "PaymentStatus": "Đã thanh toán"
         }
       ],
       "result": "PASS"
@@ -48,10 +48,10 @@
     {
       "id": "J04",
       "scenario": "Same checkout key across two server instances",
-      "expected": "one order and one stock deduction",
+      "expected": "one pending order; one deduction when confirmed",
       "actual": [
-        84,
-        84
+        93,
+        93
       ],
       "result": "PASS"
     },

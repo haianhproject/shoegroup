@@ -178,7 +178,7 @@ const buildCartPayload = () => ({
   stockQuantity: selectedStock.value,
 })
 
-const addCurrentSelection = ({ openCart = true } = {}) => {
+const addCurrentSelection = async ({ openCart = true } = {}) => {
   if (colorOptions.value.length && !selectedColor.value) {
     notify({ type: 'warning', message: 'Vui lòng chọn màu sắc.' })
     return false
@@ -196,7 +196,7 @@ const addCurrentSelection = ({ openCart = true } = {}) => {
     return false
   }
 
-  const result = addToCart(buildCartPayload())
+  const result = await addToCart(buildCartPayload())
   if (!result.ok) {
     notify({ type: 'error', message: result.message })
     return false
@@ -207,8 +207,8 @@ const addCurrentSelection = ({ openCart = true } = {}) => {
   return true
 }
 
-const buyNow = () => {
-  if (addCurrentSelection({ openCart: false })) router.push('/checkout')
+const buyNow = async () => {
+  if (await addCurrentSelection({ openCart: false })) router.push('/checkout')
 }
 
 const onImageError = (event) => {
