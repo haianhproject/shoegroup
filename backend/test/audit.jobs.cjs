@@ -49,34 +49,35 @@ async function main() {
     await startWorker();
     const deadline = Date.now()+15000;
     while(Date.now()<deadline) {
-      const r=await rows(`SELECT Status FROM Orders WHERE OrderID IN (${ids[0]},${ids[3]})`);
-      if(r.length===2 && r.every(x=>x.Status==='Đã hủy')) break;
+      const r=await rows(`SELECT Status FROM Orders WHERE OrderID=${ids[3]}`);
+      if(r[0]?.Status==='Đã hủy') break;
       await pause(200);
     }
-    await check('J01','Real scheduler releases expired bank hold and overdue COD','both cancelled; inventory restored once',async()=>{
+    await check('J01','Scheduler ignores old bank deadlines and handles general order deadline','bank retained; overdue COD cancelled and restored',async()=>{
       const state=await rows(`SELECT OrderID,Status FROM Orders WHERE OrderID IN (${ids[0]},${ids[3]})`);
-      assert.ok(state.every(x=>x.Status==='Đã hủy'),JSON.stringify(state));assert.equal(await stockOf(unpaid),10);assert.equal(await stockOf(cod),10);return state;
+      assert.equal(state.find(x=>x.OrderID===ids[0]).Status!=='Đã hủy',true,JSON.stringify(state));assert.equal(state.find(x=>x.OrderID===ids[3]).Status,'Đã hủy',JSON.stringify(state));assert.equal(await stockOf(unpaid),10);assert.equal(await stockOf(cod),10);return state;
     });
     await check('J02','Expired payment deadline with confirmed/declaration payment','paid and declared orders retained until general deadline',async()=>{
       const state=await rows(`SELECT OrderID,Status,PaymentStatus FROM Orders WHERE OrderID IN (${ids[1]},${ids[2]})`);
-      assert.ok(state.every(x=>x.Status!=='Đã hủy'),JSON.stringify(state));assert.equal(await stockOf(paid),9);assert.equal(await stockOf(declared),9);return state;
+      assert.ok(state.every(x=>x.Status!=='Đã hủy'),JSON.stringify(state));assert.equal(await stockOf(paid),10);assert.equal(await stockOf(declared),10);return state;
     });
     await check('J03','Real scheduler recognizes eligible paid received order','IsCountedAsRevenue becomes true',async()=>{
       const until=Date.now()+3000;let r;
       do {r=(await rows(`SELECT IsCountedAsRevenue FROM Orders WHERE OrderID=${revenue.data.orderId}`))[0];if(r.IsCountedAsRevenue)break;await pause(100);}while(Date.now()<until);
       assert.equal(r.IsCountedAsRevenue,true);return r;
     });
-    await check('J04','Same checkout key across two server instances','one order and one stock deduction',async()=>{
+    await check('J04','Same checkout key across two server instances','one pending order; one deduction when confirmed',async()=>{
       const item=await fixture();const key=`multi-process-${Date.now()}`;
       const responses=await Promise.all([5100,5102].map(port=>api('/orders',{port,method:'POST',body:bodyFor(item),headers:{'Idempotency-Key':key}})));
-      assert.ok(responses.every(x=>x.status===200),JSON.stringify(responses));assert.equal(responses[0].data.orderId,responses[1].data.orderId);assert.equal(await stockOf(item),9);return responses.map(x=>x.data.orderId);
+      assert.ok(responses.every(x=>x.status===200),JSON.stringify(responses));assert.equal(responses[0].data.orderId,responses[1].data.orderId);assert.equal(await stockOf(item),10);
+      const confirmed=await api(`/orders/${responses[0].data.orderId}/status`,{method:'PUT',user:admin,body:{status:'Đã xác nhận'}});assert.equal(confirmed.status,200,JSON.stringify(confirmed));assert.equal(await stockOf(item),9);return responses.map(x=>x.data.orderId);
     });
     await stopWorker(); await startWorker();
     // Wait for the second real startup tick, then verify it cannot restock again.
     await pause(5500);
     await check('J05','Repeated scheduler invocation','no duplicate restock or cancellation history',async()=>{
       assert.equal(await stockOf(unpaid),10);assert.equal(await stockOf(cod),10);
-      const r=await rows(`SELECT COUNT(*) AS n FROM OrderStatusHistory WHERE OrderID=${ids[0]} AND NewStatus=N'Đã hủy'`);assert.equal(r[0].n,1);return r;
+      const r=await rows(`SELECT COUNT(*) AS n FROM OrderStatusHistory WHERE OrderID=${ids[3]} AND NewStatus=N'Đã hủy'`);assert.equal(r[0].n,1);return r;
     });
   } finally { await stopWorker(); }
   await pool.close();

@@ -1,5 +1,5 @@
 {
-  "time": "2026-09-09T10:23:56.051Z",
+  "time": "2026-09-20T05:27:37.986Z",
   "port": "5100",
   "results": [
     {
@@ -40,14 +40,11 @@
     },
     {
       "id": "B03",
-      "scenario": "Payment hold is 24 real hours, DB clock maps correctly",
-      "expected": "24 hours (+/- 5 seconds), DB time within 2s",
+      "scenario": "Bank payment no longer has a 24-hour deadline",
+      "expected": "PaymentDueAt is null",
       "actual": {
-        "hours": 23.99998,
-        "row": {
-          "PaymentDueAt": "2026-09-10T10:23:55.077Z",
-          "localTime": "2026-09-09T10:23:55.147Z"
-        }
+        "PaymentDueAt": null,
+        "localTime": "2026-09-20T05:27:37.590Z"
       },
       "result": "PASS"
     },
@@ -73,7 +70,7 @@
           "status": 500,
           "data": {
             "success": false,
-            "message": "Audit injected coupon ledger failure",
+            "message": "Không thể tạo đơn hàng lúc này. Vui lòng thử lại.",
             "code": "EREQUEST"
           }
         },
@@ -81,8 +78,8 @@
           "status": 200,
           "data": {
             "success": true,
-            "orderId": 155,
-            "OrderID": 155,
+            "orderId": 139,
+            "OrderID": 139,
             "subtotalAmount": 500000,
             "shippingFee": 75000,
             "discountAmount": 50000,
@@ -147,8 +144,8 @@
           "status": 200,
           "data": {
             "success": true,
-            "orderId": 157,
-            "OrderID": 157,
+            "orderId": 141,
+            "OrderID": 141,
             "subtotalAmount": 1000000,
             "shippingFee": 75000,
             "discountAmount": 20000,
@@ -194,7 +191,7 @@
       "expected": "one payment; no received/revenue date",
       "actual": {
         "state": {
-          "PaymentConfirmedAt": "2026-09-09T10:23:55.953Z",
+          "PaymentConfirmedAt": "2026-09-20T05:27:37.933Z",
           "RevenueEligibleDate": null
         },
         "tx": [

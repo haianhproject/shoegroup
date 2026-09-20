@@ -209,7 +209,7 @@ const stockStatus = computed(() => {
   return { text: 'Còn hàng', cls: 'in' }
 })
 
-function confirmAddToCart() {
+async function confirmAddToCart() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
@@ -235,7 +235,7 @@ function confirmAddToCart() {
     const ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
     stockQty = isNaN(Number(ts)) ? 0 : Number(ts)
   }
-  const result = addToCart({
+  const result = await addToCart({
     product: {
       ...props.product,
       price: selectedVariant.value?.price ?? props.product.price,
@@ -250,7 +250,7 @@ function confirmAddToCart() {
   showDrawer()
   notify({ type: "success", title: "Đã thêm vào giỏ", message: props.product.product_name || props.product.name, duration: 2200 })
 }
-function handleBuyNow() {
+async function handleBuyNow() {
   const variants = props.product.variants || []
   const hasVariants = variants.length > 0
   if (hasVariants) {
@@ -276,7 +276,7 @@ function handleBuyNow() {
     const ts = props.product.total_stock ?? props.product.stock_quantity ?? props.product.stock
     stockQty = isNaN(Number(ts)) ? 0 : Number(ts)
   }
-  const result = addToCart({
+  const result = await addToCart({
     product: {
       ...props.product,
       price: selectedVariant.value?.price ?? props.product.price,

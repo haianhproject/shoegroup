@@ -1,6 +1,6 @@
 {
-  "database": "ShoegroupAudit_20260909_fixed",
-  "time": "2026-09-09T10:20:41.672Z",
+  "database": "ShoegroupAudit_20260909_verify",
+  "time": "2026-09-20T06:11:43.379Z",
   "port": "5100",
   "results": [
     {
@@ -19,12 +19,12 @@
     },
     {
       "id": "T02-1",
-      "scenario": "Buy 1 from stock 10",
-      "expected": "200; deducted exactly once",
+      "scenario": "Confirm 1 from stock 10",
+      "expected": "checkout keeps stock; admin confirmation deducts exactly once",
       "actual": {
         "success": true,
-        "orderId": 87,
-        "OrderID": 87,
+        "orderId": 277,
+        "OrderID": 277,
         "subtotalAmount": 500000,
         "shippingFee": 75000,
         "discountAmount": 0,
@@ -38,12 +38,12 @@
     },
     {
       "id": "T02-10",
-      "scenario": "Buy 10 from stock 10",
-      "expected": "200; deducted exactly once",
+      "scenario": "Confirm 10 from stock 10",
+      "expected": "checkout keeps stock; admin confirmation deducts exactly once",
       "actual": {
         "success": true,
-        "orderId": 88,
-        "OrderID": 88,
+        "orderId": 278,
+        "OrderID": 278,
         "subtotalAmount": 5000000,
         "shippingFee": 75000,
         "discountAmount": 0,
@@ -158,8 +158,8 @@
       "expected": "500k item plus server shipping",
       "actual": {
         "success": true,
-        "orderId": 90,
-        "OrderID": 90,
+        "orderId": 280,
+        "OrderID": 280,
         "subtotalAmount": 500000,
         "shippingFee": 75000,
         "discountAmount": 0,
@@ -173,19 +173,29 @@
     },
     {
       "id": "T07",
-      "scenario": "Price snapshot survives price edit/sale end",
-      "expected": "UnitPrice at order creation stays 500k",
+      "scenario": "Price snapshot survives a later price edit",
+      "expected": "UnitPrice at order creation stays 600k",
       "actual": [
         {
-          "UnitPrice": 500000
+          "UnitPrice": 600000
         }
       ],
       "result": "PASS"
     },
     {
+      "id": "T07B",
+      "scenario": "Purchased color keeps its own image in order history",
+      "expected": "variant image, never product cover",
+      "actual": {
+        "snapshot": "variant-mu9f4xa1.png",
+        "image": "variant-mu9f4xa1.png"
+      },
+      "result": "PASS"
+    },
+    {
       "id": "T08-2",
-      "scenario": "2 different users buy last SKU",
-      "expected": "one success, others 409, stock zero, one item",
+      "scenario": "2 customers order the last SKU",
+      "expected": "all can place pending orders; only one confirmation deducts the last item",
       "actual": [
         200,
         409
@@ -194,24 +204,24 @@
     },
     {
       "id": "T08-5",
-      "scenario": "5 different users buy last SKU",
-      "expected": "one success, others 409, stock zero, one item",
+      "scenario": "5 customers order the last SKU",
+      "expected": "all can place pending orders; only one confirmation deducts the last item",
       "actual": [
-        200,
         409,
         409,
         409,
-        409
+        409,
+        200
       ],
       "result": "PASS"
     },
     {
       "id": "T08-10",
-      "scenario": "10 different users buy last SKU",
-      "expected": "one success, others 409, stock zero, one item",
+      "scenario": "10 customers order the last SKU",
+      "expected": "all can place pending orders; only one confirmation deducts the last item",
       "actual": [
-        409,
         200,
+        409,
         409,
         409,
         409,
@@ -226,28 +236,28 @@
     {
       "id": "T09",
       "scenario": "Repeated same checkout key",
-      "expected": "same order ID; inventory decremented once",
+      "expected": "same order ID; checkout keeps inventory; confirmation decrements once",
       "actual": [
-        109,
-        109
+        300,
+        300
       ],
       "result": "PASS"
     },
     {
       "id": "T10",
       "scenario": "10 parallel retries same checkout key",
-      "expected": "all same order ID, stock decremented once",
+      "expected": "all same order ID; confirmation decrements once",
       "actual": [
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110,
-        110
+        301,
+        301,
+        301,
+        301,
+        301,
+        301,
+        301,
+        301,
+        301,
+        301
       ],
       "result": "PASS"
     },
@@ -270,8 +280,8 @@
       "scenario": "Two users campaign one-time coupon",
       "expected": "one success, one 409, counter 1",
       "actual": [
-        409,
-        200
+        200,
+        409
       ],
       "result": "PASS"
     },
@@ -280,8 +290,8 @@
       "scenario": "Same user concurrent PerUserLimit=1 coupon",
       "expected": "one success, one 409",
       "actual": [
-        409,
-        200
+        200,
+        409
       ],
       "result": "PASS"
     },
@@ -309,13 +319,14 @@
     },
     {
       "id": "T15",
-      "scenario": "Cancel and duplicate cancel",
-      "expected": "stock restored once; repeated cancel succeeds unchanged",
+      "scenario": "Cancel pending and confirmed orders",
+      "expected": "pending cancel does not add stock; confirmed cancel restores once",
       "actual": [
         {
           "status": 200,
           "data": {
-            "success": true
+            "success": true,
+            "stock_deducted": false
           }
         },
         {
@@ -345,31 +356,30 @@
     },
     {
       "id": "T17",
-      "scenario": "Customer transfer declaration cannot create paid money",
-      "expected": "pending declaration; no SUCCESS or valid signature",
+      "scenario": "Customer transfer confirmation completes payment",
+      "expected": "paid immediately; SUCCESS transaction",
       "actual": {
         "declared": {
           "status": 200,
           "data": {
             "success": true,
-            "payment_status": "Chờ thanh toán"
+            "payment_status": "Đã thanh toán"
           }
         },
         "o": {
-          "PaymentStatus": "Chờ thanh toán"
+          "PaymentStatus": "Đã thanh toán"
         },
         "p": [
           {
-            "Status": "PENDING",
+            "Status": "SUCCESS",
             "SignatureValid": false
           }
         ],
         "confirmed": {
-          "status": 409,
+          "status": 200,
           "data": {
-            "success": false,
-            "code": "PAYMENT_REQUIRED",
-            "message": "Don chuyen khoan phai duoc xac nhan da thanh toan truoc khi xac nhan hoac giao hang."
+            "success": true,
+            "stock_deducted": true
           }
         }
       },
@@ -429,8 +439,8 @@
           "status": 200,
           "data": {
             "success": true,
-            "orderId": 119,
-            "OrderID": 119,
+            "orderId": 311,
+            "OrderID": 311,
             "subtotalAmount": 500000,
             "shippingFee": 0,
             "discountAmount": 0,

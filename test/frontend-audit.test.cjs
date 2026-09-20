@@ -96,6 +96,22 @@ test('cart rejects disabled, deleted, and missing exact variant', async () => {
   }
 });
 
+test('adding to cart is local-only while quantity remains capped by current stock', async () => {
+  const cart = loadCart([product(3)]);
+  const payload = {
+    product: { id_product: 1, product_name: 'Shoe', price: 500000 },
+    variantId: 11,
+    size: { size_name: 'M' },
+    color: { color_label: 'Black' },
+    stockQuantity: 3,
+  };
+  assert.equal((await cart.addToCart({ ...payload, quantity: 2 })).ok, true);
+  assert.equal(cart.cartState.items[0].quantity, 2);
+  assert.equal(cart.cartState.items[0].stockReserved, false);
+  assert.equal((await cart.addToCart({ ...payload, quantity: 2 })).ok, false);
+  assert.equal(cart.cartState.items[0].quantity, 2);
+});
+
 test('HTTP transport never retries a mutation automatically on network failure', async () => {
   let calls = 0;
   const win = { fetch: async () => { calls++; throw new TypeError('Response lost after commit'); } };
@@ -118,10 +134,36 @@ test('HTTP interceptor preserves Request method and body', async () => {
 
 test('order mappings use warehouse state and server item subtotal', () => {
   const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
+  assert.equal(orders.mapStatusToKey('Đang vận chuyển'), 'SHIPPING');
+  assert.equal(orders.mapStatusToKey('Đã hủy'), 'CANCELLED');
   assert.equal(orders.mapStatusToKey('RETURN_TO_WAREHOUSE'), 'WAREHOUSE_RETURN');
   assert.equal(orders.mapStatusToKey('returned to warehouse'), 'WAREHOUSE_RETURN');
   const mapped = orders.mapServerOrder({ id: 4, total: 570000, shippingFee: 30000, discount: 10000, products: [{ name: 'Shoe', price: 550000, quantity: 1 }] });
   assert.equal(mapped.subtotal, 550000);
+});
+
+test('local order keeps the image of the purchased color variant', () => {
+  const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
+  const result = orders.createOrder({
+    customer: { fullName: 'Test', phone: '0901234567', email: 'test@example.com', country: 'Việt Nam', address: 'A', province: 'B' },
+    items: [{
+      id_product_detail: '1_variant_11',
+      variant_id: 11,
+      product: { id_product: 1, product_name: 'Shoe', image_url: 'cover-black.png' },
+      color: { color_label: 'Xanh lá', image: 'variant-green.png' },
+      size: { size_name: '39' },
+      quantity: 1,
+      unitPrice: 100000,
+    }],
+    subtotal: 100000,
+    shippingFee: 0,
+    discount: 0,
+    total: 100000,
+    shippingMethod: {},
+    paymentMethod: {},
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.order.items[0].image_url, 'variant-green.png');
 });
 
 test('customer cancellation does not claim an unverified payment was refunded', () => {
@@ -136,6 +178,59 @@ test('browser expiry never changes an authoritative server order', () => {
   orders.orderState.orders.push({ id: 'SG1', serverId: 1, status: 'PENDING', autoCancelDeadline: Date.now() - 1 });
   orders.runAutoCancel();
   assert.equal(orders.orderState.orders[0].status, 'PENDING');
+});
+
+test('server re-delivery replaces a stale local cancellation and removes its duplicate', () => {
+  const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 4 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
+  const createdAt = new Date('2026-09-19T22:09:00').getTime();
+  const serverOrder = {
+    id: 119,
+    user_id: 4,
+    created_at: '2026-09-19T22:09:00',
+    status: 'Đang vận chuyển',
+    total: 475000,
+    customer_phone: '0901234567',
+    products: [
+      { product_id: 10, name: 'Giày A', size: '40', color: 'Đen', quantity: 1, price: 200000 },
+      { product_id: 11, name: 'Giày B', size: '39', color: 'Trắng', quantity: 1, price: 200000 },
+    ],
+    history: [
+      { status: 'Giao hàng thất bại' },
+      { status: 'Về kho' },
+      { status: 'Đang vận chuyển' },
+    ],
+  };
+  orders.orderState.orders.push({
+    id: 'SG597916',
+    userId: 4,
+    createdAt,
+    status: 'CANCELLED',
+    cancelReason: 'Đơn bị hủy.',
+    total: 475000,
+    customer: { phone: '0901234567' },
+    items: [
+      { id_product: 10, size: { size_name: '40' }, color: { color_label: 'Đen' }, quantity: 1 },
+      { id_product: 11, size: { size_name: '39' }, color: { color_label: 'Trắng' }, quantity: 1 },
+    ],
+  });
+  orders.orderState.orders.push(orders.mapServerOrder(serverOrder));
+
+  assert.equal(orders.reconcileOrdersFromServer([serverOrder]), true);
+  assert.equal(orders.orderState.orders.length, 1);
+  assert.equal(orders.orderState.orders[0].id, 'SG597916');
+  assert.equal(orders.orderState.orders[0].serverId, 119);
+  assert.equal(orders.orderState.orders[0].status, 'SHIPPING');
+  assert.equal(orders.getOrderDisplayStatus(orders.orderState.orders[0]), 'SHIPPING');
+  assert.equal(orders.orderState.orders[0].cancelReason, '');
+});
+
+test('bank transfer is completed at checkout and is not deferred from the orders page', () => {
+  const checkout = fs.readFileSync(path.join(root, 'src/views/CheckoutView.vue'), 'utf8');
+  const orders = fs.readFileSync(path.join(root, 'src/views/MyOrders.vue'), 'utf8');
+  assert.match(checkout, /TÔI ĐÃ THANH TOÁN/);
+  assert.doesNotMatch(checkout, /Thanh toán sau|24 giờ|24h/i);
+  assert.match(orders, /Thanh toán thành công\. Cửa hàng đang xử lý đơn/);
+  assert.doesNotMatch(orders, /isWaitingTransfer|Thanh toán ngay|Payment QR Modal/);
 });
 
 test('checkout blocks double click before stock preflight resolves', async () => {

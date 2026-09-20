@@ -485,11 +485,11 @@ const confirmPaid = async () => {
     notify({ type: 'error', message: 'Đơn hàng chưa được máy chủ xác nhận. Vui lòng tải lại danh sách đơn hàng.' })
     return
   }
-  let paymentStatus = 'Chờ thanh toán'
+  let paymentStatus = 'Đã thanh toán'
   if (payModal.serverId) {
     try {
-      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
-      paymentStatus = result?.payment_status || 'Chờ thanh toán'
+      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+      paymentStatus = result?.payment_status || 'Đã thanh toán'
     } catch (error) {
       notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
       return
@@ -497,12 +497,7 @@ const confirmPaid = async () => {
   }
   const order = orderState.orders.find((x) => x.id === payModal.orderId)
   if (order) { order.payment_status = paymentStatus; saveOrders() }
-  notify({ type: 'info', message: 'Đã gửi thông báo chuyển khoản. Cửa hàng sẽ đối soát và xác nhận khi nhận được tiền.' })
-  payModal.open = false
-  router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
-}
-
-const payLater = () => {
+  notify({ type: 'success', title: 'Thanh toán thành công', message: 'Đơn hàng đã được ghi nhận thanh toán.' })
   payModal.open = false
   router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
 }
@@ -654,11 +649,11 @@ const placeOrder = async () => {
     payModal.serverId = createdServerId
     payModal.total = clientOrder.order.total
     payModal.open = true
-    clearCart()
+    await clearCart()
     return
   }
 
-  clearCart()
+  await clearCart()
   router.push({ path: '/order-success', query: { orderId: clientOrder.order.id } })
   } finally {
     placing.value = false
@@ -1101,7 +1096,7 @@ const placeOrder = async () => {
 
     <!-- ── Modal QR Chuyển khoản ngân hàng (VietQR) ── -->
     <transition name="suc">
-      <div v-if="payModal.open" class="modal-overlay" @click.self="payLater">
+      <div v-if="payModal.open" class="modal-overlay">
         <div class="modal-box text-center max-w-[460px]">
           <h3 style="font-family:'Fraunces',serif" class="text-xl font-semibold text-[#0E0E0E] mb-2">Thanh toán đơn hàng</h3>
           <p class="text-xs text-[#737373] mb-4">Mã đơn: <strong class="text-[#0E0E0E]">#{{ payModal.orderId }}</strong></p>
@@ -1110,7 +1105,6 @@ const placeOrder = async () => {
           <p class="text-xs text-[#737373] mb-5 leading-relaxed">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
           <div class="flex flex-col gap-2.5">
             <button class="w-full py-3.5 bg-[#0E0E0E] text-white rounded-lg text-sm font-semibold hover:bg-[#333] transition-colors border-none cursor-pointer" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="w-full py-3 border border-[#E5E5E5] text-[#737373] hover:text-[#0E0E0E] hover:border-[#0E0E0E] rounded-lg text-sm font-semibold transition-colors bg-white cursor-pointer" @click="payLater">ĐỂ SAU (CÒN 24 GIỜ)</button>
           </div>
         </div>
       </div>

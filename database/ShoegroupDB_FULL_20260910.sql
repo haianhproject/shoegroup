@@ -595,6 +595,7 @@ EXEC sys.sp_executesql N''CREATE TABLE [dbo].[Orders](
 	[PaymentConfirmedAt] [datetime] NULL,
 	[StockIssueStatus] [nvarchar](30) NULL,
 	[StockIssueReason] [nvarchar](500) NULL,
+	[StockDeductedAt] [datetime] NULL,
 	[StockRestoredAt] [datetime] NULL,
 PRIMARY KEY CLUSTERED 
 (
@@ -2865,6 +2866,8 @@ BEGIN
     ALTER TABLE dbo.Orders ADD StockIssueReason nvarchar(500) NULL;
   IF COL_LENGTH(''''dbo.Orders'''', ''''StockRestoredAt'''') IS NULL
     ALTER TABLE dbo.Orders ADD StockRestoredAt datetime NULL;
+  IF COL_LENGTH(''''dbo.Orders'''', ''''StockDeductedAt'''') IS NULL
+    ALTER TABLE dbo.Orders ADD StockDeductedAt datetime NULL;
 END'';
 
 -- Patch 20260829_stock_race_hardening.sql

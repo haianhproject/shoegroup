@@ -3,7 +3,8 @@ import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey
+  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
+  getOrderDisplayStatus
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
@@ -40,7 +41,10 @@ const stepIndex = (s) => {
 }
 
 const filtered = computed(() => {
-  let list = [...ordersByCurrentUser.value]
+  let list = ordersByCurrentUser.value.map((order) => {
+    const status = getOrderDisplayStatus(order)
+    return status === order.status ? order : { ...order, status }
+  })
   if (statusFilter.value !== 'ALL') list = list.filter((o) => o.status === statusFilter.value)
   const q = search.value.trim().toLowerCase()
   if (q) {
@@ -79,8 +83,6 @@ const submitCancel = async () => {
   notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
   closeCancelModal()
 }
-
-const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0 })
 
 const isBankTransfer = (o) => {
   if (o.paymentMethod?.code === 'BANK' || o.paymentMethod?.code === 'MOMO') return true
@@ -144,51 +146,6 @@ const deliveryIssueSteps = (o) => {
   if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'icon-box-seam' })
   return steps
 }
-
-const isWaitingTransfer = (o) => {
-  return isBankTransfer(o) && o.status === 'PENDING' && o.payment_status === 'Chưa thanh toán' && !['CANCELLED', 'RETURNED'].includes(o.status)
-}
-
-const timeRemaining = (o) => {
-  const createdTime = new Date(o.createdAt).getTime()
-  const deadlineFromServer = o.paymentDueAt ? new Date(o.paymentDueAt).getTime() : NaN
-  const deadline = Number.isFinite(deadlineFromServer) ? deadlineFromServer : createdTime + 24 * 60 * 60 * 1000
-  const now = Date.now()
-  if (now > deadline) return 'Hết hạn'
-  const diff = deadline - now
-  const h = Math.floor(diff / (1000 * 60 * 60))
-  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-  return `${h}h ${m}p`
-}
-
-const handlePay = (o) => {
-  payModal.orderId = o.id
-  payModal.serverId = o.serverId
-  payModal.total = o.total
-  payModal.open = true
-}
-
-const confirmPaid = async () => {
-  let paymentStatus = 'Chờ thanh toán'
-  if (payModal.serverId) {
-    try {
-      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Chờ thanh toán' })
-      paymentStatus = result?.payment_status || paymentStatus
-    } catch(error) {
-      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
-      return
-    }
-  }
-  const order = orderState.orders.find(x => x.id === payModal.orderId)
-  if (order) {
-    order.payment_status = paymentStatus
-    saveOrders()
-  }
-  payModal.open = false
-  notify({ type: 'success', title: 'Đã gửi thông báo chuyển khoản', message: 'Cửa hàng sẽ đối soát tiền nhận được trước khi xác nhận thanh toán.' })
-}
-
-const closePayModal = () => { payModal.open = false }
 
 const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -543,16 +500,12 @@ onUnmounted(() => {
           </div>
 
           <!-- Transfer notices -->
-          <div v-if="isWaitingTransfer(o)" class="oc-hold" style="border-color: #f59e0b; color: #b45309; background: #fffbeb;">
-            <i class="icon icon-wallet2"></i> Đơn hàng đang chờ chuyển khoản — còn <strong>{{ timeRemaining(o) }}</strong> để thanh toán.
-          </div>
-          <div v-else-if="isBankTransfer(o) && o.payment_status === 'Chờ thanh toán'" class="oc-hold" style="border-color: #3b82f6; color: #1d4ed8; background: #eff6ff;">
-            <i class="icon icon-check-circle"></i> Thanh toán đã được ghi nhận. Cửa hàng đang xử lý đơn.
+          <div v-if="isBankTransfer(o) && o.payment_status === 'Đã thanh toán'" class="oc-hold" style="border-color: #16a34a; color: #15803d; background: #f0fdf4;">
+            <i class="icon icon-check-circle"></i> Thanh toán thành công. Cửa hàng đang xử lý đơn.
           </div>
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button v-if="isWaitingTransfer(o)" class="btn-sg" style="background: #ea580c" @click.stop="handlePay(o)"><i class="icon icon-qr-code-scan mr-1"></i>Thanh toán ngay</button>
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
             <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
             <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
@@ -718,22 +671,6 @@ onUnmounted(() => {
       </div>
     </transition>
 
-    <!-- Payment QR Modal -->
-    <transition name="suc">
-      <div v-if="payModal.open" class="modal-overlay" @click.self="closePayModal">
-        <div class="sg-card modal-box text-center">
-          <h5 class="font-bold mb-2">Thanh toán đơn hàng</h5>
-          <p class="text-gray-600 mb-4">Mã đơn: <strong>#{{ payModal.orderId }}</strong></p>
-          <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" style="width: 200px; height: 200px; object-fit: contain;" />
-          <h4 class="font-bold text-red-600 mb-4">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-gray-600 text-sm mb-4">Vui lòng quét mã QR bằng ứng dụng ngân hàng. Sau khi thanh toán, ấn nút bên dưới để hệ thống ghi nhận ngay.</p>
-          <div class="flex flex-col gap-2">
-            <button class="btn-sg" style="background: #ea580c" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
-            <button class="btn-sg-outline w-full" @click="closePayModal">ĐÓNG</button>
-          </div>
-        </div>
-      </div>
-    </transition>
   </div>
 </template>
 

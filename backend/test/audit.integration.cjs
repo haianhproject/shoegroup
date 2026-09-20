@@ -46,8 +46,9 @@ async function main() {
     const counts = await rows(`SELECT COUNT(*) AS n FROM OrderDetails WHERE ProductID=${item.productId}`); assert.equal(counts[0].n, 0);
     return response;
   });
-  for (const quantity of [1, 10]) await check(`T02-${quantity}`, `Buy ${quantity} from stock 10`, '200; deducted exactly once', async () => {
+  for (const quantity of [1, 10]) await check(`T02-${quantity}`, `Confirm ${quantity} from stock 10`, 'checkout keeps stock; admin confirmation deducts exactly once', async () => {
     const item = await fixture(); const r = await order({ ...item, quantity }); assert.equal(r.status, 200, JSON.stringify(r));
+    assert.equal(await stockOf(item), 10); const confirmed=await status(r.data.orderId,'Đã xác nhận',admin);assert.equal(confirmed.status,200,JSON.stringify(confirmed));
     assert.equal(await stockOf(item), 10 - quantity); return r.data;
   });
   for (const quantity of [0, -1, 999999, 1.5]) await check(`T03-${quantity}`, `Direct API quantity ${quantity}`, '400/409; stock unchanged', async () => {
@@ -68,26 +69,42 @@ async function main() {
     assert.equal(r.status, 200, JSON.stringify(r)); assert.equal(r.data.subtotalAmount, 500000); assert.equal(r.data.discountAmount, 0);
     assert.ok(r.data.shippingFee > 0); return r.data;
   });
-  await check('T07', 'Price snapshot survives price edit/sale end', 'UnitPrice at order creation stays 500k', async () => {
-    const item = await fixture(10, 600000); await pool.request().query(`UPDATE Products SET SalePrice=500000 WHERE ProductID=${item.productId}`);
+  await check('T07', 'Price snapshot survives a later price edit', 'UnitPrice at order creation stays 600k', async () => {
+    const item = await fixture(10, 600000);
     const r = await order(item); assert.equal(r.status, 200, JSON.stringify(r));
-    await pool.request().query(`UPDATE Products SET SalePrice=0,BasePrice=700000 WHERE ProductID=${item.productId}`);
-    const d = await rows(`SELECT UnitPrice FROM OrderDetails WHERE OrderID=${r.data.orderId}`); assert.equal(d[0].UnitPrice, 500000); return d;
+    await pool.request().query(`UPDATE Products SET BasePrice=700000 WHERE ProductID=${item.productId}`);
+    const d = await rows(`SELECT UnitPrice FROM OrderDetails WHERE OrderID=${r.data.orderId}`); assert.equal(d[0].UnitPrice, 600000); return d;
   });
-  for (const count of [2,5,10]) await check(`T08-${count}`, `${count} different users buy last SKU`, 'one success, others 409, stock zero, one item', async () => {
-    const item = await fixture(1); const r = await Promise.all(users.slice(0,count).map(user => order(item,{user})));
-    assert.equal(r.filter(x => x.status === 200).length, 1, JSON.stringify(r));
-    assert.ok(r.every(x => [200,409].includes(x.status)), JSON.stringify(r)); assert.equal(await stockOf(item), 0);
-    assert.equal((await rows(`SELECT SUM(Quantity) AS q FROM OrderDetails WHERE ProductID=${item.productId}`))[0].q,1); return r.map(x=>x.status);
+  await check('T07B', 'Purchased color keeps its own image in order history', 'variant image, never product cover', async () => {
+    const item = await fixture(); const cover=`cover-${run}.png`; const variantImage=`variant-${run}.png`;
+    await pool.request().input('pid',sql.Int,item.productId).input('cover',sql.VarChar(sql.MAX),cover).input('img',sql.VarChar(sql.MAX),variantImage).query(`
+      UPDATE Products SET ImageURL=@cover WHERE ProductID=@pid;
+      INSERT ProductImages(ProductID,ColorName,ImageURL,IsPrimary,SortOrder)
+      VALUES(@pid,N'Black',@img,0,1);
+    `);
+    const placed=await order(item);assert.equal(placed.status,200,JSON.stringify(placed));
+    const snapshot=(await rows(`SELECT ImageURLSnapshot FROM OrderDetails WHERE OrderID=${placed.data.orderId}`))[0];
+    assert.equal(snapshot.ImageURLSnapshot,variantImage);
+    const listed=await api(`/customers/${users[0].id}/orders`);assert.equal(listed.status,200,JSON.stringify(listed));
+    const found=listed.data.find(value=>value.id===placed.data.orderId);assert.equal(found.products[0].image,variantImage);
+    return {snapshot:snapshot.ImageURLSnapshot,image:found.products[0].image};
   });
-  await check('T09', 'Repeated same checkout key', 'same order ID; inventory decremented once', async () => {
+  for (const count of [2,5,10]) await check(`T08-${count}`, `${count} customers order the last SKU`, 'all can place pending orders; only one confirmation deducts the last item', async () => {
+    const item = await fixture(1); const placed = await Promise.all(users.slice(0,count).map(user => order(item,{user})));
+    assert.ok(placed.every(x => x.status===200),JSON.stringify(placed));assert.equal(await stockOf(item),1);
+    const confirmed=await Promise.all(placed.map(x=>status(x.data.orderId,'Đã xác nhận',admin)));
+    assert.equal(confirmed.filter(x=>x.status===200).length,1,JSON.stringify(confirmed));assert.ok(confirmed.every(x=>[200,409].includes(x.status)),JSON.stringify(confirmed));
+    assert.equal(await stockOf(item),0);return confirmed.map(x=>x.status);
+  });
+  await check('T09', 'Repeated same checkout key', 'same order ID; checkout keeps inventory; confirmation decrements once', async () => {
     const item = await fixture(); const key = `repeat-${run}`; const a = await order(item,{key}); const b = await order(item,{key});
     assert.equal(a.status,200,JSON.stringify(a)); assert.equal(b.status,200,JSON.stringify(b)); assert.equal(a.data.orderId,b.data.orderId);
-    assert.equal(await stockOf(item),9); return [a.data.orderId,b.data.orderId];
+    assert.equal(await stockOf(item),10);await status(a.data.orderId,'Đã xác nhận',admin);assert.equal(await stockOf(item),9); return [a.data.orderId,b.data.orderId];
   });
-  await check('T10', '10 parallel retries same checkout key', 'all same order ID, stock decremented once', async () => {
+  await check('T10', '10 parallel retries same checkout key', 'all same order ID; confirmation decrements once', async () => {
     const item=await fixture(20); const r=await Promise.all(Array.from({length:10},()=>order(item,{key:`parallel-${run}`})));
-    assert.ok(r.every(x=>x.status===200),JSON.stringify(r)); assert.equal(new Set(r.map(x=>x.data.orderId)).size,1); assert.equal(await stockOf(item),19); return r.map(x=>x.data.orderId);
+    assert.ok(r.every(x=>x.status===200),JSON.stringify(r)); assert.equal(new Set(r.map(x=>x.data.orderId)).size,1);assert.equal(await stockOf(item),20);
+    await status(r[0].data.orderId,'Đã xác nhận',admin);assert.equal(await stockOf(item),19); return r.map(x=>x.data.orderId);
   });
   await check('T11', 'Same key different payload', '409 conflict', async()=>{
     const item=await fixture(); const key=`conflict-${run}`; await order(item,{key}); const r=await order({...item,quantity:2},{key}); assert.equal(r.status,409,JSON.stringify(r)); return r;
@@ -105,8 +122,10 @@ async function main() {
     const item=await fixture(); const r=await Promise.all(['MISSING-COUPON','AUDIT-EXPIRED'].map(code=>order(item,{extra:{couponCode:code}})));
     assert.ok(r.every(x=>x.status===409),JSON.stringify(r));assert.equal(await stockOf(item),10);return r;
   });
-  await check('T15', 'Cancel and duplicate cancel', 'stock restored once; repeated cancel succeeds unchanged', async()=>{
-    const item=await fixture();const r=await order(item); assert.equal(r.status,200,JSON.stringify(r)); const a=await status(r.data.orderId,'Đã hủy'); const b=await status(r.data.orderId,'Đã hủy');
+  await check('T15', 'Cancel pending and confirmed orders', 'pending cancel does not add stock; confirmed cancel restores once', async()=>{
+    const pendingItem=await fixture();const pending=await order(pendingItem);await status(pending.data.orderId,'Đã hủy');assert.equal(await stockOf(pendingItem),10);
+    const item=await fixture();const r=await order(item);await status(r.data.orderId,'Đã xác nhận',admin);assert.equal(await stockOf(item),9);
+    const a=await status(r.data.orderId,'Đã hủy',admin);const b=await status(r.data.orderId,'Đã hủy',admin);
     assert.equal(a.status,200,JSON.stringify(a));assert.equal(b.status,200,JSON.stringify(b));assert.equal(await stockOf(item),10);return[a,b];
   });
   await check('T16', 'Order ownership and admin authorization', '403/401, owner unaffected', async()=>{
@@ -114,14 +133,14 @@ async function main() {
       status(id,'Đã hủy',users[1]), api(`/orders/${id}/payment`,{method:'PUT',user:users[1],body:{payment_status:'Đã thanh toán'}}),
       api(`/orders/${id}/address`,{method:'PUT',user:users[1],body:{addressId:users[1].addressId}}), api('/orders',{user:users[1]}),
       api('/inventory',{user:users[1]}),api('/inventory',{user:null}),api(`/customers/${users[0].id}/orders`,{user:users[1]})]);
-    assert.ok(denied.every(x=>[401,403].includes(x.status)),JSON.stringify(denied));assert.equal(await stockOf(item),9);return denied.map(x=>x.status);
+    assert.ok(denied.every(x=>[401,403].includes(x.status)),JSON.stringify(denied));assert.equal(await stockOf(item),10);return denied.map(x=>x.status);
   });
-  await check('T17', 'Customer transfer declaration cannot create paid money', 'pending declaration; no SUCCESS or valid signature', async()=>{
+  await check('T17', 'Customer transfer confirmation completes payment', 'paid immediately; SUCCESS transaction', async()=>{
     const item=await fixture();const r=await order(item,{extra:{paymentMethod:'BANK'}});const id=r.data.orderId;
     const declared=await api(`/orders/${id}/payment`,{method:'PUT',body:{payment_status:'Đã thanh toán'}});assert.equal(declared.status,200,JSON.stringify(declared));
-    const o=(await rows(`SELECT PaymentStatus FROM Orders WHERE OrderID=${id}`))[0];assert.equal(o.PaymentStatus,'Chờ thanh toán');
-    const p=await rows(`SELECT Status,SignatureValid FROM PaymentTransactions WHERE OrderID=${id}`);assert.ok(p.every(x=>x.Status!=='SUCCESS'&&!x.SignatureValid),JSON.stringify(p));
-    const confirmed=await status(id,'Đã xác nhận',admin);assert.equal(confirmed.status,409,JSON.stringify(confirmed));return {declared,o,p,confirmed};
+    const o=(await rows(`SELECT PaymentStatus FROM Orders WHERE OrderID=${id}`))[0];assert.equal(o.PaymentStatus,'Đã thanh toán');
+    const p=await rows(`SELECT Status,SignatureValid FROM PaymentTransactions WHERE OrderID=${id}`);assert.ok(p.some(x=>x.Status==='SUCCESS'),JSON.stringify(p));
+    const confirmed=await status(id,'Đã xác nhận',admin);assert.equal(confirmed.status,200,JSON.stringify(confirmed));return {declared,o,p,confirmed};
   });
   await check('T18', 'Cancelled cannot become shipped/paid', '409', async()=>{
     const item=await fixture();const r=await order(item,{extra:{paymentMethod:'BANK'}});const id=r.data.orderId;await status(id,'Đã hủy');

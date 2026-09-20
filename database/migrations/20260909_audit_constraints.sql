@@ -20,7 +20,8 @@ IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.Returns')
   CREATE INDEX IX_Returns_Order_Status ON dbo.Returns(OrderID,Status) INCLUDE(RefundAmount,RefundedAt);
 GO
 -- Legacy procedure is not used by the HTTP API. Keep its signature for existing
--- callers, but reject invalid quantities and use a locked server price snapshot.
+-- callers, but only validate stock here. Inventory is deducted later when an
+-- administrator confirms the pending order.
 CREATE OR ALTER PROCEDURE dbo.sp_ProcessOrderAtomic
   @UserID int, @ProductVariantID int, @Quantity int, @UnitPrice decimal(18,2),
   @ShippingAddress nvarchar(500), @CustomerName nvarchar(100),
@@ -31,18 +32,17 @@ BEGIN
   IF @Quantity IS NULL OR @Quantity<=0 OR @Quantity>1000000 RETURN;
   BEGIN TRY
     BEGIN TRANSACTION;
-    DECLARE @pid int, @name nvarchar(255), @size nvarchar(10), @color nvarchar(50), @price decimal(18,2);
+    DECLARE @pid int, @name nvarchar(255), @size nvarchar(10), @color nvarchar(50), @price decimal(18,2), @stock int;
     SELECT @pid=p.ProductID,@name=p.ProductName,@size=v.Size,@color=v.ColorName,
-      @price=CASE WHEN ISNULL(p.SalePrice,0)>0 THEN p.SalePrice ELSE p.BasePrice END
+      @price=CASE WHEN ISNULL(p.SalePrice,0)>0 THEN p.SalePrice ELSE p.BasePrice END,
+      @stock=ISNULL(v.StockQuantity,0)
     FROM dbo.Products p JOIN dbo.ProductVariants v WITH(UPDLOCK,HOLDLOCK) ON p.ProductID=v.ProductID
     WHERE v.ProductVariantID=@ProductVariantID AND ISNULL(p.IsActive,1)=1 AND ISNULL(v.IsActive,1)=1;
     IF @pid IS NULL OR @price IS NULL OR @price<0 THROW 50001,'Invalid product/variant/price',1;
-    UPDATE dbo.ProductVariants SET StockQuantity=StockQuantity-@Quantity,Version=ISNULL(Version,0)+1
-      WHERE ProductVariantID=@ProductVariantID AND StockQuantity>=@Quantity;
-    IF @@ROWCOUNT<>1 THROW 50002,'Insufficient stock',1;
+    IF ISNULL(@stock,0)<@Quantity THROW 50002,'Insufficient stock',1;
     INSERT dbo.Orders(UserID,TotalAmount,Status,ShippingAddress,CustomerName,CustomerPhone,PaymentMethod,PaymentStatus,AutoCancelDeadline,PaymentDueAt)
       VALUES(@UserID,@Quantity*@price,N'Chờ xác nhận',@ShippingAddress,@CustomerName,@CustomerPhone,@PaymentMethod,N'Chưa thanh toán',DATEADD(day,7,GETDATE()),
-        CASE WHEN @PaymentMethod LIKE N'%chuyển khoản%' OR @PaymentMethod LIKE '%BANK%' THEN DATEADD(hour,24,GETDATE()) ELSE NULL END);
+        NULL);
     DECLARE @oid int=SCOPE_IDENTITY();
     INSERT dbo.OrderDetails(OrderID,ProductID,ProductVariantID,Quantity,UnitPrice,ProductNameSnapshot,Size,Color)
       VALUES(@oid,@pid,@ProductVariantID,@Quantity,@price,@name,@size,@color);

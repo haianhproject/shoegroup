@@ -48,7 +48,7 @@ const sanitizeCartItem = (item) => {
   if (variantId !== null && (!Number.isSafeInteger(variantId) || variantId <= 0)) return null;
   const detailId = String(item.id_product_detail ?? `${productId}_${variantId ?? "default"}`).trim();
   if (!detailId || detailId.length > 300) return null;
-  return { ...item, id_product: productId, variant_id: variantId, id_product_detail: detailId, quantity, unitPrice };
+  return { ...item, id_product: productId, variant_id: variantId, id_product_detail: detailId, quantity, unitPrice, stockReserved: false };
 };
 
 // ============================================================
@@ -389,7 +389,7 @@ const refreshCartStockFromServer = async () => {
       }
 
       const variantActive = variant && isEnabled(variant.active ?? variant.IsActive);
-      const stock = Math.max(
+      const serverStock = Math.max(
         0,
         Number(
           variant?.stock ??
@@ -399,6 +399,8 @@ const refreshCartStockFromServer = async () => {
               : 0),
         ) || 0,
       );
+      // Giỏ không giữ tồn, vì vậy giới hạn luôn dùng đúng lượng kho hiện tại.
+      const stock = serverStock;
       const variantFound = Boolean(variant) || Boolean(product && variants.length === 0);
       const isOutOfStock =
         !product ||
@@ -492,7 +494,7 @@ export const refreshCartAvailability = () => {
 // ADD TO CART
 // ============================================================
 
-export const addToCart = (payload) => {
+export const addToCart = async (payload) => {
   const {
     product,
     quantity = 1,
@@ -661,16 +663,9 @@ export const addToCart = (payload) => {
   // TỒN KHO
   // ==========================================================
   //
-  // QUAN TRỌNG:
-  //
-  // stockQuantity chỉ dùng để KIỂM TRA.
-  //
-  // Không trừ:
-  //
-  // product.stock_quantity
-  // product.total_stock
-  // variant.stock
-  //
+  // stockQuantity là ảnh chụp giới hạn để phản hồi nhanh trên giao diện.
+  // Giỏ hàng không giữ và không trừ tồn; server sẽ kiểm tra lại khi đặt đơn
+  // và chỉ trừ thật khi quản lý xác nhận đơn.
   // ==========================================================
 
   const hasFreshStock =
@@ -768,13 +763,12 @@ export const addToCart = (payload) => {
       };
     }
 
-    // CHỈ TĂNG SỐ LƯỢNG CART
     existingItem.quantity =
       newQuantity;
 
-    // Lưu snapshot tồn kho
-    existingItem.stockQuantity =
-      currentStock;
+    existingItem.variant_id = numericVariantId;
+    existingItem.stockReserved = false;
+    if (!existingItem.stockQuantity) existingItem.stockQuantity = currentStock;
 
     existingItem.isOutOfStock = false;
     existingItem.hasInsufficientStock = false;
@@ -884,12 +878,13 @@ export const addToCart = (payload) => {
       productPrice,
 
     // ========================================================
-    // CHỈ LƯU TỒN KHO SNAPSHOT
-    // KHÔNG PHẢI TỒN KHO DATABASE
+    // Lưu lượng kho hiện tại để giới hạn số lượng trong giỏ.
     // ========================================================
 
     stockQuantity:
       stock,
+
+    stockReserved: false,
 
     isOutOfStock: false,
     hasInsufficientStock: false,
@@ -908,7 +903,7 @@ export const addToCart = (payload) => {
 // INCREASE
 // ============================================================
 
-export const increaseQuantity = (
+export const increaseQuantity = async (
   detailId,
 ) => {
   const item =
@@ -951,8 +946,7 @@ export const increaseQuantity = (
     };
   }
 
-  item.quantity =
-    quantity + 1;
+  item.quantity = quantity + 1;
 
   return {
     ok: true,
@@ -965,7 +959,7 @@ export const increaseQuantity = (
 // DECREASE
 // ============================================================
 
-export const decreaseQuantity = (
+export const decreaseQuantity = async (
   detailId,
 ) => {
   const item =
@@ -996,8 +990,7 @@ export const decreaseQuantity = (
     };
   }
 
-  item.quantity =
-    quantity - 1;
+  item.quantity = quantity - 1;
 
   const stock = Number(item.stockQuantity || 0);
   item.hasInsufficientStock =
@@ -1019,7 +1012,7 @@ export const decreaseQuantity = (
 // REMOVE
 // ============================================================
 
-export const removeFromCart = (
+export const removeFromCart = async (
   detailId,
 ) => {
   const index =
@@ -1035,17 +1028,19 @@ export const removeFromCart = (
       1,
     );
   }
+  return { ok: true };
 };
 
 // ============================================================
 // CLEAR CART
 // ============================================================
 
-export const clearCart = () => {
+export const clearCart = async () => {
   cartState.items.splice(
     0,
     cartState.items.length,
   );
+  return { ok: true };
 };
 
 // ============================================================

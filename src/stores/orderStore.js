@@ -65,7 +65,9 @@ export const orderState = reactive({
 
 /* Nạp lại đơn hàng (dùng ở onMounted của trang đơn hàng) */
 export const loadOrders = async () => {
-  orderState.orders = readOrdersFromStorage();
+  // State đã được nạp từ localStorage khi khởi tạo store. Không nạp lại bản
+  // local cũ ở mỗi lần polling vì nó có thể làm giao diện nhảy ngược về một
+  // trạng thái đã hủy trong lúc đang chờ phản hồi mới nhất từ server.
   await syncFromServer();
   return orderState.orders;
 };
@@ -139,7 +141,9 @@ export const createOrder = ({
         id_product: prod.id_product,
         id_product_detail: item.id_product_detail,
         product_name: prod.product_name,
-        image_url: prod.image_url,
+        // Ảnh của dòng đơn phải bám đúng màu/biến thể đã chọn. Ảnh sản phẩm
+        // chỉ là fallback khi biến thể không có ảnh riêng.
+        image_url: item.color?.image || item.image_url || prod.image_url || "",
         size: { size_name: item.size?.size_name || "" },
         color: { color_label: item.color?.color_label || item.color?.color_name || "" },
         attributes: {
@@ -170,6 +174,7 @@ export const markAsDelivered = (orderId) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "DELIVERED";
+  if (o.serverId) o.serverStatus = "DELIVERED";
   o.deliveredDate = Date.now();
   o.autoCancelDeadline = null;
   saveOrders();
@@ -182,6 +187,7 @@ export const confirmReceived = (orderId) => {
   if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
   const now = Date.now();
   o.status = "RECEIVED";
+  if (o.serverId) o.serverStatus = "RECEIVED";
   o.receivedConfirmedDate = now;
   o.revenueEligibleDate = now + REVENUE_HOLD_DAYS * DAY;
   o.isCountedAsRevenue = false;
@@ -222,6 +228,7 @@ export const requestReturn = async (orderId, payload) => {
       })),
     });
     o.status = "RETURNED";
+    o.serverStatus = "RETURNED";
     o.returnInfo = {
       method: payload.method,
       notReceived: payload.method === "NOT_RECEIVED",
@@ -266,6 +273,7 @@ export const cancelOrder = (orderId, reason, paymentStatus) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "CANCELLED";
+  if (o.serverId) o.serverStatus = "CANCELLED";
   o.payment_status = paymentStatus || (o.payment_status === "Hoàn tiền" ? "Hoàn tiền" : orderWasPaid(o) ? "Chờ hoàn tiền" : "Đã hủy");
   o.cancelReason = reason || "Khách hàng hủy đơn.";
   saveOrders();
@@ -274,7 +282,11 @@ export const cancelOrder = (orderId, reason, paymentStatus) => {
 /* Gắn ID đơn hàng phía server để đồng bộ trạng thái sau này */
 export const setServerId = (localId, serverId) => {
   const o = orderState.orders.find((x) => x.id === localId);
-  if (o) { o.serverId = serverId; saveOrders(); }
+  if (o) {
+    o.serverId = serverId;
+    o.fromServer = true;
+    saveOrders();
+  }
 };
 
 import { API_BASE_URL } from "../services/apiClient";
@@ -301,7 +313,10 @@ export const mapStatusToKey = (status) => {
 
   const n = normalizeStatusText(raw);
 
-  if (n.includes("huy") || n.includes("cancel")) return "CANCELLED";
+  // "chuyển" được bỏ dấu thành "chuyen" và có chứa chuỗi "huy". Chỉ nhận
+  // hủy khi "huy" là một từ độc lập để không biến "Đang vận chuyển" thành
+  // CANCELLED.
+  if (/(^|[^a-z0-9])(da\s+)?huy(?=$|[^a-z0-9])/.test(n) || n.includes("cancel")) return "CANCELLED";
   if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
   if (n.includes("tra hang") || n.includes("hoan tien") || n.includes("return")) return "RETURNED";
   if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
@@ -316,10 +331,10 @@ export const mapStatusToKey = (status) => {
   return "PENDING";
 };
 
-/* Trạng thái do KHÁCH quyết định -> không bị server ghi đè lùi.
-   RETURNED không nằm trong danh sách này vì yêu cầu trả hàng có thể bị
-   từ chối/hủy và đơn cần quay lại SHIPPING hoặc RECEIVED. */
-const CLIENT_TERMINAL = ["RECEIVED", "COMPLETED"];
+/* Trạng thái server là nguồn sự thật cho đơn đã đồng bộ. Các thao tác hợp lệ
+   của khách cũng cập nhật serverStatus ngay khi API thành công, nên giao diện
+   không còn phụ thuộc vào một giá trị status local cũ. */
+export const getOrderDisplayStatus = (order) => order?.serverStatus || order?.status || "PENDING";
 
 /* Ánh xạ 1 đơn từ server (GET /api/customers/:id/orders) sang shape dùng ở trang khách */
 export const mapServerOrder = (s) => {
@@ -352,6 +367,7 @@ export const mapServerOrder = (s) => {
     createdAt,
     date: s.date || "",
     status: key,
+    serverStatus: key,
     autoCancelDeadline: toTimestamp(s.auto_cancel_deadline ?? s.AutoCancelDeadline),
     deliveredDate: deliveredDate || (key === "DELIVERED" ? createdAt : null),
     receivedConfirmedDate,
@@ -410,6 +426,40 @@ export const mapServerOrder = (s) => {
   };
 };
 
+const comparableItemKey = (item = {}) => {
+  const productId = item.product_id ?? item.id_product ?? item.product?.id_product ?? "";
+  const size = normalizeStatusText(item.size?.size_name ?? item.size ?? "");
+  const color = normalizeStatusText(item.color?.color_label ?? item.color?.color_name ?? item.color ?? "");
+  const quantity = Number(item.quantity ?? 0);
+  return `${productId}|${size}|${color}|${quantity}`;
+};
+
+const comparableItems = (items) => (Array.isArray(items) ? items : [])
+  .map(comparableItemKey)
+  .sort()
+  .join(";");
+
+/* Ghép một bản đơn local cũ với đơn server tương ứng. Việc ghép chỉ diễn ra
+   khi thời điểm, tổng tiền và toàn bộ dòng sản phẩm đều khớp để tránh nối
+   nhầm hai đơn mua gần nhau. */
+export const ordersLikelySame = (localOrder, serverOrder) => {
+  if (!localOrder || !serverOrder) return false;
+  const mapped = mapServerOrder(serverOrder);
+  const localCreatedAt = Number(localOrder.createdAt);
+  const serverCreatedAt = Number(mapped.createdAt);
+  if (!Number.isFinite(localCreatedAt) || !Number.isFinite(serverCreatedAt)) return false;
+  if (Math.abs(localCreatedAt - serverCreatedAt) > 10 * 60 * 1000) return false;
+  if (Math.abs(Number(localOrder.total || 0) - Number(mapped.total || 0)) > 1) return false;
+
+  const localItems = comparableItems(localOrder.items);
+  const serverItems = comparableItems(mapped.items);
+  if (!localItems || localItems !== serverItems) return false;
+
+  const localPhone = String(localOrder.customer?.phone || "").replace(/\D/g, "");
+  const serverPhone = String(mapped.customer?.phone || "").replace(/\D/g, "");
+  return !localPhone || !serverPhone || localPhone === serverPhone;
+};
+
 /* Đồng bộ trạng thái từ server (Admin cập nhật) về đơn của khách */
 export const syncFromServer = async () => {
   const user = getCurrentUser();
@@ -426,8 +476,11 @@ export const syncFromServer = async () => {
     console.warn("Lỗi syncFromServer:", err);
     return;
   }
-  if (!Array.isArray(list)) return;
+  return reconcileOrdersFromServer(list);
+};
 
+export const reconcileOrdersFromServer = (list) => {
+  if (!Array.isArray(list)) return false;
   let changed = false;
   const toTimestamp = (value) => {
     if (!value) return null;
@@ -435,17 +488,46 @@ export const syncFromServer = async () => {
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  // Các phiên bản cũ có thể đã tạo đơn thành công nhưng chưa kịp lưu serverId.
+  // Ghép lại bản local đó thay vì để song song một đơn SG... cũ và một đơn
+  // SV... mới, vì bản SG... có thể tiếp tục hiển thị trạng thái "Đã hủy".
+  const duplicateServerCopies = new Set();
+  orderState.orders.forEach((o) => {
+    const hasCurrentServerOrder = o.serverId != null
+      && list.some((item) => String(item.id) === String(o.serverId));
+    if (hasCurrentServerOrder) return;
+
+    const candidates = list.filter((item) => ordersLikelySame(o, item));
+    if (candidates.length !== 1) return;
+
+    const candidate = candidates[0];
+    const existingServerCopy = orderState.orders.find((item) =>
+      item !== o && String(item.serverId) === String(candidate.id)
+    );
+    if (existingServerCopy && !(existingServerCopy.fromServer && String(existingServerCopy.id).startsWith("SV"))) return;
+
+    if (existingServerCopy) duplicateServerCopies.add(existingServerCopy);
+    o.serverId = candidate.id;
+    o.fromServer = true;
+    changed = true;
+  });
+  if (duplicateServerCopies.size) {
+    orderState.orders = orderState.orders.filter((o) => !duplicateServerCopies.has(o));
+    changed = true;
+  }
+
   // 1. Cập nhật các đơn đã tồn tại trong local storage
   orderState.orders.forEach((o) => {
     const s = list.find((item) => String(item.id) === String(o.serverId));
     if (!s) return;
 
     const key = mapStatusToKey(s.status);
-    // Cập nhật trạng thái
-    // Cho phép server đẩy các trạng thái kết thúc/đổi trả lên ngay cả khi
-    // local vừa lưu "Đã nhận hàng"; chỉ giữ terminal local trước một bản
-    // ghi server cũ hơn (DELIVERED/PENDING).
-    const serverAuthoritative = ["RETURNED", "CANCELLED", "COMPLETED"].includes(key);
+    if (o.serverStatus !== key) {
+      o.serverStatus = key;
+      changed = true;
+    }
+    o.fromServer = true;
+    // Đơn đã đồng bộ luôn lấy trạng thái hiện tại trên server làm nguồn thật.
     if (o.status !== key) {
       o.status = key;
       if (key === "DELIVERED" && !o.deliveredDate) {
@@ -456,6 +538,20 @@ export const syncFromServer = async () => {
         o.cancelReason = s.cancel_reason || o.cancelReason || "Đơn bị hủy.";
       }
       changed = true;
+    }
+
+    // Một lần giao thất bại/về kho không còn đồng nghĩa với hủy đơn. Khi shop
+    // đã xếp giao lại, xóa lý do hủy cũ để giao diện không tiếp tục hiện cảnh
+    // báo "Đơn bị hủy".
+    if (key !== "CANCELLED") {
+      if (o.cancelReason) {
+        o.cancelReason = "";
+        changed = true;
+      }
+      if (o.autoCancelled) {
+        o.autoCancelled = false;
+        changed = true;
+      }
     }
 
     // Yêu cầu trả hàng bị từ chối/hủy sẽ trả đơn về trạng thái giao/nhận;
@@ -585,4 +681,5 @@ export const syncFromServer = async () => {
   });
 
   if (changed) saveOrders();
+  return changed;
 };
