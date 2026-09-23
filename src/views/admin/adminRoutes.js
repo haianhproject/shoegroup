@@ -105,7 +105,7 @@ const adminRoutes = [
         path: "variant-discounts",
         name: "admin-variant-discounts",
         component: () => import("./pages/VariantDiscountsPage.vue"),
-        meta: { title: "Giảm Giá Biến Thể Màu" },
+        meta: { title: "Giảm Giá Biến Thể" },
       },
       {
         path: "customers",

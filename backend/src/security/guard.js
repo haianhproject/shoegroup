@@ -44,7 +44,6 @@ const POLICIES = [
   ["GET", /^\/api\/soles/, "PUBLIC"],
   ["GET", /^\/api\/cushionings/, "PUBLIC"],
   ["GET", /^\/api\/discounts/, "PUBLIC"],
-  ["GET", /^\/api\/variantDiscounts/, "PUBLIC"],
   ["GET", /^\/api\/postoffices/, "PUBLIC"],
   ["GET", /^\/api\/shippingmethods/, "PUBLIC"],
   ["POST", /^\/api\/shipping\/quote$/, "PUBLIC"],

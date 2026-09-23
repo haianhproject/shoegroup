@@ -1882,12 +1882,15 @@ export function printPosInvoice() {
 }
 export const posSearch = ref("");
 
-function activeColorDiscount(productId, color) {
+function activeVariantDiscount(productId, color, variantId) {
   const now = Date.now();
   return db.variantDiscounts
     .filter((discount) => {
       if (String(discount.product_id) !== String(productId)) return false;
-      if (String(discount.color || "") !== String(color || "")) return false;
+      const scope = discount.apply_scope === "variant" ? "variant" : "color";
+      if (scope === "variant") {
+        if (String(discount.variant_id) !== String(variantId)) return false;
+      } else if (String(discount.color || "") !== String(color || "")) return false;
       if (discount.active === false || discount.active === 0) return false;
       const start = discount.start_date ? new Date(discount.start_date).getTime() : null;
       const end = discount.end_date ? new Date(discount.end_date).getTime() : null;
@@ -1900,7 +1903,7 @@ function activeColorDiscount(productId, color) {
 
 function effectiveVariantPrice(product, variant) {
   const base = Math.max(0, (Number(product?.price) || 0) + (Number(variant?.price_adjustment) || 0));
-  const discount = activeColorDiscount(variant?.product_id ?? product?.id, variant?.color);
+  const discount = activeVariantDiscount(variant?.product_id ?? product?.id, variant?.color, variant?.id);
   if (!discount) return base;
   const value = Number(discount.value) || 0;
   if (discount.discount_type === "Cố định") {
@@ -2877,8 +2880,40 @@ export function getCushioningName(id) {
   return c ? c.name : "—";
 }
 export const filteredDiscounts = computed(() => db.discounts);
+function localDateBoundary(value, endOfDay = false) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  const date = parts
+    ? new Date(
+        Number(parts[1]),
+        Number(parts[2]) - 1,
+        Number(parts[3]),
+        endOfDay ? 23 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 999 : 0,
+      )
+    : new Date(raw);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+export function formatDateOnly(d) {
+  if (!d) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d));
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const date = new Date(d);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString("vi-VN") : String(d);
+}
+
+function dateInputValue(value) {
+  if (!value) return "";
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value));
+  return match ? match[1] : "";
+}
+
 export function isExpired(date) {
-  return date ? new Date(date) < new Date() : false;
+  const boundary = localDateBoundary(date, true);
+  return boundary ? boundary < new Date() : false;
 }
 export function getProductName(id) {
   const p = db.products.find((x) => String(x.id) === String(id));
@@ -2999,10 +3034,13 @@ export async function saveDiscount() {
 }
 
 /* ================================================================
- * GIẢM GIÁ BIẾN THỂ MÀU (nâng cấp: chọn biến thể màu, loại giảm,
- * giá trị, tối đa, số lượng/đã dùng, thời gian, lý do, kích hoạt)
+ * GIẢM GIÁ BIẾN THỂ (theo màu hoặc đúng màu + size)
  * ================================================================ */
 export const variantDiscountTypes = ["Theo phần trăm", "Cố định"];
+export const variantDiscountScopes = [
+  { value: "variant", label: "Theo màu + size cụ thể" },
+  { value: "color", label: "Theo màu (mọi size)" },
+];
 export const variantReasons = [
   "Bán chậm",
   "Theo mùa",
@@ -3024,25 +3062,53 @@ export const variantColorOptions = computed(() => {
   const map = {};
   db.inventory.forEach((v) => {
     const key = v.product_id + "|" + (v.color || "");
+    const variantBasePrice =
+      (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) +
+      (Number(v.price_adjustment) || 0);
     if (!map[key]) {
       map[key] = {
         variant_id: v.id,
         product_id: v.product_id,
         product_name: v.product_name || getProductName(v.product_id),
         color: v.color || "Mặc định",
+        raw_color: v.color || "",
         color_hex: v.color_hex || "#d1d5db",
         sku: v.sku || "",
         stock: 0,
-        base_price: (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0)
-          + (Number(v.price_adjustment) || 0),
+        base_price: variantBasePrice,
       };
     }
     map[key].stock += Number(v.stock) || 0;
+    map[key].base_price = Math.min(map[key].base_price, variantBasePrice);
   });
   return Object.values(map);
 });
 
+// Danh sách từng biến thể thật để có thể giảm riêng một size.
+export const variantSizeOptions = computed(() => db.inventory.map((v) => {
+  const basePrice =
+    (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) +
+    (Number(v.price_adjustment) || 0);
+  return {
+    variant_id: v.id,
+    product_id: v.product_id,
+    product_name: v.product_name || getProductName(v.product_id),
+    color: v.color || "Mặc định",
+    raw_color: v.color || "",
+    color_hex: v.color_hex || "#d1d5db",
+    size: v.size || "Mặc định",
+    sku: v.sku || "",
+    stock: Number(v.stock) || 0,
+    base_price: basePrice,
+  };
+}));
+
+export function variantDiscountOptionsForScope(scope) {
+  return scope === "variant" ? variantSizeOptions.value : variantColorOptions.value;
+}
+
 export function getVariantInfo(vd) {
+  const scope = vd.apply_scope === "variant" ? "variant" : "color";
   const byId = db.inventory.find((v) => String(v.id) === String(vd.variant_id));
   if (byId)
     return {
@@ -3050,6 +3116,8 @@ export function getVariantInfo(vd) {
       color: byId.color || "Mặc định",
       color_hex: byId.color_hex || "#d1d5db",
       sku: byId.sku || "",
+      size: scope === "variant" ? (byId.size || vd.size || "Mặc định") : "",
+      scope_label: scope === "variant" ? "Đúng size" : "Mọi size",
       image: productImage(byId.product_id),
     };
   return {
@@ -3057,33 +3125,51 @@ export function getVariantInfo(vd) {
     color: vd.color || "Mặc định",
     color_hex: vd.color_hex || "#d1d5db",
     sku: "",
+    size: scope === "variant" ? (vd.size || "Mặc định") : "",
+    scope_label: scope === "variant" ? "Đúng size" : "Mọi size",
     image: productImage(vd.product_id),
   };
 }
 export function formatVariantDiscountValue(vd) {
   if (vd.discount_type === "Cố định") return "Giá bán " + formatPrice(vd.value);
-  let s = (Number(vd.value) || 0) + "%";
-  if (Number(vd.max_discount) > 0)
-    s += " · Tối đa " + formatPrice(vd.max_discount);
-  return s;
+  return (Number(vd.value) || 0) + "%";
 }
 export function getVariantDiscountStatus(vd) {
   if (!vd.active)
     return { label: "Tạm dừng", cls: "bg-secondary-subtle text-secondary" };
   if (isExpired(vd.end_date))
     return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
+  if (Number(vd.quantity) > 0 && Number(vd.used || 0) >= Number(vd.quantity))
+    return { label: "Đã dùng hết", cls: "bg-warning-subtle text-warning-emphasis" };
+  const startsAt = localDateBoundary(vd.start_date);
+  if (startsAt && startsAt > new Date())
+    return { label: "Sắp diễn ra", cls: "bg-info-subtle text-info-emphasis" };
   return { label: "Hoạt động", cls: "badge-active" };
 }
-export function variantAlreadyDiscounted(variantId) {
+export function variantAlreadyDiscounted(variantId, currentId = null, startDate = null, endDate = null, scope = "color") {
   if (!variantId) return false;
-  const option = variantColorOptions.value.find((item) => String(item.variant_id) === String(variantId));
+  const requestedScope = scope === "variant" ? "variant" : "color";
+  const option = variantDiscountOptionsForScope(requestedScope)
+    .find((item) => String(item.variant_id) === String(variantId));
   if (!option) return false;
+  const requestedStart = localDateBoundary(startDate) || new Date();
+  const requestedEnd = localDateBoundary(endDate, true);
   return db.variantDiscounts.some(
-    (v) =>
-      String(v.product_id) === String(option.product_id) &&
-      String(v.color || "") === String(option.color || "") &&
-      v.active &&
-      !isExpired(v.end_date),
+    (v) => {
+      if (String(v.id) === String(currentId) || !v.active) return false;
+      if (Number(v.quantity) > 0 && Number(v.used || 0) >= Number(v.quantity)) return false;
+      if (String(v.product_id) !== String(option.product_id)) return false;
+      const existingScope = v.apply_scope === "variant" ? "variant" : "color";
+      const sameColor = String(v.color || "") === String(option.raw_color || "");
+      const conflicts = requestedScope === "color"
+        ? sameColor
+        : (existingScope === "color" ? sameColor : String(v.variant_id) === String(option.variant_id));
+      if (!conflicts) return false;
+      const existingStart = localDateBoundary(v.start_date);
+      const existingEnd = localDateBoundary(v.end_date, true);
+      return (!existingEnd || existingEnd >= requestedStart) &&
+        (!requestedEnd || !existingStart || existingStart <= requestedEnd);
+    },
   );
 }
 export const filteredVariantDiscounts = computed(() => {
@@ -3093,7 +3179,8 @@ export const filteredVariantDiscounts = computed(() => {
     const okQ =
       !q ||
       (info.product_name || "").toLowerCase().includes(q) ||
-      (info.color || "").toLowerCase().includes(q);
+      (info.color || "").toLowerCase().includes(q) ||
+      (info.size || "").toLowerCase().includes(q);
     const okS =
       variantStatusFilter.value === "Tất cả" ||
       getVariantDiscountStatus(vd).label === variantStatusFilter.value;
@@ -3106,13 +3193,13 @@ export const filteredVariantDiscounts = computed(() => {
 function emptyVariantDiscount() {
   return {
     id: null,
+    apply_scope: "variant",
     variant_id: "",
     product_id: "",
     color: "",
     color_hex: "",
     discount_type: "Theo phần trăm",
     value: 0,
-    max_discount: 0,
     quantity: 0,
     used: 0,
     start_date: "",
@@ -3124,6 +3211,7 @@ function emptyVariantDiscount() {
 }
 export const variantDiscountModal = reactive({
   open: false,
+  saving: false,
   data: emptyVariantDiscount(),
 });
 export function openVariantDiscountForm(item) {
@@ -3135,37 +3223,53 @@ export function openVariantDiscountForm(item) {
 export function closeVariantDiscountForm() {
   variantDiscountModal.open = false;
 }
+export function resetVariantDiscountSelection() {
+  variantDiscountModal.data.variant_id = "";
+  variantDiscountModal.data.product_id = "";
+  variantDiscountModal.data.color = "";
+  variantDiscountModal.data.color_hex = "";
+}
 export async function saveVariantDiscount() {
+  if (variantDiscountModal.saving) return;
   const d = variantDiscountModal.data;
   const variantId = Number(d.variant_id);
-  const info = variantColorOptions.value.find(
+  const scope = d.apply_scope === "variant" ? "variant" : "color";
+  const info = variantDiscountOptionsForScope(scope).find(
     (o) => String(o.variant_id) === String(d.variant_id),
   );
   const productId = Number(info ? info.product_id : d.product_id);
   const val = Number(d.value);
-  const maxDiscount = Number(d.max_discount || 0);
   const quantity = Number(d.quantity || 0);
   if (!Number.isSafeInteger(variantId) || variantId <= 0 || !Number.isSafeInteger(productId) || productId <= 0) {
-    notify("Vui lòng chọn biến thể màu sản phẩm", "error");
+    notify(scope === "variant" ? "Vui lòng chọn màu và size sản phẩm" : "Vui lòng chọn màu sản phẩm", "error");
     return;
   }
-  if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && val > 100) || !Number.isFinite(maxDiscount) || maxDiscount < 0 || !Number.isSafeInteger(quantity) || quantity < 0) {
-    notify("Giá trị giảm, mức tối đa hoặc số lượng không hợp lệ", "error");
+  if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && (!Number.isSafeInteger(val) || val >= 100)) || !Number.isSafeInteger(quantity) || quantity < 0) {
+    notify("Giá trị giảm hoặc số lượng không hợp lệ", "error");
+    return;
+  }
+  if (d.start_date && d.end_date && d.end_date < d.start_date) {
+    notify("Ngày kết thúc không được trước ngày bắt đầu", "error");
     return;
   }
   if (d.discount_type === "Cố định" && val >= Number(info?.base_price || 0)) {
-    notify("Giá bán cố định phải nhỏ hơn giá gốc của biến thể màu", "error");
+    notify("Giá bán mới phải nhỏ hơn giá gốc trong phạm vi đã chọn", "error");
+    return;
+  }
+  if (d.active && variantAlreadyDiscounted(d.variant_id, d.id, d.start_date, d.end_date, scope)) {
+    notify("Phạm vi này đã có chương trình giảm giá trùng thời gian", "error");
     return;
   }
   const payload = {
     ProductVariantID: variantId,
     ProductID: productId,
-    ColorName: info ? info.color : d.color,
+    ApplyScope: scope,
+    ColorName: info ? info.raw_color : d.color,
     ColorHex: info ? info.color_hex : d.color_hex,
     DiscountType: d.discount_type,
     DiscountValue: val,
     DiscountPercent: d.discount_type === "Theo phần trăm" ? val : 0,
-    MaxDiscountAmount: maxDiscount,
+    MaxDiscountAmount: 0,
     Quantity: quantity,
     StartDate: d.start_date || null,
     EndDate: d.end_date || null,
@@ -3174,32 +3278,29 @@ export async function saveVariantDiscount() {
     Description: d.description || "",
   };
   const isEdit = !!d.id;
-  let res;
-  if (isEdit)
-    res = await apiWrite("/variantDiscounts/" + d.id, {
-      method: "PUT",
+  variantDiscountModal.saving = true;
+  try {
+    const res = await apiWrite(isEdit ? "/variantDiscounts/" + d.id : "/variantDiscounts", {
+      method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-  else
-    res = await apiWrite("/variantDiscounts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-  if (!res.ok) {
-     const msg = res.data && res.data.message ? res.data.message : "Có lỗi xảy ra khi lưu giảm giá.";
-     notify(msg, "error");
-     return;
+    if (!res.ok) {
+      const msg = res.data && (res.data.message || res.data.error)
+        ? (res.data.message || res.data.error)
+        : "Có lỗi xảy ra khi lưu giảm giá.";
+      notify(msg, "error");
+      return;
+    }
+    variantDiscountModal.open = false;
+    notify(
+      isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
+      "success",
+    );
+    fetchAllData();
+  } finally {
+    variantDiscountModal.saving = false;
   }
-  
-  variantDiscountModal.open = false;
-  notify(
-    isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
-    "success",
-  );
-  fetchAllData();
 }
 
 /* ---------------- CUSTOMERS (CRM) ---------------- */
@@ -3516,12 +3617,21 @@ export function deleteItem(type, id, name) {
   confirmModal.id = id;
   confirmModal.mode = "generic";
   confirmModal.danger = false;
-  confirmModal.confirmLabel = "Xác nhận";
-  confirmModal.title = "Xác nhận xoá";
-  confirmModal.message =
-    'Bạn có chắc muốn xoá "' +
-    (name || "#" + id) +
-    '"? Hành động này không thể hoàn tác.';
+  if (type === "variantDiscounts") {
+    confirmModal.confirmLabel = "Tạm dừng";
+    confirmModal.title = "Tạm dừng giảm giá?";
+    confirmModal.message =
+      'Tạm dừng chương trình giảm giá của "' +
+      (name || "#" + id) +
+      '"? Bạn vẫn có thể mở lại bằng nút chỉnh sửa.';
+  } else {
+    confirmModal.confirmLabel = "Xác nhận";
+    confirmModal.title = "Xác nhận xoá";
+    confirmModal.message =
+      'Bạn có chắc muốn xoá "' +
+      (name || "#" + id) +
+      '"? Hành động này không thể hoàn tác.';
+  }
   confirmModal.open = true;
 }
 
@@ -3680,7 +3790,9 @@ export async function executeConfirm() {
       ? "Đã xoá mềm (ẩn) sản phẩm"
       : doneMode === "hard"
         ? "Đã xoá cứng sản phẩm khỏi CSDL"
-        : "Đã xoá thành công",
+        : confirmModal.type === "variantDiscounts"
+          ? "Đã tạm dừng giảm giá biến thể"
+          : "Đã xoá thành công",
     "success",
   );
   fetchAllData();
@@ -4004,18 +4116,20 @@ async function loadAllData(isBackground) {
     }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,
+      apply_scope: (v.ApplyScope ?? v.apply_scope) === "variant" ? "variant" : "color",
       variant_id: v.ProductVariantID ?? v.variant_id ?? v.product_variant_id,
       product_id: v.ProductID ?? v.product_id,
       color: v.ColorName ?? v.color ?? "",
       color_hex: v.ColorHex ?? v.color_hex ?? "",
+      size: v.Size ?? v.size ?? "",
       discount_type: v.DiscountType ?? v.discount_type ?? "Theo phần trăm",
       value: v.DiscountValue ?? v.value ?? v.percent ?? v.DiscountPercent ?? 0,
       percent: v.DiscountPercent ?? v.percent ?? 0,
       max_discount: v.MaxDiscountAmount ?? v.max_discount ?? 0,
       quantity: v.Quantity ?? v.quantity ?? 0,
       used: v.UsedCount ?? v.used ?? 0,
-      start_date: v.StartDate ?? v.start_date ?? null,
-      end_date: v.EndDate ?? v.end_date ?? null,
+      start_date: dateInputValue(v.StartDate ?? v.start_date),
+      end_date: dateInputValue(v.EndDate ?? v.end_date),
       reason: v.Reason ?? v.reason ?? "",
       active: (v.IsActive ?? v.active) !== false,
       description: v.Description ?? v.description ?? "",
