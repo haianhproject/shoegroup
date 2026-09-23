@@ -63,8 +63,20 @@ test("coupon and variant discount payloads enforce business ranges", () => {
   assert.equal(coupon.value.code, "SALE10");
 
   assert.equal(validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Theo phần trăm", DiscountValue: 101 }).ok, false);
+  assert.equal(validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Theo phần trăm", DiscountValue: 100 }).ok, false);
+  assert.equal(validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Theo phần trăm", DiscountValue: 10.5 }).ok, false);
   const variant = validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Cố định", DiscountValue: 50000 });
   assert.equal(variant.ok, true);
   assert.equal(variant.value.type, "fixed");
+  assert.equal(variant.value.scope, "color");
+  assert.equal(variant.value.maxDiscount, 0);
+  const sizeVariant = validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, ApplyScope: "variant", DiscountType: "Theo phần trăm", DiscountValue: 15, MaxDiscountAmount: 999999 });
+  assert.equal(sizeVariant.ok, true);
+  assert.equal(sizeVariant.value.scope, "variant");
+  assert.equal(sizeVariant.value.maxDiscount, 0);
+  assert.equal(validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, ApplyScope: "product", DiscountType: "Theo phần trăm", DiscountValue: 15 }).ok, false);
   assert.equal(validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Cố định", DiscountValue: 50000, StartDate: "2026-08-01" }).ok, true);
+  const sameDay = validateVariantDiscountPayload({ ProductVariantID: 1, ProductID: 1, DiscountType: "Cố định", DiscountValue: 50000, StartDate: "2026-08-01", EndDate: "2026-08-01" });
+  assert.equal(sameDay.ok, true);
+  assert.equal(sameDay.value.endDate.getHours(), 23);
 });

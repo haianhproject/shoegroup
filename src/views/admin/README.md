@@ -27,7 +27,7 @@ admin/
    ├─ BrandsPage.vue           (Thương Hiệu)
    ├─ CollectionsPage.vue      (Bộ Sưu Tập)
    ├─ DiscountsPage.vue        (Mã Khuyến Mãi)
-   ├─ VariantDiscountsPage.vue (Giảm Giá Biến Thể Màu)
+   ├─ VariantDiscountsPage.vue (Giảm Giá Biến Thể theo màu hoặc size)
    ├─ CustomersPage.vue        (Khách Hàng CRM)
    ├─ StaffReportPage.vue      (Báo Cáo Nhân Viên)
    └─ AccountsPage.vue         (Quản Lý Tài Khoản)

@@ -110,7 +110,11 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                    CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
                         THEN N'percent' ELSE N'fixed' END AS DiscountKind
             FROM VariantDiscounts vd
-            WHERE vd.ProductID=pv.ProductID AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N'')
+            WHERE vd.ProductID=pv.ProductID
+              AND (
+                (ISNULL(vd.ApplyScope,'color')='variant' AND vd.ProductVariantID=pv.ProductVariantID)
+                OR (ISNULL(vd.ApplyScope,'color')='color' AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N''))
+              )
               AND ISNULL(vd.IsActive,1)=1
               AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
               AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())
@@ -166,7 +170,11 @@ module.exports = function createOptimizedRoutes({ pool, poolConnect, sql }) {
                    CASE WHEN LOWER(vd.DiscountType) IN (N'percent',N'phan tram',N'phần trăm',N'theo phần trăm')
                         THEN N'percent' ELSE N'fixed' END AS DiscountKind
             FROM VariantDiscounts vd
-            WHERE vd.ProductID=pv.ProductID AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N'')
+            WHERE vd.ProductID=pv.ProductID
+              AND (
+                (ISNULL(vd.ApplyScope,'color')='variant' AND vd.ProductVariantID=pv.ProductVariantID)
+                OR (ISNULL(vd.ApplyScope,'color')='color' AND ISNULL(vd.ColorName,N'')=ISNULL(pv.ColorName,N''))
+              )
               AND ISNULL(vd.IsActive,1)=1
               AND (vd.StartDate IS NULL OR vd.StartDate<=GETDATE())
               AND (vd.EndDate IS NULL OR vd.EndDate>=GETDATE())

@@ -99,7 +99,7 @@ const pageDescriptions = {
   colors: 'Đồng bộ bảng màu và các lựa chọn sản phẩm.',
   sizes: 'Quản lý kích thước cho từng dòng sản phẩm.',
   discounts: 'Thiết lập và theo dõi các chương trình ưu đãi cho khách hàng.',
-  'variant-discounts': 'Quản lý giá ưu đãi theo từng biến thể màu sắc.',
+  'variant-discounts': 'Quản lý giá ưu đãi theo màu hoặc riêng từng màu và size.',
   customers: 'Theo dõi thông tin và lịch sử mua sắm của khách hàng.',
   accounts: 'Quản lý tài khoản và quyền truy cập hệ thống.',
 };

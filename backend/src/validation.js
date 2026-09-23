@@ -205,18 +205,30 @@ function validateVariantDiscountPayload(body = {}) {
   const variantId = positiveInt(body.ProductVariantID ?? body.variant_id);
   const productId = positiveInt(body.ProductID ?? body.product_id);
   if (!variantId || !productId) return validationError("Biến thể hoặc sản phẩm không hợp lệ.");
+  const rawScope = text(body.ApplyScope ?? body.apply_scope ?? body.scope ?? "color", 20).toLowerCase();
+  const scope = rawScope === "variant" || rawScope === "size" ? "variant" : rawScope === "color" ? "color" : null;
+  if (!scope) return validationError("Phạm vi giảm giá biến thể không hợp lệ.");
   const rawType = text(body.DiscountType ?? body.discount_type ?? body.type, 20);
   const typeKey = rawType.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").toLowerCase();
   const type = typeKey.includes("phan tram") || typeKey === "percent" ? "percent" : typeKey.includes("co dinh") || typeKey === "fixed" ? "fixed" : null;
   if (!type) return validationError("Loại giảm giá biến thể không hợp lệ.");
   const value = nonNegativeNumber(body.DiscountValue ?? body.value, { max: 1e12 });
-  const maxDiscount = nonNegativeNumber(body.MaxDiscountAmount ?? body.max_discount, { max: 1e12, defaultValue: 0 });
   const quantity = nonNegativeInt(body.Quantity ?? body.quantity, { max: 2147483647, defaultValue: 0 });
-  if (value === null || value <= 0 || maxDiscount === null || quantity === null) return validationError("Giá trị, số lượng giảm giá không hợp lệ.");
-  if (type === "percent" && value > 100) return validationError("Phần trăm giảm giá phải từ 0 đến 100.");
-  const startDate = dateValue(body.StartDate ?? body.start_date);
-  const endDate = dateValue(body.EndDate ?? body.end_date);
-  if ((body.EndDate ?? body.end_date) && !endDate) return validationError("Ngày kết thúc giảm giá biến thể không hợp lệ.");
+  if (value === null || value <= 0 || quantity === null) return validationError("Giá trị hoặc số lượng giảm giá không hợp lệ.");
+  if (type === "percent" && (!Number.isInteger(value) || value >= 100)) {
+    return validationError("Phần trăm giảm giá phải là số nguyên từ 1 đến 99.");
+  }
+  const rawStartDate = body.StartDate ?? body.start_date;
+  const rawEndDate = body.EndDate ?? body.end_date;
+  const startDate = dateValue(rawStartDate);
+  let endDate = dateValue(rawEndDate);
+  // O nhap type=date chi gui YYYY-MM-DD. Ngay ket thuc duoc hieu la het
+  // ngay do; neu giu 00:00:00 thi chuong trinh se het han ngay khi ngay bat dau.
+  if (endDate && /^\d{4}-\d{2}-\d{2}$/.test(String(rawEndDate || "").trim())) {
+    endDate.setHours(23, 59, 59, 997);
+  }
+  if (rawStartDate && !startDate) return validationError("Ngày bắt đầu giảm giá biến thể không hợp lệ.");
+  if (rawEndDate && !endDate) return validationError("Ngày kết thúc giảm giá biến thể không hợp lệ.");
   if (startDate && endDate && endDate <= startDate) return validationError("Ngày kết thúc phải sau ngày bắt đầu.");
   const active = booleanValue(body.IsActive ?? body.active, true);
   if (active === null) return validationError("Trạng thái giảm giá biến thể không hợp lệ.");
@@ -229,7 +241,7 @@ function validateVariantDiscountPayload(body = {}) {
     ok: true,
     value: {
       variantId, productId, colorName: text(body.ColorName ?? body.color, 50), colorHex: text(body.ColorHex ?? body.color_hex, 20),
-      type, value, percent: type === "percent" ? value : 0, maxDiscount, quantity,
+      scope, type, value, percent: type === "percent" ? value : 0, maxDiscount: 0, quantity,
       startDate, endDate, reason: text(body.Reason ?? body.reason, 100), active,
       description: text(body.Description ?? body.description, 500),
     },

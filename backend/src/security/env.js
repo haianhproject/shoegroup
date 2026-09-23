@@ -42,6 +42,10 @@ const bool = (v, def = false) =>
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProd = nodeEnv === "production";
+const dbPort = Number(process.env.DB_PORT || 1433);
+if (!Number.isInteger(dbPort) || dbPort < 1 || dbPort > 65535) {
+  throw new Error("DB_PORT phai la so nguyen tu 1 den 65535.");
+}
 if (isProd && !process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET phai duoc cau hinh khi NODE_ENV=production.");
 }
@@ -58,6 +62,7 @@ const config = {
     user: process.env.DB_USER || "sa",
     password: process.env.DB_PASS || "123",
     server: process.env.DB_SERVER || "127.0.0.1",
+    port: dbPort,
     database: process.env.DB_NAME || "ShoegroupDB",
     options: {
       // Production nen bat encrypt=true
