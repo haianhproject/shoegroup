@@ -10,26 +10,28 @@ import {
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
+import OrderStatusIcon from '../components/OrderStatusIcon.vue'
 
 const router = useRouter()
 const search = ref('')
 const statusFilter = ref('ALL')
 const expanded = ref(null)
 const isLoading = ref(true)
+const orderCardRefs = new Map()
 
 const isCentered = computed(() => router.currentRoute.value.query.center === 'true')
 
 const statusMeta = {
-  PENDING: { color: 'amber', icon: 'icon-hourglass-split' },
-  CONFIRMED: { color: 'blue', icon: 'icon-check2-circle' },
-  SHIPPING: { color: 'cyan', icon: 'icon-truck' },
-  DELIVERY_FAILED: { color: 'red', icon: 'icon-truck' },
-  WAREHOUSE_RETURN: { color: 'amber', icon: 'icon-box-seam' },
-  DELIVERED: { color: 'lime', icon: 'icon-box-seam' },
-  RECEIVED: { color: 'green', icon: 'icon-bag-check' },
-  COMPLETED: { color: 'green', icon: 'icon-patch-check-fill' },
-  CANCELLED: { color: 'red', icon: 'icon-x-circle' },
-  RETURNED: { color: 'gray', icon: 'icon-arrow-return-left' },
+  PENDING: { color: 'amber', icon: 'pending' },
+  CONFIRMED: { color: 'blue', icon: 'confirmed' },
+  SHIPPING: { color: 'cyan', icon: 'shipping' },
+  DELIVERY_FAILED: { color: 'red', icon: 'failed' },
+  WAREHOUSE_RETURN: { color: 'amber', icon: 'warehouse' },
+  DELIVERED: { color: 'green', icon: 'delivered' },
+  RECEIVED: { color: 'green', icon: 'delivered' },
+  COMPLETED: { color: 'green', icon: 'delivered' },
+  CANCELLED: { color: 'red', icon: 'cancelled' },
+  RETURNED: { color: 'gray', icon: 'returned' },
 }
 
 // Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper)
@@ -57,7 +59,21 @@ const filtered = computed(() => {
   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 })
 
-const toggle = (id) => { expanded.value = expanded.value === id ? null : id }
+const setOrderCardRef = (id, element) => {
+  if (element) orderCardRefs.set(id, element)
+  else orderCardRefs.delete(id)
+}
+
+const toggle = (id) => {
+  expanded.value = expanded.value === id ? null : id
+}
+
+const scrollExpandedIntoView = () => {
+  const card = orderCardRefs.get(expanded.value)
+  const detail = card?.querySelector('.oc-detail')
+  if (!detail) return
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
 
@@ -115,6 +131,8 @@ const hasDeliveryIssue = (o) => {
     || keys.includes('WAREHOUSE_RETURN')
 }
 
+const isDeliveryResolved = (o) => ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o?.status)
+
 const deliveryIssueMessage = (o) => {
   if (!o) return ''
   if (isLostDelivery(o)) {
@@ -140,11 +158,11 @@ const deliveryIssueSteps = (o) => {
     || historyKeys.includes('DELIVERY_FAILED')
     || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
   const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
-  const steps = [{ label: 'Đang giao hàng', icon: 'icon-truck' }]
-  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'icon-exclamation-triangle' })
-  if (returned) steps.push({ label: 'Đã về kho', icon: 'icon-box-seam' })
-  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'icon-truck' })
-  if (returned && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) steps.push({ label: 'Đã giao hàng', icon: 'icon-box-seam' })
+  const steps = [{ label: 'Đang giao hàng', icon: 'shipping', tone: 'neutral' }]
+  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'failed', tone: 'danger' })
+  if (returned) steps.push({ label: 'Đã về kho', icon: 'warehouse', tone: 'warning' })
+  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'shipping', tone: 'active' })
+  if (isDeliveryResolved(o)) steps.push({ label: 'Đã giao thành công', icon: 'delivered', tone: 'success' })
   return steps
 }
 
@@ -416,17 +434,31 @@ onUnmounted(() => {
       </div>
 
       <div v-else class="order-list">
-        <div v-for="o in filtered" :key="o.id" class="order-card sg-card">
+        <div
+          v-for="o in filtered"
+          :key="o.id"
+          :ref="(element) => setOrderCardRef(o.id, element)"
+          class="order-card sg-card"
+          :class="{ 'is-expanded': expanded === o.id }"
+        >
           <!-- Header -->
-          <div class="oc-head" @click="toggle(o.id)">
+          <div
+            class="oc-head"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expanded === o.id"
+            @click="toggle(o.id)"
+            @keydown.enter.prevent="toggle(o.id)"
+            @keydown.space.prevent="toggle(o.id)"
+          >
             <div class="oc-head-l">
               <span class="oc-id">#{{ o.id }}</span>
-              <span class="oc-date"><i class="icon icon-calendar3"></i> {{ fmtDate(o.createdAt) }}</span>
+              <span class="oc-date"><OrderStatusIcon name="calendar" :size="13" /> {{ fmtDate(o.createdAt) }}</span>
             </div>
             <div class="oc-head-r">
-              <span class="stat-badge" :class="statusMeta[o.status]?.color"><i class="icon" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}</span>
+              <span class="stat-badge" :class="statusMeta[o.status]?.color"><OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="14" /> {{ ORDER_STATUS[o.status] }}</span>
               <strong class="oc-total">{{ formatCurrency(o.total) }}</strong>
-              <i class="icon icon-chevron-down oc-caret" :class="{ open: expanded === o.id }"></i>
+              <OrderStatusIcon name="chevron" :size="16" class="oc-caret" :class="{ open: expanded === o.id }" />
             </div>
           </div>
 
@@ -440,8 +472,8 @@ onUnmounted(() => {
           <!-- Thông tin địa chỉ nhận & Nút đổi địa chỉ -->
           <div class="addr-box-brief my-3 p-3 rounded flex justify-between items-center flex-wrap gap-2">
             <div>
-              <div class="font-bold text-sm text-gray-900">
-                <i class="icon icon-geo-alt-fill text-red-600 mr-1"></i>Địa chỉ nhận hàng:
+              <div class="address-title font-bold text-sm text-gray-900">
+                <OrderStatusIcon name="location" :size="15" class="address-icon" />Địa chỉ nhận hàng:
                 <span v-if="o.addressChanged" class="order-status order-status-alert ml-2">Đã đổi địa chỉ</span>
               </div>
               <div class="text-sm text-gray-600 mt-1">
@@ -458,35 +490,35 @@ onUnmounted(() => {
                 <i class="icon icon-pencil-square mr-1"></i>Đổi sổ địa chỉ
               </button>
                 <span v-else-if="!o.addressChanged" class="order-status order-status-muted py-2 px-3 text-sm">
-                <i class="icon icon-lock-fill mr-1"></i>Khóa đổi địa chỉ
+                <OrderStatusIcon name="lock" :size="14" />Khóa đổi địa chỉ
               </span>
             </div>
           </div>
 
           <!-- Thanh tiến trình trạng thái -->
           <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
-            <i class="icon icon-truck"></i>
+            <OrderStatusIcon name="failed" :size="17" />
             <span><strong>Giao hàng thất bại</strong><small>Đã hủy</small></span>
           </div>
-          <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps">
-            <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="{ current: i === deliveryIssueSteps(o).length - 1 }">
-              <span class="oc-step-dot"><i class="icon" :class="st.icon"></i></span>
+          <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps" :class="{ resolved: isDeliveryResolved(o) }">
+            <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="[st.tone, { current: i === deliveryIssueSteps(o).length - 1 }]">
+              <span class="oc-step-dot"><OrderStatusIcon :name="st.icon" :size="15" /></span>
               <small>{{ st.label }}</small>
               <span v-if="i < deliveryIssueSteps(o).length - 1" class="oc-issue-line"></span>
             </div>
           </div>
           <div v-else-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
-            <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED') }">
-              <span class="oc-step-dot"><i class="icon" :class="statusMeta[st]?.icon"></i></span>
+            <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED'), success: st === 'DELIVERED' && isDeliveryResolved(o) }">
+              <span class="oc-step-dot"><OrderStatusIcon :name="statusMeta[st]?.icon" :size="15" /></span>
               <small>{{ ORDER_STATUS[st] }}</small>
             </div>
           </div>
           <div v-else class="oc-status-flat" :class="statusMeta[o.status]?.color">
-            <i class="icon" :class="statusMeta[o.status]?.icon"></i> {{ ORDER_STATUS[o.status] }}
+            <OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="17" /> {{ ORDER_STATUS[o.status] }}
           </div>
 
-          <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o) }">
-            <i class="icon" :class="isLostDelivery(o) ? 'icon-exclamation-triangle' : 'icon-info-circle'"></i>
+          <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o), success: isDeliveryResolved(o) }">
+            <OrderStatusIcon :name="isLostDelivery(o) ? 'failed' : (isDeliveryResolved(o) ? 'delivered' : 'info')" :size="16" />
             <span>{{ deliveryIssueMessage(o) }}</span>
           </div>
 
@@ -510,8 +542,8 @@ onUnmounted(() => {
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
             <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
             <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
-              <span style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;">
-                <i class="icon icon-check-circle-fill"></i> Đã giao thành công
+              <span class="delivery-success-pill">
+                <OrderStatusIcon name="delivered" :size="16" /> Đã giao thành công
               </span>
               <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer"
                 style="display:inline-flex;align-items:center;gap:6px;background:#0068ff;color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
@@ -527,7 +559,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Expanded detail -->
-          <transition name="exp">
+          <transition name="exp" @after-enter="scrollExpandedIntoView">
             <div v-if="expanded === o.id" class="oc-detail">
               <div class="oc-line" v-for="(it, i) in o.items" :key="i">
                 <img :src="it.image_url || it.product?.image_url" class="oc-line-img">
@@ -689,23 +721,24 @@ onUnmounted(() => {
 .empty { text-align: center; padding: 60px; }
 .empty i { font-size: 3rem; color: var(--sg-muted); }
 .order-list { display: flex; flex-direction: column; gap: 14px; }
-.order-card { padding: 18px; }
+.order-card { padding: 18px; transition: border-color .25s ease, box-shadow .25s ease; }
+.order-card.is-expanded { border-color: #a3a3a3; box-shadow: 0 12px 30px rgba(10, 10, 10, .08); }
 .oc-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: 12px; flex-wrap: wrap; }
+.oc-head:focus-visible { outline: 2px solid #0a0a0a; outline-offset: 6px; border-radius: 4px; }
 .oc-head-l { display: flex; align-items: center; gap: 14px; }
 .oc-id { font-weight: 900; font-size: 1.05rem; }
-.oc-date { font-size: .82rem; color: var(--sg-muted); }
+.oc-date { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; color: var(--sg-muted); }
 .oc-head-r { display: flex; align-items: center; gap: 14px; }
 .oc-total { font-size: 1.1rem; color: #0A0A0A; }
 .oc-caret { transition: transform .3s; color: var(--sg-muted); }
 .oc-caret.open { transform: rotate(180deg); }
-.stat-badge { font-size: .76rem; font-weight: 800; padding: .3rem .7rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; }
-.stat-badge.amber { background: #e5e5e5; color: #666; }
-.stat-badge.blue { background: #0A0A0A; color: #fff; }
-.stat-badge.cyan { background: #0A0A0A; color: #fff; }
-.stat-badge.lime { background: #e5e5e5; color: #666; }
-.stat-badge.green { background: #D4001A; color: #fff; }
-.stat-badge.red { background: #e5e5e5; color: #999; }
-.stat-badge.gray { background: #e5e5e5; color: #666; }
+.stat-badge { font-size: .75rem; font-weight: 700; padding: .32rem .68rem; border: 1px solid transparent; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
+.stat-badge.amber { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.stat-badge.blue { background: #f5f5f5; border-color: #d4d4d4; color: #262626; }
+.stat-badge.cyan { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.stat-badge.green { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.stat-badge.red { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
+.stat-badge.gray { background: #f5f5f5; border-color: #e5e5e5; color: #525252; }
 .oc-thumbs { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .oc-thumbs img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
 .oc-thumbs .more { width: 52px; height: 52px; border-radius: 6px; background: var(--sg-canvas); display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--sg-muted); }
@@ -713,11 +746,13 @@ onUnmounted(() => {
 .oc-cancel { margin-top: 12px; background: #fff; border: 1px solid #D4001A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #D4001A; }
 .oc-hold { margin-top: 12px; background: #fff; border: 1px solid #0A0A0A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #0A0A0A; }
 
-.addr-box-brief { background: #f8fafc; border: 1px solid #e2e8f0; }
+.addr-box-brief { background: #fafafa; border: 1px solid #e5e5e5; }
+.address-title { display: flex; align-items: center; gap: 5px; }
+.address-icon { color: #525252; }
 .btn-change-addr { border: 1px solid #0A0A0A; background: #fff; color: #0A0A0A; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
 .btn-change-addr:hover { background: #0A0A0A; color: #fff; }
 
-.oc-detail { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--sg-line); }
+.oc-detail { margin-top: 16px; padding: 16px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fafafa; scroll-margin-top: 88px; }
 .oc-line { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .oc-line-img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
 .oc-line-name { font-weight: 700; font-size: .9rem; }
@@ -751,27 +786,42 @@ onUnmounted(() => {
 .exp-enter-to, .exp-leave-from { opacity: 1; max-height: 1200px; }
 .oc-steps { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; margin-top: 16px; }
 .oc-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; }
-.oc-step:not(:last-child)::after { content: ''; position: absolute; top: 15px; left: 50%; width: 100%; height: 3px; background: var(--sg-line); z-index: 0; }
+.oc-step:not(:last-child)::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--sg-line); z-index: 0; }
 .oc-step.done:not(:last-child)::after { background: #0A0A0A; }
-.oc-step-dot { width: 32px; height: 32px; border-radius: 50%; background: #fff; border: 2px solid var(--sg-line); color: var(--sg-muted); display: flex; align-items: center; justify-content: center; font-size: .85rem; z-index: 1; }
+.oc-step-dot { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 1.5px solid var(--sg-line); color: var(--sg-muted); display: flex; align-items: center; justify-content: center; z-index: 1; }
 .oc-step.done .oc-step-dot { background: #0A0A0A; border-color: #0A0A0A; color: #fff; }
 .oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px rgba(10,10,10,.2); }
+.oc-step.success .oc-step-dot { background: #16a34a; border-color: #16a34a; color: #fff; box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
 .oc-step small { font-size: .68rem; color: var(--sg-muted); font-weight: 700; line-height: 1.1; }
 .oc-step.done small { color: var(--sg-ink); }
-.oc-issue-steps { display: flex; align-items: flex-start; gap: 0; margin-top: 16px; padding: 12px 10px 8px; border: 1px solid #fde68a; border-radius: 10px; background: #fffbeb; }
-.oc-issue-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; color: #92400e; }
-.oc-issue-step .oc-step-dot { background: #fff; border-color: #fbbf24; color: #b45309; }
-.oc-issue-step.current .oc-step-dot { background: #b45309; border-color: #b45309; color: #fff; box-shadow: 0 0 0 4px rgba(180,83,9,.16); }
+.oc-step.success small { color: #15803d; }
+.oc-issue-steps { display: flex; align-items: flex-start; gap: 0; margin-top: 16px; padding: 13px 10px 10px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fafafa; }
+.oc-issue-steps.resolved { border-color: #bbf7d0; background: #f0fdf4; }
+.oc-issue-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; position: relative; text-align: center; color: #737373; }
+.oc-issue-step .oc-step-dot { background: #fff; border-color: #d4d4d4; color: #525252; }
+.oc-issue-step.danger { color: #b91c1c; }
+.oc-issue-step.danger .oc-step-dot { border-color: #fca5a5; color: #dc2626; }
+.oc-issue-step.warning { color: #92400e; }
+.oc-issue-step.warning .oc-step-dot { border-color: #fcd34d; color: #b45309; }
+.oc-issue-step.active { color: #1d4ed8; }
+.oc-issue-step.active .oc-step-dot { border-color: #93c5fd; color: #2563eb; }
+.oc-issue-step.success { color: #15803d; }
+.oc-issue-step.success .oc-step-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+.oc-issue-step.current:not(.success) .oc-step-dot { box-shadow: 0 0 0 4px rgba(82,82,82,.12); }
+.oc-issue-step.current.success .oc-step-dot { box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
 .oc-issue-step small { max-width: 110px; font-size: .68rem; font-weight: 700; line-height: 1.1; }
-.oc-issue-line { position: absolute; top: 15px; left: calc(50% + 16px); width: calc(100% - 32px); height: 3px; background: #fbbf24; }
+.oc-issue-line { position: absolute; top: 14px; left: calc(50% + 15px); width: calc(100% - 30px); height: 2px; background: #d4d4d4; }
 .oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
 .oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
 .oc-status-flat.amber { background: #fef3c7; color: #92400e; }
+.oc-status-flat.green { background: #f0fdf4; color: #15803d; }
 .oc-status-flat.gray { background: #e5e7eb; color: #374151; }
 .lost-delivery-status span { display: inline-flex; flex-direction: column; gap: 2px; }
 .lost-delivery-status small { font-size: .7rem; font-weight: 700; }
 .oc-delivery-note { margin-top: 10px; display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #1e40af; font-size: .78rem; line-height: 1.45; }
 .oc-delivery-note.danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
+.oc-delivery-note.success { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+.delivery-success-pill { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; }
 @media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
 .modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 22px; }

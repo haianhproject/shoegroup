@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
 import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
-import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+import { addToCart, formatCurrency, showDrawer } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import fallbackProductImage from '../../img/hero-sneakers.jpg'
 
@@ -210,7 +210,7 @@ const addCurrentSelection = async ({ openCart = true } = {}) => {
     notify({ type: 'error', message: result.message })
     return false
   }
-  if (openCart) showMiniCart()
+  if (openCart) showDrawer()
   notify({ type: 'success', title: 'Đã thêm vào giỏ hàng', message: product.value.product_name, duration: 2500 })
   quantity.value = 1
   return true

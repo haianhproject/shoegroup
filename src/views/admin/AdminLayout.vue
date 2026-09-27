@@ -13,6 +13,7 @@ import { useRoute, useRouter } from "vue-router";
 import AdminIcon from "./components/AdminIcon.vue";
 import AdminLogoutModal from "./components/AdminLogoutModal.vue";
 import brandMark from "../../../img/logogiay.png";
+import { genericBrandLogo, resolveBrandLogo } from "../../utils/brandLogos";
 import {
   isNavOpen,
   isLoading,
@@ -67,7 +68,6 @@ const sections = [
     { to: '/admin/panel/products', icon: 'box', label: 'Tất cả sản phẩm', badge: () => activeProductCount.value },
     { to: '/admin/panel/categories', icon: 'category', label: 'Danh mục' },
     { to: '/admin/panel/brands', icon: 'award', label: 'Thương hiệu' },
-    { to: '/admin/panel/collections', icon: 'collection', label: 'Bộ sưu tập' },
     { to: '/admin/panel/materials', icon: 'layers', label: 'Chất liệu' },
     { to: '/admin/panel/colors', icon: 'color', label: 'Màu sắc' },
     { to: '/admin/panel/sizes', icon: 'ruler', label: 'Kích thước' },
@@ -465,9 +465,7 @@ onUnmounted(() => {
             <div v-else-if="f.type === 'image'">
               <div class="flex items-center gap-3 mb-2">
                 <img
-                  :src="
-                    formModal.data[f.key] || brandMark
-                  "
+                  :src="resolveBrandLogo(formModal.data)"
                   class="rounded-2 border"
                   style="
                     width: 56px;
@@ -475,22 +473,18 @@ onUnmounted(() => {
                     object-fit: contain;
                     background: #f3f4f6;
                   "
-                  :alt="f.label" @error="$event.target.onerror = null; $event.target.src = brandMark"
+                  :alt="f.label" @error="$event.target.onerror = null; $event.target.src = genericBrandLogo"
                 />
                 <label class="btn btn-sm btn-outline-dark rounded-2 mb-0"
                   ><i class="icon icon-upload mr-1"></i> Chọn ảnh trên máy<input
+                    :id="'admin-field-' + f.key"
                     type="file"
                     accept="image/*"
                     class="hidden"
                     @change="(e) => onFormImageFile(e, f.key)"
                 /></label>
               </div>
-              <input
-                v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
-                type="text"
-                class="sg-input rounded-2"
-                placeholder="Hoặc dán URL ảnh..."
-              />
+              <p class="mb-0 text-xs text-gray-600">Ảnh được chọn từ máy và lưu cùng dữ liệu thương hiệu; không tải từ website ngoài.</p>
             </div>
             <div v-else-if="f.type === 'password'" class="flex">
               <input

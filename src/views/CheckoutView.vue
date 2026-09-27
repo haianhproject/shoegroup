@@ -684,8 +684,9 @@ const placeOrder = async () => {
 
           <!-- Header thương hiệu -->
           <div class="flex items-center pb-6 mb-6 border-b border-[#F0F0F0]">
-            <router-link to="/" class="inline-flex items-center gap-2 no-underline">
-              <span style="font-family:'Fraunces',serif" class="text-2xl font-bold text-[#0E0E0E] tracking-tight leading-none">ShoeGroup</span>
+            <router-link to="/" class="inline-flex items-center gap-2 no-underline" aria-label="Trang chủ ShoeGroup">
+              <img src="../../img/logogiay.png" alt="" aria-hidden="true" class="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9" />
+              <span class="figma-display text-[22px] font-semibold leading-none tracking-tight text-[#0E0E0E]">ShoeGroup</span>
             </router-link>
           </div>
 
