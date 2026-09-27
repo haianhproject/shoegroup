@@ -233,6 +233,22 @@ test('bank transfer is completed at checkout and is not deferred from the orders
   assert.doesNotMatch(orders, /isWaitingTransfer|Thanh toán ngay|Payment QR Modal/);
 });
 
+test('delivered orders use a green thin-icon treatment and expanded details scroll into view', () => {
+  const orders = fs.readFileSync(path.join(root, 'src/views/MyOrders.vue'), 'utf8');
+  assert.match(orders, /DELIVERED:\s*\{\s*color:\s*'green',\s*icon:\s*'delivered'/);
+  assert.match(orders, /\.stat-badge\.green\s*\{[^}]*#f0fdf4[^}]*#15803d/);
+  assert.doesNotMatch(orders, /\.stat-badge\.green\s*\{[^}]*#D4001A/);
+  assert.match(orders, /<OrderStatusIcon[^>]*:name="statusMeta\[o\.status\]\?\.icon"/);
+  assert.match(orders, /@after-enter="scrollExpandedIntoView"/);
+  assert.match(orders, /scrollIntoView\(\{\s*behavior:\s*'smooth',\s*block:\s*'start'\s*\}\)/);
+});
+
+test('checkout uses the project monochrome palette and has no redundant cart shortcut', () => {
+  const checkout = fs.readFileSync(path.join(root, 'src/views/CheckoutView.vue'), 'utf8');
+  assert.doesNotMatch(checkout, /#16a34a|#15803d|#f0fdf4|(?:text|bg|border)-emerald/i);
+  assert.doesNotMatch(checkout, /to="\/cart"/);
+});
+
 test('checkout blocks double click before stock preflight resolves', async () => {
   let resolveStock, stockCalls = 0;
   const stock = new Promise(resolve => { resolveStock = resolve; });

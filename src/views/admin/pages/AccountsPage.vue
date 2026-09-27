@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý tài khoản, vai trò và trạng thái khóa/mở của người dùng. -->
 <!-- Trang: Quản lý tài khoản -->
 <script setup>
 import { ref, computed } from 'vue'

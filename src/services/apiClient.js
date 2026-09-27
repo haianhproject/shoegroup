@@ -1,3 +1,4 @@
+// Mục đích: Lớp gọi API dùng chung, quản lý URL máy chủ, token và xử lý phản hồi.
 /* ============================================================
  * apiClient.js - Lop goi API dung chung cho toan bo frontend
  * ------------------------------------------------------------

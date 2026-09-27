@@ -1,10 +1,11 @@
+<!-- Mục đích: Trang chi tiết sản phẩm, chọn màu/size và thêm sản phẩm vào giỏ. -->
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
 import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
-import { addToCart, formatCurrency, showMiniCart } from '../stores/cartStore'
+import { addToCart, formatCurrency, showDrawer } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import fallbackProductImage from '../../img/hero-sneakers.jpg'
 
@@ -40,12 +41,16 @@ const normalizeProduct = (raw) => ({
 
 const colorOptions = computed(() => {
   if (!product.value) return []
-  const fromApi = product.value.colors.map((color) => ({
-    name: String(color.name ?? color.color_name ?? color.color_label ?? color.ColorName ?? ''),
-    label: String(color.name ?? color.color_label ?? color.color_name ?? color.ColorName ?? ''),
-    hex: color.hex ?? color.color_hex ?? color.ColorHex ?? '#d4d4d4',
-    image: color.image ?? color.image_url ?? color.ImageURL ?? product.value.image_url,
-  })).filter((color) => color.name)
+  const fromApi = product.value.colors.map((color) => {
+    const name = String(color.name ?? color.color_name ?? color.color_label ?? color.ColorName ?? '')
+    const matchingVariant = product.value.variants.find((variant) => variant.color === name)
+    return {
+      name,
+      label: String(color.name ?? color.color_label ?? color.color_name ?? color.ColorName ?? ''),
+      hex: color.hex ?? color.color_hex ?? color.ColorHex ?? '#d4d4d4',
+      image: color.image ?? color.image_url ?? color.ImageURL ?? matchingVariant?.image ?? matchingVariant?.image_url ?? '',
+    }
+  }).filter((color) => color.name)
   if (fromApi.length) return fromApi
 
   const options = new Map()
@@ -55,7 +60,7 @@ const colorOptions = computed(() => {
       name: variant.color,
       label: variant.color,
       hex: variant.hex ?? variant.color_hex ?? '#d4d4d4',
-      image: variant.image ?? variant.image_url ?? product.value.image_url,
+      image: variant.image ?? variant.image_url ?? '',
     })
   }
   return [...options.values()]
@@ -111,11 +116,15 @@ const isEntireProductOutOfStock = computed(() => {
 
 const galleryImages = computed(() => {
   if (!product.value) return []
-  return [...new Set([
-    product.value.image_url,
+  const coverImage = product.value.image_url
+  const productImages = [...new Set([
     ...colorOptions.value.map((color) => color.image),
     ...product.value.variants.map((variant) => variant.image ?? variant.image_url),
-  ].filter(Boolean))].slice(0, 4)
+  ].filter(Boolean))]
+  // Ảnh bìa chỉ dùng cho card bên ngoài. Trang chi tiết chỉ dùng lại ảnh
+  // bìa khi sản phẩm hoàn toàn chưa có ảnh màu/ảnh sản phẩm nào khác. Nếu
+  // ảnh màu đầu tiên trùng URL ảnh bìa thì vẫn giữ lại vì đó vẫn là ảnh sản phẩm.
+  return (productImages.length ? productImages : [coverImage].filter(Boolean)).slice(0, 4)
 })
 
 const hasDiscount = computed(() => {
@@ -144,7 +153,7 @@ const trustItems = [
 
 const selectColor = (color) => {
   selectedColor.value = color
-  activeImage.value = color.image || product.value?.image_url || ''
+  activeImage.value = color.image || galleryImages.value[0] || product.value?.image_url || ''
   const firstInStock = availableSizes.value.find((size) => sizeStock(size) > 0)
   selectedSize.value = firstInStock ?? availableSizes.value[0] ?? null
   quantity.value = 1
@@ -157,7 +166,7 @@ const selectSize = (size) => {
 
 const incrementQuantity = () => {
   if (quantity.value < selectedStock.value) quantity.value += 1
-  else notify({ type: 'warning', message: `Biến thể này chỉ còn ${selectedStock.value} sản phẩm trong kho.` })
+  else notify({ type: 'warning', message: `Sản phẩm này chỉ còn ${selectedStock.value} trong kho.` })
 }
 
 const buildCartPayload = () => ({
@@ -188,11 +197,11 @@ const addCurrentSelection = async ({ openCart = true } = {}) => {
     return false
   }
   if (product.value.variants.length && !selectedVariant.value) {
-    notify({ type: 'warning', message: 'Biến thể đã chọn không tồn tại.' })
+    notify({ type: 'warning', message: 'Sản phẩm này không còn tồn tại.' })
     return false
   }
   if (selectedStock.value <= 0 || quantity.value > selectedStock.value) {
-    notify({ type: 'warning', message: 'Biến thể này hiện không đủ hàng.' })
+    notify({ type: 'warning', message: 'Sản phẩm này hiện không đủ hàng.' })
     return false
   }
 
@@ -201,7 +210,7 @@ const addCurrentSelection = async ({ openCart = true } = {}) => {
     notify({ type: 'error', message: result.message })
     return false
   }
-  if (openCart) showMiniCart()
+  if (openCart) showDrawer()
   notify({ type: 'success', title: 'Đã thêm vào giỏ hàng', message: product.value.product_name, duration: 2500 })
   quantity.value = 1
   return true
@@ -244,7 +253,7 @@ const fetchData = async () => {
     const firstColor = colorOptions.value.find((color) => !colorOutOfStock(color)) ?? colorOptions.value[0] ?? null
     if (firstColor) selectColor(firstColor)
     else {
-      activeImage.value = product.value.image_url
+      activeImage.value = galleryImages.value[0] || product.value.image_url
       selectedSize.value = availableSizes.value.find((size) => sizeStock(size) > 0) ?? availableSizes.value[0] ?? null
     }
   } catch (error) {
@@ -298,12 +307,6 @@ onMounted(fetchData)
             <span v-if="hasDiscount" class="rounded bg-[#F0F0F0] px-2 py-0.5 text-[10px] font-bold uppercase">Sale</span>
           </div>
           <h1 class="figma-display mb-3 text-3xl font-semibold leading-tight text-[#0E0E0E] md:text-4xl">{{ product.product_name }}</h1>
-          <div class="mb-5 flex items-center gap-2">
-            <div class="flex items-center gap-0.5" aria-label="4 trên 5 sao">
-              <svg v-for="star in 5" :key="star" width="15" height="15" viewBox="0 0 24 24" :fill="star <= 4 ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5"><path d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.8 5.9 20.4l1.4-6.8L2.2 9l6.9-.7z" /></svg>
-            </div>
-            <span class="text-xs text-[#737373]">4.0 · Đánh giá sản phẩm</span>
-          </div>
           <div class="mb-6 flex flex-wrap items-baseline gap-3">
             <span class="figma-display text-3xl font-semibold">{{ formatCurrency(displayPrice) }}</span>
             <span v-if="hasDiscount" class="text-base text-[#737373] line-through">{{ formatCurrency(regularPrice) }}</span>
@@ -321,9 +324,9 @@ onMounted(fetchData)
             <div class="mb-2.5 text-[13px] font-semibold">Màu sắc: <span class="font-normal text-[#737373]">{{ selectedColor?.label }}</span></div>
             <div class="flex flex-wrap gap-2.5">
               <button v-for="color in colorOptions" :key="color.name" type="button"
-                class="relative flex h-12 min-w-12 items-center justify-center overflow-hidden rounded-lg border-2 bg-white p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                :class="selectedColor?.name === color.name ? 'border-[#0E0E0E]' : 'border-[#E5E5E5] hover:border-[#737373]'"
-                :disabled="colorOutOfStock(color)" :title="colorOutOfStock(color) ? `${color.label} - Hết hàng` : color.label" @click="selectColor(color)">
+                class="relative flex h-12 min-w-12 items-center justify-center overflow-hidden rounded-lg border-2 bg-white p-1 transition-colors"
+                :class="[selectedColor?.name === color.name ? 'border-[#0E0E0E]' : 'border-[#E5E5E5] hover:border-[#737373]', colorOutOfStock(color) ? 'opacity-55' : '']"
+                :title="colorOutOfStock(color) ? `${color.label} - Hết hàng, vẫn có thể xem ảnh` : color.label" @click="selectColor(color)">
                 <img v-if="color.image" :src="color.image" :alt="color.label" class="h-full w-full rounded object-cover" @error="onImageError" />
                 <span v-else class="h-7 w-7 rounded-full border border-black/10" :style="{ backgroundColor: color.hex }"></span>
               </button>
@@ -331,10 +334,7 @@ onMounted(fetchData)
           </div>
 
           <div v-if="availableSizes.length" class="mb-6">
-            <div class="mb-2.5 flex items-center justify-between gap-4">
-              <span class="text-[13px] font-semibold">Chọn size (UK)</span>
-              <button type="button" class="border-0 bg-transparent p-0 text-xs text-[#737373] underline underline-offset-2 hover:text-[#0E0E0E]">Hướng dẫn chọn size</button>
-            </div>
+            <div class="mb-2.5 text-[13px] font-semibold">Chọn size (UK)</div>
             <div class="flex flex-wrap gap-2">
               <button v-for="size in availableSizes" :key="size" type="button"
                 class="relative flex h-11 w-12 items-center justify-center rounded-lg border text-sm font-semibold transition-colors"
@@ -344,7 +344,7 @@ onMounted(fetchData)
           </div>
 
           <div v-if="selectedSize || !allSizes.length" class="mb-5 text-xs" :class="selectedStock > 0 ? 'text-[#287A43]' : 'text-[#B42318]'">
-            {{ selectedStock > 0 ? `Còn ${selectedStock} sản phẩm` : 'Biến thể này đã hết hàng' }}
+            {{ selectedStock > 0 ? `Còn ${selectedStock} sản phẩm` : 'Sản phẩm này đã hết hàng' }}
           </div>
 
           <template v-if="!isEntireProductOutOfStock">

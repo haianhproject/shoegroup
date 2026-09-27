@@ -1,3 +1,4 @@
+// Mục đích: Tra cứu địa giới Việt Nam và chuẩn hóa dữ liệu địa chỉ cho form giao hàng.
 import { api } from "./apiClient";
 
 const VIETNAM_DIVISION_API = "https://provinces.open-api.vn/api/v2";

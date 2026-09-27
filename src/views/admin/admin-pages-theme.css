@@ -1,3 +1,4 @@
+/* Mục đích: Nhịp bố cục và biến màu dùng chung cho các trang con quản trị. */
 /* Shared page rhythm; no selector here affects the customer storefront. */
 .admin-shell .admin-page-wrapper {
   --admin-page-ink: var(--admin-ink, #0e0e0e);

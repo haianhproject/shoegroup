@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý tên, mã màu và trạng thái sử dụng màu sản phẩm. -->
 <!-- Trang: Quản Lý Màu Sắc -->
 <script setup>
 import { openForm, filteredColors, deleteItem, restoreItem } from '../adminStore'

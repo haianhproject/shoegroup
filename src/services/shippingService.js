@@ -1,3 +1,4 @@
+// Mục đích: Tải phương thức giao hàng từ API và cung cấp dữ liệu dự phòng khi mất kết nối.
 import { api } from './apiClient'
 import { shippingMethods as fallbackShippingMethods } from '../data/mockData'
 

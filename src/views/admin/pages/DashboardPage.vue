@@ -1,3 +1,4 @@
+<!-- Mục đích: Bảng điều khiển tổng quan, biểu đồ và chỉ số vận hành của cửa hàng. -->
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Chart from 'chart.js/auto'

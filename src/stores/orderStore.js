@@ -1,3 +1,4 @@
+// Mục đích: Quản lý danh sách đơn, trạng thái và các thao tác đơn hàng phía khách hàng.
 import { computed, reactive } from "vue";
 import { getCurrentUser } from "./authStore";
 

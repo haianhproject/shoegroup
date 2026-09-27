@@ -1,3 +1,4 @@
+<!-- Mục đích: Hộp xác nhận đăng xuất dành cho quản trị viên. -->
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AdminIcon from './AdminIcon.vue'

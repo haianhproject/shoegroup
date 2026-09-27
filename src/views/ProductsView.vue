@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang danh sách sản phẩm với tìm kiếm, lọc, sắp xếp và phân trang. -->
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

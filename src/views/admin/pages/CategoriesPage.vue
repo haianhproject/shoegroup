@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý danh mục/bộ môn dùng để phân loại sản phẩm. -->
 <!-- Trang: Danh Muc Bo Mon -->
 <script setup>
 import {

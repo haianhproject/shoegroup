@@ -1,3 +1,4 @@
+/* Mục đích: Thành phần giao diện và theme nền tảng dùng chung cho toàn khu quản trị. */
 /* Shared admin primitives. Every selector stays inside the management shell. */
 .admin-shell {
   --admin-ink: #0e0e0e;

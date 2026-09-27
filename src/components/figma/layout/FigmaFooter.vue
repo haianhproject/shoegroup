@@ -1,3 +1,4 @@
+<!-- Mục đích: Chân trang chính của giao diện khách hàng theo thiết kế Figma. -->
 <script setup>
 import { useRouter } from 'vue-router'
 

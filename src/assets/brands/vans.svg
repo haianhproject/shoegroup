@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-labelledby="title">
+  <title id="title">Vans</title>
+  <rect width="320" height="160" rx="24" fill="#fff"/>
+  <path d="M46 49h93v14H92l21 54H88L55 63h-9Z" fill="#0e0e0e"/>
+  <text x="202" y="107" fill="#0e0e0e" font-family="Arial, sans-serif" font-size="54" font-weight="900" text-anchor="middle">VANS</text>
+  <rect x="43" y="122" width="234" height="8" rx="4" fill="#d4001a"/>
+</svg>

@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý sản phẩm và biến thể, gồm danh sách cùng form thêm/sửa. -->
 <!-- Trang: Quản Lý Sản Phẩm (danh sách + form thêm/sửa) -->
 <script setup>
 import { computed } from "vue";

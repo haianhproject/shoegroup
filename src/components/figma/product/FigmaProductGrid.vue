@@ -1,3 +1,4 @@
+<!-- Mục đích: Bố cục lưới sản phẩm tái sử dụng với số cột tùy chỉnh. -->
 <script setup>
 defineProps({
   columns: { type: Number, default: 4 },

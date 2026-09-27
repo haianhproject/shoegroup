@@ -8,14 +8,16 @@ const fs = require("fs");
 const path = require("path");
 
 function loadEnvFile() {
+  // Luôn đọc backend/.env, kể cả khi tiến trình được chạy từ thư mục gốc bằng
+  // `node backend/server.js`; dựa vào process.cwd() từng làm cấu hình bị bỏ sót.
+  const envPath = path.resolve(__dirname, "../../.env");
   try {
     // Uu tien dotenv neu co
-    require("dotenv").config();
+    require("dotenv").config({ path: envPath });
     return;
   } catch (_) {
     /* khong co dotenv -> tu parse */
   }
-  const envPath = path.resolve(process.cwd(), ".env");
   if (!fs.existsSync(envPath)) return;
   const raw = fs.readFileSync(envPath, "utf8");
   for (const line of raw.split(/\r?\n/)) {
@@ -42,8 +44,13 @@ const bool = (v, def = false) =>
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProd = nodeEnv === "production";
-const dbPort = Number(process.env.DB_PORT || 1433);
-if (!Number.isInteger(dbPort) || dbPort < 1 || dbPort > 65535) {
+const dbInstance = String(process.env.DB_INSTANCE || "").trim();
+const dbPortText = String(process.env.DB_PORT || "").trim();
+if (dbInstance && dbPortText) {
+  throw new Error("Chi duoc cau hinh mot trong hai bien DB_INSTANCE hoac DB_PORT.");
+}
+const dbPort = dbInstance ? undefined : Number(dbPortText || 1433);
+if (dbPort !== undefined && (!Number.isInteger(dbPort) || dbPort < 1 || dbPort > 65535)) {
   throw new Error("DB_PORT phai la so nguyen tu 1 den 65535.");
 }
 if (isProd && !process.env.JWT_SECRET) {
@@ -61,7 +68,7 @@ const config = {
   db: {
     user: process.env.DB_USER || "sa",
     password: process.env.DB_PASS || "123",
-    server: process.env.DB_SERVER || "127.0.0.1",
+    server: process.env.DB_SERVER || "localhost",
     port: dbPort,
     database: process.env.DB_NAME || "ShoegroupDB",
     options: {
@@ -72,6 +79,7 @@ const config = {
       // Legacy schema uses GETDATE() (local wall time), not UTC datetime2.
       // Node and SQL Server must run in the same business timezone.
       useUTC: bool(process.env.DB_USE_UTC, false),
+      ...(dbInstance ? { instanceName: dbInstance } : {}),
     },
     pool: { max: 20, min: 0, idleTimeoutMillis: 30000 },
     requestTimeout: 30000,
@@ -99,6 +107,10 @@ const config = {
   mail: {
     user: process.env.EMAIL_USER || "",
     pass: process.env.EMAIL_PASS || "",
+    fromName: process.env.EMAIL_FROM_NAME || "ShoeGroup",
+    // Với Gmail, địa chỉ From phải là EMAIL_USER hoặc bí danh Send As đã xác minh.
+    fromAddress: process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || "",
+    replyTo: process.env.EMAIL_REPLY_TO || process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || "",
   },
 
   rateLimit: {

@@ -1,3 +1,4 @@
+<!-- Mục đích: Khung trang khách hàng, ghép navbar, nội dung route, giỏ hàng và footer. -->
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'

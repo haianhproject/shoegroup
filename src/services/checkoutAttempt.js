@@ -1,3 +1,4 @@
+// Mục đích: Giữ mã idempotency của lần thanh toán để tránh tạo trùng đơn khi thử lại.
 // Keep the same key through network failure/reload. Only the server decides
 // whether this checkout committed; losing its response must not create an order twice.
 const STORAGE_KEY = 'shoegroup_checkout_attempt_v1';

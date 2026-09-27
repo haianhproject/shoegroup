@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý chất liệu được gắn với sản phẩm giày. -->
 <!-- Trang: Quản Lý Chất Liệu -->
 <script setup>
 import {

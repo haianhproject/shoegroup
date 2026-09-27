@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang thông tin liên hệ và các kênh hỗ trợ khách hàng. -->
 <script setup>
 import { onMounted } from 'vue'
 

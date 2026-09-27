@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý mã giảm giá, điều kiện áp dụng, hạn dùng và lượt sử dụng. -->
 <!-- Trang: Mã Khuyến Mãi (Quản lý mã giảm giá) -->
 <script setup>
 import {

@@ -1,3 +1,4 @@
+<!-- Mục đích: Thanh điều hướng chính của khách hàng, gồm tìm kiếm, tài khoản và giỏ hàng. -->
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

@@ -1,3 +1,4 @@
+<!-- Mục đích: Ngăn giỏ hàng trượt, cho phép xem và chỉnh sản phẩm trước khi thanh toán. -->
 <script setup>
 import { onUnmounted, computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

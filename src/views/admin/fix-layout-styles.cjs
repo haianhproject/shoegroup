@@ -1,3 +1,4 @@
+// Mục đích: Script bảo trì một lần để chuẩn hóa style trong AdminLayout; không chạy cùng ứng dụng.
 const fs = require('fs');
 const path = require('path');
 

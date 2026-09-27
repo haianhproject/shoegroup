@@ -1,3 +1,4 @@
+// Mục đích: Quản lý đăng nhập, đăng ký, hồ sơ, JWT và trạng thái người dùng hiện tại.
 import { computed, reactive } from "vue";
 /* [TOI UU] Lay dia chi API tu .env + luu token JWT */
 import { api, setToken, clearToken } from "../services/apiClient";

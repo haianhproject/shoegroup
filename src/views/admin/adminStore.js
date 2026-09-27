@@ -1,4 +1,5 @@
 ﻿/*
+ * Mục đích: Kho trạng thái và nghiệp vụ dùng chung cho các trang quản trị.
  * adminStore.js
  * ------------------------------------------------------------------
  * Kho dữ liệu & logic dùng chung cho toàn bộ khu vực quản trị (Admin).
@@ -3415,7 +3416,7 @@ const fieldDefs = {
     { key: "name", label: "Tên thương hiệu" },
     {
       key: "logo_url",
-      label: "Logo (URL hoặc chọn ảnh trên máy)",
+      label: "Logo thương hiệu (ảnh trong máy)",
       type: "image",
     },
     { key: "sort_order", label: "Thứ tự", type: "number" },

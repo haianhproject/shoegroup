@@ -1,3 +1,4 @@
+// Mục đích: Quản lý trạng thái UI toàn cục như thông báo và hiệu ứng trang.
 import { reactive } from "vue";
 
 /* =====================================================================

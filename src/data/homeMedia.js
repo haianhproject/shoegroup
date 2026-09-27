@@ -1,3 +1,4 @@
+// Mục đích: Khai báo tập ảnh/video cục bộ dùng cho các khu vực nội dung của trang chủ.
 // Assets used by the Figma homepage, stored locally in the project's img folder.
 // Vite imports keep the URLs valid in both development and the production build.
 import heroSneakers from '../../img/hero-sneakers.jpg'

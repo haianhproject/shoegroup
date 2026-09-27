@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang đối soát thanh toán online/offline, xem chi tiết và in hóa đơn. -->
 <!-- Trang: Quản Lý Xác Nhận Thanh Toán (Online / Offline + Chi tiết + Hóa đơn) -->
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'

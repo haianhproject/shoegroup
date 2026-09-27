@@ -1,3 +1,4 @@
+<!-- Mục đích: Route tương thích mở giỏ hàng và chuyển người dùng về luồng mua sắm phù hợp. -->
 <script setup>
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'

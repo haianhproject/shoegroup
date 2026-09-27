@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang ví ShoeGroup, hiển thị số dư, lịch sử và yêu cầu rút tiền. -->
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from '../services/apiClient'

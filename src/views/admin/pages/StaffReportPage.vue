@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang báo cáo hiệu suất và số liệu liên quan đến nhân viên. -->
 <!-- Trang: Báo Cáo Nhân Viên -->
 <script setup>
 import { staffStats, formatPrice } from '../adminStore'

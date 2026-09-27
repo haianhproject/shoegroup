@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang xác nhận đặt hàng thành công và tóm tắt đơn vừa tạo. -->
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

@@ -1,3 +1,4 @@
+<!-- Mục đích: Hộp quảng bá/khuyến mãi ở trang chủ và điều khiển hiệu ứng đi kèm. -->
 <script setup>
 /* Center-of-screen promotions & support modal.
    - Shown on first visit to the homepage (with sakura petals falling behind it).
