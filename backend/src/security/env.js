@@ -107,6 +107,10 @@ const config = {
   mail: {
     user: process.env.EMAIL_USER || "",
     pass: process.env.EMAIL_PASS || "",
+    fromName: process.env.EMAIL_FROM_NAME || "ShoeGroup",
+    // Với Gmail, địa chỉ From phải là EMAIL_USER hoặc bí danh Send As đã xác minh.
+    fromAddress: process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || "",
+    replyTo: process.env.EMAIL_REPLY_TO || process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || "",
   },
 
   rateLimit: {

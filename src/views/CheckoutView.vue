@@ -682,17 +682,10 @@ const placeOrder = async () => {
       <div class="w-full lg:w-[52%] xl:w-[52%] bg-white flex justify-end order-2 lg:order-1 lg:border-r border-[#E5E5E5]">
         <div class="w-full max-w-[580px] px-6 sm:px-8 lg:pl-6 lg:pr-10 xl:pl-4 xl:pr-14 py-8 lg:py-10">
 
-          <!-- Header thương hiệu & icon giỏ hàng -->
-          <div class="flex items-center justify-between pb-6 mb-6 border-b border-[#F0F0F0]">
+          <!-- Header thương hiệu -->
+          <div class="flex items-center pb-6 mb-6 border-b border-[#F0F0F0]">
             <router-link to="/" class="inline-flex items-center gap-2 no-underline">
               <span style="font-family:'Fraunces',serif" class="text-2xl font-bold text-[#0E0E0E] tracking-tight leading-none">ShoeGroup</span>
-            </router-link>
-            <router-link to="/cart" aria-label="Giỏ hàng" class="text-[#16a34a] hover:text-[#15803d] transition-colors p-1" title="Quay lại giỏ hàng">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <path d="M16 10a4 4 0 0 1-8 0"/>
-              </svg>
             </router-link>
           </div>
 
@@ -700,7 +693,7 @@ const placeOrder = async () => {
           <div class="mb-7">
             <div class="flex items-center justify-between mb-2">
               <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E]">Liên hệ</h2>
-              <router-link v-if="!currentUser" to="/account" class="text-xs sm:text-sm font-medium text-[#16a34a] hover:underline underline-offset-4">Đăng nhập</router-link>
+              <router-link v-if="!currentUser" to="/account" class="text-xs sm:text-sm font-medium text-[#0E0E0E] hover:underline underline-offset-4">Đăng nhập</router-link>
               <span v-else class="text-xs text-[#737373] font-medium">{{ currentUser.name || currentUser.email }}</span>
             </div>
             <div class="relative">
@@ -718,7 +711,7 @@ const placeOrder = async () => {
             </div>
             <div v-if="formErrors.email" class="text-xs text-red-500 mt-1">{{ formErrors.email }}</div>
             <label class="flex items-center gap-2.5 mt-3 cursor-pointer select-none">
-              <span class="w-4 h-4 rounded-full bg-[#16a34a] flex items-center justify-center flex-shrink-0">
+              <span class="w-4 h-4 rounded-full bg-[#0E0E0E] flex items-center justify-center flex-shrink-0">
                 <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><path d="M2 6l3 3 5-5"/></svg>
               </span>
               <span class="text-[13px] text-[#0E0E0E]">Gửi cho tôi tin tức và ưu đãi qua email</span>
@@ -732,7 +725,7 @@ const placeOrder = async () => {
               <button
                 type="button"
                 @click="openAddAddress"
-                class="inline-flex items-center gap-1 text-xs font-semibold text-[#16a34a] hover:underline underline-offset-4 cursor-pointer bg-transparent border-none p-0"
+                class="inline-flex items-center gap-1 text-xs font-semibold text-[#0E0E0E] hover:underline underline-offset-4 cursor-pointer bg-transparent border-none p-0"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
                 Thêm địa chỉ mới
@@ -754,15 +747,15 @@ const placeOrder = async () => {
                 @click="selectedAddressId = a.id"
                 class="flex items-start gap-3 border rounded-xl p-3.5 transition-all cursor-pointer bg-white"
                 :class="selectedAddressId === a.id
-                  ? 'border-[#16a34a] bg-[#f0fdf4]/50 shadow-xs'
+                  ? 'border-[#0E0E0E] bg-[#FAFAFA] shadow-xs'
                   : 'border-[#E5E5E5] hover:border-[#B0B0B0]'"
               >
-                <!-- Radio xanh tròn -->
+                <!-- Radio chọn địa chỉ -->
                 <span
                   class="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                  :class="selectedAddressId === a.id ? 'border-[#16a34a]' : 'border-[#D4D4D4]'"
+                  :class="selectedAddressId === a.id ? 'border-[#0E0E0E]' : 'border-[#D4D4D4]'"
                 >
-                  <span v-if="selectedAddressId === a.id" class="w-2 h-2 rounded-full bg-[#16a34a]"></span>
+                  <span v-if="selectedAddressId === a.id" class="w-2 h-2 rounded-full bg-[#0E0E0E]"></span>
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5">
@@ -815,7 +808,7 @@ const placeOrder = async () => {
                 @click="shippingCode = m.code"
                 class="flex items-center justify-between border rounded-xl px-4 py-3.5 transition-all cursor-pointer"
                 :class="shippingCode === m.code
-                  ? 'border-[#16a34a] bg-[#f0fdf4]/50 shadow-xs'
+                  ? 'border-[#0E0E0E] bg-[#FAFAFA] shadow-xs'
                   : 'border-[#E5E5E5] bg-white hover:border-[#B0B0B0]'"
               >
                 <div>
@@ -843,15 +836,15 @@ const placeOrder = async () => {
                 :key="p.code"
                 @click="paymentCode = p.code"
                 class="cursor-pointer transition-all"
-                :class="paymentCode === p.code ? 'bg-[#f0fdf4]/40 ring-1 ring-inset ring-[#16a34a]' : 'bg-white hover:bg-[#FAFAFA]'"
+                :class="paymentCode === p.code ? 'bg-[#FAFAFA] ring-1 ring-inset ring-[#0E0E0E]' : 'bg-white hover:bg-[#FAFAFA]'"
               >
                 <div class="flex items-center justify-between px-4 py-3.5">
                   <span class="flex items-center gap-3">
                     <span
                       class="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                      :class="paymentCode === p.code ? 'border-[#16a34a]' : 'border-[#D4D4D4]'"
+                      :class="paymentCode === p.code ? 'border-[#0E0E0E]' : 'border-[#D4D4D4]'"
                     >
-                      <span v-if="paymentCode === p.code" class="w-2 h-2 rounded-full bg-[#16a34a]"></span>
+                      <span v-if="paymentCode === p.code" class="w-2 h-2 rounded-full bg-[#0E0E0E]"></span>
                     </span>
                     <span class="text-sm font-semibold text-[#0E0E0E]">{{ p.name }}</span>
                   </span>
@@ -938,12 +931,12 @@ const placeOrder = async () => {
             <div v-if="couponError" class="text-xs text-red-600 mb-2">{{ couponError }}</div>
 
             <!-- Thẻ mã đã áp dụng -->
-            <div v-if="appliedCoupon" class="flex items-center justify-between p-2.5 mb-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <div v-if="appliedCoupon" class="flex items-center justify-between p-2.5 mb-2 bg-[#F5F5F5] border border-[#D4D4D4] rounded-lg">
               <div class="min-w-0 text-xs">
-                <span class="font-bold text-emerald-800 tracking-wide uppercase">{{ appliedCoupon.code }}</span>
-                <span class="text-emerald-700 ml-1.5">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
+                <span class="font-bold text-[#0E0E0E] tracking-wide uppercase">{{ appliedCoupon.code }}</span>
+                <span class="text-[#525252] ml-1.5">{{ appliedCoupon.name || couponValueLabel(appliedCoupon) }}</span>
               </div>
-              <button type="button" @click="removeCoupon" class="text-emerald-600 hover:text-emerald-900 text-xs font-bold cursor-pointer p-1 border-none bg-transparent">✕</button>
+              <button type="button" @click="removeCoupon" class="text-[#525252] hover:text-[#0E0E0E] text-xs font-bold cursor-pointer p-1 border-none bg-transparent">✕</button>
             </div>
 
             <!-- Gợi ý mã có sẵn -->
@@ -979,7 +972,7 @@ const placeOrder = async () => {
                 {{ shippingFee === 0 ? 'MIỄN PHÍ' : formatCurrency(shippingFee) }}
               </span>
             </div>
-            <div v-if="appliedCoupon" class="flex items-center justify-between text-sm text-emerald-600 font-medium">
+            <div v-if="appliedCoupon" class="flex items-center justify-between text-sm text-[#0E0E0E] font-medium">
               <span>Giảm giá ({{ appliedCoupon.code }})</span>
               <span>-{{ formatCurrency(discountAmount) }}</span>
             </div>
@@ -1079,7 +1072,7 @@ const placeOrder = async () => {
 
             <div class="col-span-12 mt-1">
               <label class="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" v-model="addrModal.isDefault" class="w-4 h-4 accent-[#16a34a] cursor-pointer">
+                <input type="checkbox" v-model="addrModal.isDefault" class="w-4 h-4 accent-[#0E0E0E] cursor-pointer">
                 <span class="text-xs font-semibold text-[#0E0E0E]">Lưu làm địa chỉ nhận hàng mặc định</span>
               </label>
             </div>

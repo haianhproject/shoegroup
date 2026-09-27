@@ -233,6 +233,12 @@ test('bank transfer is completed at checkout and is not deferred from the orders
   assert.doesNotMatch(orders, /isWaitingTransfer|Thanh toán ngay|Payment QR Modal/);
 });
 
+test('checkout uses the project monochrome palette and has no redundant cart shortcut', () => {
+  const checkout = fs.readFileSync(path.join(root, 'src/views/CheckoutView.vue'), 'utf8');
+  assert.doesNotMatch(checkout, /#16a34a|#15803d|#f0fdf4|(?:text|bg|border)-emerald/i);
+  assert.doesNotMatch(checkout, /to="\/cart"/);
+});
+
 test('checkout blocks double click before stock preflight resolves', async () => {
   let resolveStock, stockCalls = 0;
   const stock = new Promise(resolve => { resolveStock = resolve; });

@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const sql = require("mssql");
-const nodemailer = require("nodemailer");
 
 /* ===== [TOI UU] Lop cau hinh + bao mat (them moi, khong xoa code cu) ===== */
 const config = require("./src/security/env");
@@ -35,6 +34,7 @@ const createOptimizedRoutes = require("./src/routes/optimized.routes");
 const { checkoutIdentity, claimCheckout, completeCheckout } = require("./src/checkout-idempotency");
 const revenueSql = require('./src/revenue');
 const { initializeDatabase } = require("./src/database/initialize");
+const { createEmailService } = require("./src/email");
 
 const app = express();
 app.disable("x-powered-by");
@@ -340,24 +340,29 @@ poolConnect
 /* [TOI UU][BAO MAT] App password Gmail da bi go khoi ma nguon.
    Hay dat EMAIL_USER / EMAIL_PASS trong file .env va THU HOI app password cu. */
 const FRONTEND_URL = config.frontendUrl;
-const EMAIL_USER = config.mail.user;
-const EMAIL_PASS = config.mail.pass;
-const mailTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-});
+const emailService = createEmailService({ config, pool, sql });
 // Kiem tra dang nhap SMTP NGAY khi khoi dong -> in ket qua ra terminal.
 // Neu thay "[EMAIL] LOI" thi email/app-password sai (hoac chua bat 2FA).
-if (!EMAIL_USER || !EMAIL_PASS) {
+if (!emailService.isConfigured) {
   console.warn(
     "[EMAIL] Chua cau hinh EMAIL_USER/EMAIL_PASS trong .env -> tinh nang gui mail se tam tat.",
   );
 } else {
-  mailTransporter.verify((err) => {
-    if (err) console.error("[EMAIL] LOI cau hinh gui mail:", err.message);
-    else console.log("[EMAIL] San sang gui mail qua:", EMAIL_USER);
-  });
+  emailService.verify()
+    .then(() => console.log("[EMAIL] San sang gui mail qua:", emailService.sender))
+    .catch((err) => console.error("[EMAIL] LOI cau hinh gui mail:", err.message));
 }
+
+// Email giao dich duoc gui sau khi transaction da commit. Loi SMTP khong duoc
+// phep rollback hoac lam client hieu nham rang don hang/thanh toan that bai.
+const queueTransactionalEmail = (label, task) => {
+  if (!emailService.isConfigured) return;
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((error) => console.error(`[EMAIL] Khong gui duoc ${label}:`, error?.message || error));
+  });
+};
 
 // ================= API XAC THUC =================
 /* =========================================================================
@@ -1899,7 +1904,15 @@ app.post("/api/orders", async (req, res) => {
       await insertOrderHistory(transaction, orderId, '', status, 'Tạo đơn hàng', authenticatedUserId);
       await completeCheckout(transaction, sql, authenticatedUserId, identity, response);
       await transaction.commit();
-        return res.json(response);
+      // COD hoàn tất checkout ngay khi tạo đơn. Chuyển khoản chỉ gửi một email
+      // sau khi khách xác nhận thanh toán để tránh hai thư giao dịch sát nhau.
+      if (!isAdminOrder && !isBankPayment(paymentMethod)) {
+        queueTransactionalEmail(
+          `email xác nhận đơn hàng #${orderId}`,
+          () => emailService.sendOrderConfirmationEmail(orderId),
+        );
+      }
+      return res.json(response);
       } catch (err) {
         if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
         const sqlErrorNumber = Number(err?.number ?? err?.originalError?.info?.number);
@@ -2538,6 +2551,12 @@ app.put("/api/orders/:id/payment", async (req, res) => {
     }
     await insertOrderHistory(transaction, orderId, order.Status, order.Status, `[PAYMENT_STATUS] ${order.PaymentStatus} -> ${paymentStatus}`, authenticatedUserId);
     await transaction.commit();
+    if (paymentStatus === "Đã thanh toán" && typeof queueTransactionalEmail === "function") {
+      queueTransactionalEmail(
+        `email xác nhận thanh toán đơn hàng #${orderId}`,
+        () => emailService.sendPaymentConfirmationEmail(orderId),
+      );
+    }
     res.json({ success: true, payment_status: paymentStatus });
   } catch (e) {
     if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
@@ -5530,50 +5549,21 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         SET PasswordResetToken = @t, PasswordResetTokenExpiry = DATEADD(hour, 1, GETDATE())
         WHERE Email = @e
       `);
-    const resetLink = FRONTEND_URL + "/reset-password?token=" + token;
-    console.log(
-      "[ForgotPassword] Link doi mat khau cho",
-      email,
-      ":",
-      resetLink,
-    );
-    // Gui email that bang nodemailer (co nut dan toi trang doi mat khau)
+    const resetLink = FRONTEND_URL.replace(/\/+$/, "") + "/reset-password?token=" + token;
+    // Khong ghi reset token/link vao log. Day la email giao dich bao mat, vi vay
+    // khong gan List-Unsubscribe (header nay chi danh cho thu dang ky/quang cao).
     try {
-      await mailTransporter.sendMail({
-        from: '"ShoeGroup" <' + EMAIL_USER + ">",
-        to: email,
-        subject: "Đặt lại mật khẩu ShoeGroup",
-        text:
-          "Ban vua yeu cau dat lai mat khau ShoeGroup. Mo lien ket sau (hieu luc 1 gio): " +
-          resetLink,
-        replyTo: EMAIL_USER,
-        headers: {
-          "X-Entity-Ref-ID": token,
-          "List-Unsubscribe": "<mailto:" + EMAIL_USER + "?subject=unsubscribe>",
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
-        html: `
-          <div style="max-width:480px;margin:0 auto;font-family:Segoe UI,Arial,sans-serif;color:#0f172a;">
-            <div style="background:linear-gradient(135deg,#2563eb,#1e40af);padding:24px;border-radius:16px 16px 0 0;text-align:center;">
-              <span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:.3px;">⚡ ShoeGroup</span>
-            </div>
-            <div style="border:1px solid #e5e7eb;border-top:0;border-radius:0 0 16px 16px;padding:28px 26px;">
-              <h2 style="margin:0 0 10px;font-size:20px;">Đặt lại mật khẩu</h2>
-              <p style="color:#475569;line-height:1.6;margin:0 0 8px;">Bạn vừa yêu cầu đặt lại mật khẩu cho tài khoản ShoeGroup. Nhấn nút bên dưới để tạo mật khẩu mới. Liên kết có hiệu lực trong <b>1 giờ</b>.</p>
-              <div style="text-align:center;margin:26px 0;">
-                <a href="${resetLink}" style="background:linear-gradient(135deg,#2563eb,#1e40af);color:#fff;text-decoration:none;font-weight:700;padding:14px 32px;border-radius:12px;display:inline-block;">Đổi mật khẩu ngay</a>
-              </div>
-              <p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:18px 0 0;">Nếu nút không hoạt động, sao chép liên kết sau vào trình duyệt:<br><span style="color:#2563eb;word-break:break-all;">${resetLink}</span></p>
-              <p style="color:#94a3b8;font-size:13px;margin:14px 0 0;">Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
-            </div>
-          </div>`,
-      });
+      await emailService.sendPasswordResetEmail({ to: email, resetLink, token });
     } catch (mailErr) {
-      console.error("Loi gui email:", mailErr.message);
-      return res.status(500).json({
+      console.error("[EMAIL] Khong gui duoc email dat lai mat khau:", mailErr.message);
+      // Token khong den duoc hop thu thi khong nen de lai mot token con hieu luc.
+      await pool.request().input("e", sql.VarChar, email).input("t", sql.VarChar, token).query(`
+        UPDATE Users SET PasswordResetToken=NULL, PasswordResetTokenExpiry=NULL
+        WHERE Email=@e AND PasswordResetToken=@t
+      `);
+      return res.status(503).json({
         success: false,
-        message:
-          "Khong gui duoc email. Kiem tra lai EMAIL_USER / EMAIL_PASS trong server.js.",
+        message: "Chua the gui email luc nay. Vui long thu lai sau.",
       });
     }
     res.json({
