@@ -1,3 +1,4 @@
+// Mục đích: Khai báo toàn bộ route và kiểm soát quyền truy cập trang khách/admin.
 import { createRouter, createWebHistory } from "vue-router";
 import adminRoutes from "../views/admin/adminRoutes.js";
 import { isAuthenticated, currentUser } from "../stores/authStore";

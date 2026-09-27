@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang tạo yêu cầu đổi/trả cho các sản phẩm thuộc đơn hàng hợp lệ. -->
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

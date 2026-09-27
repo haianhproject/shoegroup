@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang theo dõi và cập nhật tồn kho theo từng biến thể sản phẩm. -->
 <!-- Trang: Quản Lý Kho Hàng (tồn kho có giới hạn logic hợp lý) -->
 <script setup>
 import { inventorySearch, lowStockOnly, filteredInventory, updateStock, LOW_STOCK_THRESHOLD, db, formatPrice } from '../adminStore'

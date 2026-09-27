@@ -1,3 +1,4 @@
+<!-- Mục đích: Nút liên hệ Zalo nổi để khách mở nhanh kênh hỗ trợ. -->
 <template>
   <a
     class="zalo-chat"

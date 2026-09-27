@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang đặt mật khẩu mới bằng token nhận từ email. -->
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

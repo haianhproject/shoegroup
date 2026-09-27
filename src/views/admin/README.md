@@ -1,3 +1,5 @@
+> Mục đích: Tài liệu bản đồ thư mục, route và trách nhiệm các file trong khu quản trị.
+
 # Khu Quản Trị (Admin) – Đã tách thành nhiều file
 
 Toàn bộ nội dung từ file `AdminDashboard.vue` cũ (tất cả trong 1 file) đã được tách ra:

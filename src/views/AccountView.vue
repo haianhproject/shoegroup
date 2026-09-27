@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang tài khoản để xem, sửa hồ sơ và đăng xuất. -->
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

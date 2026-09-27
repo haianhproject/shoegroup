@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý giảm giá theo toàn bộ màu hoặc đúng biến thể màu + size. -->
 <!-- Trang: Giảm Giá Biến Thể theo màu hoặc màu + size -->
 <script setup>
 import {

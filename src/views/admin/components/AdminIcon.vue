@@ -1,3 +1,4 @@
+<!-- Mục đích: Thành phần SVG icon dùng chung, chọn hình theo tên trong khu quản trị. -->
 <script setup>
 defineProps({ name: { type: String, default: 'grid' } })
 

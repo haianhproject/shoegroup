@@ -1,3 +1,4 @@
+// Mục đích: Chặn các lệnh fetch cũ để tự gắn API URL và JWT mà không phải sửa từng màn hình.
 /* ============================================================
  * httpInterceptor.js - LOP TUONG THICH NGUOC (rat quan trong)
  * ------------------------------------------------------------

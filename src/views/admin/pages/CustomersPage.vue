@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang CRM để tìm kiếm, xem hạng, hồ sơ và lịch sử mua của khách hàng. -->
 <!-- Trang: Khách Hàng (CRM) -->
 <script setup>
 import { customerSearch, filteredCustomers, getRank, formatPrice, formatDate, viewCustomerDetails, customerModal, closeCustomerDetails, getOrderStatusPill } from '../adminStore'

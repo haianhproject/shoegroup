@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang thanh toán, xác nhận giỏ hàng, địa chỉ, vận chuyển và phương thức trả tiền. -->
 <script setup>
 import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'

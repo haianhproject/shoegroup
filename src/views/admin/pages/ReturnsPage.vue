@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang tiếp nhận, kiểm tra và xử lý các yêu cầu đổi/trả hàng. -->
 <!-- Trang: Trả Hàng / Đổi Trả -->
 <script setup>
 import { computed } from 'vue'

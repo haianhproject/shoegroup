@@ -1,3 +1,4 @@
+<!-- Mục đích: Hiệu ứng cánh hoa rơi dùng làm nền trang và kết thúc mềm khi tắt. -->
 <script setup>
 /* Cherry-blossom (sakura) petals falling across the whole page.
    - While uiState.sakuraSpawning is true, new petals keep spawning.

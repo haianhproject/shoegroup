@@ -1,3 +1,4 @@
+<!-- Mục đích: Khung quản trị chính, chứa sidebar, header, router-view và các modal toàn cục. -->
 <!--
   AdminLayout.vue
   ------------------------------------------------------------------

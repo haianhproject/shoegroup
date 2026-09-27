@@ -1,3 +1,4 @@
+<!-- Mục đích: Màn hình chào quản lý trước khi đi vào bảng điều khiển admin. -->
 <!--
   AdminWelcome.vue
   ------------------------------------------------------------------

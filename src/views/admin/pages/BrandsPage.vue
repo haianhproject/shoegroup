@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang thêm, sửa, ngừng dùng và thống kê sản phẩm theo thương hiệu. -->
 <!-- Trang: Thương Hiệu -->
 <script setup>
 import { openForm, filteredBrands, getBrandProductCount, deleteItem, restoreItem } from '../adminStore'

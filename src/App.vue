@@ -1,3 +1,4 @@
+<!-- Mục đích: Component gốc, chọn khung giao diện khách hàng hoặc quản trị theo route hiện tại. -->
 <script setup>
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'

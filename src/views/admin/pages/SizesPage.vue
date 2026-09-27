@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý các kích thước dùng để tạo biến thể giày. -->
 <!-- Trang: Quản Lý Kích Thước -->
 <script setup>
 import { openForm, filteredSizes, deleteItem, restoreItem } from '../adminStore'

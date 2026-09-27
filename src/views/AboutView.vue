@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang giới thiệu thương hiệu, câu chuyện và giá trị của ShoeGroup. -->
 <script setup>
 import { onMounted } from 'vue'
 

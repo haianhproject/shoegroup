@@ -1,3 +1,4 @@
+<!-- Mục đích: Hiển thị thông báo toàn cục ở giữa màn hình và xử lý thao tác đóng. -->
 <script setup>
 /* Centered notifications shown in the middle of the screen.
    Replaces browser alert()/local messages with a professional card. */

@@ -1,3 +1,4 @@
+<!-- Mục đích: Hiển thị logo ShoeGroup với kích thước và bo góc tùy chỉnh. -->
 <script setup>
 defineProps({
   size: { type: [Number, String], default: 40 },

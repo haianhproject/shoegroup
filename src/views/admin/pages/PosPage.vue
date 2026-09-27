@@ -1,3 +1,4 @@
+<!-- Mục đích: Màn hình bán hàng tại quầy, lập đơn và thanh toán trực tiếp. -->
 <!-- Trang: Bán Hàng Tại Quầy (POS) -->
 <script setup>
 import { ref } from 'vue'

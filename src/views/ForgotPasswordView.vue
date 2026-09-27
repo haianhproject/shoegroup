@@ -1,3 +1,4 @@
+<!-- Mục đích: Form yêu cầu gửi email đặt lại mật khẩu. -->
 <script setup>
 import { ref } from 'vue'
 import { requestPasswordReset } from '../stores/authStore'

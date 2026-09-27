@@ -1,3 +1,4 @@
+// Mục đích: Lưu và áp dụng các tùy chọn theme toàn cục vào giao diện.
 import { reactive, watch } from 'vue'
 
 const STORAGE_KEY = 'shoegroup_theme'

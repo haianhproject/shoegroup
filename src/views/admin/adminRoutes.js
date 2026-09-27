@@ -1,3 +1,4 @@
+// Mục đích: Khai báo route con, tiêu đề và quyền truy cập cho từng màn hình quản trị.
 /*
  * adminRoutes.js
  * ------------------------------------------------------------------

@@ -1,3 +1,4 @@
+<!-- Mục đích: Bảng tùy chỉnh giao diện và lưu lựa chọn theme của người dùng. -->
 <script setup>
 import { ref } from 'vue'
 import { themeState, setThemeSetting } from '../stores/themeStore'

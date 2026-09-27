@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang quản lý bộ sưu tập và liên kết bộ sưu tập với thương hiệu. -->
 <!-- Trang: Bộ Sưu Tập -->
 <script setup>
 import { openForm, filteredCollections, getBrandName, deleteItem, restoreItem } from '../adminStore'

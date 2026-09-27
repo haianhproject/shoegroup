@@ -1,3 +1,4 @@
+/* Mục đích: Định nghĩa icon nét dùng riêng trong khu vực quản trị. */
 /* Outline icons for legacy admin markup. Inline SVG masks inherit currentColor
    and scale with text; unknown glyphs retain the global icon fallback. */
 .admin-shell .icon:is(

@@ -1,3 +1,4 @@
+// Mục đích: Tính doanh thu hợp lệ phía frontend sau khi xét trạng thái đơn và hoàn hàng.
 const normalize = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/gi,'d').toLowerCase().trim();
 export function recognizedOrderRevenue(order, returns = []) {
   const flag = order.is_counted_as_revenue ?? order.IsCountedAsRevenue;

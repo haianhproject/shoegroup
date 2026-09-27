@@ -1,4 +1,5 @@
 ﻿<script setup>
+// Mục đích: Trang theo dõi lịch sử, trạng thái và thao tác trên đơn hàng của khách.
 import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {

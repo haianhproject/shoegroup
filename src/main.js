@@ -1,3 +1,4 @@
+// Mục đích: Điểm khởi động frontend Vue, cài router, interceptor và mount ứng dụng.
 /* [TOI UU] Tu dong gan JWT vao moi request API + doc dia chi may chu tu .env */
 import { installHttpInterceptor } from './services/httpInterceptor'
 import { API_BASE_URL } from './services/apiClient'

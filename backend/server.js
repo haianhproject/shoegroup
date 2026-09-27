@@ -34,6 +34,7 @@ const {
 const createOptimizedRoutes = require("./src/routes/optimized.routes");
 const { checkoutIdentity, claimCheckout, completeCheckout } = require("./src/checkout-idempotency");
 const revenueSql = require('./src/revenue');
+const { initializeDatabase } = require("./src/database/initialize");
 
 const app = express();
 app.disable("x-powered-by");
@@ -98,7 +99,7 @@ const dbConfig = {
   user: config.db.user,
   password: config.db.password,
   server: config.db.server,
-  port: config.db.port,
+  ...(Number.isInteger(config.db.port) ? { port: config.db.port } : {}),
   database: config.db.database,
   options: config.db.options,
   pool: config.db.pool,
@@ -121,20 +122,10 @@ let poolConnectPromise = null;
 const connectAndInitializeDatabase = () => {
   if (poolConnectPromise) return poolConnectPromise;
   poolConnectPromise = pool.connect().then(async () => {
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260909_checkout_idempotency.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260909_coupon_redemptions.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260919_confirmation_stock_deduction.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260920_legacy_order_confirmation_stock.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260920_order_variant_image_snapshot.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260923_variant_discount_order_tracking.sql'), 'utf8'));
-  await pool.request().batch(require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '../database/migrations/20260923_variant_discount_scope.sql'), 'utf8'));
+  // Đây là cổng chặn schema: mọi route đều await poolConnect, nên nếu một
+  // migration hoặc bước kiểm chứng thất bại thì không query nào được chạy với
+  // schema nửa cũ nửa mới (nguyên nhân của lỗi thiếu ApplyScope trước đây).
+  await initializeDatabase(pool);
   try {
     await pool.request().query(
       "IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH('dbo.Users', 'AvatarURL') IS NULL ALTER TABLE dbo.Users ADD AvatarURL nvarchar(max) NULL;",
@@ -361,11 +352,12 @@ if (!EMAIL_USER || !EMAIL_PASS) {
   console.warn(
     "[EMAIL] Chua cau hinh EMAIL_USER/EMAIL_PASS trong .env -> tinh nang gui mail se tam tat.",
   );
+} else {
+  mailTransporter.verify((err) => {
+    if (err) console.error("[EMAIL] LOI cau hinh gui mail:", err.message);
+    else console.log("[EMAIL] San sang gui mail qua:", EMAIL_USER);
+  });
 }
-mailTransporter.verify((err) => {
-  if (err) console.error("[EMAIL] LOI cau hinh gui mail:", err.message);
-  else console.log("[EMAIL] San sang gui mail qua:", EMAIL_USER);
-});
 
 // ================= API XAC THUC =================
 /* =========================================================================

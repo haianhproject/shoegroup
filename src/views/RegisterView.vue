@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang tạo tài khoản khách hàng mới và kiểm tra dữ liệu đăng ký. -->
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'

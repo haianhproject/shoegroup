@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang đăng nhập và điều hướng người dùng theo vai trò sau xác thực. -->
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'

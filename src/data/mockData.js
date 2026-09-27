@@ -1,3 +1,4 @@
+// Mục đích: Dữ liệu mẫu và danh mục dự phòng phục vụ giao diện khi API chưa sẵn sàng.
 import { reactive } from "vue";
 import sneakersImage from "../../img/hero-sneakers.jpg";
 import runningImage from "../../img/hero-running.jpg";

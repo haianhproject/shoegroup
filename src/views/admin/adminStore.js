@@ -1,4 +1,5 @@
 ﻿/*
+ * Mục đích: Kho trạng thái và nghiệp vụ dùng chung cho các trang quản trị.
  * adminStore.js
  * ------------------------------------------------------------------
  * Kho dữ liệu & logic dùng chung cho toàn bộ khu vực quản trị (Admin).

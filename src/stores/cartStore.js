@@ -1,3 +1,4 @@
+// Mục đích: Quản lý giỏ hàng, số lượng, giá tiền và đồng bộ giỏ với tài khoản/API.
 import { computed, reactive, ref, watch } from "vue";
 import { currentUser } from "./authStore";
 import { api } from "../services/apiClient";

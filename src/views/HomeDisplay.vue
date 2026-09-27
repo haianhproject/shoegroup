@@ -1,3 +1,4 @@
+<!-- Mục đích: Trang chủ, hiển thị hero, danh mục, sản phẩm nổi bật và nội dung quảng bá. -->
 <template>
   <div class="home-page min-h-full bg-[#FFFFFF] text-[#0E0E0E]" style="font-family:'Be Vietnam Pro',sans-serif">
 
