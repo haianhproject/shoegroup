@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { resolvePolicy, createRateLimiter } = require("../src/security/guard");
 const password = require("../src/security/password");
@@ -13,7 +15,17 @@ test("API policy exposes only intended public/customer routes", () => {
   assert.equal(resolvePolicy("PUT", "/api/returns/12/status"), "ADMIN");
   assert.equal(resolvePolicy("GET", "/api/variantDiscounts"), "ADMIN");
   assert.equal(resolvePolicy("DELETE", "/api/products/10"), "ADMIN");
+  assert.equal(resolvePolicy("GET", "/api/admin/events"), "ADMIN");
   assert.equal(resolvePolicy("PATCH", "/api/unknown"), "ADMIN");
+});
+
+test("login, administrator lock, and walk-in account invariants are enforced", () => {
+  const server = fs.readFileSync(path.resolve(__dirname, "..", "server.js"), "utf8");
+  assert.match(server, /code:\s*"ACCOUNT_LOCKED"/);
+  assert.match(server, /status\(423\)/);
+  assert.match(server, /code:\s*"LAST_ACTIVE_ADMIN"/);
+  assert.match(server, /WITH \(UPDLOCK, HOLDLOCK\)[\s\S]*WHERE RoleID=1/);
+  assert.doesNotMatch(server, /@walkin\.local/);
 });
 
 test('untrusted X-Forwarded-For rotation cannot bypass the write limit', () => {

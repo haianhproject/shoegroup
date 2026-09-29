@@ -284,6 +284,159 @@ function loadAdminImages() {
   });
 }
 
+function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
+  return load('src/views/admin/adminStore.js', {
+    '@/services/checkoutAttempt': {},
+    '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
+    '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken },
+    '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
+  }, {
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    TextDecoder,
+    ...globals,
+  });
+}
+
+test('admin background merge updates order address in place for an open detail view', () => {
+  const admin = loadAdminRealtime();
+  const oldOrder = {
+    id: 7,
+    customer_address: 'Địa chỉ cũ',
+    address_id: 11,
+    customer_name: 'Tên cũ',
+    customer_phone: '0901000000',
+    address_changed: false,
+    products: [],
+    _history: [],
+    isExpanded: true,
+  };
+  const freshOrder = {
+    ...oldOrder,
+    customer_address: 'Địa chỉ mới',
+    address_id: 22,
+    customer_name: 'Tên mới',
+    customer_phone: '0902000000',
+    address_changed: true,
+    _history: [{ status: 'Chờ xác nhận', note: '[ADDRESS_CHANGED]' }],
+    isExpanded: false,
+  };
+
+  const merged = admin.mergeOrders([oldOrder], [freshOrder]);
+  assert.equal(merged[0], oldOrder);
+  assert.equal(merged[0].customer_address, 'Địa chỉ mới');
+  assert.equal(merged[0].address_id, 22);
+  assert.equal(merged[0].customer_name, 'Tên mới');
+  assert.equal(merged[0].customer_phone, '0902000000');
+  assert.equal(merged[0].address_changed, true);
+  assert.equal(merged[0].isExpanded, true);
+});
+
+test('refreshOrders fetches only orders and keeps the open detail reference live', async () => {
+  const requests = [];
+  const fetch = async (url, options) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: name => name.toLowerCase() === 'content-type' ? 'application/json' : '' },
+      json: async () => [{
+        id: 7,
+        created_at: '2026-09-29T09:00:00',
+        status: 'Chờ xác nhận',
+        total: 500000,
+        customer_name: 'Tên mới',
+        customer_phone: '0902000000',
+        customer_address: 'Địa chỉ mới',
+        address_id: 22,
+        address_changed: true,
+        products: [],
+        history: [{ status: 'Chờ xác nhận', note: '[ADDRESS_CHANGED]' }],
+      }],
+    };
+  };
+  const admin = loadAdminRealtime({ fetch });
+  admin.db.orders = [admin.mapOrder({
+    id: 7,
+    created_at: '2026-09-29T09:00:00',
+    status: 'Chờ xác nhận',
+    total: 500000,
+    customer_name: 'Tên cũ',
+    customer_phone: '0901000000',
+    customer_address: 'Địa chỉ cũ',
+    address_id: 11,
+    address_changed: false,
+    products: [],
+    history: [],
+  })];
+  const detailReference = admin.db.orders[0];
+  admin.openOrderDetail(detailReference);
+
+  await admin.refreshOrders();
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, 'http://localhost:5000/api/orders');
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.equal(admin.db.orders[0], detailReference);
+  assert.equal(admin.orderDetail.order, detailReference);
+  assert.equal(detailReference.customer_address, 'Địa chỉ mới');
+  assert.equal(detailReference.address_id, 22);
+  assert.equal(detailReference.customer_name, 'Tên mới');
+  assert.equal(detailReference.customer_phone, '0902000000');
+});
+
+test('admin SSE subscription sends bearer auth, parses order.updated, and aborts cleanly', async () => {
+  const bytes = new TextEncoder().encode(
+    ': keepalive\r\nevent: connected\r\ndata: {}\r\n\r\n' +
+    'event: order.updated\r\ndata: {"orderId":7,"reason":"address_changed"}\r\n\r\n',
+  );
+  let readCount = 0;
+  let request = null;
+  const never = new Promise(() => {});
+  const fetchStream = async (url, options) => {
+    request = { url, options };
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => readCount++ === 0 ? Promise.resolve({ done: false, value: bytes }) : never,
+        }),
+      },
+    };
+  };
+  const admin = loadAdminRealtime();
+  let resolveOrderEvent;
+  const orderEvent = new Promise(resolve => { resolveOrderEvent = resolve; });
+  const unsubscribe = admin.subscribeAdminEvents((event) => {
+    if (event.type === 'order.updated') resolveOrderEvent(event);
+  }, { fetch: fetchStream });
+
+  const event = await orderEvent;
+  assert.equal(request.url, 'http://localhost:5000/api/admin/events');
+  assert.equal(request.options.headers.Authorization, 'Bearer admin-token');
+  assert.equal(request.options.headers.Accept, 'text/event-stream');
+  assert.equal(request.options.cache, 'no-store');
+  assert.equal(event.data.orderId, 7);
+  assert.equal(event.data.reason, 'address_changed');
+  unsubscribe();
+  assert.equal(request.options.signal.aborted, true);
+});
+
+test('admin layout subscribes to order events while retaining polling cleanup', () => {
+  const layout = fs.readFileSync(path.join(root, 'src/views/admin/AdminLayout.vue'), 'utf8');
+  assert.match(layout, /subscribeAdminEvents\(onAdminEvent\)/);
+  assert.match(layout, /event\?\.type !== "order\.updated"/);
+  assert.match(layout, /async function refresh\(\)[\s\S]*?await fetchAllData\(true\)/);
+  assert.match(layout, /async function syncOrdersFromEvent\(\)[\s\S]*?await refreshOrders\(\)/);
+  assert.match(layout, /function onAdminEvent\(event\)[\s\S]*?syncOrdersFromEvent\(\)/);
+  assert.match(layout, /const POLL_INTERVAL = 30_000/);
+  assert.match(layout, /setInterval\(refresh, POLL_INTERVAL\)/);
+  assert.match(layout, /unsubscribeAdminEvents\?\.\(\)/);
+});
+
 const imageProduct = () => ({
   id: 1, name: 'Giày thử ảnh', image_url: 'cover-original.png',
   colors: [{ name: 'Đen', image: 'black-original.png' }, { name: 'Trắng', image: 'white-original.png' }],
@@ -348,6 +501,64 @@ test('product detail uses the archived Figma layout without Bootstrap utilities'
   assert.match(detail, /Sản phẩm liên quan/);
   assert.match(detail, /Chọn size \(UK\)/);
   assert.doesNotMatch(detail, /\b(container-fluid|spinner-border|d-flex|flex-column|col-lg-\d+|row g-\d+|w-100|text-danger|text-muted|bi bi-)\b/);
+});
+
+test('login password visibility uses an accessible inline eye icon', () => {
+  const login = fs.readFileSync(path.join(root, 'src/views/LoginView.vue'), 'utf8');
+  assert.match(login, /<button\s+[\s\S]*?type="button"[\s\S]*?class="eye"/);
+  assert.match(login, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(login, /:aria-pressed="showPwd"/);
+  assert.match(login, /:title="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(login, /<svg\s+v-if="!showPwd"[^>]+class="eye-icon"/);
+  assert.match(login, /<svg\s+v-else[^>]+class="eye-icon"/);
+  assert.doesNotMatch(login, /icon-eye(?:-slash)?/);
+});
+
+test('account lock controls preserve an active administrator', () => {
+  const accountDb = vue.reactive({ accounts: [] });
+  const signedIn = vue.ref({ id_user: 1, role_id: 1 });
+  const accounts = load('src/views/admin/pages/AccountsPage.vue', {
+    '../adminStore': {
+      db: accountDb,
+      openForm() {},
+      getRoleBadgeClass() { return ''; },
+      roleName() { return ''; },
+      toggleAccountLock() {},
+      apiWrite: async () => ({ ok: true }),
+    },
+    '../../../stores/authStore': { currentUser: signedIn },
+  }, {}, ['activeAdminCount', 'canToggleAccountLock']);
+
+  const primaryAdmin = { id: 1, role_id: 1, active: true };
+  const otherAdmin = { id: 2, role_id: 1, active: true };
+  const customer = { id: 3, role_id: 2, active: true };
+
+  accountDb.accounts = [primaryAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 1);
+  assert.equal(accounts.canToggleAccountLock(primaryAdmin), false);
+  assert.equal(accounts.canToggleAccountLock(customer), true);
+
+  accountDb.accounts = [primaryAdmin, otherAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 2);
+  assert.equal(accounts.canToggleAccountLock(primaryAdmin), false);
+  assert.equal(accounts.canToggleAccountLock(otherAdmin), true);
+
+  const lockedAdmin = { ...otherAdmin, active: false };
+  accountDb.accounts = [primaryAdmin, lockedAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 1);
+  assert.equal(accounts.canToggleAccountLock(lockedAdmin), true);
+
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/pages/AccountsPage.vue'), 'utf8');
+  assert.match(source, /v-if="canToggleAccountLock\(a\)"/);
+});
+
+test('POS walk-in customers never become synthetic login accounts', () => {
+  const server = fs.readFileSync(path.join(root, 'backend/server.js'), 'utf8');
+  const admin = fs.readFileSync(path.join(root, 'src/views/admin/adminStore.js'), 'utf8');
+  assert.doesNotMatch(server, /@walkin\.local/);
+  assert.match(server, /UserID:\s*null[\s\S]*is_walkin:\s*true/);
+  assert.match(admin, /o\.customer_id = c\.is_walkin/);
+  assert.match(admin, /is_walkin:\s*Boolean\(c\.IsWalkIn \?\? c\.is_walkin\)/);
 });
 
 test('home hero serializes rapid navigation and resets clones without animation', () => {

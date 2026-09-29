@@ -147,6 +147,157 @@ export async function apiWrite(path, options) {
   }
 }
 
+const ADMIN_EVENTS_PATH = "/admin/events";
+const ADMIN_EVENTS_RECONNECT_MIN_MS = 1000;
+const ADMIN_EVENTS_RECONNECT_MAX_MS = 30000;
+
+function dispatchAdminEventBlock(block, state, onEvent) {
+  let eventType = "message";
+  const dataLines = [];
+
+  for (const line of block.split("\n")) {
+    if (!line || line.startsWith(":")) continue;
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    let value = separator === -1 ? "" : line.slice(separator + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+
+    if (field === "event") eventType = value || "message";
+    else if (field === "data") dataLines.push(value);
+    else if (field === "id" && !value.includes("\0")) state.lastEventId = value;
+    else if (field === "retry") {
+      const retry = Number(value);
+      if (Number.isFinite(retry) && retry >= 0) {
+        state.reconnectDelay = Math.min(
+          ADMIN_EVENTS_RECONNECT_MAX_MS,
+          Math.max(ADMIN_EVENTS_RECONNECT_MIN_MS, retry),
+        );
+      }
+    }
+  }
+
+  if (!dataLines.length && eventType === "message") return;
+  const rawData = dataLines.join("\n");
+  let data = rawData;
+  if (rawData) {
+    try { data = JSON.parse(rawData); } catch (_) {}
+  }
+  if (eventType === "message" && data && typeof data === "object" && data.type) {
+    eventType = String(data.type);
+  }
+
+  try {
+    onEvent({ type: eventType, data, id: state.lastEventId || null });
+  } catch (error) {
+    console.error("[admin-events] Event handler failed:", error);
+  }
+}
+
+async function consumeAdminEventStream(response, state, onEvent) {
+  const reader = response.body?.getReader?.();
+  if (!reader) throw new Error("Trinh duyet khong ho tro doc luong su kien quan tri.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Server emits CRLF. Chỉ đổi cặp hoàn chỉnh để không làm hỏng cặp CR/LF
+    // bị chia giữa hai network chunk.
+    buffer = buffer.replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      dispatchAdminEventBlock(block, state, onEvent);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  buffer = buffer.replace(/\r\n|\r/g, "\n");
+  if (buffer.trim()) dispatchAdminEventBlock(buffer, state, onEvent);
+}
+
+/**
+ * Subscribe to authenticated admin SSE notifications.
+ * Returns an unsubscribe function which aborts the active fetch and cancels a
+ * pending reconnect. Polling remains the fallback when the stream is offline.
+ */
+export function subscribeAdminEvents(onEvent, options = {}) {
+  if (typeof onEvent !== "function") {
+    throw new TypeError("subscribeAdminEvents requires an event handler.");
+  }
+
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== "function") return () => {};
+
+  const state = {
+    lastEventId: "",
+    reconnectDelay: ADMIN_EVENTS_RECONNECT_MIN_MS,
+  };
+  let stopped = false;
+  let reconnectTimer = null;
+  let activeController = null;
+
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer) return;
+    const delay = state.reconnectDelay;
+    state.reconnectDelay = Math.min(
+      ADMIN_EVENTS_RECONNECT_MAX_MS,
+      Math.max(ADMIN_EVENTS_RECONNECT_MIN_MS, delay * 2),
+    );
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+
+  const connect = async () => {
+    if (stopped) return;
+    const controller = new AbortController();
+    activeController = controller;
+    let mayReconnect = true;
+    try {
+      const headers = withAuthHeaders({ Accept: "text/event-stream" });
+      if (state.lastEventId) headers["Last-Event-ID"] = state.lastEventId;
+      const response = await fetchImpl(API + ADMIN_EVENTS_PATH, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (response.status === 204 || response.status === 401 || response.status === 403) {
+        mayReconnect = false;
+      }
+      if (!response.ok) {
+        throw new Error("Admin event stream HTTP " + response.status);
+      }
+      state.reconnectDelay = ADMIN_EVENTS_RECONNECT_MIN_MS;
+      await consumeAdminEventStream(response, state, onEvent);
+    } catch (error) {
+      if (!stopped && error?.name !== "AbortError") {
+        console.warn("[admin-events] Mat ket noi, se dung polling va thu ket noi lai:", error.message);
+      }
+    } finally {
+      if (activeController === controller) activeController = null;
+      if (!stopped && mayReconnect) scheduleReconnect();
+    }
+  };
+
+  connect();
+  return () => {
+    stopped = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    activeController?.abort();
+    activeController = null;
+  };
+}
+
 /* ---------------- FORMATTERS ---------------- */
 export function formatPrice(n) {
   const val = Number(n) || 0;
@@ -2110,7 +2261,10 @@ export const posCustomerResults = computed(() => {
 });
 export function pickPosCustomer(c) {
   const o = activePosOrder.value;
-  o.customer_id = c.id;
+  const numericId = Number(c.id);
+  o.customer_id = c.is_walkin || !Number.isInteger(numericId) || numericId <= 0
+    ? null
+    : numericId;
   o.customer_name = c.name;
   o.customer_phone = c.phone || "";
 }
@@ -2128,7 +2282,11 @@ export async function ensureWalkInCustomer(name, phone) {
   );
   if (existing) {
     if (nm) existing.name = nm;
-    return { ok: true, id: existing.id, saved: true, existed: true };
+    const numericId = Number(existing.id);
+    const memberId = !existing.is_walkin && Number.isInteger(numericId) && numericId > 0
+      ? numericId
+      : null;
+    return { ok: true, id: memberId, saved: true, existed: true };
   }
   const payload = {
     name: nm || "Khách lẻ",
@@ -2156,6 +2314,7 @@ export async function ensureWalkInCustomer(name, phone) {
     order_count: 0,
     created_at: new Date().toISOString(),
     source: "Vãng lai",
+    is_walkin: true,
   });
   return {
     ok: true,
@@ -3851,10 +4010,9 @@ export function mapOrder(o) {
   };
 }
 
-// Smart merge: chỉ cập nhật đơn thực sự thay đổi thay vì thay toàn bộ mảng.
-// Điều này ngăn Vue re-render toàn bộ danh sách mỗi 10 giây → không còn nhấp nháy.
-function mergeOrders(existing, incoming) {
-  const incomingMap = new Map(incoming.map(o => [o.id, o]));
+// Smart merge: cập nhật object cũ tại chỗ để danh sách không nhấp nháy và mọi
+// màn chi tiết đang giữ reference tới đơn đó cũng nhận dữ liệu mới ngay.
+export function mergeOrders(existing, incoming) {
   const existingMap = new Map(existing.map(o => [o.id, o]));
 
   // Cập nhật và thêm mới
@@ -3866,38 +4024,57 @@ function mergeOrders(existing, incoming) {
     const nextHistory = Array.isArray(fresh._history) && fresh._history.length
       ? fresh._history
       : (old._history || []);
-    const changed =
-      old.status !== fresh.status ||
-      old.payment_status !== fresh.payment_status ||
-      old.total !== fresh.total ||
-      old.cancel_reason !== fresh.cancel_reason ||
-      old.tracking_code !== fresh.tracking_code ||
-      old.address_changed !== fresh.address_changed ||
-      old.stock_issue_status !== fresh.stock_issue_status ||
-      old.stock_issue_reason !== fresh.stock_issue_reason ||
-      old.stock_deducted_at !== fresh.stock_deducted_at ||
-      old.stock_restored_at !== fresh.stock_restored_at ||
-      JSON.stringify(old._history || []) !== JSON.stringify(nextHistory);
+    // So sánh tất cả field do server ánh xạ thay vì liệt kê thủ công. Cách cũ
+    // bỏ sót customer_address/address_id nên polling đã lấy đúng dữ liệu nhưng
+    // giao diện vẫn giữ địa chỉ cũ cho tới khi tải lại trang.
+    const changed = Object.keys(fresh).some((field) => {
+      if (field === "isExpanded" || field === "_history") return false;
+      const oldValue = old[field];
+      const freshValue = fresh[field];
+      if (oldValue && typeof oldValue === "object") {
+        return JSON.stringify(oldValue) !== JSON.stringify(freshValue);
+      }
+      return oldValue !== freshValue;
+    }) || JSON.stringify(old._history || []) !== JSON.stringify(nextHistory);
     if (!changed) return old; // không đổi → giữ nguyên object cũ, Vue không re-render
-    return {
-      ...old,           // giữ isExpanded và các field UI cục bộ
-      status: fresh.status,
-      payment_status: fresh.payment_status,
-      total: fresh.total,
-      cancel_reason: fresh.cancel_reason,
-      tracking_code: fresh.tracking_code,
-      address_changed: fresh.address_changed,
-      stock_issue_status: fresh.stock_issue_status,
-      stock_issue_reason: fresh.stock_issue_reason,
-      stock_deducted_at: fresh.stock_deducted_at,
-      stock_restored_at: fresh.stock_restored_at,
-      _history: nextHistory,
-      customer_name: fresh.customer_name,
-      customer_phone: fresh.customer_phone,
-      products: fresh.products,
-    };
+    const isExpanded = old.isExpanded;
+    Object.assign(old, fresh, { isExpanded, _history: nextHistory });
+    return old;
   });
   return merged;
+}
+
+function applyOrdersResponse(orders, isBackground) {
+  const freshOrders = sortOrdersNewestFirst((orders || []).map(mapOrder));
+  if (isBackground && db.orders.length > 0) {
+    db.orders = sortOrdersNewestFirst(mergeOrders(db.orders, freshOrders));
+  } else {
+    db.orders = freshOrders;
+  }
+
+  // `mergeOrders` giữ reference cho đơn đã tồn tại. Việc rebind này còn xử lý
+  // trường hợp detail được mở đúng lúc danh sách ban đầu vừa được thay mới.
+  if (orderDetail.open && orderDetail.order) {
+    const liveOrder = db.orders.find((order) => String(order.id) === String(orderDetail.order.id));
+    if (liveOrder) orderDetail.order = liveOrder;
+  }
+  return db.orders;
+}
+
+let refreshOrdersInFlight = null;
+
+// Refresh nhẹ dành riêng cho polling/SSE. Không để một API danh mục khác chậm
+// hoặc lỗi ngăn địa chỉ/trạng thái đơn hàng cập nhật trên màn quản trị.
+export function refreshOrders() {
+  if (refreshOrdersInFlight) return refreshOrdersInFlight;
+  refreshOrdersInFlight = (async () => {
+    const orders = await api("/orders", { cache: "no-store" });
+    if (!Array.isArray(orders)) return null;
+    return applyOrdersResponse(orders, true);
+  })().finally(() => {
+    refreshOrdersInFlight = null;
+  });
+  return refreshOrdersInFlight;
 }
 
 let fetchAllDataInFlight = null;
@@ -3974,13 +4151,7 @@ async function loadAllData(isBackground) {
     // Sắp xếp theo đúng trường ngày sau khi ánh xạ (`date`).
     // Trước đây dùng `created_at` - trường KHÔNG tồn tại sau mapOrder -> so sánh NaN
     // nên danh sách đơn giữ nguyên thứ tự của API (nhiều khi cũ nhất lên đầu).
-    const freshOrders = sortOrdersNewestFirst((orders || []).map(mapOrder));
-    if (isBackground && db.orders.length > 0) {
-      // Smart merge: chỉ re-render dòng thực sự thay đổi, giữ ổn định giao diện
-      db.orders = sortOrdersNewestFirst(mergeOrders(db.orders, freshOrders));
-    } else {
-      db.orders = freshOrders;
-    }
+    applyOrdersResponse(orders, isBackground);
     db.products = (products || []).map((p) => ({
       id: p.ProductID ?? p.id,
       name: p.ProductName ?? p.name,
@@ -4038,6 +4209,7 @@ async function loadAllData(isBackground) {
       order_count: c.OrderCount ?? c.order_count ?? 0,
       created_at: c.CreatedAt ?? c.created_at ?? null,
       source: c.Source ?? c.source ?? "",
+      is_walkin: Boolean(c.IsWalkIn ?? c.is_walkin),
     }));
     db.accounts = (accounts || []).map((a) => ({
       id: a.UserID ?? a.id,

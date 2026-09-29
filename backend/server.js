@@ -40,6 +40,25 @@ const app = express();
 app.disable("x-powered-by");
 const PORT = config.port; // [TOI UU] doc tu bien moi truong PORT
 
+// Kenh Server-Sent Events danh cho khu quan tri. Trinh duyet ket noi bang
+// fetch streaming de van gui duoc Bearer token; polling 30 giay o frontend la
+// du phong khi proxy/mang khong giu duoc ket noi dai.
+const adminEventClients = new Set();
+const publishAdminEvent = (eventName, payload = {}) => {
+  const frame = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of [...adminEventClients]) {
+    if (client.destroyed || client.writableEnded) {
+      adminEventClients.delete(client);
+      continue;
+    }
+    try {
+      client.write(frame);
+    } catch (_) {
+      adminEventClients.delete(client);
+    }
+  }
+};
+
 const sendValidationError = (res, result) =>
   res.status(400).json({ success: false, message: result?.message || "Dữ liệu không hợp lệ." });
 
@@ -90,6 +109,26 @@ app.use(policyGuard); // [TOI UU] phan quyen tap trung cho toan bo /api/*
 app.post("/api/log-error", (req, res) => {
   console.log("[BROWSER ERROR]", req.body);
   res.sendStatus(200);
+});
+app.get("/api/admin/events", (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  adminEventClients.add(res);
+  res.write(`event: connected\ndata: ${JSON.stringify({ connected: true })}\n\n`);
+  const keepAlive = setInterval(() => {
+    if (!res.writableEnded) res.write(": keep-alive\n\n");
+  }, 20_000);
+  keepAlive.unref?.();
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    adminEventClients.delete(res);
+  });
 });
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -389,7 +428,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
       .request()
       .input("e", sql.VarChar, email)
       .query(
-        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id, PasswordHash as password_hash FROM Users WHERE LOWER(Email)=@e AND IsActive=1",
+        "SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id, PasswordHash as password_hash, CAST(ISNULL(IsActive,1) AS bit) as is_active FROM Users WHERE LOWER(Email)=@e",
       );
 
     const row = r.recordset[0];
@@ -400,7 +439,17 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     if (!row || !check.ok) {
       return res
         .status(401)
-        .json({ success: false, message: "Sai email hoac mat khau" });
+        .json({ success: false, message: "Sai email hoặc mật khẩu." });
+    }
+
+    // Chi thong bao tai khoan bi khoa sau khi mat khau dung. Cach nay vua cho
+    // nguoi dung biet dung ly do, vua khong bien API thanh cong cu do email.
+    if (!row.is_active) {
+      return res.status(423).json({
+        success: false,
+        code: "ACCOUNT_LOCKED",
+        message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      });
     }
 
     // Tu dong nang cap mat khau tho -> scrypt (chay am tham, khong anh huong nguoi dung)
@@ -429,6 +478,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     }
 
     delete row.password_hash;
+    delete row.is_active;
     row.role = Number(row.role_id) === 1 ? "Admin" : "Customer";
     const token = jwtHelper.issueForUser(row);
     // Giu nguyen dinh dang cu (success + user) va BO SUNG token
@@ -2079,6 +2129,10 @@ app.put("/api/orders/:id/address", async (req, res) => {
         VALUES (@oid, @status, @status, @note, @uid, GETDATE())
       `);
     await transaction.commit();
+    publishAdminEvent("order.updated", {
+      orderId,
+      reason: "address_changed",
+    });
     res.json({
       success: true,
       orderId,
@@ -3058,6 +3112,7 @@ app.post("/api/accounts", async (req, res) => {
 });
 
 app.put("/api/accounts/:id", async (req, res) => {
+  let transaction = null;
   try {
     await poolConnect;
     const id = parseRouteId(res, req.params.id, "UserID");
@@ -3067,7 +3122,11 @@ app.put("/api/accounts/:id", async (req, res) => {
     if (!isAdmin && (b.role_id !== undefined || b.active !== undefined)) {
       return res.status(403).json({ success: false, message: "Khach hang khong duoc thay doi vai tro hoac trang thai tai khoan." });
     }
-    if (b.active !== undefined && Number(req.auth && req.auth.sub) === id) {
+    if (
+      b.active !== undefined &&
+      booleanValue(b.active, true) === false &&
+      Number(req.auth && req.auth.sub) === id
+    ) {
       return res.status(400).json({ success: false, message: "Bạn không thể khóa hoặc mở khóa tài khoản đang đăng nhập." });
     }
     if (b.username !== undefined || b.email !== undefined) {
@@ -3075,22 +3134,22 @@ app.put("/api/accounts/:id", async (req, res) => {
     }
     // Chi cap nhat nhung truong duoc gui len -> tranh ghi de/xoa nham
     // (vi du doi vai tro thi khong lam mat Phone/Address/Email cu).
-    let rq = pool.request().input("id", sql.Int, id);
     const sets = [];
+    const values = {};
     if (b.name !== undefined) {
       const name = validateText(b.name, 100);
       if (!name || String(b.name).trim().length > 100) return res.status(400).json({ success: false, message: "Ho ten khong hop le." });
-      rq = rq.input("n", sql.NVarChar, name);
+      values.name = name;
       sets.push("FullName=@n");
     }
     if (b.phone !== undefined) {
       const phone = validatePhone(b.phone);
       if (phone === null) return res.status(400).json({ success: false, message: "So dien thoai khong hop le." });
-      rq = rq.input("ph", sql.VarChar, phone);
+      values.phone = phone;
       sets.push("Phone=@ph");
     }
     if (b.address !== undefined) {
-      rq = rq.input("ad", sql.NVarChar, validateText(b.address, 500));
+      values.address = validateText(b.address, 500);
       sets.push("Address=@ad");
     }
     if (b.avatar_url !== undefined || b.avatarUrl !== undefined) {
@@ -3104,19 +3163,19 @@ app.put("/api/accounts/:id", async (req, res) => {
       if (value && !/^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(value)) {
         return res.status(400).json({ success: false, message: "Dinh dang anh khong hop le." });
       }
-      rq = rq.input("avatar", sql.NVarChar(sql.MAX), value || null);
+      values.avatar = value || null;
       sets.push("AvatarURL=@avatar");
     }
     if (b.role_id !== undefined && b.role_id !== null && b.role_id !== "") {
       const roleId = positiveInt(b.role_id, { max: 2 });
       if (!roleId) return res.status(400).json({ success: false, message: "Vai tro khong hop le." });
-      rq = rq.input("r", sql.Int, roleId);
+      values.roleId = roleId;
       sets.push("RoleID=@r");
     }
     if (b.active !== undefined) {
       const active = booleanValue(b.active, true);
       if (active === null) return res.status(400).json({ success: false, message: "Trang thai tai khoan khong hop le." });
-      rq = rq.input("act", sql.Bit, active ? 1 : 0);
+      values.active = active;
       sets.push("IsActive=@act");
     }
     if (
@@ -3125,21 +3184,65 @@ app.put("/api/accounts/:id", async (req, res) => {
       String(b.password).trim() !== ""
     ) {
       if (typeof b.password !== "string" || b.password.length < 6 || b.password.length > 256) return res.status(400).json({ success: false, message: "Mat khau moi phai co 6-256 ky tu." });
-      rq = rq.input("pw", sql.VarChar, await passwordHelper.hash(String(b.password)));
+      values.passwordHash = await passwordHelper.hash(String(b.password));
       sets.push("PasswordHash=@pw");
       sets.push("LastPasswordChangedAt=GETDATE()");
     }
     if (sets.length === 0) return res.json({ success: true });
+
+    transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+
+    // Khoa toan bo tap admin theo cung mot thu tu truoc khi loai mot admin khoi
+    // trang thai hoat dong. Hai request song song vi the khong the cung khoa
+    // hai admin cuoi va de he thong khong con tai khoan quan tri.
+    const removesActiveAdmin = values.active === false || (values.roleId !== undefined && values.roleId !== 1);
+    if (removesActiveAdmin) {
+      const lockedAdmins = await new sql.Request(transaction).query(`
+        SELECT UserID, CAST(ISNULL(IsActive,1) AS bit) AS IsActive
+        FROM Users WITH (UPDLOCK, HOLDLOCK)
+        WHERE RoleID=1
+        ORDER BY UserID
+      `);
+      const targetAdmin = lockedAdmins.recordset.find((account) => Number(account.UserID) === id);
+      const activeAdminCount = lockedAdmins.recordset.filter((account) => Boolean(account.IsActive)).length;
+      if (targetAdmin && targetAdmin.IsActive && activeAdminCount <= 1) {
+        await transaction.rollback();
+        transaction = null;
+        return res.status(409).json({
+          success: false,
+          code: "LAST_ACTIVE_ADMIN",
+          message: "Không thể khóa hoặc hạ quyền quản trị viên đang hoạt động cuối cùng.",
+        });
+      }
+    }
+
+    let rq = new sql.Request(transaction).input("id", sql.Int, id);
+    if (Object.hasOwn(values, "name")) rq = rq.input("n", sql.NVarChar, values.name);
+    if (Object.hasOwn(values, "phone")) rq = rq.input("ph", sql.VarChar, values.phone);
+    if (Object.hasOwn(values, "address")) rq = rq.input("ad", sql.NVarChar, values.address);
+    if (Object.hasOwn(values, "avatar")) rq = rq.input("avatar", sql.NVarChar(sql.MAX), values.avatar);
+    if (Object.hasOwn(values, "roleId")) rq = rq.input("r", sql.Int, values.roleId);
+    if (Object.hasOwn(values, "active")) rq = rq.input("act", sql.Bit, values.active ? 1 : 0);
+    if (Object.hasOwn(values, "passwordHash")) rq = rq.input("pw", sql.VarChar, values.passwordHash);
+
     const update = await rq.query("UPDATE Users SET " + sets.join(", ") + ", UpdatedAt=GETDATE() WHERE UserID=@id");
     if (Number(update.rowsAffected?.[0] || 0) !== 1) {
+      await transaction.rollback();
+      transaction = null;
       return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
     }
-    const updated = await pool.request()
+    const updated = await new sql.Request(transaction)
       .input("uid", sql.Int, id)
       .query("SELECT UserID as id_user, Email as email, FullName as full_name, Phone as phone, Address as address, AvatarURL as avatar_url, RoleID as role_id FROM Users WHERE UserID=@uid");
+    await transaction.commit();
+    transaction = null;
     res.json({ success: true, user: updated.recordset[0] || null });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (transaction && transaction._aborted !== true) {
+      try { await transaction.rollback(); } catch (_) {}
+    }
+    res.status(500).json({ success: false, message: "Không thể cập nhật tài khoản lúc này." });
   }
 });
 
@@ -4890,7 +4993,9 @@ app.get("/api/customers", async (req, res) => {
   }
 });
 
-// TAO KHACH VANG LAI (tu Ban tai quay) -> luu vao Users (RoleID = 2)
+// Khach vang lai tai quay khong phai la tai khoan dang nhap. Neu POS khong gui
+// email that, giu UserID=NULL tren don hang thay vi tao mot email dang nhap gia.
+// Chi tao Users khi quan tri vien cung cap mot email hop le.
 app.post("/api/customers", async (req, res) => {
   try {
     await poolConnect;
@@ -4901,10 +5006,16 @@ app.post("/api/customers", async (req, res) => {
     if (!fullName || String(b.FullName ?? b.name ?? b.full_name ?? "Khach le").trim().length > 100 || phone === null) {
       return res.status(400).json({ success: false, message: "Họ tên hoặc số điện thoại không hợp lệ." });
     }
-    const explicitEmail = b.Email ?? b.email;
-    const email = explicitEmail
-      ? validateEmail(explicitEmail)
-      : `pos${phone || Date.now()}@walkin.local`;
+    const explicitEmail = String(b.Email ?? b.email ?? "").trim();
+    if (!explicitEmail) {
+      return res.json({
+        success: true,
+        UserID: null,
+        is_walkin: true,
+        message: "Khách vãng lai sẽ được lưu cùng đơn hàng, không tạo tài khoản đăng nhập.",
+      });
+    }
+    const email = validateEmail(explicitEmail);
     if (!email) return res.status(400).json({ success: false, message: "Email không hợp lệ." });
     const password = typeof (b.PasswordHash ?? b.password) === "string" ? (b.PasswordHash ?? b.password) : "POS_WALK_IN";
     if (password.length < 6 || password.length > 256) return res.status(400).json({ success: false, message: "Mật khẩu không hợp lệ." });
@@ -5641,6 +5752,8 @@ const server = app.listen(PORT, () => {
 /* Tat may chu "muot" khi nhan Ctrl+C / khi deploy lai */
 const shutdown = (signal) => {
   console.log(`\n[${signal}] Dang dong may chu...`);
+  for (const client of adminEventClients) client.end();
+  adminEventClients.clear();
   server.close(() => {
     pool.close().finally(() => process.exit(0));
   });
