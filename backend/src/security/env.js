@@ -113,6 +113,15 @@ const config = {
     replyTo: process.env.EMAIL_REPLY_TO || process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || "",
   },
 
+  // Thông tin nhận tiền tại quầy. Đây là dữ liệu hiển thị cho quản trị viên
+  // để dựng VietQR, không phải API key/ngân hàng điện tử.
+  posBank: {
+    id: process.env.POS_BANK_ID || "",
+    name: process.env.POS_BANK_NAME || "",
+    accountNo: process.env.POS_BANK_ACCOUNT_NO || "",
+    accountName: process.env.POS_BANK_ACCOUNT_NAME || "",
+  },
+
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
     maxLogin: Number(

@@ -273,6 +273,8 @@ function loadAdminImages() {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/services/vietQr': {},
+    '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
     '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => null },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
@@ -288,6 +290,8 @@ function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/services/vietQr': {},
+    '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
     '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
@@ -512,6 +516,26 @@ test('login password visibility uses an accessible inline eye icon', () => {
   assert.match(login, /<svg\s+v-if="!showPwd"[^>]+class="eye-icon"/);
   assert.match(login, /<svg\s+v-else[^>]+class="eye-icon"/);
   assert.doesNotMatch(login, /icon-eye(?:-slash)?/);
+});
+
+test('registration password visibility uses an accessible inline eye icon', () => {
+  const register = fs.readFileSync(path.join(root, 'src/views/RegisterView.vue'), 'utf8');
+  assert.match(register, /<button\s+[\s\S]*?type="button"[\s\S]*?class="eye"/);
+  assert.match(register, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(register, /:aria-pressed="showPwd"/);
+  assert.match(register, /<svg\s+v-if="!showPwd"[^>]+class="eye-icon"/);
+  assert.match(register, /<svg\s+v-else[^>]+class="eye-icon"/);
+  assert.doesNotMatch(register, /icon-eye(?:-slash)?/);
+});
+
+test('reset-password interface uses consistent inline SVG icons', () => {
+  const reset = fs.readFileSync(path.join(root, 'src/views/ResetPasswordView.vue'), 'utf8');
+  assert.match(reset, /class="fp-ic"[\s\S]*?<svg[^>]+class="auth-icon auth-icon-lg"/);
+  assert.match(reset, /<svg\s+v-if="!showPwd"[^>]+class="auth-icon eye-icon"/);
+  assert.match(reset, /<svg\s+v-else[^>]+class="auth-icon eye-icon"/);
+  assert.match(reset, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(reset, /class="fp-back"[\s\S]*?<svg[^>]+class="auth-icon back-icon"/);
+  assert.doesNotMatch(reset, /<i\s+class="icon/);
 });
 
 test('account lock controls preserve an active administrator', () => {

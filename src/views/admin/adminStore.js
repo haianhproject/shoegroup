@@ -17,6 +17,8 @@
 import { ref, reactive, computed } from "vue";
 import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAttempt';
 import { recognizedOrderRevenue } from '@/services/revenue';
+import { buildPosPaymentQrUrl, buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '@/services/vietQr';
+import { validatePosCustomer } from '@/services/posCustomer';
 import { currentUser, logout } from "@/stores/authStore";
 
 import { API_BASE_URL, getToken } from "../../services/apiClient";
@@ -1982,13 +1984,35 @@ export function resetPosOrder() {
   posCustomerSearch.value = "";
 }
 // Modal QR chuyển khoản cho bán hàng tại quầy
-export const posPayModal = reactive({ open: false, qr: "", amount: 0 });
+export const posPayModal = reactive({
+  open: false,
+  qr: "",
+  qrFailed: false,
+  bankConfigured: false,
+  amount: 0,
+  bankName: "",
+  accountNo: "",
+  accountName: "",
+  transferContent: "",
+});
 export function cancelPosPay() {
+  if (posSubmitting.value) return;
   posPayModal.open = false;
 }
 export async function confirmPosPaid() {
-  posPayModal.open = false;
-  await finalizePosOrder();
+  if (posSubmitting.value) return;
+  const completed = await finalizePosOrder();
+  if (completed) posPayModal.open = false;
+}
+export function markPosQrFailed() {
+  if (posPayModal.qrFailed) return;
+  posPayModal.qrFailed = true;
+  notify(
+    posPayModal.bankConfigured
+      ? "Không tải được VietQR. Hãy chuyển khoản theo thông tin bên dưới."
+      : "Không tải được mã QR. Vẫn có thể bấm Hoàn thành để ghi nhận thanh toán.",
+    "warning",
+  );
 }
 
 
@@ -2228,6 +2252,21 @@ export function clearPosCoupon() {
   notify("Đã bỏ ưu đãi", "info");
 }
 export const posCustomerSearch = ref("");
+export const posCustomerReady = computed(
+  () => validatePosCustomer(activePosOrder.value).ok,
+);
+
+function ensurePosCustomerReady() {
+  const result = validatePosCustomer(activePosOrder.value);
+  if (!result.ok) {
+    notify(result.message, "error");
+    return false;
+  }
+  activePosOrder.value.customer_name = result.name;
+  activePosOrder.value.customer_phone = result.phone;
+  return true;
+}
+
 // Bỏ dấu tiếng Việt để tìm "gần giống" (gõ "hai anh" vẫn ra "Hải Ânh")
 function plainText(s) {
   return String(s || "")
@@ -2356,37 +2395,66 @@ export async function savePosCustomer() {
   }
 }
 export const posSubmitting = ref(false);
-export function checkoutPos() {
+export async function checkoutPos() {
   if (posSubmitting.value) return;
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
     return;
   }
+  if (!ensurePosCustomerReady()) return;
   // Chuyển khoản: hiện mã QR 1 lần để khách quét, xác nhận "Đã thanh toán" rồi mới tạo đơn
   if (o.payment_method === "Chuyển khoản") {
-    posPayModal.amount = posGrandTotal.value;
-    posPayModal.qr =
-      "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" +
-      encodeURIComponent("SHOEGROUP " + o.code + " " + posGrandTotal.value);
-    posPayModal.open = true;
+    posSubmitting.value = true;
+    try {
+      let response = {};
+      try {
+        response = await api("/pos/payment-config");
+      } catch (_) {
+        response = {};
+      }
+      const bank = normalizePosBankConfig(response);
+      const amount = posGrandTotal.value;
+      const transferContent = createPosTransferContent(o.code);
+      const qr = bank.configured
+        ? buildVietQrUrl(bank, amount, transferContent)
+        : buildPosPaymentQrUrl(amount, transferContent);
+      if (!qr) {
+        notify("Không thể tạo mã QR với số tiền hiện tại.", "error");
+        return;
+      }
+      Object.assign(posPayModal, {
+        open: true,
+        qr,
+        qrFailed: false,
+        bankConfigured: bank.configured,
+        amount,
+        bankName: bank.bankName,
+        accountNo: bank.accountNo,
+        accountName: bank.accountName,
+        transferContent,
+      });
+    } finally {
+      posSubmitting.value = false;
+    }
     return;
   }
-  finalizePosOrder();
+  await finalizePosOrder();
 }
 async function finalizePosOrder() {
-  if (posSubmitting.value) return;
+  if (posSubmitting.value) return false;
+  if (!ensurePosCustomerReady()) return false;
   posSubmitting.value = true;
   try {
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
-    return;
+    return false;
   }
   const payload = {
     user_id: o.customer_id || null,
-    customer_name: o.customer_name || "Khách lẻ",
-    customer_phone: o.customer_phone || "",
+    customer_name: o.customer_name,
+    customer_phone: o.customer_phone,
     payment_method: o.payment_method,
     payment_status: "Đã thanh toán",
     status: "Đã nhận hàng",
@@ -2415,7 +2483,7 @@ async function finalizePosOrder() {
   if (!res.ok) {
      const msg = res.data && res.data.message ? res.data.message : "Không thể tạo đơn hàng tại quầy.";
      notify(msg, "error");
-     return;
+     return false;
   }
   
   const created = res.data;
@@ -2492,6 +2560,11 @@ async function finalizePosOrder() {
     created_at: nowIso,
   });
   resetPosOrder();
+  return true;
+  } catch (error) {
+    console.error("Không thể hoàn tất đơn tại quầy:", error);
+    notify("Không thể hoàn tất đơn tại quầy. Vui lòng thử lại.", "error");
+    return false;
   } finally { posSubmitting.value = false; }
 }
 

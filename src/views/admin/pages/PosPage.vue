@@ -4,13 +4,13 @@
 import { ref } from 'vue'
 import {
   activePosOrder, resetPosOrder,
-  posPayModal, confirmPosPaid, cancelPosPay,
+  posPayModal, confirmPosPaid, cancelPosPay, markPosQrFailed,
   posSearch, posVariants, addToCart, removeCartItem,
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
-  posCustomerSearch, posCustomerResults, pickPosCustomer,
+  posCustomerSearch, posCustomerResults, pickPosCustomer, posCustomerReady,
   checkoutPos, formatPrice, formatDate, validateCartItemQty, posSubmitting,
-  posInvoiceModal, closePosInvoice, printPosInvoice,
+  posInvoiceModal, closePosInvoice, openLastPosInvoice, printPosInvoice,
 } from '../adminStore'
 
 const qtyInputs = ref({})
@@ -18,6 +18,9 @@ function addWithQty(v) {
   const n = Number(qtyInputs.value[v.id]) || 1
   addToCart(v, n)
   qtyInputs.value[v.id] = 1
+}
+function updateCustomerPhone(event) {
+  activePosOrder.value.customer_phone = event.target.value.replace(/\D/g, '').slice(0, 10)
 }
 </script>
 
@@ -38,8 +41,14 @@ function addWithQty(v) {
 
           <!-- Khách lẻ: không cần nút lưu thủ công, hệ thống tự động lưu đơn hàng khi thanh toán -->
           <div v-if="activePosOrder.customer_type === 'Khách lẻ'" class="grid grid-cols-12 gap-3">
-            <div class="md:col-span-6"><label class="block text-sm font-medium uppercase text-gray-600">Tên khách (tùy chọn)</label><input v-model="activePosOrder.customer_name" type="text" class="sg-input rounded-2" placeholder="Khách lẻ"></div>
-            <div class="md:col-span-6"><label class="block text-sm font-medium uppercase text-gray-600">Số điện thoại (tùy chọn)</label><input v-model="activePosOrder.customer_phone" type="tel" class="sg-input rounded-2" placeholder="VD: 0901234567" maxlength="11"></div>
+            <div class="md:col-span-6">
+              <label class="block text-sm font-medium uppercase text-gray-600">Tên khách hàng <span class="text-red-600">*</span></label>
+              <input v-model="activePosOrder.customer_name" type="text" class="sg-input rounded-2" placeholder="Nhập tên khách hàng" maxlength="100" autocomplete="name" required>
+            </div>
+            <div class="md:col-span-6">
+              <label class="block text-sm font-medium uppercase text-gray-600">Số điện thoại <span class="text-red-600">*</span></label>
+              <input :value="activePosOrder.customer_phone" @input="updateCustomerPhone" type="tel" inputmode="numeric" class="sg-input rounded-2" placeholder="VD: 0901234567" maxlength="10" autocomplete="tel" required>
+            </div>
             <div class="col-span-12"><label class="block text-sm font-medium uppercase text-gray-600">Ghi chú</label><textarea v-model="activePosOrder.customer_note" rows="2" class="sg-input rounded-2" placeholder="Ghi chú đơn hàng..."></textarea></div>
           </div>
 
@@ -72,6 +81,10 @@ function addWithQty(v) {
               </p>
             </template>
           </div>
+          <p v-if="!posCustomerReady" class="pos-customer-required mt-3 mb-0" role="status">
+            <i class="icon icon-info-circle"></i>
+            Cần có tên khách hàng và SĐT Việt Nam hợp lệ (10 số) trước khi thanh toán.
+          </p>
         </div>
 
         <!-- Sản phẩm -->
@@ -107,24 +120,24 @@ function addWithQty(v) {
       <div class="lg:col-span-5">
         <!-- Đơn hiện tại -->
         <div class="bg-white rounded-1 shadow-sm p-4">
-          <div class="flex justify-between items-center mb-3">
+          <div class="pos-current-title-row">
             <h6 class="font-bold mb-0 text-gray-900"><i class="icon icon-receipt mr-2"></i>Đơn hiện tại</h6>
-            <div class="flex items-center gap-2">
-              <button
-                v-if="posInvoiceModal.orderId"
-                type="button"
-                @click="posInvoiceModal.open = true"
-                class="btn btn-sm btn-outline-dark rounded-1 px-2 flex items-center gap-1"
-                title="Xem lại hóa đơn vừa xuất"
-              >
-                <i class="icon icon-receipt"></i>
-                <span style="font-size:0.75rem;">Hóa đơn vừa xuất</span>
-              </button>
-              <span class="badge rounded-1 bg-gray-100 text-gray-600 border" v-text="'#' + activePosOrder.code"></span>
-              <button @click="resetPosOrder()" class="btn btn-sm btn-white border rounded-1 px-3" title="Làm mới đơn">
-                <i class="icon icon-arrow-counterclockwise"></i>
-              </button>
-            </div>
+            <button @click="resetPosOrder()" class="btn btn-sm btn-white border rounded-1 pos-reset-order" title="Làm mới đơn" aria-label="Làm mới đơn hiện tại">
+              <i class="icon icon-arrow-counterclockwise"></i>
+            </button>
+          </div>
+          <div class="pos-current-toolbar">
+            <span class="badge rounded-1 bg-gray-100 text-gray-600 border pos-current-code" :title="activePosOrder.code" v-text="'#' + activePosOrder.code"></span>
+            <button
+              v-if="posInvoiceModal.orderId"
+              type="button"
+              @click="openLastPosInvoice()"
+              class="btn btn-sm btn-white border rounded-1 pos-last-invoice"
+              :title="'Xem lại hóa đơn #' + posInvoiceModal.orderId"
+            >
+              <i class="icon icon-receipt"></i>
+              <span>Hóa đơn #{{ posInvoiceModal.orderId }}</span>
+            </button>
           </div>
           <div class="grid grid-cols-12 gap-2 mb-3">
             <div class="col-span-4"><div class="bg-light-gray rounded-2 p-2"><div class="text-gray-600 uppercase" style="font-size:0.62rem;">Khách hàng</div><div class="text-sm font-medium text-truncate" v-text="activePosOrder.customer_name || 'Khách lẻ'"></div></div></div>
@@ -169,35 +182,47 @@ function addWithQty(v) {
             <div class="col-span-6"><button @click="activePosOrder.payment_method = 'Chuyển khoản'" class="btn w-full rounded-2 border py-2" :class="activePosOrder.payment_method === 'Chuyển khoản' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'"><i class="icon icon-bank mr-1"></i>Chuyển khoản</button></div>
           </div>
 
-          <button @click="checkoutPos()" :disabled="posSubmitting || activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
+          <p v-if="!posCustomerReady" class="text-red-600 text-xs mb-2 text-center">Nhập đủ tên và SĐT hợp lệ để mở thanh toán.</p>
+          <button @click="checkoutPos()" :disabled="posSubmitting || activePosOrder.cart.length === 0 || !posCustomerReady" :title="!posCustomerReady ? 'Cần nhập tên và số điện thoại khách hàng hợp lệ' : ''" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
         </div>
       </div>
     </div>
 
     <!-- MODAL QR chuyển khoản tại quầy (hiện 1 lần khi bấm thanh toán) -->
-    <Teleport to="body">
-      <div v-if="posPayModal.open" class="custom-modal-overlay" @click.self="cancelPosPay()">
+    <div v-if="posPayModal.open" class="custom-modal-overlay" @click.self="cancelPosPay()">
         <div class="custom-modal-box fade-in-scale" style="max-width:380px;">
           <div class="p-4 text-center">
             <h6 class="font-bold text-gray-900 mb-1"><i class="icon icon-qr-code mr-2"></i>Quét mã chuyển khoản</h6>
-            <p class="text-gray-600 text-sm mb-3">Khách quét mã QR để chuyển khoản. Nhấn "Đã thanh toán" sau khi nhận được tiền.</p>
-            <img :src="posPayModal.qr" class="rounded-2 border mb-3" style="width:240px;height:240px;object-fit:contain;" alt="QR">
+            <p v-if="posPayModal.bankConfigured" class="text-gray-600 text-sm mb-3">Khách quét VietQR để chuyển đúng số tiền và nội dung.</p>
+            <p v-else class="text-gray-600 text-sm mb-3">Mã QR hiển thị mã đơn và số tiền chuyển khoản. Bấm “Hoàn thành” để ghi nhận đơn đã thanh toán.</p>
+            <img v-if="!posPayModal.qrFailed" :src="posPayModal.qr" class="rounded-2 border mb-3 mx-auto" style="width:270px;max-width:100%;height:320px;object-fit:contain;" alt="QR thanh toán chuyển khoản" @error="markPosQrFailed()">
+            <div v-else class="rounded-2 border bg-yellow-50 text-yellow-800 text-sm p-3 mb-3 text-start">
+              <template v-if="posPayModal.bankConfigured">Không tải được ảnh VietQR. Khách vẫn có thể chuyển khoản bằng thông tin bên dưới.</template>
+              <template v-else>Không tải được ảnh QR. Kiểm tra số tiền rồi bấm “Hoàn thành” để ghi nhận thanh toán.</template>
+            </div>
             <div class="mb-3"><span class="text-gray-600 text-sm">Số tiền</span><h4 class="font-extrabold text-gray-900 mb-0" v-text="formatPrice(posPayModal.amount)"></h4></div>
+            <dl class="rounded-2 bg-light-gray p-3 mb-3 text-sm text-start">
+              <template v-if="posPayModal.bankConfigured">
+                <div class="flex justify-between gap-3 mb-1"><dt class="text-gray-600">Ngân hàng</dt><dd class="font-medium text-gray-900 text-end" v-text="posPayModal.bankName"></dd></div>
+                <div class="flex justify-between gap-3 mb-1"><dt class="text-gray-600">Số tài khoản</dt><dd class="font-bold text-gray-900 text-end" v-text="posPayModal.accountNo"></dd></div>
+                <div class="flex justify-between gap-3 mb-1"><dt class="text-gray-600">Chủ tài khoản</dt><dd class="font-medium text-gray-900 text-end" v-text="posPayModal.accountName"></dd></div>
+              </template>
+              <div v-else class="flex justify-between gap-3 mb-1"><dt class="text-gray-600">Hình thức</dt><dd class="font-medium text-gray-900 text-end">Chuyển khoản tại quầy</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-600">Nội dung</dt><dd class="font-bold text-gray-900 text-end" v-text="posPayModal.transferContent"></dd></div>
+            </dl>
             <div class="grid gap-2">
-              <button @click="confirmPosPaid()" class="btn btn-dark rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>Đã thanh toán</button>
-              <button @click="cancelPosPay()" class="btn btn-light border rounded-2">Hủy</button>
+              <button @click="confirmPosPaid()" :disabled="posSubmitting" class="btn btn-dark rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang ghi nhận...' : 'Hoàn thành' }}</button>
+              <button @click="cancelPosPay()" :disabled="posSubmitting" class="btn btn-light border rounded-2">Hủy</button>
             </div>
           </div>
         </div>
       </div>
-    </Teleport>
 
     <!-- MODAL HÓA ĐƠN sau khi thanh toán thành công -->
-    <Teleport to="body">
-      <div v-if="posInvoiceModal.open" class="custom-modal-overlay" style="z-index:1060;" @click.self="closePosInvoice()">
-        <div class="custom-modal-box fade-in-scale" style="max-width:520px;" role="dialog" aria-modal="true" aria-label="Hóa đơn thanh toán">
+    <div v-if="posInvoiceModal.open" class="custom-modal-overlay" @click.self="closePosInvoice()">
+        <div class="custom-modal-box fade-in-scale pos-invoice-dialog" role="dialog" aria-modal="true" aria-label="Hóa đơn thanh toán">
           <!-- Header hóa đơn -->
-          <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2">
+          <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2 pos-invoice-header">
             <div class="flex items-center gap-2">
               <span class="rounded-full bg-black text-white inline-flex items-center justify-center shrink-0" style="width:32px;height:32px;">
                 <i class="icon icon-receipt text-sm"></i>
@@ -213,7 +238,7 @@ function addWithQty(v) {
           </div>
 
           <!-- Thân hóa đơn -->
-          <div class="p-4" style="max-height:72vh;overflow-y:auto;">
+          <div class="p-4 pos-invoice-body">
             <!-- Badge trạng thái thành công -->
             <div class="text-center mb-4 pb-3 border-b">
               <div class="mx-auto mb-2 rounded-full inline-flex items-center justify-center bg-green-50 text-green-700" style="width:50px;height:50px;">
@@ -249,7 +274,7 @@ function addWithQty(v) {
 
             <!-- Danh sách sản phẩm -->
             <div class="text-gray-600 uppercase mb-2" style="font-size:0.68rem;letter-spacing:0.5px;">Chi tiết sản phẩm</div>
-            <div class="border rounded-2 mb-3 overflow-hidden">
+            <div class="border rounded-2 mb-3 pos-invoice-products">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="bg-gray-100 text-gray-600 border-b" style="font-size:0.75rem;">
@@ -293,7 +318,7 @@ function addWithQty(v) {
           </div>
 
           <!-- Nút bấm Xem / In / Đóng -->
-          <div class="p-4 border-t flex gap-2 bg-gray-50 rounded-b-2">
+          <div class="p-4 border-t flex gap-2 bg-gray-50 rounded-b-2 pos-invoice-footer">
             <button @click="closePosInvoice()" type="button" class="btn btn-light border rounded-2 grow font-medium">
               <i class="icon icon-x-lg mr-1"></i> Đóng
             </button>
@@ -303,6 +328,5 @@ function addWithQty(v) {
           </div>
         </div>
       </div>
-    </Teleport>
   </div>
 </template>

@@ -69,6 +69,7 @@ const POLICIES = [
   ["POST", /^\/api\/wallet\/withdrawals$/, "CUSTOMER"],
   ["GET", /^\/api\/orders$/, "ADMIN"],
   ["GET", /^\/api\/admin\/events$/, "ADMIN"],
+  ["GET", /^\/api\/pos\/payment-config$/, "ADMIN"],
 
   // ===== Chi Admin =====
   ["*", /^\/api\/accounts/, "ADMIN"],

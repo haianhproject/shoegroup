@@ -35,6 +35,8 @@ const { checkoutIdentity, claimCheckout, completeCheckout } = require("./src/che
 const revenueSql = require('./src/revenue');
 const { initializeDatabase } = require("./src/database/initialize");
 const { createEmailService } = require("./src/email");
+const { getPosBankTransferConfig } = require("./src/pos-payment");
+const { validatePosCustomerDetails } = require("./src/pos-customer");
 
 const app = express();
 app.disable("x-powered-by");
@@ -128,6 +130,21 @@ app.get("/api/admin/events", (req, res) => {
   req.on("close", () => {
     clearInterval(keepAlive);
     adminEventClients.delete(res);
+  });
+});
+app.get("/api/pos/payment-config", (_req, res) => {
+  const bank = getPosBankTransferConfig({
+    POS_BANK_ID: config.posBank.id,
+    POS_BANK_NAME: config.posBank.name,
+    POS_BANK_ACCOUNT_NO: config.posBank.accountNo,
+    POS_BANK_ACCOUNT_NAME: config.posBank.accountName,
+  });
+  res.json({
+    success: true,
+    ...bank,
+    message: bank.configured
+      ? ""
+      : "Chuyển khoản tại quầy chưa được cấu hình tài khoản nhận tiền.",
   });
 });
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -1411,14 +1428,16 @@ app.post("/api/orders", async (req, res) => {
     const isAdminOrder = req.auth && req.auth.role === "Admin";
     const authenticatedUserId = Number(req.auth && req.auth.sub) || null;
     const requestedUserId = b.userId ?? b.user_id ?? null;
+    const submittedCustomerName = b.customerName ?? b.customer_name;
+    const submittedCustomerPhone = b.customerPhone ?? b.customer_phone;
     const userId =
       isAdminOrder
         ? (requestedUserId == null || requestedUserId === "" ? null : Number(requestedUserId))
         : authenticatedUserId;
     let totalAmount = Number(b.totalAmount ?? b.total ?? 0);
     let shippingAddress = b.shippingAddress ?? b.customer_address ?? "";
-    let customerName = b.customerName ?? b.customer_name ?? "Khach le";
-    let customerPhone = b.customerPhone ?? b.customer_phone ?? "";
+    let customerName = submittedCustomerName ?? "Khach le";
+    let customerPhone = submittedCustomerPhone ?? "";
     const rawAddressId = b.addressId ?? b.address_id ?? null;
     const addressId =
       rawAddressId == null || rawAddressId === "" ? null : Number(rawAddressId);
@@ -1476,6 +1495,15 @@ app.post("/api/orders", async (req, res) => {
       return res.status(400).json({ success: false, message: "So dien thoai khach hang khong hop le." });
     }
     if (isAdminOrder) {
+      const posCustomer = validatePosCustomerDetails({
+        customerName: submittedCustomerName,
+        customerPhone: submittedCustomerPhone,
+      });
+      if (!posCustomer.ok) {
+        return res.status(400).json({ success: false, message: posCustomer.message });
+      }
+      customerName = posCustomer.name;
+      customerPhone = posCustomer.phone;
       const normalizedPayment = normalizeOrderStatus(paymentMethod);
       if (normalizedPayment.includes("tien mat") || normalizedPayment.includes("cod") || normalizedPayment.includes("nhan hang")) {
         paymentMethod = "Tiền mặt";
