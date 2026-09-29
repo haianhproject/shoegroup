@@ -142,6 +142,20 @@ test('order mappings use warehouse state and server item subtotal', () => {
   assert.equal(mapped.subtotal, 550000);
 });
 
+test('customer sees three distinct delivery failure outcomes', () => {
+  const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
+  const unreachable = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'RETURNED_TO_WAREHOUSE' };
+  const accident = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'DELIVERY_ACCIDENT' };
+  const lost = { status: 'CANCELLED', stockIssueStatus: 'LOST_IN_TRANSIT' };
+
+  assert.equal(orders.getDeliveryIssueType(unreachable), 'UNREACHABLE');
+  assert.equal(orders.getDeliveryIssueType(accident), 'ACCIDENT');
+  assert.equal(orders.getDeliveryIssueType(lost), 'LOST');
+  assert.equal(orders.getCustomerOrderStatusLabel(unreachable), 'Chưa liên hệ được');
+  assert.equal(orders.getCustomerOrderStatusLabel(accident), 'Sự cố vận chuyển');
+  assert.equal(orders.getCustomerOrderStatusLabel(lost), 'Hàng bị thất lạc');
+});
+
 test('local order keeps the image of the purchased color variant', () => {
   const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
   const result = orders.createOrder({
@@ -303,6 +317,44 @@ function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
     ...globals,
   });
 }
+
+test('lost delivery cancels permanently while the other failures can be reshipped', () => {
+  const admin = loadAdminImages();
+  const options = admin.getDeliveryFailureOptions();
+  const unreachable = options.find(option => option.key === 'return_warehouse');
+  const accident = options.find(option => option.key === 'delivery_accident');
+  const lost = options.find(option => option.key === 'lost_delivery_cancel');
+
+  assert.equal(unreachable.next, 'Về kho');
+  assert.equal(accident.next, 'Về kho');
+  assert.equal(lost.next, 'Đã hủy');
+  assert.equal(lost.issueStatus, 'LOST_IN_TRANSIT');
+  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' })[0].key, 'reship');
+  assert.equal(admin.getOrderActions({
+    status: 'Giao hàng thất bại',
+    payment_method: 'COD',
+    stock_issue_reason: 'Mất hàng khi vận chuyển',
+  }).length, 0);
+});
+
+test('printed invoice uses ShoeGroup data, accurate totals, and no decorative tracking QR', () => {
+  const admin = loadAdminImages();
+  const mapped = admin.mapOrder({
+    id: 9,
+    total: 3075000,
+    shippingFee: 75000,
+    discount: 0,
+    products: [],
+  });
+  assert.equal(mapped.shipping_fee, 75000);
+  assert.equal(mapped.discount, 0);
+
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/adminStore.js'), 'utf8');
+  const invoiceSource = source.slice(source.indexOf('export const SHOP_INFO'), source.indexOf('/* ---------------- RETURNS'));
+  assert.match(invoiceSource, /name:\s*"SHOEGROUP"/);
+  assert.doesNotMatch(invoiceSource, /DVTD BASEBALL CAP SHOP|benmnhat@gmail\.com|160 Cao Lỗ|api\.qrserver\.com|alt='QR'/);
+  assert.doesNotMatch(invoiceSource, /<th class='c'>Trạng thái<\/th>/);
+});
 
 test('admin background merge updates order address in place for an open detail view', () => {
   const admin = loadAdminRealtime();

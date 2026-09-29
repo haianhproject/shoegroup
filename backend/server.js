@@ -2332,7 +2332,8 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const currentResult = await new sql.Request(transaction)
       .input("oid", sql.Int, orderId)
       .query(`
-        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount, StockRestoredAt
+        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount,
+               StockRestoredAt, StockIssueStatus, StockIssueReason, CancelReason
         FROM Orders WITH (UPDLOCK, HOLDLOCK)
         WHERE OrderID=@oid
       `);
@@ -2347,6 +2348,8 @@ app.put("/api/orders/:id/status", async (req, res) => {
     const normalizedCurrentStatus = normalizeOrderStatus(currentOrder.Status);
     const isCancel = ["da huy", "cancelled", "canceled"].includes(normalizedNewStatus);
     const alreadyCancelled = ["da huy", "cancelled", "canceled"].includes(normalizedCurrentStatus);
+    const currentOrderWasLost = String(currentOrder.StockIssueStatus || "").trim().toUpperCase() === "LOST_IN_TRANSIT"
+      || isLostDeliveryReason(`${currentOrder.StockIssueReason || ""} ${currentOrder.CancelReason || ""}`);
     const lostDeliveryCancellation = isAdmin
       && isCancel
       && isLostDeliveryReason(reason)
@@ -2366,6 +2369,19 @@ app.put("/api/orders/:id/status", async (req, res) => {
       && (returningToWarehouse || lostDeliveryCancellation);
     const accidentDelivery = isAccidentDeliveryReason(reason);
     const wasPaid = isPaidPaymentStatus(currentOrder.PaymentStatus);
+
+    // Thất lạc là kết quả cuối cùng vì kiện hàng không còn để giao. Chặn ở API
+    // để bản ghi cũ cũng không thể bị mở lại dù giao diện hoặc request thủ công
+    // cố chuyển sang “Về kho”/“Đang vận chuyển”. Vẫn cho phép chốt hủy bản ghi
+    // cũ từng lưu nhầm ở “Giao hàng thất bại”.
+    if (currentOrderWasLost && !isCancel) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        code: "LOST_ORDER_TERMINAL",
+        message: "Đơn đã thất lạc nên không thể giao lại hoặc đổi trạng thái giao hàng.",
+      });
+    }
 
     if (isCancel && !alreadyCancelled && !reason) {
       await transaction.rollback();
@@ -2510,19 +2526,19 @@ app.put("/api/orders/:id/status", async (req, res) => {
           "Shop đã sắp xếp giao lại đơn hàng vào thời gian gần nhất. Bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.");
       } else if (returningToWarehouse && accidentDelivery) {
         await insertOrderNotification(transaction, currentOrder.UserID, orderId,
-          "Trục trặc trong quá trình vận chuyển",
-          "Đơn hàng gặp trục trặc trong quá trình vận chuyển. Shop sẽ sắp xếp giao lại vào ngày gần nhất.");
+          "Sự cố vận chuyển",
+          "Đơn gặp sự cố vận chuyển. Shop sẽ giao lại sớm.");
       } else if (returningToWarehouse) {
         await insertOrderNotification(transaction, currentOrder.UserID, orderId,
-          "Đơn hàng sẽ được giao lại",
-          "Đơn hàng chưa giao thành công vì chưa liên hệ được người nhận. Shop sẽ sắp xếp giao lại vào ngày gần nhất.");
+          "Chưa liên hệ được người nhận",
+          "Đơn chưa giao được vì chưa liên hệ được người nhận. Shop sẽ giao lại sớm.");
       } else if (lostDeliveryCancellation) {
         const refundMessage = isBankPayment(currentOrder.PaymentMethod)
           ? " Nếu đã chuyển khoản, vui lòng liên hệ shop để được hoàn tiền."
           : " Nếu đã thanh toán, shop sẽ xử lý hoàn tiền theo quy định.";
         await insertOrderNotification(transaction, currentOrder.UserID, orderId,
-          "Đơn hàng bị hủy do vận chuyển thất bại",
-          "Đơn hàng bị thất lạc trong quá trình vận chuyển nên đã được hủy." + refundMessage);
+          "Hàng bị thất lạc",
+          "Hàng bị thất lạc trong quá trình vận chuyển nên đơn đã hủy." + refundMessage);
       }
     }
     await transaction.commit();

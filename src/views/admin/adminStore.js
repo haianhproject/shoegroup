@@ -775,6 +775,7 @@ export function getDeliveryFailureOptions() {
       text: "Khách chưa bắt máy / chưa nhận hàng",
       next: "Về kho",
       reason: "Khách không bắt máy / không nhận hàng, kiện đã về kho.",
+      issueStatus: "RETURNED_TO_WAREHOUSE",
       class: "btn-dark text-white",
     },
     {
@@ -782,20 +783,31 @@ export function getDeliveryFailureOptions() {
       text: "Tai nạn / trục trặc vận chuyển",
       next: "Về kho",
       reason: "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại vào ngày gần nhất.",
+      issueStatus: "DELIVERY_ACCIDENT",
       class: "btn-outline-dark",
     },
     {
       key: "lost_delivery_cancel",
-      text: "Thất lạc hàng khi vận chuyển",
-      next: "Giao hàng thất bại",
-      reason: "Mất hàng khi vận chuyển - giao hàng thất bại, cần quản lý xử lý.",
+      text: "Thất lạc hàng (hủy đơn)",
+      next: "Đã hủy",
+      reason: "Mất hàng khi vận chuyển - đơn đã hủy và không hoàn lại tồn kho.",
+      issueStatus: "LOST_IN_TRANSIT",
       class: "btn-outline-danger",
     },
   ];
 }
 
+function isLostDeliveryOrder(o) {
+  if (!o) return false;
+  if (String(o.stock_issue_status || "").trim().toUpperCase() === "LOST_IN_TRANSIT") return true;
+  return /mất hàng|thất lạc|lost/i.test(`${o.stock_issue_reason || ""} ${o.cancel_reason || ""}`);
+}
+
 export function getOrderActions(o) {
   if (!o) return [];
+  // Thất lạc là trạng thái kết thúc: hàng không còn để giao lại. Kiểm tra cả
+  // mã sự cố lẫn lý do để khóa đúng các bản ghi cũ từng lưu sai trạng thái.
+  if (isLostDeliveryOrder(o)) return [];
   const method = getPaymentMethodPill(o.payment_method).code;
   const paid = isPaymentSettled(o);
   if (["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
@@ -1000,7 +1012,11 @@ export async function runOrderAction(o, act) {
         o.stock_issue_reason = act.reason;
       }
     }
-    if (act.next === "Về kho") o.stock_restored_at = new Date().toISOString();
+    if (act.next === "Về kho") {
+      o.stock_restored_at = new Date().toISOString();
+      o.stock_issue_status = act.issueStatus || "RETURNED_TO_WAREHOUSE";
+      o.stock_issue_reason = act.reason || "";
+    }
     if (act.next === "Đang vận chuyển" && prev === "Về kho") {
       o.stock_restored_at = null;
       if (["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT"].includes(o.stock_issue_status)) {
@@ -1552,10 +1568,8 @@ function escHtml(s) {
     .replace(/>/g, "&gt;");
 }
 export const SHOP_INFO = {
-  name: "DVTD BASEBALL CAP SHOP",
-  phone: "0906076388",
-  email: "benmnhat@gmail.com",
-  address: "160 Cao Lỗ, Uy Nỗ, Đông Anh, Hà Nội",
+  name: "SHOEGROUP",
+  tagline: "Cửa hàng giày",
 };
 export function printInvoice(o) {
   if (!o) {
@@ -1595,37 +1609,26 @@ export function printInvoice(o) {
         "<td class='r'>" +
         formatPrice(line) +
         "</td>" +
-        "<td class='c'>" +
-        escHtml(o.status || "") +
-        "</td>" +
         "</tr>"
       );
     })
     .join("");
   const grand = Number(o.total) || 0;
-  const shipping = Number(o.shipping_fee) || 0;
-  const discount = Math.max(0, subtotal + shipping - grand);
+  const shipping = Number(o.shipping_fee ?? o.shippingFee ?? o.ShippingFee) || 0;
+  const calculatedDiscount = Math.max(0, subtotal + shipping - grand);
+  const discount = Math.max(0, Number(o.discount ?? o.discount_amount ?? o.DiscountAmount ?? calculatedDiscount) || 0);
   const code = getTrackingCode(o);
-  const qr =
-    "https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=" +
-    encodeURIComponent(code);
-  let bars = "";
-  for (let i = 0; i < code.length * 2; i++) {
-    const w = (code.charCodeAt(i % code.length) % 3) + 1;
-    const black = i % 2 === 0;
-    bars +=
-      "<span style='display:inline-block;width:" +
-      w +
-      "px;height:44px;background:" +
-      (black ? "#111" : "#fff") +
-      "'></span>";
-  }
+  const channel = getOrderChannel(o);
+  const customerAddress = String(o.customer_address || "").trim();
+  const addressLine = channel === "Online" && customerAddress
+    ? "<br><b>Địa chỉ nhận hàng:</b> " + escHtml(customerAddress)
+    : "";
   const style =
     "<style>" +
     "*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;} " +
     "body{margin:0;padding:28px;color:#111;} " +
     ".inv{max-width:720px;margin:0 auto;} " +
-    ".top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;} " +
+    ".top{border-bottom:2px solid #111;padding-bottom:14px;} " +
     ".brand{font-size:20px;font-weight:800;letter-spacing:1px;} " +
     ".muted{color:#888;font-size:12px;} " +
     "h1{font-size:22px;text-align:center;margin:18px 0 4px;letter-spacing:1px;} " +
@@ -1638,7 +1641,6 @@ export function printInvoice(o) {
     ".sum{margin-top:12px;width:280px;margin-left:auto;font-size:13px;} " +
     ".sum td{border:none;padding:4px 8px;} " +
     ".sum .grand{font-weight:800;font-size:16px;border-top:2px solid #111;} " +
-    ".foot{display:flex;justify-content:space-between;align-items:center;margin-top:24px;} " +
     ".thanks{text-align:center;margin-top:20px;font-style:italic;color:#555;} " +
     "@media print { body { padding:0; } .noprint { display:none; } } " +
     ".noprint{text-align:center;margin-top:18px;} " +
@@ -1652,15 +1654,9 @@ export function printInvoice(o) {
     "</head><body><div class='inv'>" +
     "<div class='top'><div><div class='brand'>" +
     escHtml(SHOP_INFO.name) +
-    "</div><div class='muted'>SĐT: " +
-    escHtml(SHOP_INFO.phone) +
-    "</div><div class='muted'>Email: " +
-    escHtml(SHOP_INFO.email) +
     "</div><div class='muted'>" +
-    escHtml(SHOP_INFO.address) +
-    "</div></div><div style='text-align:right'><img src='" +
-    qr +
-    "' width='96' height='96' alt='QR'></div></div>" +
+    escHtml(SHOP_INFO.tagline) +
+    "</div></div></div>" +
     "<h1>HÓA ĐƠN BÁN HÀNG</h1>" +
     "<div class='muted' style='text-align:center'>Mã hóa đơn: " +
     escHtml(code) +
@@ -1669,18 +1665,15 @@ export function printInvoice(o) {
     escHtml(o.customer_name || "Khách lẻ") +
     "<br><b>SĐT:</b> " +
     escHtml(o.customer_phone || "—") +
-    "<br><b>Địa chỉ nhận hàng:</b> " +
-    escHtml(o.customer_address || "—") +
+    addressLine +
     "</div><div style='text-align:right'><b>Ngày:</b> " +
     escHtml(formatDate(o.date)) +
-    "<br><b>Nhân viên:</b> " +
-    escHtml(o.handled_by || "Admin") +
-    "<br><b>Kênh:</b> " +
-    escHtml(getOrderChannel(o)) +
+    "<br><b>Thanh toán:</b> " +
+    escHtml(o.payment_method || "—") +
     "</div></div>" +
-    "<table><thead><tr><th class='c'>STT</th><th>Tên sản phẩm</th><th class='c'>SL</th><th class='r'>Đơn giá</th><th class='r'>Thành tiền</th><th class='c'>Trạng thái</th></tr></thead><tbody>" +
+    "<table><thead><tr><th class='c'>STT</th><th>Tên sản phẩm</th><th class='c'>SL</th><th class='r'>Đơn giá</th><th class='r'>Thành tiền</th></tr></thead><tbody>" +
     (rows ||
-      "<tr><td colspan='6' class='c muted'>Không có sản phẩm</td></tr>") +
+      "<tr><td colspan='5' class='c muted'>Không có sản phẩm</td></tr>") +
     "</tbody></table>" +
     "<table class='sum'><tbody>" +
     "<tr><td>Tổng tiền hàng</td><td class='r'>" +
@@ -1696,13 +1689,6 @@ export function printInvoice(o) {
     formatPrice(grand) +
     "</td></tr>" +
     "</tbody></table>" +
-    "<div class='foot'><div><div style='letter-spacing:1px'>" +
-    bars +
-    "</div><div class='muted' style='text-align:center'>" +
-    escHtml(code) +
-    "</div></div><div style='text-align:right'><img src='" +
-    qr +
-    "' width='90' height='90' alt='QR'></div></div>" +
     "<div class='thanks'>Cảm ơn quý khách! Hẹn gặp lại tại " +
     escHtml(SHOP_INFO.name) +
     ".</div>" +
@@ -4039,6 +4025,8 @@ export function mapOrder(o) {
     // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
     date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
+    shipping_fee: o.ShippingFee ?? o.shippingFee ?? o.shipping_fee ?? 0,
+    discount: o.DiscountAmount ?? o.discountAmount ?? o.discount ?? 0,
     status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
     customer_name: o.CustomerName ?? o.customer_name ?? "Khách lẻ",
     customer_phone: o.CustomerPhone ?? o.customer_phone ?? "",
