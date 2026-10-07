@@ -11,10 +11,12 @@ const migrationFiles = Object.freeze([
   "20260909_checkout_idempotency.sql",
   "20260909_coupon_redemptions.sql",
   "20260919_confirmation_stock_deduction.sql",
-  "20260920_legacy_order_confirmation_stock.sql",
+  // sp_ProcessOrderAtomic đã ngừng dùng; không tạo lại thủ tục checkout cũ.
   "20260920_order_variant_image_snapshot.sql",
   "20260923_variant_discount_order_tracking.sql",
   "20260923_variant_discount_scope.sql",
+  "20261004_pos_cart_stock.sql",
+  "20261004_revenue_history.sql",
 ]);
 
 const schemaVerificationSql = `
@@ -23,7 +25,8 @@ const schemaVerificationSql = `
     CASE WHEN OBJECT_ID(N'dbo.VariantDiscounts', N'U') IS NOT NULL THEN 1 ELSE 0 END AS HasVariantDiscounts,
     CASE WHEN COL_LENGTH(N'dbo.VariantDiscounts', N'ApplyScope') IS NOT NULL THEN 1 ELSE 0 END AS HasApplyScope,
     CASE WHEN COL_LENGTH(N'dbo.OrderDetails', N'VariantDiscountID') IS NOT NULL THEN 1 ELSE 0 END AS HasOrderVariantDiscount,
-    CASE WHEN COL_LENGTH(N'dbo.Orders', N'VariantDiscountRestoredAt') IS NOT NULL THEN 1 ELSE 0 END AS HasDiscountRestoreMarker;
+    CASE WHEN COL_LENGTH(N'dbo.Orders', N'VariantDiscountRestoredAt') IS NOT NULL THEN 1 ELSE 0 END AS HasDiscountRestoreMarker,
+    CASE WHEN OBJECT_ID(N'dbo.PosCarts', N'U') IS NOT NULL AND OBJECT_ID(N'dbo.PosCartItems', N'U') IS NOT NULL THEN 1 ELSE 0 END AS HasPosCarts;
 `;
 
 function readMigration(filename) {
@@ -45,6 +48,7 @@ async function verifyRequiredSchema(pool) {
   if (Number(row.HasApplyScope) !== 1) missing.push("dbo.VariantDiscounts.ApplyScope");
   if (Number(row.HasOrderVariantDiscount) !== 1) missing.push("dbo.OrderDetails.VariantDiscountID");
   if (Number(row.HasDiscountRestoreMarker) !== 1) missing.push("dbo.Orders.VariantDiscountRestoredAt");
+  if (Number(row.HasPosCarts) !== 1) missing.push("dbo.PosCarts / dbo.PosCartItems");
 
   if (missing.length) {
     const databaseName = row.DatabaseName || "không xác định";

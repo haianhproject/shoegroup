@@ -38,9 +38,7 @@ export const db = reactive({
   customers: [],
   accounts: [],
   brands: [],
-  collections: [],
   inventory: [],
-  returns: [],
   variantDiscounts: [],
   colors: [],
   sizes: [],
@@ -330,6 +328,13 @@ export const getDisplayName = computed(() => {
   );
 });
 export function handleLogout() {
+  if (posCartBusy.value || posSubmitting.value) {
+    notify("Vui lòng chờ cập nhật giỏ tại quầy hoàn tất trước khi đăng xuất.", "info");
+    return false;
+  }
+  clearPosOrderLocally();
+  posCartReady.value = false;
+  posPayModal.open = false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
   return true;
@@ -351,9 +356,6 @@ export const unpaidCount = computed(
         !isPaymentSettled(o) &&
         o.status !== "Đã hủy",
     ).length,
-);
-export const pendingReturnsCount = computed(
-  () => db.returns.filter((r) => r.status === "Chờ xử lý").length,
 );
 export const lowStockCount = computed(
   () =>
@@ -439,7 +441,7 @@ export const statAccounts = computed(() => db.accounts.length);
 export const statProducts = computed(() => db.products.length);
 export const statOrders = computed(() => ordersInRange.value.length);
 export const statRevenue = computed(
-  () => ordersInRange.value.reduce((sum,order)=>sum+recognizedOrderRevenue(order,db.returns),0),
+  () => ordersInRange.value.reduce((sum,order)=>sum+recognizedOrderRevenue(order),0),
 );
 
 export function exportReport() {
@@ -545,7 +547,7 @@ export const paymentRevenueSummary = computed(() => {
     const pm = (o.payment_method || "").toLowerCase();
     const isTransfer =
       pm.includes("chuyển khoản") || pm.includes("chuyen khoan");
-    const amt = recognizedOrderRevenue(o, db.returns);
+    const amt = recognizedOrderRevenue(o);
 
     summary.total += amt;
 
@@ -1714,219 +1716,6 @@ export function printInvoice(o) {
   notify("Đã mở hóa đơn " + code, "success");
 }
 
-/* ---------------- RETURNS ---------------- */
-export const returnFilter = ref("Tất cả");
-export const filteredReturns = computed(() =>
-  returnFilter.value === "Tất cả"
-    ? db.returns
-    : db.returns.filter((r) => r.status === returnFilter.value),
-);
-export function getReturnBadgeClass(status) {
-  return (
-    {
-      "Chờ xử lý": "bg-warning-subtle text-warning-emphasis",
-      "Đã tiếp nhận": "bg-info-subtle text-info-emphasis",
-      "Đang kiểm tra": "bg-primary-subtle text-primary-emphasis",
-      "Chấp nhận hoàn tiền": "bg-info-subtle text-info-emphasis",
-      "Đã hoàn tiền": "bg-success-subtle text-success-emphasis",
-      "Từ chối": "bg-danger-subtle text-danger-emphasis",
-      "Hủy": "bg-light text-secondary border",
-      "Đã hoàn tất": "badge-active",
-    }[status] || "bg-secondary-subtle text-secondary"
-  );
-}
-export async function processReturn(r, status, options = {}) {
-  try {
-    const res = await apiWrite("/returns/" + r.id + "/status", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, ...options }),
-    });
-    if (!res.ok) {
-      const msg = res.data && res.data.message ? res.data.message : "Lỗi xử lý đổi trả.";
-      throw new Error(msg);
-    }
-    r.status = res.data?.status || status;
-    notify("Yêu cầu trả hàng #" + r.id + ": " + r.status, "success");
-    return true;
-  } catch (error) {
-    notify(error?.message || "Lỗi xử lý đổi trả.", "error");
-    return false;
-  }
-}
-
-/* ================================================================
- * TRẢ HÀNG THEO HÓA ĐƠN (tra cứu đơn -> chọn SP trả -> hoàn tiền)
- * ================================================================ */
-export const returnSearchCode = ref("");
-export const returnFoundOrder = ref(null);
-export const returnItems = ref([]);
-export const returnNote = ref("");
-// Loại trả hàng: "CUSTOMER" = khách yêu cầu (cần duyệt); "DIRECT" = trả trực tiếp tại quầy (hoàn tất ngay)
-export const returnType = ref("CUSTOMER");
-export function getReturnTypeLabel(t) {
-  const normalized = normalizeStatusText(t).replace(/[_-]+/g, " ");
-  if (["not received", "chua nhan duoc hang", "delivery failed", "delivery failure", "giao hang that bai", "ve kho"].includes(normalized))
-    return "Chưa nhận được hàng";
-  return t === "DIRECT" || t === "Trực tiếp"
-    ? "Trả trực tiếp tại quầy"
-    : "Trả theo yêu cầu khách hàng";
-}
-// Tổng tiền hoàn của các đơn trả ĐÃ HOÀN TẤT (dùng để TRỪ vào doanh thu)
-export const completedReturnsRefundInRange = computed(() => {
-  const ids = new Set(ordersInRange.value.map((o) => String(o.id)));
-  return (db.returns || [])
-    .filter((r) => ["Hoàn tất", "Đã hoàn tất"].includes(r.status) && ids.has(String(r.order_id)))
-    .reduce((s, r) => s + (Number(r.refund_amount) || 0), 0);
-});
-export function searchReturnOrder() {
-  const raw = returnSearchCode.value.trim();
-  if (!raw) {
-    notify("Vui lòng nhập mã đơn hoặc mã vận đơn", "error");
-    return;
-  }
-  const compactRaw = raw.replace(/^#/, "").replace(/[\s-]+/g, "");
-  const code = compactRaw.replace(/^HD/i, "");
-  const up = compactRaw.toUpperCase();
-  const ord = db.orders.find(
-    (o) =>
-      String(o.id) === code ||
-      String(o.id) === compactRaw ||
-      "HD" + o.id === up ||
-      String(getTrackingCode(o)).replace(/[\s-]+/g, "").toUpperCase() === up,
-  );
-  if (!ord) {
-    returnFoundOrder.value = null;
-    returnItems.value = [];
-    notify("Không tìm thấy đơn hàng phù hợp", "error");
-    return;
-  }
-  // Đơn đã giao/đã nhận tạo yêu cầu trả hàng; đơn đang vận chuyển có thể
-  // tạo case riêng "chưa nhận được hàng" để cửa hàng kiểm tra giao vận.
-  if (!["Đã giao hàng thành công", "Đã nhận hàng", "Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status)) {
-    returnFoundOrder.value = null;
-    returnItems.value = [];
-    notify(
-      "Đơn " +
-        getTrackingCode(ord) +
-      " chưa ở trạng thái có thể tạo yêu cầu trả hàng / báo chưa nhận hàng",
-      "error",
-    );
-    return;
-  }
-  returnFoundOrder.value = ord;
-  // Đơn bán tại quầy (offline) => trả trực tiếp; đơn online => trả theo yêu cầu KH
-  returnType.value = getOrderChannel(ord) === "Offline" ? "DIRECT" : "CUSTOMER";
-  returnItems.value = (ord.products || []).map((p, idx) => ({
-    idx,
-    order_detail_id: p.order_detail_id ?? p.id ?? null,
-    product_id: p.product_id ?? p.ProductID ?? null,
-    variant_id: p.variant_id ?? p.product_variant_id ?? null,
-    name: p.name,
-    color: p.color,
-    size: p.size,
-    image: p.image,
-    price: Number(p.price) || 0,
-    max: Number(p.quantity) || 0,
-    return_qty: 0,
-  }));
-  returnNote.value = "";
-  notify("Tìm thấy đơn hàng có thể trả", "success");
-}
-export const returnRefundTotal = computed(() =>
-  returnItems.value.reduce(
-    (s, it) => s + it.price * (Number(it.return_qty) || 0),
-    0,
-  ),
-);
-export const returnSelectedCount = computed(() =>
-  returnItems.value.reduce((s, it) => s + (Number(it.return_qty) || 0), 0),
-);
-export function resetReturnForm() {
-  returnSearchCode.value = "";
-  returnFoundOrder.value = null;
-  returnItems.value = [];
-  returnNote.value = "";
-  returnType.value = "CUSTOMER";
-}
-export async function submitReturn() {
-  const ord = returnFoundOrder.value;
-  if (!ord) return;
-  // Báo chưa nhận là sự cố theo cả kiện hàng; quản lý không cần chọn từng
-  // dòng sản phẩm (API sẽ tự lấy toàn bộ chi tiết đơn nếu items rỗng).
-  const notReceived = ["Đang vận chuyển", "Giao hàng thất bại", "Về kho"].includes(ord.status);
-  const items = returnItems.value.filter((it) => Number(it.return_qty) > 0);
-  if (items.length === 0 && !notReceived) {
-    notify("Chọn ít nhất 1 sản phẩm để trả", "error");
-    return;
-  }
-  const direct = returnType.value === "DIRECT";
-  // Trả trực tiếp tại quầy (khách mua trực tiếp): hoàn tất ngay, không cần duyệt.
-  // Trả theo yêu cầu khách hàng (đơn online): tạo yêu cầu, chờ duyệt rồi hoàn tất.
-  const status = direct ? "Hoàn tất" : "Chờ xử lý";
-  const payload = {
-    order_id: ord.id,
-    tracking_number: getTrackingCode(ord),
-    return_type: notReceived ? "NOT_RECEIVED" : returnType.value,
-    reason:
-      returnNote.value ||
-      (direct ? "Khách trả trực tiếp tại quầy" : "Khách yêu cầu trả hàng"),
-    // Để trống khi báo mất cả kiện: backend sẽ tự tính theo toàn bộ dòng
-    // hàng, tránh gửi số 0 khiến khoản hoàn bị ghi nhận thiếu.
-    refund_amount: notReceived && items.length === 0 ? undefined : returnRefundTotal.value,
-    status,
-    items: items.map((it) => ({
-      order_detail_id: it.order_detail_id,
-      product_id: it.product_id,
-      variant_id: it.variant_id,
-      name: it.name,
-      color: it.color,
-      size: it.size,
-      quantity: it.return_qty,
-      price: it.price,
-    })),
-  };
-  let res = null;
-  try {
-    res = await apiWrite("/returns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    notify("Không thể kết nối máy chủ để tạo yêu cầu trả hàng.", "error");
-    return;
-  }
-  if (!res?.ok) {
-    const message = res?.data?.message || res?.error || "Không thể tạo yêu cầu trả hàng.";
-    notify(message, "error");
-    return;
-  }
-  const newId =
-    (res && res.data && (res.data.ReturnID || res.data.id)) ||
-    "R-" + Date.now();
-  const persistedStatus = res.data?.Status || res.data?.status || 'Chờ xử lý';
-  db.returns.unshift({
-    id: newId,
-    order_id: ord.id,
-    return_type: payload.return_type,
-    reason: payload.reason,
-    refund_amount: res.data?.RefundAmount ?? payload.refund_amount,
-    status: persistedStatus,
-    created_at: new Date().toISOString(),
-  });
-  ord.status = "Yêu cầu trả hàng";
-  notify(
-      notReceived
-        ? "Đã ghi nhận báo chưa nhận được hàng cho đơn #" + ord.id
-        : direct
-      ? "Đã tạo yêu cầu trả tại quầy, chờ kiểm hàng cho đơn #" + ord.id
-      : "Đã tạo yêu cầu trả hàng cho đơn #" + ord.id,
-    "success",
-  );
-  resetReturnForm();
-}
-
 /* ---------------- POS ----------------
  * Đã BỚ hoàn toàn cơ chế "đơn chờ" (nhiều đơn tạm song song).
  * Bán hàng tại quầy chỉ làm việc trên MỘT đơn duy nhất; thanh toán xong
@@ -1964,10 +1753,82 @@ function newPosOrder() {
 // Chỉ còn MỘT đơn đang bán tại quầy
 const posOrder = ref(newPosOrder());
 export const activePosOrder = computed(() => posOrder.value);
-// Làm mới đơn quầy (dùng sau khi thanh toán xong hoặc khi muốn hủy đơn đang nhập)
-export function resetPosOrder() {
+export const posCartBusy = ref(false);
+export const posCartReady = ref(false);
+const posCartRevision = ref(0);
+
+function clearPosOrderLocally() {
   posOrder.value = newPosOrder();
   posCustomerSearch.value = "";
+}
+
+export function applyPosStockUpdates(updates = []) {
+  for (const update of updates) {
+    const variant = db.inventory.find((v) => String(v.id) === String(update.id));
+    if (variant && Number(update.version || 0) >= Number(variant.version || 0)) {
+      variant.stock = Number(update.stock);
+      variant.version = Number(update.version || 0);
+    }
+  }
+}
+
+function applyPosCart(data) {
+  posCartRevision.value = data.revision;
+  activePosOrder.value.cart = data.items.map((item) => {
+    const product = db.products.find((p) => String(p.id) === String(item.product_id));
+    return {
+      ...item,
+      key: item.variant_id,
+      price: effectiveVariantPrice(product || { price: item.base_price }, { ...item, id: item.variant_id }),
+    };
+  });
+  applyPosStockUpdates([...data.items.map((item) => ({ id: item.variant_id, stock: item.stock, version: item.version })), ...(data.stockUpdates || [])]);
+  posCartReady.value = true;
+}
+
+async function readPosCart() {
+  const response = await api("/pos/cart");
+  if (!response?.success) {
+    posCartReady.value = false;
+    notify("Không tải được giỏ tại quầy. Vui lòng tải lại trước khi bán hàng.", "error");
+    return false;
+  }
+  applyPosCart(response);
+  return true;
+}
+
+export async function loadPosCart() {
+  if (posCartBusy.value || posSubmitting.value || posPayModal.open) return;
+  posCartBusy.value = true;
+  try { return await readPosCart(); }
+  finally { posCartBusy.value = false; }
+}
+
+async function writePosCart(path, method, data = {}) {
+  if (posCartBusy.value || posSubmitting.value || posPayModal.open || !posCartReady.value) return false;
+  posCartBusy.value = true;
+  try {
+    const result = await apiWrite(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, revision: posCartRevision.value }),
+    });
+    if (!result.ok) {
+      notify(result.data?.message || "Chưa xác nhận được thay đổi giỏ. Đang tải lại để kiểm tra.", "error");
+      // Request có thể đã commit nhưng mất phản hồi. Đọc lại thay vì cộng/trừ lần nữa.
+      await readPosCart();
+      const inventory = await api("/inventory");
+      if (Array.isArray(inventory)) applyPosStockUpdates(inventory);
+      return false;
+    }
+    applyPosCart(result.data);
+    return true;
+  } finally { posCartBusy.value = false; }
+}
+
+// Hủy đơn đang nhập phải hoàn toàn bộ lượng đã giữ trước khi xóa giao diện.
+export async function resetPosOrder() {
+  if (await writePosCart("/pos/cart", "DELETE")) clearPosOrderLocally();
 }
 // Modal QR chuyển khoản cho bán hàng tại quầy
 export const posPayModal = reactive({
@@ -2077,8 +1938,18 @@ function effectiveVariantPrice(product, variant) {
   return Math.max(0, base - reduction);
 }
 
+function posProductAttributes(product) {
+  const lookup = (rows, id) => rows.find(row => String(row.id) === String(id))?.name || "";
+  return {
+    brand: product?.brand || lookup(db.brands, product?.brand_id),
+    category: product?.category || lookup(db.categories, product?.category_id),
+    material: lookup(db.materials, product?.material_id),
+    description: product?.description || "",
+  };
+}
+
 export const posVariants = computed(() => {
-  const q = posSearch.value.trim().toLowerCase();
+  const q = plainText(posSearch.value);
   const list = [];
   const covered = new Set();
   // 1) Ưu tiên biến thể trong kho (màu/size/SKU/tồn kho)
@@ -2086,18 +1957,17 @@ export const posVariants = computed(() => {
     covered.add(String(v.product_id));
     const p = db.products.find((x) => String(x.id) === String(v.product_id));
     if (p && p.active === false) return;
-    const inCart = activePosOrder.value.cart.find((c) => String(c.key) === String(v.id));
-    const cartQty = inCart ? inCart.quantity : 0;
     list.push({
       id: v.id,
       variant_id: v.id,
       product_id: v.product_id,
       product_name: v.product_name || (p ? p.name : "Sản phẩm"),
+      ...posProductAttributes(p),
       color: v.color,
       color_hex: v.color_hex,
       size: v.size,
       sku: v.sku,
-      stock: Math.max(0, (Number(v.stock) || 0) - cartQty),
+      stock: Math.max(0, Number(v.stock) || 0),
       image: v.image_url || (p ? p.image_url : ""),
       price: effectiveVariantPrice(p, v),
     });
@@ -2107,20 +1977,19 @@ export const posVariants = computed(() => {
     if (p.active === false) return;
     if (covered.has(String(p.id))) return;
     const pIdStr = "p-" + p.id;
-    const inCart = activePosOrder.value.cart.find((c) => String(c.key) === pIdStr);
-    const cartQty = inCart ? inCart.quantity : 0;
     list.push({
       id: pIdStr,
       variant_id: null,
       product_id: p.id,
       product_name: p.name,
+      ...posProductAttributes(p),
       color: "",
       color_hex: "",
       size: "",
       sku: p.sku || "",
       // Sản phẩm chưa có biến thể trong kho: KHÔNG bịa tồn kho ảo (trước đây để 999)
       // -> tránh bán được hàng không tồn tại và sai số lượng.
-      stock: Math.max(0, (Number(p.stock ?? p.total_stock ?? 0) || 0) - cartQty),
+      stock: 0,
       no_variant: true,
       image: p.image_url || "",
       price: Number(p.price) || 0,
@@ -2129,58 +1998,38 @@ export const posVariants = computed(() => {
   return list.filter(
     (v) =>
       !q ||
-      (v.product_name || "").toLowerCase().includes(q) ||
-      (v.color || "").toLowerCase().includes(q) ||
-      (v.size || "").toLowerCase().includes(q) ||
-      (v.sku || "").toLowerCase().includes(q),
+      [v.product_name, v.color, v.size, v.brand, v.category, v.material]
+        .some(value => plainText(value).includes(q)),
   );
 });
-export function addToCart(v, qty) {
+export async function addToCart(v, qty) {
   const order = activePosOrder.value;
-  const n = Math.max(1, Number(qty) || 1);
-  if (n > v.stock) {
-    notify(`Kho không đủ (chỉ còn ${v.stock})`, "error");
-    return;
+  const n = Number(qty);
+  if (!Number.isSafeInteger(n) || n < 1 || !v.variant_id) {
+    notify("Chọn biến thể và nhập số lượng nguyên dương.", "error");
+    return false;
+  }
+  const available = posVariants.value.find((item) => String(item.id) === String(v.id))?.stock || 0;
+  if (n > available) {
+    notify(`Kho không đủ (chỉ còn ${available})`, "error");
+    return false;
   }
   const key = String(v.id);
   const existing = order.cart.find((c) => String(c.key) === key);
-  if (existing) existing.quantity += n;
-  else
-    order.cart.push({
-      key: v.id,
-      variant_id: v.variant_id,
-      product_id: v.product_id,
-      name: v.product_name,
-      color: v.color,
-      color_hex: v.color_hex,
-      size: v.size,
-      sku: v.sku,
-      price: v.price,
-      quantity: n,
-      image: v.image
-    });
+  return writePosCart(`/pos/cart/items/${v.variant_id}`, "PUT", { quantity: (existing?.quantity || 0) + n });
 }
-export function removeCartItem(i) {
-  activePosOrder.value.cart.splice(i, 1);
+export async function removeCartItem(i) {
+  const item = activePosOrder.value.cart[i];
+  if (item) return writePosCart(`/pos/cart/items/${item.variant_id}`, "PUT", { quantity: 0 });
 }
-export function validateCartItemQty(c) {
-  const inv = db.inventory.find((v) => String(v.id) === String(c.key));
-  if (inv) {
-    if (c.quantity > inv.stock) {
-      notify(`Kho không đủ (chỉ còn ${inv.stock})`, "error");
-      c.quantity = inv.stock;
-    }
-  } else {
-    const p = db.products.find((p) => "p-" + p.id === String(c.key));
-    if (p) {
-      const pStock = Number(p.stock ?? p.total_stock ?? 0) || 0;
-      if (c.quantity > pStock) {
-        notify(`Kho không đủ (chỉ còn ${pStock})`, "error");
-        c.quantity = pStock;
-      }
-    }
-  }
-  if (c.quantity < 1) c.quantity = 1;
+export function posCartItemMax(c) {
+  const stock = db.inventory.find((v) => String(v.id) === String(c.variant_id))?.stock ?? c.stock;
+  return Math.min(1000000, c.quantity + Math.max(0, Number(stock) || 0));
+}
+export async function validateCartItemQty(c, requestedQuantity) {
+  const quantity = Math.min(posCartItemMax(c), Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+  if (quantity === c.quantity) return true;
+  return writePosCart(`/pos/cart/items/${c.variant_id}`, "PUT", { quantity });
 }
 export const posSubtotal = computed(() =>
   activePosOrder.value.cart.reduce(
@@ -2382,7 +2231,7 @@ export async function savePosCustomer() {
 }
 export const posSubmitting = ref(false);
 export async function checkoutPos() {
-  if (posSubmitting.value) return;
+  if (posSubmitting.value || posCartBusy.value || !posCartReady.value) return;
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
@@ -2428,7 +2277,7 @@ export async function checkoutPos() {
   await finalizePosOrder();
 }
 async function finalizePosOrder() {
-  if (posSubmitting.value) return false;
+  if (posSubmitting.value || posCartBusy.value || !posCartReady.value) return false;
   if (!ensurePosCustomerReady()) return false;
   posSubmitting.value = true;
   try {
@@ -2438,6 +2287,7 @@ async function finalizePosOrder() {
     return false;
   }
   const payload = {
+    pos_cart_revision: posCartRevision.value,
     user_id: o.customer_id || null,
     customer_name: o.customer_name,
     customer_phone: o.customer_phone,
@@ -2469,20 +2319,17 @@ async function finalizePosOrder() {
   if (!res.ok) {
      const msg = res.data && res.data.message ? res.data.message : "Không thể tạo đơn hàng tại quầy.";
      notify(msg, "error");
+     if (res.data?.code === "POS_CART_CONFLICT") {
+       posPayModal.open = false;
+       await readPosCart();
+     }
      return false;
   }
   
   const created = res.data;
   clearCheckoutAttempt();
 
-  // Cập nhật db.inventory local ngay sau khi thanh toán thành công
-  // để trang sản phẩm và kho hiển thị đúng số lượng mà không cần reload
-  o.cart.forEach((c) => {
-    const inv = db.inventory.find((v) => String(v.id) === String(c.key));
-    if (inv) {
-      inv.stock = Math.max(0, (Number(inv.stock) || 0) - (Number(c.quantity) || 0));
-    }
-  });
+  // Kho đã trừ khi thêm vào giỏ, không trừ lại sau thanh toán.
   // Lưu khách vãng lai (không có tài khoản) vào danh sách khách hàng
   if (!o.customer_id && (o.customer_name || o.customer_phone)) {
     try {
@@ -2545,7 +2392,8 @@ async function finalizePosOrder() {
     handled_by: getDisplayName.value || "Quầy",
     created_at: nowIso,
   });
-  resetPosOrder();
+  clearPosOrderLocally();
+  await readPosCart();
   return true;
   } catch (error) {
     console.error("Không thể hoàn tất đơn tại quầy:", error);
@@ -2574,7 +2422,6 @@ function emptyProduct() {
     description: "",
     category_id: "",
     brand_id: "",
-    collection_id: "",
     material_id: "",
     price: 0,
     image_url: "",
@@ -2590,7 +2437,6 @@ export const productForm = reactive(emptyProduct());
 export const colorDraft = ref("");
 export const sizeDraft = ref("");
 export const colorImageDraft = ref("");
-export const colorNoteDraft = ref("");
 // Size giay chuan cho giay the thao - CHI dung so, khong dung S/M/L/XL
 export const SHOE_SIZES = [
   "36",
@@ -2650,27 +2496,38 @@ export function openProductForm(p) {
           name: v.color,
           hex: v.hex || v.color_hex || colorHex(v.color),
           image: v.image || "",
-          note: v.note || "",
         });
       }
     }
 
-    productForm.colors = colors.map((c) => ({
-      id: c.id,
-      name: c.name,
-      hex: c.hex || colorHex(c.name),
-      image: c.image || "",
-      note: c.note || "",
-      // Tải lại size + số lượng (biến thể) đã lưu cho từng màu
-      variants: loadedVariants
-        .filter((v) => String(v.color) === String(c.name))
-        .map((v) => ({
-          id: v.id,
-          size: String(v.size),
-          stock: Number(v.stock) || 0,
-          version: v.version,
-        })),
-    }));
+    productForm.colors = colors.map((c) => {
+      const colorName = String(c.name || c.color_name || c.ColorName || "").trim();
+      const sourceColorId = c.id ?? c.color_id ?? c.ColorID;
+      const catalogColor = db.colors.find(
+        (item) =>
+          (sourceColorId != null && String(item.id) === String(sourceColorId)) ||
+          String(item.name || "").trim().toLocaleLowerCase("vi") ===
+            colorName.toLocaleLowerCase("vi"),
+      );
+
+      return {
+        // API sản phẩm cũ chỉ trả tên màu. Khôi phục id từ bảng màu để dropdown
+        // hiển thị đúng lựa chọn hiện tại khi mở form sửa.
+        id: catalogColor?.id ?? sourceColorId,
+        name: colorName || catalogColor?.name || "",
+        hex: c.hex || catalogColor?.hex || colorHex(colorName),
+        image: c.image || "",
+        // Tải lại size + số lượng (biến thể) đã lưu cho từng màu
+        variants: loadedVariants
+          .filter((v) => String(v.color) === colorName)
+          .map((v) => ({
+            id: v.id,
+            size: String(v.size),
+            stock: Number(v.stock) || 0,
+            version: v.version,
+          })),
+      };
+    });
     productForm.sizes =
       productForm.sizes && productForm.sizes.length
         ? productForm.sizes
@@ -2716,14 +2573,12 @@ export function addColor() {
     name: c.name,
     hex: c.hex,
     image: colorImageDraft.value || "",
-    note: (colorNoteDraft.value || "").trim(),
   });
   if (productForm.colors.length === 1 && colorImageDraft.value) {
     productForm.image_url = colorImageDraft.value;
   }
   colorDraft.value = "";
   colorImageDraft.value = "";
-  colorNoteDraft.value = "";
 }
 
 // Doc file anh tu thiet bi -> data URL (base64) de luu vao CSDL
@@ -2828,6 +2683,10 @@ export function toggleSize(size) {
 export function hasSize(size) {
   return productForm.sizes.some((x) => String(x) === String(size));
 }
+export function buildVariantSku(name, color, size) {
+  const part = (value) => plainText(value).toUpperCase().replace(/[^A-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${part(name || "SP").slice(0, 4)}-${part(color).slice(0, 42)}-${part(size).slice(0, 10)}`;
+}
 export function generateVariants() {
   const list = [];
   const colors = productForm.colors.length
@@ -2844,12 +2703,7 @@ export function generateVariants() {
           color: c.name,
           hex: c.hex,
           size: s,
-          sku:
-            (productForm.name || "SP").slice(0, 4).toUpperCase() +
-            "-" +
-            c.name.slice(0, 2).toUpperCase() +
-            "-" +
-            s,
+          sku: buildVariantSku(productForm.name, c.name, s),
           stock: 0,
         },
       );
@@ -2868,13 +2722,6 @@ export function getMaterialName(id) {
   const m = db.materials.find((x) => String(x.id) === String(id));
   return m ? m.name : "—";
 }
-export const collectionsOfBrand = computed(() =>
-  productForm.brand_id
-    ? db.collections.filter(
-        (c) => String(c.brand_id) === String(productForm.brand_id),
-      )
-    : db.collections,
-);
 export async function saveProduct() {
   if (!productForm.name) {
     notify("Vui lòng nhập tên sản phẩm", "error");
@@ -2917,12 +2764,7 @@ export async function saveProduct() {
         color: c.name,
         hex: colorHex(c.name),
         size: String(sv.size),
-        sku:
-          (productForm.name || "SP").slice(0, 4).toUpperCase() +
-          "-" +
-          (c.name || "").slice(0, 2).toUpperCase() +
-          "-" +
-          sv.size,
+        sku: buildVariantSku(productForm.name, c.name, sv.size),
         stock,
       });
     });
@@ -2965,41 +2807,6 @@ export async function saveProduct() {
   notify(isEdit ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới", "success");
   productFormOpen.value = false;
   fetchAllData();
-}
-
-/* ---------------- INVENTORY ---------------- */
-export const inventorySearch = ref("");
-export const lowStockOnly = ref(false);
-export const filteredInventory = computed(() => {
-  const q = inventorySearch.value.trim().toLowerCase();
-  return db.inventory.filter(
-    (v) =>
-      (!q ||
-        (v.product_name || "").toLowerCase().includes(q) ||
-        (v.sku || "").toLowerCase().includes(q)) &&
-      (!lowStockOnly.value || Number(v.stock) <= LOW_STOCK_THRESHOLD),
-  );
-});
-export async function updateStock(v) {
-  // Giới hạn hợp lý: tồn kho là số nguyên, không âm, tối đa 100000
-  let stock = Math.floor(Number(v.stock));
-  if (isNaN(stock) || stock < 0) stock = 0;
-  if (stock > 100000) stock = 100000;
-  v.stock = stock;
-  const res = await apiWrite("/inventory/" + v.id, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stock, version: v.version }),
-  });
-  if (!res.ok) {
-    notify(
-      "Cập nhật tồn kho thất bại (mã " + res.status + ") cho " + v.sku,
-      "error",
-    );
-    return;
-  }
-  v.version = res.data.version;
-  notify("Đã cập nhật tồn kho: " + v.sku + " = " + stock, "success");
 }
 
 // ---- Modal chi tiết sản phẩm (hiển thị đầy đủ thuộc tính) ----
@@ -3048,11 +2855,6 @@ export function productStockTotal(productId) {
   const p = db.products.find((x) => String(x.id) === String(productId));
   return p ? Number(p.total_stock) || 0 : 0;
 }
-export function getCollectionName(id) {
-  const c = db.collections.find((x) => String(x.id) === String(id));
-  return c ? c.name : "—";
-}
-
 /* ---------------- CATALOG HELPERS ---------------- */
 export const categorySearch = ref("");
 export const filteredCategories = computed(() => db.categories);
@@ -3081,7 +2883,6 @@ export function getBrandName(id) {
   const b = db.brands.find((x) => String(x.id) === String(id));
   return b ? b.name : "—";
 }
-export const filteredCollections = computed(() => db.collections);
 export const filteredColors = computed(() => db.colors);
 export const filteredSizes = computed(() => db.sizes);
 export const filteredMaterials = computed(() => db.materials);
@@ -3575,7 +3376,7 @@ export const staffStats = computed(() => {
     if (o.status === "Đã giao hàng thành công") {
       map[who].done++;
     }
-    map[who].revenue += recognizedOrderRevenue(o, db.returns);
+    map[who].revenue += recognizedOrderRevenue(o);
   });
   return Object.values(map).sort((a, b) => b.revenue - a.revenue);
 });
@@ -3638,12 +3439,6 @@ const fieldDefs = {
       type: "image",
     },
     { key: "sort_order", label: "Thứ tự", type: "number" },
-    { key: "active", label: "Hoạt động", type: "checkbox" },
-  ],
-  collections: [
-    { key: "name", label: "Tên bộ sưu tập" },
-    { key: "brand_id", label: "Thương hiệu", type: "select" },
-    { key: "slug", label: "Slug" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   materials: [
@@ -3742,7 +3537,6 @@ export const formFields = computed(() => {
 const formTitles = {
   categories: "Danh Mục",
   brands: "Thương Hiệu",
-  collections: "Bộ Sưu Tập",
   materials: "Chất Liệu",
   colors: "Màu Sắc",
   sizes: "Kích Thước",
@@ -4025,6 +3819,7 @@ export function mapOrder(o) {
     // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
     date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
+    historical_refund_amount: o.HistoricalRefundAmount ?? o.historical_refund_amount ?? 0,
     shipping_fee: o.ShippingFee ?? o.shippingFee ?? o.shipping_fee ?? 0,
     discount: o.DiscountAmount ?? o.discountAmount ?? o.discount ?? 0,
     status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
@@ -4162,9 +3957,7 @@ async function loadAllData(isBackground) {
       customers,
       accounts,
       brands,
-      collections,
       inventory,
-      returns,
       variantDiscounts,
       colors,
       sizes,
@@ -4177,9 +3970,7 @@ async function loadAllData(isBackground) {
       api("/customers"),
       api("/accounts"),
       api("/brands"),
-      api("/collections"),
       api("/inventory"),
-      api("/returns"),
       api("/variantDiscounts"),
       api("/colors"),
       api("/sizes"),
@@ -4193,9 +3984,7 @@ async function loadAllData(isBackground) {
       customers,
       accounts,
       brands,
-      collections,
       inventory,
-      returns,
       variantDiscounts,
       colors,
       sizes,
@@ -4222,7 +4011,6 @@ async function loadAllData(isBackground) {
       category: p.CategoryName ?? p.category ?? "",
       brand_id: p.BrandID ?? p.brand_id,
       brand: p.BrandName ?? p.brand ?? "",
-      collection_id: p.CollectionID ?? p.collection_id,
       material_id: p.MaterialID ?? p.material_id ?? null,
       image_url: p.ImageURL ?? p.image_url ?? "",
       description: p.Description ?? p.description ?? "",
@@ -4288,13 +4076,7 @@ async function loadAllData(isBackground) {
       sort_order: b.SortOrder ?? b.sort_order ?? 0,
       active: (b.IsActive ?? b.active) !== false,
     }));
-    db.collections = (collections || []).map((c) => ({
-      id: c.CollectionID ?? c.id,
-      name: c.CollectionName ?? c.name,
-      brand_id: c.BrandID ?? c.brand_id,
-      slug: c.Slug ?? c.slug ?? "",
-      active: (c.IsActive ?? c.active) !== false,
-    }));
+    const previousInventory = new Map(db.inventory.map(v => [String(v.id), v]));
     db.inventory = (inventory || []).map((v) => ({
       id: v.ProductVariantID ?? v.id,
       product_id: v.ProductID ?? v.product_id,
@@ -4307,7 +4089,11 @@ async function loadAllData(isBackground) {
       version: v.Version ?? v.version,
       price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
       image_url: v.image_url ?? v.ImageURL ?? "",
-    }));
+    })).map(v => {
+      const previous = previousInventory.get(String(v.id));
+      return previous && Number(previous.version || 0) > Number(v.version || 0)
+        ? { ...v, stock: previous.stock, version: previous.version } : v;
+    });
     /* DU PHONG: neu API /inventory gap su co thi dung bien the kem theo
        trong /products de dung lai danh sach kho. Nho vay trang San Pham
        va trang Kho khong con hien so 0 sai su that. */
@@ -4331,23 +4117,6 @@ async function loadAllData(isBackground) {
       });
       db.inventory = rebuilt;
     }
-    db.returns = (returns || []).map((r) => ({
-      id: r.ReturnID ?? r.id,
-      order_id: r.OrderID ?? r.order_id,
-      return_type: r.ReturnType ?? r.return_type ?? "Trả hàng",
-      payment_method: r.PaymentMethod ?? r.payment_method ?? "COD",
-      payment_status: r.PaymentStatus ?? r.payment_status ?? "Chưa thanh toán",
-      reason: r.Reason ?? r.reason ?? "",
-      refund_amount: r.RefundAmount ?? r.refund_amount ?? 0,
-      status: r.Status ?? r.status ?? "Chờ xử lý",
-      details: r.Details ?? r.details ?? [],
-      tracking_number: r.TrackingNumber ?? r.tracking_number ?? "",
-      inspection_note: r.InspectionNote ?? r.inspection_note ?? "",
-      resolution_note: r.ResolutionNote ?? r.resolution_note ?? "",
-      restocked_at: r.RestockedAt ?? r.restocked_at ?? null,
-      wallet_credited_at: r.WalletCreditedAt ?? r.wallet_credited_at ?? null,
-      refunded_at: r.RefundedAt ?? r.refunded_at ?? null,
-    }));
     db.variantDiscounts = (variantDiscounts || []).map((v) => ({
       id: v.VariantDiscountID ?? v.id,
       apply_scope: (v.ApplyScope ?? v.apply_scope) === "variant" ? "variant" : "color",

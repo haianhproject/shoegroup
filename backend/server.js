@@ -37,6 +37,8 @@ const { initializeDatabase } = require("./src/database/initialize");
 const { createEmailService } = require("./src/email");
 const { getPosBankTransferConfig } = require("./src/pos-payment");
 const { validatePosCustomerDetails } = require("./src/pos-customer");
+const { normalizeSku, variantSku } = require("./src/sku");
+const { registerPosCartRoutes, claimPosCart, consumePosCart } = require("./src/pos-cart");
 
 const app = express();
 app.disable("x-powered-by");
@@ -294,77 +296,6 @@ const connectAndInitializeDatabase = () => {
     );
   } catch (err) {
     console.error("[DB MIGRATION] Khong tat phuong thuc EXPRESS:", err?.message || err);
-  }
-  try {
-    // Ví ShoeGroup và nhật ký giao dịch được tạo idempotent để dùng được cả
-    // với CSDL mới lẫn CSDL đã chạy từ các bản schema trước.
-    await pool.request().query(`
-      IF OBJECT_ID(N'dbo.Returns', N'U') IS NOT NULL
-         AND COL_LENGTH('dbo.Returns', 'WalletCreditedAt') IS NULL
-        ALTER TABLE dbo.Returns ADD WalletCreditedAt datetime NULL;
-      IF OBJECT_ID(N'dbo.ShoeGroupWallets', N'U') IS NULL
-      BEGIN
-        CREATE TABLE dbo.ShoeGroupWallets (
-          WalletID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
-          UserID int NOT NULL UNIQUE,
-          Balance decimal(18,2) NOT NULL CONSTRAINT DF_ShoeGroupWallets_Balance DEFAULT (0),
-          CreatedAt datetime NOT NULL CONSTRAINT DF_ShoeGroupWallets_CreatedAt DEFAULT (GETDATE()),
-          UpdatedAt datetime NOT NULL CONSTRAINT DF_ShoeGroupWallets_UpdatedAt DEFAULT (GETDATE()),
-          CONSTRAINT FK_ShoeGroupWallets_Users FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
-        );
-      END;
-      IF OBJECT_ID(N'dbo.ShoeGroupWalletTransactions', N'U') IS NULL
-      BEGIN
-        CREATE TABLE dbo.ShoeGroupWalletTransactions (
-          WalletTransactionID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
-          UserID int NOT NULL,
-          ReturnID int NULL,
-          TransactionType varchar(30) NOT NULL,
-          Amount decimal(18,2) NOT NULL,
-          BalanceAfter decimal(18,2) NOT NULL,
-          Description nvarchar(500) NULL,
-          CreatedAt datetime NOT NULL CONSTRAINT DF_ShoeGroupWalletTransactions_CreatedAt DEFAULT (GETDATE()),
-          CONSTRAINT FK_ShoeGroupWalletTransactions_Users FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID),
-          CONSTRAINT FK_ShoeGroupWalletTransactions_Returns FOREIGN KEY (ReturnID) REFERENCES dbo.Returns(ReturnID)
-        );
-      END;
-      IF OBJECT_ID(N'dbo.ShoeGroupWalletWithdrawals', N'U') IS NULL
-      BEGIN
-        CREATE TABLE dbo.ShoeGroupWalletWithdrawals (
-          WithdrawalID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
-          UserID int NOT NULL,
-          Amount decimal(18,2) NOT NULL,
-          Method varchar(20) NOT NULL,
-          Destination nvarchar(255) NOT NULL,
-          HolderName nvarchar(120) NULL,
-          Status nvarchar(30) NOT NULL CONSTRAINT DF_ShoeGroupWalletWithdrawals_Status DEFAULT (N'Chờ xử lý'),
-          Note nvarchar(500) NULL,
-          CreatedAt datetime NOT NULL CONSTRAINT DF_ShoeGroupWalletWithdrawals_CreatedAt DEFAULT (GETDATE()),
-          ProcessedAt datetime NULL,
-          ProcessedBy int NULL,
-          CONSTRAINT FK_ShoeGroupWalletWithdrawals_Users FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
-        );
-      END;
-      IF EXISTS (
-        SELECT 1 FROM sys.indexes
-        WHERE name=N'IX_ShoeGroupWalletTransactions_ReturnRefund'
-          AND object_id=OBJECT_ID(N'dbo.ShoeGroupWalletTransactions')
-      )
-        DROP INDEX IX_ShoeGroupWalletTransactions_ReturnRefund
-          ON dbo.ShoeGroupWalletTransactions;
-      CREATE UNIQUE INDEX IX_ShoeGroupWalletTransactions_ReturnRefund
-        ON dbo.ShoeGroupWalletTransactions(ReturnID, TransactionType)
-        WHERE ReturnID IS NOT NULL AND TransactionType='REFUND';
-      IF NOT EXISTS (
-        SELECT 1 FROM sys.indexes
-        WHERE name=N'IX_ShoeGroupWalletTransactions_UserCreated'
-          AND object_id=OBJECT_ID(N'dbo.ShoeGroupWalletTransactions')
-      )
-        CREATE INDEX IX_ShoeGroupWalletTransactions_UserCreated
-          ON dbo.ShoeGroupWalletTransactions(UserID, CreatedAt DESC, WalletTransactionID DESC);
-    `);
-  } catch (err) {
-    console.error("[DB MIGRATION] Khong tao duoc vi ShoeGroup:", err?.message || err);
   }
   return pool;
   }).catch((error) => {
@@ -1419,6 +1350,8 @@ app.delete("/api/cart", async (req, res) => {
 
 // 1. TAO DON HANG (tu Checkout online VA tu Ban tai quay / POS)
 //    -> Doc duoc CA hai dinh dang: camelCase (online) va snake_case (POS).
+registerPosCartRoutes(app, { pool, poolConnect, publishAdminEvent });
+
 app.post("/api/orders", async (req, res) => {
   try {
     await poolConnect;
@@ -1585,6 +1518,9 @@ app.post("/api/orders", async (req, res) => {
       if (replay) {
         await transaction.commit();
         return res.json(replay);
+      }
+      if (isAdminOrder) {
+        await claimPosCart(transaction, authenticatedUserId, b.pos_cart_revision, items);
       }
       let selectedAddressForShipping = null;
       if (addressId) {
@@ -1932,12 +1868,12 @@ app.post("/api/orders", async (req, res) => {
         }
       }
 
-      // B3: Đặt đơn chỉ kiểm tra kho, không giữ và không trừ tồn. Riêng đơn
-      // tại quầy đã ở trạng thái xác nhận/đã nhận là giao dịch hoàn tất ngay,
-      // nên dùng cùng hàm trừ tồn nguyên tử như thao tác quản lý xác nhận.
-      await validateOrderStock(transaction, orderId);
-      if (isAdminOrder && ["Đã xác nhận", "Đã nhận hàng"].includes(status)) {
-        await reserveOrderStock(transaction, orderId);
+      // B3: Đặt đơn chỉ kiểm tra kho với kênh online. Hàng tại quầy đã trừ
+      // khi thêm vào giỏ; chuyển quyền giữ sang đơn, không kiểm tra/trừ lần hai.
+      if (isAdminOrder) {
+        await consumePosCart(transaction, authenticatedUserId, orderId);
+      } else {
+        await validateOrderStock(transaction, orderId);
       }
 
       // CartItems chỉ còn là dữ liệu giỏ tương thích cho client cũ. Checkout
@@ -2194,7 +2130,7 @@ app.get("/api/orders", async (req, res) => {
                SELECT 1 FROM OrderStatusHistory ach
                WHERE ach.OrderID=o.OrderID AND LEFT(ISNULL(ach.Note, N''), 17)=N'[ADDRESS_CHANGED]'
              ) THEN 1 ELSE 0 END AS bit) as address_changed,
-              o.TotalAmount as total, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
+              o.TotalAmount as total, o.HistoricalRefundAmount as historical_refund_amount, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
               o.DeliveryDistanceKm as shipping_distance_km,
               sm.MethodCode as shipping_method_code,
               o.EstimatedDeliveryText as estimated_delivery_text,
@@ -2671,9 +2607,9 @@ app.get("/api/products", async (req, res) => {
               CAST(0 AS decimal(18,2)) as sale_price,
               p.CategoryID as category_id, c.CategoryName as category,
               p.BrandID as brand_id, b.BrandName as brand,
-              p.CollectionID as collection_id, p.MaterialID as material_id,
+              p.MaterialID as material_id,
               p.ImageURL as image_url, p.IsActive as active,
-              p.Description as description, p.ImageGallery as image_gallery,
+              p.Description as description,
               p.ParentSKU as parent_sku, p.IsFeatured as is_featured
        FROM Products p
        LEFT JOIN Categories c ON p.CategoryID = c.CategoryID
@@ -2804,10 +2740,10 @@ async function upsertVariants(productId, variants, transaction) {
   const keptVariantIds = [];
 
   for (let v of variants) {
-    const sku = v.sku ?? v.ChildSKU ?? null;
     const color = v.color ?? v.ColorName ?? "";
     const hex = v.hex ?? v.color_hex ?? v.ColorHex ?? "";
     const size = v.size ?? v.Size ?? "";
+    const sku = variantSku(v.sku ?? v.ChildSKU, productId, color, size);
     let stock = Number(v.stock ?? v.StockQuantity ?? 0);
     if (isNaN(stock) || stock < 0) stock = 0;
     // FIX: bo qua ban ghi rac (khong co ca mau lan size) de khong tao bien the trong voi ton = 0
@@ -2930,16 +2866,12 @@ function bindProduct(request, b) {
   return request
     .input("n", sql.NVarChar, b.name)
     .input("p", sql.Decimal(18, 0), b.price || 0)
-    // Không còn giảm giá ở cấp Products; cột SalePrice được giữ để tương
-    // thích schema cũ nhưng luôn được xóa khi tạo/cập nhật sản phẩm.
-    .input("sp", sql.Decimal(18, 0), 0)
     .input("c", sql.Int, b.category_id || null)
     .input("br", sql.Int, b.brand_id || null)
-    .input("col", sql.Int, b.collection_id || null)
     .input("mid", sql.Int, b.material_id || null)
     .input("img", sql.VarChar(sql.MAX), imgUrl)
     .input("desc", sql.NVarChar(sql.MAX), b.description || "")
-    .input("psku", sql.VarChar, b.parent_sku || "")
+    .input("psku", sql.VarChar, normalizeSku(b.parent_sku || ""))
     .input("feat", sql.Bit, !!b.is_featured)
     .input("a", sql.Bit, b.active !== false);
 }
@@ -2965,9 +2897,9 @@ app.post("/api/products", async (req, res) => {
     transaction = new sql.Transaction(pool);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     let r = await bindProduct(new sql.Request(transaction), b).query(`
-      INSERT INTO Products (ProductName, BasePrice, SalePrice, CategoryID, BrandID, CollectionID, MaterialID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
+      INSERT INTO Products (ProductName, BasePrice, CategoryID, BrandID, MaterialID, ImageURL, Description, ParentSKU, IsFeatured, IsActive)
       OUTPUT INSERTED.ProductID
-      VALUES (@n, @p, @sp, @c, @br, @col, @mid, @img, @desc, @psku, @feat, @a)
+      VALUES (@n, @p, @c, @br, @mid, @img, @desc, @psku, @feat, @a)
     `);
     const newId = r.recordset[0].ProductID;
     await upsertVariants(newId, validation.value.variants, transaction);
@@ -3004,7 +2936,7 @@ app.put("/api/products/:id", async (req, res) => {
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     const update = await bindProduct(new sql.Request(transaction).input("id", sql.Int, id), b)
       .query(`
-      UPDATE Products SET ProductName=@n, BasePrice=@p, SalePrice=@sp, CategoryID=@c, BrandID=@br, CollectionID=@col,
+      UPDATE Products SET ProductName=@n, BasePrice=@p, CategoryID=@c, BrandID=@br,
         MaterialID=@mid, ImageURL=@img, Description=@desc,
         ParentSKU=@psku, IsFeatured=@feat, IsActive=@a WHERE ProductID=@id
     `);
@@ -3096,14 +3028,12 @@ app.get("/api/revenue-by-product", async (req, res) => {
           p.ProductName as name,
           p.ImageURL as image,
           p.IsActive as active,
-          SUM((od.Quantity-ISNULL(returned.quantity,0)) * od.UnitPrice) as revenue,
-          SUM(od.Quantity-ISNULL(returned.quantity,0)) as sold,
+          SUM((od.Quantity-od.HistoricalReturnedQuantity) * od.UnitPrice) as revenue,
+          SUM(od.Quantity-od.HistoricalReturnedQuantity) as sold,
           'gross_before_order_discount_and_shipping' as revenue_basis
       FROM OrderDetails od
       JOIN Orders o ON od.OrderID = o.OrderID
       JOIN Products p ON od.ProductID = p.ProductID
-      OUTER APPLY (SELECT SUM(rd.Quantity) AS quantity FROM ReturnDetails rd JOIN Returns r ON r.ReturnID=rd.ReturnID
-        WHERE rd.OrderDetailID=od.OrderDetailID AND r.Status=N'Đã hoàn tất') returned
       WHERE ${revenueSql.recognizedWhere}
       GROUP BY p.ProductID, p.ProductName, p.ImageURL, p.IsActive
       ORDER BY revenue DESC
@@ -3524,792 +3454,6 @@ app.delete("/api/materials/:id", async (req, res) => {
   }
 });
 
-// ================= API TRA HANG (Returns) =================
-const RETURN_STATUS_ALIASES = {
-  "cho xu ly": "Chờ xử lý",
-  "da tiep nhan": "Đã tiếp nhận",
-  "dang kiem tra": "Đang kiểm tra",
-  "da duyet": "Chấp nhận hoàn tiền",
-  "chap nhan hoan tien": "Chấp nhận hoàn tiền",
-  "cho hoan tien": "Chấp nhận hoàn tiền",
-  "da hoan tien": "Đã hoàn tiền",
-  "hoan tat": "Đã hoàn tất",
-  "da hoan tat": "Đã hoàn tất",
-  "tu choi": "Từ chối",
-  "su co": "Sự cố",
-  "huy": "Hủy",
-  "da huy": "Hủy",
-};
-const RETURN_TRANSITIONS = {
-  "cho xu ly": new Set(["cho xu ly", "da tiep nhan", "dang kiem tra", "tu choi", "huy"]),
-  "da tiep nhan": new Set(["da tiep nhan", "dang kiem tra", "tu choi", "su co"]),
-  "dang kiem tra": new Set(["dang kiem tra", "chap nhan hoan tien", "tu choi", "su co"]),
-  "chap nhan hoan tien": new Set(["chap nhan hoan tien", "da hoan tien", "su co"]),
-  "da hoan tien": new Set(["da hoan tien", "da hoan tat"]),
-  "da hoan tat": new Set(["da hoan tat"]),
-  "tu choi": new Set(["tu choi"]),
-  "su co": new Set(["su co", "dang kiem tra", "tu choi"]),
-  "huy": new Set(["huy"]),
-  "da duyet": new Set(["da duyet", "hoan tat"]),
-  "hoan tat": new Set(["hoan tat"]),
-};
-
-function normalizeReturnType(value) {
-  return normalizeOrderStatus(value).replace(/[\s_-]+/g, " ").trim();
-}
-
-// Chuẩn hóa loại yêu cầu trả hàng từ cả giao diện mới và các client cũ.
-// Lưu một tập giá trị hữu hạn giúp tránh dữ liệu rác và bảo đảm các nhánh
-// xử lý (đặc biệt "chưa nhận hàng"/"gửi bưu cục") luôn nhận đúng loại.
-function canonicalReturnType(value) {
-  const normalized = normalizeReturnType(value || "customer");
-  const aliases = {
-    customer: "CUSTOMER",
-    return: "CUSTOMER",
-    refund: "CUSTOMER",
-    direct: "DIRECT",
-    "in store": "DIRECT",
-    "truc tiep": "DIRECT",
-    "tra truc tiep tai quay": "DIRECT",
-    shipper: "SHIPPER",
-    courier: "SHIPPER",
-    "shipper tu lay": "SHIPPER",
-    "post office": "POST_OFFICE",
-    "buu cuc": "POST_OFFICE",
-    "gui tai buu cuc": "POST_OFFICE",
-    "tra theo yeu cau khach hang": "CUSTOMER",
-    "not received": "NOT_RECEIVED",
-    "chua nhan duoc hang": "NOT_RECEIVED",
-    "khong nhan duoc hang": "NOT_RECEIVED",
-    "delivery issue": "NOT_RECEIVED",
-    "delivery failed": "NOT_RECEIVED",
-    "delivery failure": "NOT_RECEIVED",
-    "failed delivery": "NOT_RECEIVED",
-    "khong giao duoc hang": "NOT_RECEIVED",
-    "giao hang that bai": "NOT_RECEIVED",
-    "ve kho": "NOT_RECEIVED",
-  };
-  return aliases[normalized] || null;
-}
-
-const comparableReturnText = (value, maxLength = 255) => {
-  if (value && typeof value === "object") {
-    value = value.size_name ?? value.sizeName ?? value.name ?? value.label
-      ?? value.color_label ?? value.colorName ?? value.color_name;
-  }
-  return normalizeOrderStatus(cleanAddressText(value, maxLength));
-};
-
-const parseOptionalPositiveId = (value, label) => {
-  if (value === undefined || value === null || value === "") return { ok: true, value: null };
-  const parsed = positiveInt(value);
-  return parsed ? { ok: true, value: parsed } : { ok: false, message: `${label} không hợp lệ.` };
-};
-
-function isNotReceivedReturn(value) {
-  return new Set([
-    "not received",
-    "chua nhan duoc hang",
-    "khong nhan duoc hang",
-    "khong giao duoc hang",
-    "giao hang that bai",
-    "ve kho",
-    "delivery issue",
-    "delivery failed",
-    "delivery failure",
-    "failed delivery",
-  ]).has(normalizeReturnType(value));
-}
-
-// Khi yêu cầu trả hàng bị từ chối/hủy, đơn phải quay về đúng mốc trước khi
-// tạo yêu cầu.  Không thể mặc định "Đã nhận hàng": khách có thể chưa bấm
-// xác nhận nhận hàng, hoặc chỉ đang báo kiện thất lạc trong lúc vận chuyển.
-// Các mốc ngày là nguồn tin cậy nhất; trạng thái hiện tại thường đã là
-// "Yêu cầu trả hàng" nên chỉ dùng trạng thái để dự phòng cho dữ liệu cũ.
-function restoreStatusAfterReturn(row) {
-  const status = normalizeOrderStatus(row && (row.ReturnOriginStatus || row.OrderStatus));
-  const received = Boolean(row && row.ReceivedConfirmedDate)
-    || ["da nhan hang", "received"].includes(status);
-  if (received) return "Đã nhận hàng";
-
-  const delivered = Boolean(row && row.DeliveredDate)
-    || ["da giao", "da giao hang thanh cong", "delivered"].includes(status);
-  if (delivered) return "Đã giao hàng thành công";
-
-  if (["giao hang that bai", "delivery failed", "delivery failure", "failed delivery", "delivery_failure"].includes(status)) return "Giao hàng thất bại";
-  if (["ve kho", "returned to warehouse", "warehouse return", "return_to_warehouse"].includes(status)) return "Về kho";
-  const shipping = ["dang van chuyen", "dang giao", "shipped", "shipping"].includes(status);
-  if (shipping || isNotReceivedReturn(row && row.ReturnType)) return "Đang vận chuyển";
-
-  // Yêu cầu trả hàng thường chỉ được tạo từ đơn đã giao; chọn mốc giao
-  // hàng thay vì đánh dấu khách đã nhận khi DB cũ thiếu timestamp.
-  return "Đã giao hàng thành công";
-}
-
-function canonicalReturnStatus(value) {
-  const key = normalizeOrderStatus(value);
-  return RETURN_STATUS_ALIASES[key] || null;
-}
-
-function returnTransitionAllowed(current, next) {
-  const c = normalizeOrderStatus(current);
-  const n = normalizeOrderStatus(next);
-  return c === n || Boolean(RETURN_TRANSITIONS[c] && RETURN_TRANSITIONS[c].has(n));
-}
-
-async function restockReturnItems(transaction, returnId) {
-  const existing = await new sql.Request(transaction)
-    .input("rid", sql.Int, returnId)
-    .query("SELECT RestockedAt FROM Returns WITH (UPDLOCK, HOLDLOCK) WHERE ReturnID=@rid");
-  if (!existing.recordset[0]) throw new Error("Khong tim thay yeu cau tra hang.");
-  if (existing.recordset[0].RestockedAt) return false;
-  const details = await new sql.Request(transaction)
-    .input("rid", sql.Int, returnId)
-    .query(`
-      SELECT od.ProductID, od.ProductVariantID, od.Size, od.Color, rd.Quantity, rd.Condition
-      FROM ReturnDetails rd
-      JOIN OrderDetails od ON od.OrderDetailID=rd.OrderDetailID
-      WHERE rd.ReturnID=@rid
-    `);
-  for (const row of details.recordset) {
-    const quantity = Number(row.Quantity) || 0;
-    if (quantity <= 0) continue;
-    // Hàng hư hỏng/tai nạn không được cộng lại vào tồn bán được.
-    // Vẫn giữ ReturnDetails.Condition để quản lý xử lý kho hỏng riêng nếu cần.
-    if (normalizeOrderStatus(row.Condition) !== "saleable") continue;
-    if (row.ProductVariantID) {
-      const updateResult = await new sql.Request(transaction)
-        .input("vid", sql.Int, row.ProductVariantID)
-        .input("q", sql.Int, quantity)
-        .query("UPDATE ProductVariants SET StockQuantity=ISNULL(StockQuantity,0)+@q, Version=Version+1 WHERE ProductVariantID=@vid");
-      if (!updateResult.rowsAffected?.[0]) throw new Error("Khong tim thay bien the de nhap lai kho.");
-    } else if (row.ProductID && row.Size && row.Color) {
-      const updateResult = await new sql.Request(transaction)
-        .input("pid", sql.Int, row.ProductID)
-        .input("sz", sql.NVarChar, row.Size)
-        .input("clr", sql.NVarChar, row.Color)
-        .input("q", sql.Int, quantity)
-        .query(`
-          UPDATE v SET StockQuantity=ISNULL(v.StockQuantity,0)+@q, Version=v.Version+1
-          FROM ProductVariants v
-          WHERE v.ProductVariantID=(SELECT TOP 1 ProductVariantID FROM ProductVariants WITH (UPDLOCK, HOLDLOCK) WHERE ProductID=@pid AND ISNULL(Size,N'')=@sz AND ISNULL(ColorName,N'')=@clr ORDER BY ProductVariantID)
-        `);
-      if (!updateResult.rowsAffected?.[0]) throw new Error("Khong tim thay bien the de nhap lai kho.");
-    }
-  }
-  await new sql.Request(transaction)
-    .input("rid", sql.Int, returnId)
-    .query("UPDATE Returns SET RestockedAt=GETDATE() WHERE ReturnID=@rid");
-  return true;
-}
-
-async function creditWalletForReturn(transaction, { userId, returnId, amount, description }) {
-  const uid = positiveInt(userId);
-  const rid = positiveInt(returnId);
-  const refund = Number(amount);
-  if (!uid || !rid || !Number.isFinite(refund) || refund <= 0) return false;
-  await new sql.Request(transaction)
-    .input("uid", sql.Int, uid)
-    .input("rid", sql.Int, rid)
-    .input("amt", sql.Decimal(18, 2), refund)
-    .input("desc", sql.NVarChar(500), cleanAddressText(description, 500))
-    .query(`
-      IF NOT EXISTS (SELECT 1 FROM ShoeGroupWallets WITH (UPDLOCK, HOLDLOCK) WHERE UserID=@uid)
-        INSERT INTO ShoeGroupWallets (UserID, Balance, CreatedAt, UpdatedAt)
-        VALUES (@uid, 0, GETDATE(), GETDATE());
-      DECLARE @balance decimal(18,2);
-      SELECT @balance=Balance FROM ShoeGroupWallets WITH (UPDLOCK, HOLDLOCK) WHERE UserID=@uid;
-      IF NOT EXISTS (
-        SELECT 1 FROM ShoeGroupWalletTransactions WITH (UPDLOCK, HOLDLOCK)
-        WHERE UserID=@uid AND ReturnID=@rid AND TransactionType='REFUND'
-      )
-      BEGIN
-        SET @balance=ISNULL(@balance,0)+@amt;
-        UPDATE ShoeGroupWallets SET Balance=@balance, UpdatedAt=GETDATE() WHERE UserID=@uid;
-        INSERT INTO ShoeGroupWalletTransactions
-          (UserID, ReturnID, TransactionType, Amount, BalanceAfter, Description, CreatedAt)
-        VALUES (@uid, @rid, 'REFUND', @amt, @balance, @desc, GETDATE());
-        IF COL_LENGTH('dbo.Returns','WalletCreditedAt') IS NOT NULL
-          UPDATE Returns SET WalletCreditedAt=ISNULL(WalletCreditedAt,GETDATE()) WHERE ReturnID=@rid;
-      END;
-    `);
-  return true;
-}
-
-async function finalizeReturn(transaction, returnRow, changedBy, resolutionNote) {
-  // Case "chưa nhận được hàng" là sự cố giao vận: khách không có hàng để
-  // gửi lại, vì vậy tuyệt đối không cộng lại tồn kho như một đơn trả thường.
-  const notReceived = isNotReceivedReturn(returnRow.ReturnType ?? returnRow.return_type);
-  const orderResult = await new sql.Request(transaction)
-    .input("oid", sql.Int, Number(returnRow.OrderID))
-    .query(`
-      SELECT UserID, PaymentMethod, PaymentStatus, TotalAmount, ShippingFee, DiscountAmount,
-             Status AS OrderStatus, DeliveredDate, ReceivedConfirmedDate,
-             (SELECT TOP 1 DiscountType FROM CouponRedemptions cr WHERE cr.OrderID=Orders.OrderID) AS CouponDiscountType
-      FROM Orders WITH (UPDLOCK, HOLDLOCK)
-      WHERE OrderID=@oid
-    `);
-  const order = orderResult.recordset[0];
-  if (!order) throw Object.assign(new Error("Khong tim thay don hang de hoan tien."), { statusCode: 404 });
-  const amounts = await new sql.Request(transaction).input('oid',sql.Int,returnRow.OrderID).input('rid',sql.Int,returnRow.ReturnID).query(`
-    SELECT
-      (SELECT SUM(Quantity) FROM OrderDetails WHERE OrderID=@oid) AS BoughtQuantity,
-      (SELECT SUM(rd.Quantity) FROM ReturnDetails rd JOIN Returns r ON r.ReturnID=rd.ReturnID
-        WHERE r.OrderID=@oid AND (r.ReturnID=@rid OR r.Status IN (N'Đã hoàn tất',N'Đã hoàn tiền'))) AS ReturnedQuantity,
-      (SELECT ISNULL(SUM(RefundAmount),0) FROM Returns WHERE OrderID=@oid AND ReturnID<>@rid AND RefundedAt IS NOT NULL) AS RefundedAmount;`);
-  const totals = amounts.recordset[0];
-  const fullReturn = notReceived || Number(totals.ReturnedQuantity) >= Number(totals.BoughtQuantity);
-  if (Number(order.DiscountAmount) > 0 && (!fullReturn || !order.CouponDiscountType)) {
-    throw Object.assign(new Error('BUSINESS RULE REQUIRED: cần phân bổ ưu đãi theo sản phẩm trước khi hoàn trả đơn giảm giá này.'), { statusCode: 409 });
-  }
-  const shippingPaid = Math.max(0, Number(order.ShippingFee) - (order.CouponDiscountType === 'freeship' ? Number(order.DiscountAmount) : 0));
-  const refundCeiling = Math.max(0, Number(order.TotalAmount) - shippingPaid - Number(totals.RefundedAmount));
-  returnRow.RefundAmount = Math.min(Number(returnRow.RefundAmount) || 0, refundCeiling);
-  const paymentCollected = isPaidPaymentStatus(order.PaymentStatus);
-  // Trả sản phẩm thành công hoàn cho cả COD/chuyển khoản nếu đã thu tiền.
-  // Báo chưa nhận hàng chỉ hoàn khi đơn được thanh toán chuyển khoản.
-  const canRefund = Number(returnRow.RefundAmount) > 0
-    && paymentCollected
-    && (!notReceived || isBankPayment(order.PaymentMethod));
-  if (canRefund && !positiveInt(order.UserID)) {
-    throw Object.assign(new Error('BUSINESS RULE REQUIRED: khách lẻ không có ví nhận tiền; cần quy trình hoàn tiền mặt được xác minh.'), { statusCode: 409 });
-  }
-  if (!canRefund) returnRow.RefundAmount = 0;
-  const restoredOrderStatus = fullReturn ? 'Đã hoàn tất trả hàng' : restoreStatusAfterReturn({ ...order, ...returnRow });
-  const restocked = notReceived
-    ? false
-    : await restockReturnItems(transaction, returnRow.ReturnID);
-  await new sql.Request(transaction)
-    .input("rid", sql.Int, returnRow.ReturnID)
-    .input("oid", sql.Int, returnRow.OrderID)
-    .input("refund", sql.Bit, canRefund ? 1 : 0)
-    .input("notReceived", sql.Bit, notReceived ? 1 : 0)
-    .input("amt", sql.Decimal(18,2), returnRow.RefundAmount)
-    .input("note", sql.NVarChar, cleanAddressText(resolutionNote, 1000))
-    .input("uid", sql.Int, Number(changedBy) || null)
-    .query(`
-      UPDATE Returns
-      SET Status=N'Đã hoàn tất',
-          RefundAmount=@amt,
-          RefundedAt=CASE WHEN @refund=1 THEN ISNULL(RefundedAt, GETDATE()) ELSE RefundedAt END,
-          ResolutionNote=COALESCE(NULLIF(@note,N''), ResolutionNote), UpdatedBy=@uid, UpdatedAt=GETDATE()
-      WHERE ReturnID=@rid
-    `);
-  await new sql.Request(transaction)
-    .input("oid", sql.Int, returnRow.OrderID)
-    .input("amt", sql.Decimal(18, 2), Number(returnRow.RefundAmount) || 0)
-    .input("refund", sql.Bit, canRefund ? 1 : 0)
-    .input("full", sql.Bit, fullReturn ? 1 : 0)
-    .input("status", sql.NVarChar(50), restoredOrderStatus)
-    .input("ref", sql.VarChar(100), `RETURN:${returnRow.ReturnID}`)
-    .query(`
-      UPDATE Orders
-      SET Status=@status,
-          PaymentStatus=CASE WHEN @refund=1 AND @full=1 THEN N'Hoàn tiền' ELSE PaymentStatus END,
-          PaymentConfirmedAt=CASE WHEN @refund=1 THEN ISNULL(PaymentConfirmedAt, GETDATE()) ELSE PaymentConfirmedAt END,
-          UpdatedAt=GETDATE()
-      WHERE OrderID=@oid;
-      IF @refund=1 AND NOT EXISTS (SELECT 1 FROM PaymentTransactions WHERE Provider=N'WALLET_REFUND' AND ProviderTxnRef=@ref)
-        INSERT INTO PaymentTransactions (OrderID, Provider, ProviderTxnRef, Amount, Status, SignatureValid, CreatedAt, CompletedAt)
-        VALUES (@oid, N'WALLET_REFUND', @ref, @amt, N'REFUNDED', 0, GETDATE(), GETDATE());
-    `);
-  if (canRefund) {
-    await creditWalletForReturn(transaction, {
-      userId: order.UserID,
-      returnId: returnRow.ReturnID,
-      amount: Number(returnRow.RefundAmount) || 0,
-      description: notReceived
-        ? `Hoàn tiền đơn chưa nhận hàng #${returnRow.OrderID}`
-        : `Hoàn tiền trả hàng #${returnRow.OrderID}`,
-    });
-  }
-  const finalRefundAmount = canRefund ? Number(returnRow.RefundAmount) || 0 : (notReceived ? 0 : Number(returnRow.RefundAmount) || 0);
-  return { restocked, canRefund, refundAmount: finalRefundAmount, orderStatus: restoredOrderStatus };
-}
-
-app.get("/api/returns", async (req, res) => {
-  try {
-    await poolConnect;
-    const request = pool.request();
-    let ownerFilter = "";
-    if (req.auth.role !== "Admin") {
-      const userId = Number(req.auth && req.auth.sub);
-      if (!userId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-      request.input("uid", sql.Int, userId);
-      ownerFilter = "WHERE o.UserID=@uid";
-    }
-    const returnsResult = await request.query(`
-      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.TrackingNumber, r.PostOfficeID,
-             r.ReturnAddress, r.Reason, r.Status, r.RefundAmount, r.CreatedAt, r.UpdatedAt,
-             r.InspectionNote, r.ResolutionNote, r.ApprovedAt, r.RefundedAt, r.RestockedAt,
-             r.WalletCreditedAt,
-             r.UpdatedBy, o.UserID, o.CustomerName, o.CustomerPhone, o.PaymentMethod,
-             o.PaymentStatus, o.Status AS OrderStatus
-      FROM Returns r JOIN Orders o ON o.OrderID=r.OrderID
-      ${ownerFilter}
-      ORDER BY CASE WHEN r.Status IN (N'Chờ xử lý',N'Đã tiếp nhận',N'Đang kiểm tra') THEN 0 ELSE 1 END,
-               r.CreatedAt ASC, r.ReturnID ASC
-    `);
-    const ids = returnsResult.recordset.map((row) => row.ReturnID);
-    let details = [];
-    if (ids.length) {
-      const detailsResult = await pool.request().query(`
-        SELECT rd.ReturnID, rd.ReturnDetailID, rd.OrderDetailID, rd.Quantity, rd.Reason, rd.Condition,
-               od.ProductID, od.ProductVariantID, od.ProductNameSnapshot AS ProductName,
-               od.Size, od.Color, od.UnitPrice
-        FROM ReturnDetails rd JOIN OrderDetails od ON od.OrderDetailID=rd.OrderDetailID
-        WHERE rd.ReturnID IN (${ids.map((id) => Number(id)).filter((id) => id > 0).join(",") || "0"})
-      `);
-      details = detailsResult.recordset;
-    }
-    res.json(returnsResult.recordset.map((row) => ({ ...row, Details: details.filter((d) => d.ReturnID === row.ReturnID) })));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post("/api/returns", async (req, res) => {
-  const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const isAdmin = req.auth && req.auth.role === "Admin";
-  const b = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
-  const orderId = positiveInt(b.order_id ?? b.orderId);
-  if (!authenticatedUserId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  if (!orderId) return res.status(400).json({ success: false, message: "Don hang khong hop le." });
-  const returnType = canonicalReturnType(b.return_type ?? b.returnType);
-  if (!returnType) return res.status(400).json({ success: false, message: "Loai yeu cau tra hang khong hop le." });
-  const notReceived = returnType === "NOT_RECEIVED";
-  if (b.items !== undefined && !Array.isArray(b.items)) return res.status(400).json({ success: false, message: "Danh sach san pham tra hang khong hop le." });
-  const rawItems = Array.isArray(b.items) ? b.items : [];
-  if (rawItems.length > 200) return res.status(400).json({ success: false, message: "Moi yeu cau chi duoc tra toi da 200 dong san pham." });
-  const items = rawItems.map((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-    const orderDetailId = positiveInt(item.order_detail_id ?? item.orderDetailId);
-    const productId = positiveInt(item.product_id ?? item.productId ?? item.id_product ?? item.product?.id_product);
-    const quantity = nonNegativeInt(item.quantity ?? item.return_qty, { max: 1000000, defaultValue: null });
-    return {
-      order_detail_id: orderDetailId,
-      product_id: productId,
-      quantity,
-      size: comparableReturnText(item.size, 100),
-      color: comparableReturnText(item.color, 100),
-      condition: cleanAddressText(item.condition, 30),
-      reason: cleanAddressText(item.reason, 500),
-    };
-  });
-  if (items.some((item) => !item)) return res.status(400).json({ success: false, message: "Dong san pham tra hang khong hop le." });
-  if (items.some((item) => !item.quantity || item.quantity < 1)) return res.status(400).json({ success: false, message: "So luong san pham tra phai la so nguyen duong." });
-  // Báo chưa nhận được hàng áp dụng cho cả kiện, nên API không bắt buộc
-  // client phải gửi danh sách sản phẩm (frontend sẽ tự điền nếu có).
-  if (!items.length && !notReceived) return res.status(400).json({ success: false, message: "Vui long chon san pham va so luong can tra." });
-  const trackingNumber = notReceived ? "" : cleanAddressText(b.tracking_number ?? b.trackingCode, 60);
-  const reason = cleanAddressText(b.reason, 500) || (notReceived ? "[Chưa nhận được hàng] Khách hàng chưa nhận được kiện hàng." : "");
-  if (!reason) return res.status(400).json({ success: false, message: "Vui long nhap ly do tra hang." });
-  const requestedStatus = canonicalReturnStatus(b.status || "Chờ xử lý");
-  const initialStatus = "Chờ xử lý";
-  const requestedRefund = nonNegativeNumber(b.refund_amount ?? b.refundAmount, { max: 1e12, defaultValue: null });
-  const parsedPostOffice = parseOptionalPositiveId(b.post_office_id ?? b.postOfficeId, "Buu cuc");
-  if (!parsedPostOffice.ok) return res.status(400).json({ success: false, message: parsedPostOffice.message });
-  const postOfficeId = notReceived ? null : parsedPostOffice.value;
-  let returnAddress = notReceived ? "" : cleanAddressText(b.return_address, 500);
-  if (returnType === "POST_OFFICE" && !postOfficeId) return res.status(400).json({ success: false, message: "Vui long chon buu cuc gui tra." });
-
-  await poolConnect;
-  const transaction = new sql.Transaction(pool);
-  try {
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    const orderResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
-      SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus, TotalAmount, ShippingAddress, ShippingFee, DiscountAmount,
-             (SELECT TOP 1 DiscountType FROM CouponRedemptions cr WHERE cr.OrderID=Orders.OrderID) AS CouponDiscountType,
-             DeliveredDate, ReceivedConfirmedDate, RevenueEligibleDate
-      FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE OrderID=@oid
-    `);
-    const order = orderResult.recordset[0];
-    if (!order) throw Object.assign(new Error("Khong tim thay don hang."), { statusCode: 404 });
-    if (!isAdmin && Number(order.UserID) !== authenticatedUserId) throw Object.assign(new Error("Ban khong duoc tra don hang nay."), { statusCode: 403 });
-    const normalizedOrderStatus = normalizeOrderStatus(order.Status);
-    const deliveredStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "da nhan hang", "received"]);
-    // Đã xác nhận nhận hàng thì không thể đồng thời báo "chưa nhận".
-    // Trường hợp đang giao/giao thất bại vẫn được mở case hỗ trợ giao vận.
-    const notReceivedStatuses = new Set(["da giao", "da giao hang thanh cong", "delivered", "dang van chuyen", "dang giao", "shipped", "shipping", "giao hang that bai", "delivery failed", "ve kho"]);
-    if (notReceived ? !notReceivedStatuses.has(normalizedOrderStatus) : !deliveredStatuses.has(normalizedOrderStatus)) {
-      throw Object.assign(new Error(notReceived
-        ? "Don hang chua o trang thai co the bao chua nhan duoc hang."
-        : "Don hang khong o trang thai co the tra hang."), { statusCode: 409 });
-    }
-    const returnWindowStart = order.ReceivedConfirmedDate || order.DeliveredDate;
-    if (returnWindowStart && Date.now() > new Date(returnWindowStart).getTime() + 14 * 24 * 60 * 60 * 1000) {
-      throw Object.assign(new Error("Don hang da qua thoi han doi tra 14 ngay."), { statusCode: 409 });
-    }
-    if (!returnAddress && normalizeReturnType(returnType) === "shipper") returnAddress = cleanAddressText(order.ShippingAddress, 500);
-    if (postOfficeId) {
-      const postOffice = await new sql.Request(transaction).input("po", sql.Int, postOfficeId).query("SELECT PostOfficeID FROM PostOffices WHERE PostOfficeID=@po AND ISNULL(IsActive,1)=1");
-      if (!postOffice.recordset.length) throw Object.assign(new Error("Buu cuc gui tra khong hop le."), { statusCode: 400 });
-    }
-    const duplicate = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
-      SELECT TOP 1 ReturnID FROM Returns WITH (UPDLOCK, HOLDLOCK)
-      WHERE OrderID=@oid AND ISNULL(Status,N'Chờ xử lý') NOT IN (
-        N'Từ chối',N'Tu choi',N'Rejected',
-        N'Hủy',N'Huy',N'Cancelled',N'Canceled',N'Đã hủy',N'Da huy',N'Đã hoàn tất',N'Đã hoàn tiền'
-      )
-    `);
-    if (duplicate.recordset.length) throw Object.assign(new Error("Don hang da co yeu cau tra hang dang xu ly."), { statusCode: 409 });
-    const detailResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
-      SELECT od.OrderDetailID, od.ProductID, od.ProductVariantID, od.Size, od.Color,
-             od.Quantity, od.UnitPrice, COALESCE(od.ProductNameSnapshot,p.ProductName,N'San pham') AS ProductName
-      FROM OrderDetails od LEFT JOIN Products p ON p.ProductID=od.ProductID
-      WHERE od.OrderID=@oid
-    `);
-    if (!detailResult.recordset.length) throw Object.assign(new Error("Don hang khong co san pham de tra."), { statusCode: 409 });
-    // Nếu client không gửi items cho case chưa nhận hàng, coi toàn bộ dòng
-    // hàng của đơn là một kiện thất lạc để vẫn tính đúng khoản cần hoàn (nếu
-    // khách đã thanh toán) và hiển thị đầy đủ chi tiết cho quản trị viên.
-    // Báo chưa nhận là sự cố của cả kiện, không phải trả từng dòng hàng.
-    // Luôn lấy đủ số lượng trong đơn để không cho client vô tình gửi thiếu
-    // (hoặc cố tình tách nhỏ) khoản hoàn của kiện thất lạc.
-    const effectiveItems = notReceived
-      ? detailResult.recordset.map((detail) => ({
-        order_detail_id: detail.OrderDetailID,
-        quantity: detail.Quantity,
-        reason,
-      }))
-      : items;
-    const detailsById = new Map(detailResult.recordset.map((row) => [Number(row.OrderDetailID), row]));
-    const activeReturnResult = await new sql.Request(transaction).input("oid", sql.Int, orderId).query(`
-      SELECT rd.OrderDetailID, SUM(ISNULL(rd.Quantity,0)) AS Quantity
-      FROM ReturnDetails rd JOIN Returns r ON r.ReturnID=rd.ReturnID
-      WHERE r.OrderID=@oid AND ISNULL(r.Status,N'Chờ xử lý') NOT IN (
-        N'Từ chối',N'Tu choi',N'Rejected',
-        N'Hủy',N'Huy',N'Cancelled',N'Canceled',N'Đã hủy',N'Da huy'
-      )
-      GROUP BY rd.OrderDetailID
-    `);
-    const alreadyReturned = new Map(activeReturnResult.recordset.map((row) => [Number(row.OrderDetailID), Number(row.Quantity) || 0]));
-    const selected = new Map();
-    const selectedMeta = new Map();
-    for (const item of effectiveItems) {
-      const quantity = Number(item.quantity);
-      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1000000) {
-        throw Object.assign(new Error("So luong san pham tra khong hop le."), { statusCode: 400 });
-      }
-      let detail = item.order_detail_id ? detailsById.get(Number(item.order_detail_id)) : null;
-      if (!detail) {
-        detail = detailResult.recordset.find((candidate) =>
-          Number(candidate.ProductID) === Number(item.product_id) &&
-          comparableReturnText(candidate.Size, 100) === item.size &&
-          comparableReturnText(candidate.Color, 100) === item.color);
-      }
-      if (!detail) throw Object.assign(new Error("San pham tra hang khong thuoc don hang."), { statusCode: 400 });
-      if (item.product_id && Number(detail.ProductID) !== Number(item.product_id)) {
-        throw Object.assign(new Error("San pham tra hang khong khop voi don hang."), { statusCode: 400 });
-      }
-      const max = Number(detail.Quantity || 0) - (alreadyReturned.get(Number(detail.OrderDetailID)) || 0);
-      const next = (selected.get(Number(detail.OrderDetailID)) || 0) + quantity;
-      if (next > max) throw Object.assign(new Error(`So luong tra vuot qua so luong da mua (${detail.ProductName}).`), { statusCode: 409 });
-      selected.set(Number(detail.OrderDetailID), next);
-      selectedMeta.set(Number(detail.OrderDetailID), item);
-    }
-    if (!selected.size && !notReceived) throw Object.assign(new Error("Vui long chon it nhat mot san pham de tra."), { statusCode: 400 });
-    const calculatedRefund = [...selected.entries()].reduce((sum, [detailId, quantity]) => sum + Number(detailsById.get(detailId).UnitPrice || 0) * quantity, 0);
-    const fullSelection = detailResult.recordset.every(detail => (selected.get(Number(detail.OrderDetailID)) || 0) === Number(detail.Quantity));
-    if (Number(order.DiscountAmount) > 0 && (!fullSelection || !order.CouponDiscountType)) {
-      throw Object.assign(new Error('BUSINESS RULE REQUIRED: cần phân bổ ưu đãi theo sản phẩm trước khi hoàn trả đơn giảm giá này.'), { statusCode: 409 });
-    }
-    const paidShipping = Math.max(0, Number(order.ShippingFee) - (order.CouponDiscountType === 'freeship' ? Number(order.DiscountAmount) : 0));
-    const refundEligible = isPaidPaymentStatus(order.PaymentStatus)
-      && (!notReceived || isBankPayment(order.PaymentMethod));
-    const canonicalRefund = refundEligible ? Math.min(calculatedRefund, Math.max(0, Number(order.TotalAmount) - paidShipping)) : 0;
-    const refundAmount = notReceived
-      ? canonicalRefund
-      : (isAdmin && Number.isFinite(requestedRefund) && requestedRefund >= 0
-      ? Math.min(requestedRefund, canonicalRefund)
-      : canonicalRefund);
-    const insertResult = await new sql.Request(transaction)
-      .input("oid", sql.Int, orderId).input("rt", sql.VarChar(20), returnType)
-      .input("trk", sql.VarChar(60), trackingNumber || null).input("po", sql.Int, postOfficeId)
-      .input("ra", sql.NVarChar(500), returnAddress || null).input("rs", sql.NVarChar(500), reason)
-      .input("st", sql.NVarChar(50), initialStatus).input("amt", sql.Decimal(18, 2), refundAmount)
-      .input("uid", sql.Int, authenticatedUserId)
-      .query(`
-        INSERT INTO Returns (OrderID, ReturnType, TrackingNumber, PostOfficeID, ReturnAddress, Reason, Status, RefundAmount, CreatedAt, UpdatedAt, UpdatedBy)
-        OUTPUT INSERTED.ReturnID
-        VALUES (@oid,@rt,@trk,@po,@ra,@rs,@st,@amt,GETDATE(),GETDATE(),@uid)
-      `);
-    const returnId = insertResult.recordset[0].ReturnID;
-    for (const [detailId, quantity] of selected.entries()) {
-      const item = selectedMeta.get(detailId) || {};
-      await new sql.Request(transaction).input("rid", sql.Int, returnId).input("odid", sql.Int, detailId)
-        .input("q", sql.Int, quantity).input("rsn", sql.NVarChar(500), cleanAddressText(item.reason || reason, 500))
-        .input("cond", sql.NVarChar(30), isAdmin && item.condition === 'SALEABLE' ? 'SALEABLE' : 'PENDING_INSPECTION')
-        .query("INSERT INTO ReturnDetails (ReturnID, OrderDetailID, Quantity, Reason, Condition) VALUES (@rid,@odid,@q,@rsn,@cond)");
-    }
-    const orderUpdate = await new sql.Request(transaction).input("oid", sql.Int, orderId).input("uid", sql.Int, authenticatedUserId).query(`
-      UPDATE Orders SET Status=N'Yêu cầu trả hàng', UpdatedAt=GETDATE() WHERE OrderID=@oid;
-    `);
-    if (!orderUpdate.rowsAffected?.[0]) throw Object.assign(new Error("Khong cap nhat duoc trang thai don hang."), { statusCode: 409 });
-    await insertOrderHistory(transaction, orderId, order.Status, "Yêu cầu trả hàng", `[RETURN_CREATED] #${returnId} ${reason}`, authenticatedUserId);
-    const insertedReturn = { ReturnID: returnId, OrderID: orderId, ReturnType: returnType, RefundAmount: refundAmount, Status: initialStatus };
-    if (isAdmin && ["Đã hoàn tiền", "Đã hoàn tất"].includes(initialStatus)) {
-      const finalized = await finalizeReturn(transaction, insertedReturn, authenticatedUserId, b.resolution_note);
-      insertedReturn.RefundAmount = finalized.refundAmount;
-      insertedReturn.Status = "Đã hoàn tất";
-    }
-    await transaction.commit();
-    res.status(201).json({ success: true, ...insertedReturn });
-  } catch (e) {
-    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
-    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong tao duoc yeu cau tra hang." });
-  }
-});
-
-app.put("/api/returns/:id/status", async (req, res) => {
-  const returnId = positiveInt(req.params.id);
-  const changedBy = Number(req.auth && req.auth.sub);
-  const requestedStatus = canonicalReturnStatus(req.body && req.body.status);
-  if (!Number.isInteger(returnId) || returnId <= 0 || !requestedStatus) return res.status(400).json({ success: false, message: "Yeu cau hoac trang thai tra hang khong hop le." });
-  await poolConnect;
-  const transaction = new sql.Transaction(pool);
-  try {
-    // Read the immutable relationship before opening the transaction, then lock
-    // parent order before return rows (same order as POST /returns).
-    const owner = await pool.request().input('rid', sql.Int, returnId)
-      .query('SELECT OrderID FROM Returns WHERE ReturnID=@rid');
-    if (!owner.recordset[0]) throw Object.assign(new Error('Không tìm thấy yêu cầu trả hàng.'), { statusCode: 404 });
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    await new sql.Request(transaction).input('oid',sql.Int,owner.recordset[0].OrderID)
-      .query('SELECT OrderID FROM Orders WITH (UPDLOCK,HOLDLOCK) WHERE OrderID=@oid');
-    const result = await new sql.Request(transaction).input("rid", sql.Int, returnId).query(`
-      SELECT r.ReturnID, r.OrderID, r.ReturnType, r.Status, r.RefundAmount, r.RefundedAt, r.RestockedAt,
-             o.Status AS OrderStatus, o.DeliveredDate, o.ReceivedConfirmedDate
-      FROM Returns r WITH (UPDLOCK,HOLDLOCK) JOIN Orders o WITH (UPDLOCK, HOLDLOCK) ON o.OrderID=r.OrderID
-      WHERE r.ReturnID=@rid
-    `);
-    const row = result.recordset[0];
-    if (!row) throw Object.assign(new Error("Khong tim thay yeu cau tra hang."), { statusCode: 404 });
-    if (["da hoan tat", "hoan tat"].includes(normalizeOrderStatus(row.Status))) {
-      if (!["Đã hoàn tiền", "Đã hoàn tất"].includes(requestedStatus)) throw Object.assign(new Error("Yêu cầu đã hoàn tất, không thể sửa giao dịch đã ghi nhận."), { statusCode: 409 });
-      await transaction.commit();
-      return res.json({ success: true, ReturnID: returnId, status: row.Status, refund_amount: row.RefundAmount });
-    }
-    // Lấy trạng thái ngay trước khi tạo yêu cầu để xử lý đúng cả dữ liệu cũ
-    // không có DeliveredDate/ReceivedConfirmedDate. Marker được ghi cùng
-    // transaction lúc POST /returns nên không bị nhầm với lịch sử khác.
-    const originResult = await new sql.Request(transaction)
-      .input("oid", sql.Int, row.OrderID)
-      .input("rid", sql.Int, returnId)
-      .query(`
-        SELECT TOP 1 OldStatus AS ReturnOriginStatus
-        FROM OrderStatusHistory WITH (UPDLOCK, HOLDLOCK)
-        WHERE OrderID=@oid
-          AND CHARINDEX(N'[RETURN_CREATED] #' + CONVERT(nvarchar(20), @rid), ISNULL(Note,N'')) = 1
-        ORDER BY HistoryID DESC
-      `);
-    row.ReturnOriginStatus = originResult.recordset[0]?.ReturnOriginStatus || null;
-    if (!row.ReturnOriginStatus) {
-      // Tương thích các yêu cầu trả hàng được tạo trước khi có marker
-      // [RETURN_CREATED]. Chỉ lấy lịch sử chuyển sang trạng thái yêu cầu trả.
-      const fallbackOrigin = await new sql.Request(transaction)
-        .input("oid", sql.Int, row.OrderID)
-        .query(`
-          SELECT TOP 1 OldStatus AS ReturnOriginStatus
-          FROM OrderStatusHistory WITH (UPDLOCK, HOLDLOCK)
-          WHERE OrderID=@oid
-            AND NewStatus IN (N'Yêu cầu trả hàng',N'Yeu cau tra hang')
-          ORDER BY HistoryID DESC
-        `);
-      row.ReturnOriginStatus = fallbackOrigin.recordset[0]?.ReturnOriginStatus || null;
-    }
-    if (!returnTransitionAllowed(row.Status, requestedStatus)) throw Object.assign(new Error(`Khong the chuyen tu '${row.Status}' sang '${requestedStatus}'.`), { statusCode: 409 });
-    const inspectionNote = cleanAddressText(req.body && req.body.inspection_note, 1000);
-    if (req.body.conditions !== undefined) {
-      if (!Array.isArray(req.body.conditions) || req.body.conditions.length > 200
-        || req.body.conditions.some(item => !positiveInt(item?.order_detail_id) || !['SALEABLE','DAMAGED','PENDING_INSPECTION'].includes(item?.condition))) {
-        throw Object.assign(new Error('Phân loại kiểm hàng không hợp lệ.'), { statusCode: 400 });
-      }
-      for (const item of req.body.conditions) {
-        const classified = await new sql.Request(transaction).input('rid',sql.Int,returnId)
-          .input('did',sql.Int,item.order_detail_id).input('condition',sql.NVarChar(30),item.condition)
-          .query('UPDATE ReturnDetails SET Condition=@condition WHERE ReturnID=@rid AND OrderDetailID=@did');
-        if (!classified.rowsAffected?.[0]) throw Object.assign(new Error('Dòng kiểm hàng không thuộc yêu cầu trả này.'), { statusCode: 400 });
-      }
-    }
-    const resolutionNote = cleanAddressText(req.body && req.body.resolution_note, 1000);
-    const requestedRefund = Number(req.body && req.body.refund_amount);
-    if (Number.isFinite(requestedRefund) && requestedRefund >= 0) row.RefundAmount = Math.min(requestedRefund, Number(row.RefundAmount) || 0);
-    await new sql.Request(transaction).input("rid", sql.Int, returnId).input("st", sql.NVarChar(50), requestedStatus)
-      .input("ins", sql.NVarChar(1000), inspectionNote || null).input("res", sql.NVarChar(1000), resolutionNote || null)
-      .input("amt", sql.Decimal(18, 2), Number(row.RefundAmount) || 0).input("uid", sql.Int, changedBy)
-      .query(`
-        UPDATE Returns SET Status=@st, RefundAmount=@amt,
-          InspectionNote=COALESCE(@ins,InspectionNote), ResolutionNote=COALESCE(@res,ResolutionNote),
-          ApprovedAt=CASE WHEN @st=N'Chấp nhận hoàn tiền' THEN ISNULL(ApprovedAt,GETDATE()) ELSE ApprovedAt END,
-          UpdatedAt=GETDATE(), UpdatedBy=@uid WHERE ReturnID=@rid
-      `);
-    let finalStatus = requestedStatus;
-    let orderStatusAfter = row.OrderStatus;
-    if (["Đã hoàn tiền", "Đã hoàn tất"].includes(requestedStatus)) {
-      const finalized = await finalizeReturn(transaction, { ...row, ReturnID: returnId, RefundAmount: Number(row.RefundAmount) || 0 }, changedBy, resolutionNote);
-      row.RefundAmount = finalized.refundAmount;
-      finalStatus = "Đã hoàn tất";
-      orderStatusAfter = finalized.orderStatus;
-    } else if (["Từ chối", "Hủy"].includes(requestedStatus)) {
-      const restoreStatus = restoreStatusAfterReturn(row);
-      await new sql.Request(transaction).input("oid", sql.Int, row.OrderID).input("st", sql.NVarChar(50), restoreStatus)
-        .query("UPDATE Orders SET Status=@st, UpdatedAt=GETDATE() WHERE OrderID=@oid");
-      orderStatusAfter = restoreStatus;
-    }
-    await insertOrderHistory(transaction, row.OrderID, row.OrderStatus, orderStatusAfter, `[RETURN_STATUS] #${returnId}: ${row.Status} -> ${requestedStatus}${inspectionNote ? `; ${inspectionNote}` : ""}`, changedBy);
-    await transaction.commit();
-    res.json({ success: true, ReturnID: returnId, status: finalStatus, refund_amount: row.RefundAmount });
-  } catch (e) {
-    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
-    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong cap nhat duoc yeu cau tra hang." });
-  }
-});
-
-// ================= API VI SHoeGROUP =================
-function walletMethod(value) {
-  const key = normalizeOrderStatus(value).replace(/[ _-]+/g, "");
-  if (["visa", "thevisa", "cardvisa"].includes(key)) return "VISA";
-  if (["momo", "momo wallet", "vi momo"].includes(key) || key.includes("momo")) return "MOMO";
-  return null;
-}
-
-function isValidLuhn(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (!digits) return false;
-  let sum = 0;
-  let alternate = false;
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    let n = Number(digits[i]);
-    if (alternate) { n *= 2; if (n > 9) n -= 9; }
-    sum += n;
-    alternate = !alternate;
-  }
-  return sum % 10 === 0;
-}
-
-function maskWalletDestination(method, value) {
-  const raw = String(value || "");
-  if (method === "VISA") {
-    const digits = raw.replace(/\D/g, "");
-    return digits.length > 4 ? `${"•".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}` : digits;
-  }
-  return raw.length > 4 ? `${raw.slice(0, 3)}••••${raw.slice(-3)}` : raw;
-}
-
-app.get("/api/wallet", async (req, res) => {
-  const userId = positiveInt(req.auth && req.auth.sub);
-  if (!userId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  try {
-    await poolConnect;
-    const result = await pool.request().input("uid", sql.Int, userId).query(`
-      SELECT TOP 1 Balance, UpdatedAt
-      FROM ShoeGroupWallets
-      WHERE UserID=@uid
-    `);
-    const row = result.recordset[0] || {};
-    res.json({ success: true, balance: Number(row.Balance) || 0, updated_at: row.UpdatedAt || null, currency: "VND" });
-  } catch (e) {
-    res.status(500).json({ success: false, message: "Khong tai duoc vi ShoeGroup." });
-  }
-});
-
-app.get("/api/wallet/transactions", async (req, res) => {
-  const userId = positiveInt(req.auth && req.auth.sub);
-  if (!userId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  try {
-    await poolConnect;
-    const [transactions, withdrawals] = await Promise.all([
-      pool.request().input("uid", sql.Int, userId).query(`
-        SELECT TOP 100 WalletTransactionID AS id, ReturnID AS return_id,
-               TransactionType AS type, Amount AS amount, BalanceAfter AS balance_after,
-               Description AS description, CreatedAt AS created_at
-        FROM ShoeGroupWalletTransactions
-        WHERE UserID=@uid
-        ORDER BY CreatedAt DESC, WalletTransactionID DESC
-      `),
-      pool.request().input("uid", sql.Int, userId).query(`
-        SELECT TOP 50 WithdrawalID AS id, Amount AS amount, Method AS method,
-               Destination AS destination, HolderName AS holder_name, Status AS status,
-               Note AS note, CreatedAt AS created_at, ProcessedAt AS processed_at
-        FROM ShoeGroupWalletWithdrawals
-        WHERE UserID=@uid
-        ORDER BY CreatedAt DESC, WithdrawalID DESC
-      `),
-    ]);
-    res.json({
-      success: true,
-      transactions: transactions.recordset,
-      withdrawals: withdrawals.recordset.map((row) => ({
-        ...row,
-        destination: maskWalletDestination(row.method, row.destination),
-      })),
-    });
-  } catch (e) {
-    res.status(500).json({ success: false, message: "Khong tai duoc lich su vi." });
-  }
-});
-
-app.post("/api/wallet/withdrawals", async (req, res) => {
-  const userId = positiveInt(req.auth && req.auth.sub);
-  if (!userId) return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
-  const method = walletMethod(body.method);
-  const amount = nonNegativeNumber(body.amount, { max: 1e12, defaultValue: null });
-  const destination = cleanAddressText(body.destination, 255);
-  const holderName = cleanAddressText(body.holder_name ?? body.holderName, 120);
-  if (!method) return res.status(400).json({ success: false, message: "Phuong thuc rut tien chi ho tro Visa hoac MoMo." });
-  if (amount === null || amount <= 0) return res.status(400).json({ success: false, message: "So tien rut phai lon hon 0." });
-  if (method === "VISA") {
-    const card = destination.replace(/\s+/g, "");
-    if (!/^4\d{12,18}$/.test(card) || !isValidLuhn(card)) return res.status(400).json({ success: false, message: "So the Visa khong hop le." });
-    if (!holderName) return res.status(400).json({ success: false, message: "Vui long nhap ten chu the Visa." });
-  } else if (!/^0(?:3|5|7|8|9)\d{8}$/.test(destination.replace(/\s+/g, ""))) {
-    return res.status(400).json({ success: false, message: "So dien thoai MoMo khong hop le." });
-  }
-  const normalizedAmount = Math.round(amount * 100) / 100;
-  if (normalizedAmount <= 0) return res.status(400).json({ success: false, message: "So tien rut qua nho sau khi lam tron." });
-  const transaction = new sql.Transaction(pool);
-  try {
-    await poolConnect;
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    await new sql.Request(transaction).input("uid", sql.Int, userId).query(`
-      IF NOT EXISTS (SELECT 1 FROM ShoeGroupWallets WITH (UPDLOCK, HOLDLOCK) WHERE UserID=@uid)
-        INSERT INTO ShoeGroupWallets (UserID, Balance, CreatedAt, UpdatedAt) VALUES (@uid,0,GETDATE(),GETDATE());
-    `);
-    const walletResult = await new sql.Request(transaction).input("uid", sql.Int, userId).query(`
-      SELECT Balance FROM ShoeGroupWallets WITH (UPDLOCK, HOLDLOCK) WHERE UserID=@uid
-    `);
-    const balance = Number(walletResult.recordset[0]?.Balance) || 0;
-    if (normalizedAmount > balance) throw Object.assign(new Error("So du vi khong du de rut so tien nay."), { statusCode: 409 });
-    const nextBalance = balance - normalizedAmount;
-    const withdrawalResult = await new sql.Request(transaction)
-      .input("uid", sql.Int, userId).input("amt", sql.Decimal(18, 2), normalizedAmount)
-      .input("method", sql.VarChar(20), method).input("dest", sql.NVarChar(255), destination)
-      .input("holder", sql.NVarChar(120), holderName || null)
-      .query(`
-        INSERT INTO ShoeGroupWalletWithdrawals (UserID, Amount, Method, Destination, HolderName, Status, CreatedAt)
-        OUTPUT INSERTED.WithdrawalID
-        VALUES (@uid,@amt,@method,@dest,@holder,N'Chờ xử lý',GETDATE())
-      `);
-    const withdrawalId = withdrawalResult.recordset[0].WithdrawalID;
-    await new sql.Request(transaction)
-      .input("uid", sql.Int, userId).input("amt", sql.Decimal(18, 2), -normalizedAmount)
-      .input("bal", sql.Decimal(18, 2), nextBalance)
-      .input("desc", sql.NVarChar(500), `Rút tiền về ${method === "VISA" ? "thẻ Visa" : "ví MoMo"} #${withdrawalId}`)
-      .query(`
-        UPDATE ShoeGroupWallets SET Balance=@bal, UpdatedAt=GETDATE() WHERE UserID=@uid;
-        INSERT INTO ShoeGroupWalletTransactions (UserID, TransactionType, Amount, BalanceAfter, Description, CreatedAt)
-        VALUES (@uid,'WITHDRAWAL',@amt,@bal,@desc,GETDATE());
-      `);
-    await transaction.commit();
-    res.status(201).json({ success: true, withdrawal_id: withdrawalId, balance: nextBalance, status: "Chờ xử lý" });
-  } catch (e) {
-    if (transaction._aborted !== true) { try { await transaction.rollback(); } catch (_) {} }
-    res.status(e.statusCode || 500).json({ success: false, message: e.statusCode ? e.message : "Khong tao duoc yeu cau rut tien." });
-  }
-});
-
 // ================= API MAU SAC (Colors) =================
 app.get("/api/colors", async (req, res) => {
   try {
@@ -4476,98 +3620,6 @@ app.delete("/api/sizes/:id", async (req, res) => {
   }
 });
 
-// ================= API BO SUU TAP (Collections) =================
-app.get("/api/collections", async (req, res) => {
-  try {
-    await poolConnect;
-    let r = await pool
-      .request()
-      .query(
-        "SELECT CollectionID as id, CollectionName as name, BrandID as brand_id, Slug as slug, IsActive as active FROM Collections ORDER BY CollectionID DESC",
-      );
-    res.json(r.recordset);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.post("/api/collections", async (req, res) => {
-  try {
-    await poolConnect;
-    const validation = validateCatalogPayload(req.body, { nameMax: 150 });
-    if (!validation.ok) return sendValidationError(res, validation);
-    const brandId = req.body.brand_id === undefined || req.body.brand_id === null || req.body.brand_id === ""
-      ? null
-      : positiveInt(req.body.brand_id);
-    const slug = validateText(req.body.slug, 150);
-    if (req.body.brand_id !== undefined && req.body.brand_id !== null && req.body.brand_id !== "" && !brandId) {
-      return sendValidationError(res, { message: "Thương hiệu không hợp lệ." });
-    }
-    if (slug && !SLUG_RE.test(slug)) return sendValidationError(res, { message: "Slug chỉ gồm chữ thường, số và dấu gạch ngang." });
-    await pool
-      .request()
-      .input("n", sql.NVarChar, validation.value.name)
-      .input("b", sql.Int, brandId)
-      .input("s", sql.VarChar, slug)
-      .input("a", sql.Bit, validation.value.active)
-      .query(
-        "INSERT INTO Collections (CollectionName, BrandID, Slug, IsActive) VALUES (@n, @b, @s, @a)",
-      );
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.put("/api/collections/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    const id = parseRouteId(res, req.params.id, "CollectionID");
-    if (!id) return;
-    const validation = validateCatalogPayload(req.body, { nameMax: 150 });
-    if (!validation.ok) return sendValidationError(res, validation);
-    const brandId = req.body.brand_id === undefined || req.body.brand_id === null || req.body.brand_id === ""
-      ? null
-      : positiveInt(req.body.brand_id);
-    const slug = validateText(req.body.slug, 150);
-    if (req.body.brand_id !== undefined && req.body.brand_id !== null && req.body.brand_id !== "" && !brandId) {
-      return sendValidationError(res, { message: "Thương hiệu không hợp lệ." });
-    }
-    if (slug && !SLUG_RE.test(slug)) return sendValidationError(res, { message: "Slug chỉ gồm chữ thường, số và dấu gạch ngang." });
-    const result = await pool
-      .request()
-      .input("id", sql.Int, id)
-      .input("n", sql.NVarChar, validation.value.name)
-      .input("b", sql.Int, brandId)
-      .input("s", sql.VarChar, slug)
-      .input("a", sql.Bit, validation.value.active)
-      .query(
-        "UPDATE Collections SET CollectionName=@n, BrandID=@b, Slug=@s, IsActive=@a WHERE CollectionID=@id",
-      );
-    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bộ sưu tập." });
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.delete("/api/collections/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    const id = parseRouteId(res, req.params.id, "CollectionID");
-    if (!id) return;
-    const result = await pool
-      .request()
-      .input("id", sql.Int, id)
-      .query("UPDATE Collections SET IsActive = 0 WHERE CollectionID=@id");
-    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bộ sưu tập." });
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ================= API KHO HANG (ProductVariants) =================
 app.get("/api/inventory", async (req, res) => {
   try {
@@ -4600,32 +3652,6 @@ app.get("/api/inventory", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put("/api/inventory/:id", async (req, res) => {
-  try {
-    await poolConnect;
-    const id = parseRouteId(res, req.params.id, "ProductVariantID");
-    if (!id) return;
-    const stock = nonNegativeInt(req.body.stock, { max: 1000000 });
-    if (stock === null) return sendValidationError(res, { message: "Tồn kho phải là số nguyên không âm." });
-    const version = nonNegativeInt(req.body.version, { max: 2147483647 });
-    if (version === null) return res.status(409).json({ success: false, code: 'STOCK_VERSION_REQUIRED', message: 'Cần tải lại tồn kho trước khi cập nhật.' });
-    const result = await pool
-      .request()
-      .input("id", sql.Int, id)
-      .input("s", sql.Int, stock)
-      .input('version', sql.Int, version)
-      .query(
-        "UPDATE ProductVariants SET StockQuantity=@s,Version=ISNULL(Version,0)+1 WHERE ProductVariantID=@id AND ISNULL(Version,0)=@version",
-      );
-    if (Number(result.rowsAffected?.[0] || 0) !== 1) {
-      return res.status(409).json({ success: false, code: 'STOCK_VERSION_CONFLICT', message: 'Biến thể không còn tồn tại hoặc tồn kho đã thay đổi; hãy tải lại.' });
-    }
-    res.json({ success: true, stock, version: version + 1 });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ================= CANH BAO TON KHO (FIX) =================
 // Truoc day khong co API nao bao "het hang", nen trang Thong ke im lang khi ton ve 0.
 // GET /api/inventory/alerts?threshold=10
@@ -5106,7 +4132,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       .request()
       .input("id", sql.Int, id)
       .query(
-        `SELECT OrderID as id, UserID as user_id, TotalAmount as total,
+        `SELECT OrderID as id, UserID as user_id, TotalAmount as total, HistoricalRefundAmount as historical_refund_amount,
                 CONVERT(varchar, OrderDate, 103) + ' ' + CONVERT(varchar, OrderDate, 108) as date,
                 CONVERT(varchar(33), OrderDate, 126) as created_at,
                 ISNULL(Status, N'Cho xac nhan') as status,
@@ -5459,20 +4485,6 @@ async function calculateShippingQuote({ methodCode = "STANDARD", province = "", 
     originCity: method.OriginCity || "Hai Bà Trưng, Hà Nội",
   };
 }
-
-// 1) Danh sach buu cuc (cho trang tra hang)
-app.get("/api/postoffices", async (req, res) => {
-  try {
-    await poolConnect;
-    const r = await pool.request().query(
-      `SELECT PostOfficeID as id, Name as name, Address as address, ISNULL(Phone,'') as phone, ISNULL(Province,'') as province
-       FROM PostOffices WHERE ISNULL(IsActive,1) = 1 ORDER BY PostOfficeID`,
-    );
-    res.json(r.recordset);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // 2) Danh sách phương thức vận chuyển đang bật. Frontend dùng endpoint này
 // thay vì phải hard-code bảng giá trong bundle.

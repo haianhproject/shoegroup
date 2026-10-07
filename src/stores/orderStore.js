@@ -202,53 +202,6 @@ export const daysUntilRevenue = (order) => {
   return Math.max(0, Math.ceil((order.revenueEligibleDate - Date.now()) / DAY));
 };
 
-/* Tạo yêu cầu trả hàng (shipper tự lấy / gửi bưu cục) */
-export const requestReturn = async (orderId, payload) => {
-  const o = orderState.orders.find((x) => x.id === orderId);
-  if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
-  const remoteId = Number(o.serverId || orderId);
-  if (!Number.isInteger(remoteId) || remoteId <= 0) return { ok: false, message: "Đơn hàng chưa đồng bộ với máy chủ, vui lòng tải lại trang." };
-  try {
-    const { api } = await import("../services/apiClient");
-    const result = await api.post("/returns", {
-      order_id: remoteId,
-      return_type: payload.method || "CUSTOMER",
-      post_office_id: payload.postOffice?.id || null,
-      tracking_number: payload.trackingCode || "",
-      reason: payload.reason,
-      refund_amount: payload.refundAmount,
-      items: (payload.items || []).map((item) => ({
-        order_detail_id: item.order_detail_id || item.orderDetailId || null,
-        product_id: item.product_id || item.id_product || item.product?.id_product || null,
-        productId: item.productId || null,
-        size: item.size?.size_name || item.size || "",
-        color: item.color?.color_label || item.color?.color_name || item.color || "",
-        quantity: item.return_qty || item.quantity,
-        condition: item.condition || "",
-        reason: item.reason || payload.reason,
-      })),
-    });
-    o.status = "RETURNED";
-    o.serverStatus = "RETURNED";
-    o.returnInfo = {
-      method: payload.method,
-      notReceived: payload.method === "NOT_RECEIVED",
-      postOffice: payload.postOffice || null,
-      reason: payload.reason,
-      trackingCode: payload.trackingCode,
-      refundAmount: result?.RefundAmount ?? payload.refundAmount,
-      items: payload.items,
-      returnId: result?.ReturnID || null,
-      status: result?.Status || "Chờ xử lý",
-      createdAt: Date.now(),
-    };
-  } catch (error) {
-    return { ok: false, message: error?.message || "Không thể tạo yêu cầu trả hàng." };
-  }
-  saveOrders();
-  return { ok: true, order: o };
-};
-
 export const removeOrder = (orderId) => {
   const index = orderState.orders.findIndex((o) => o.id === orderId);
   if (index !== -1) { orderState.orders.splice(index, 1); saveOrders(); }

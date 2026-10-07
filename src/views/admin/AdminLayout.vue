@@ -21,10 +21,10 @@ import {
   fetchAllData,
   refreshOrders,
   subscribeAdminEvents,
+  applyPosStockUpdates,
   getDisplayName,
   handleLogout,
   incompleteOrdersCount,
-  pendingReturnsCount,
   activeProductCount,
   formatPrice,
   formatDate,
@@ -93,11 +93,9 @@ const activeTabTitle = computed(() => sections.flatMap(section => section.items)
 const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
-  returns: 'Tiếp nhận, kiểm tra và theo dõi các yêu cầu đổi trả.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
   categories: 'Sắp xếp sản phẩm theo bộ môn để khách hàng dễ dàng khám phá.',
   brands: 'Quản lý các thương hiệu trong danh mục của ShoeGroup.',
-  collections: 'Tổ chức các bộ sưu tập và câu chuyện sản phẩm của cửa hàng.',
   materials: 'Quản lý thông tin chất liệu được sử dụng cho sản phẩm.',
   colors: 'Đồng bộ bảng màu và các lựa chọn sản phẩm.',
   sizes: 'Quản lý kích thước cho từng dòng sản phẩm.',
@@ -226,6 +224,10 @@ async function syncOrdersFromEvent() {
 }
 
 function onAdminEvent(event) {
+  if (event?.type === "inventory.updated") {
+    applyPosStockUpdates(event.data?.stockUpdates);
+    return;
+  }
   if (event?.type !== "order.updated") return;
   if (!initialDataReady) {
     pendingOrderRefresh = true;

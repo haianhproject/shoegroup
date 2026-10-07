@@ -46,14 +46,20 @@ async function setup() {
     const tables = await pool.request().query("SELECT COUNT(*) AS count FROM sys.tables");
     if (tables.recordset[0].count) throw new Error(`Refusing to initialize nonempty audit database ${DATABASE}`);
     const root = path.resolve(__dirname, "../../..");
-    const bytes = fs.readFileSync(path.join(root, "database/dbsql.sql"));
+    const legacySchema = path.join(root, "database/dbsql.sql");
+    const bytes = fs.readFileSync(fs.existsSync(legacySchema) ? legacySchema : path.join(root, "database/ShoegroupDB_FULL_20260929.sql"));
+    // Import only schema DDL, never USE, DROP, database options, or seed/customer data.
     const source = bytes.toString(bytes[0] === 0xff && bytes[1] === 0xfe ? "utf16le" : "utf8").replace(/^\uFEFF/, "")
-      .split(/\r?\n/).filter(line => !/^(USE\s|INSERT \[dbo\]|SET IDENTITY_INSERT\s)/i.test(line)).join("\n");
+      .split(/^\s*GO\s*$/gim)
+      .map(batch => batch.replace(/\/\*[\s\S]*?\*\//g, "").trim())
+      .filter(batch => /^(CREATE\s+(TABLE|VIEW|(?:UNIQUE\s+)?(?:NONCLUSTERED\s+|CLUSTERED\s+)?INDEX)\b|ALTER TABLE\s+\[dbo\]\.\[[^\]]+\]\s+(?:WITH CHECK\s+)?(?:ADD|CHECK CONSTRAINT)\b|SET (?:ANSI_NULLS|QUOTED_IDENTIFIER)\b)/i.test(batch))
+      .join("\nGO\n");
     await runBatches(pool, source);
     for (const name of ["20260826_sales_flow.sql", "20260829_shipping_standard_only.sql", "20260829_profile_avatar.sql", "20260829_stock_race_hardening.sql", "20260919_confirmation_stock_deduction.sql"]) {
       await runBatches(pool, fs.readFileSync(path.join(root, "database/migrations", name), "utf8"));
     }
-    await runBatches(pool, fs.readFileSync(path.join(root, "database/shoegroup_wallet.sql"), "utf8"));
+    const walletSchema = path.join(root, "database/shoegroup_wallet.sql");
+    if (fs.existsSync(walletSchema)) await runBatches(pool, fs.readFileSync(walletSchema, "utf8"));
     for (const name of ['20260909_checkout_idempotency.sql','20260909_coupon_redemptions.sql','20260909_audit_constraints.sql','20260920_legacy_order_confirmation_stock.sql','20260920_order_variant_image_snapshot.sql']) {
       await runBatches(pool, fs.readFileSync(path.join(root, 'database/migrations', name), 'utf8'));
     }

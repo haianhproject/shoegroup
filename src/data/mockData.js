@@ -68,11 +68,6 @@ export const cushionings = [
   { id_cushioning: 4, cushioning_name: "Fresh Foam" },
 ];
 
-export const collections = [
-  { id_collection: 1, collection_name: "Summer 2026" },
-  { id_collection: 2, collection_name: "Pro Athlete" },
-  { id_collection: 3, collection_name: "Urban Street" },
-];
 
 /* Phương thức vận chuyển dùng khi API chưa sẵn sàng. Giá cuối cùng vẫn
    được tính lại ở máy chủ theo địa chỉ, không tin số tiền từ trình duyệt. */
@@ -124,12 +119,6 @@ export const distanceFromHanoi = {
 };
 
 /* Bưu cục cho khách tự gửi trả hàng */
-export const postOffices = [
-  { id: 1, name: "Bưu cục Hoàn Kiếm", address: "75 Đinh Tiên Hoàng, Hoàn Kiếm, Hà Nội", phone: "024 3825 1234" },
-  { id: 2, name: "Bưu cục Cầu Giấy", address: "162 Cầu Giấy, Cầu Giấy, Hà Nội", phone: "024 3767 5678" },
-  { id: 3, name: "Bưu cục Bến Thành", address: "2 Công xã Paris, Quận 1, TP HCM", phone: "028 3822 9012" },
-  { id: 4, name: "Bưu cục Hải Châu", address: "271 Nguyễn Văn Linh, Hải Châu, Đà Nẵng", phone: "0236 3654 321" },
-];
 
 /* Sản phẩm giày thể thao nam với đầy đủ thuộc tính */
 export const products = [
@@ -140,7 +129,6 @@ export const products = [
     image_url: runningImage,
     brand_name: "Nike", category_name: "Chạy bộ", sport: "Running",
     material_name: "Lưới Flyknit", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
-    collection_name: "Pro Athlete",
   },
   {
     id_product: 2, id_brand: 2, id_category: 1,
@@ -149,7 +137,6 @@ export const products = [
     image_url: runningImage,
     brand_name: "Adidas", category_name: "Chạy bộ", sport: "Running",
     material_name: "Primeknit", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
-    collection_name: "Summer 2026",
   },
   {
     id_product: 3, id_brand: 3, id_category: 2,
@@ -158,7 +145,6 @@ export const products = [
     image_url: sneakersImage,
     brand_name: "Puma", category_name: "Sneakers", sport: "Lifestyle",
     material_name: "Da tổng hợp", sole_name: "Cao su non-marking", cushioning_name: "Puma Nitro",
-    collection_name: "Urban Street",
   },
   {
     id_product: 4, id_brand: 1, id_category: 3,
@@ -167,7 +153,6 @@ export const products = [
     image_url: sneakersImage,
     brand_name: "Nike", category_name: "Bóng rổ", sport: "Basketball",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su Waffle", cushioning_name: "Nike Air Zoom",
-    collection_name: "Pro Athlete",
   },
   {
     id_product: 5, id_brand: 4, id_category: 6,
@@ -176,7 +161,6 @@ export const products = [
     image_url: runningImage,
     brand_name: "New Balance", category_name: "Tập Gym", sport: "Training",
     material_name: "Vải mesh thoáng khí", sole_name: "Cao su non-marking", cushioning_name: "Fresh Foam",
-    collection_name: "Summer 2026",
   },
   {
     id_product: 6, id_brand: 2, id_category: 4,
@@ -185,7 +169,6 @@ export const products = [
     image_url: saleImage,
     brand_name: "Adidas", category_name: "Bóng đá", sport: "Football",
     material_name: "Da tổng hợp", sole_name: "Continental Rubber", cushioning_name: "Adidas Boost",
-    collection_name: "Pro Athlete",
   },
 ];
 

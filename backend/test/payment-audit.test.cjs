@@ -37,7 +37,6 @@ function harness(answer = () => ({ recordset: [], rowsAffected: [1] })) {
   const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
   vm.runInContext(section('const PAYMENT_STATUSES =', 'async function insertOrderHistory'), context);
   vm.runInContext(section('app.put("/api/orders/:id/payment"', '// ================= CAC API SAN PHAM'), context);
-  vm.runInContext(section('const RETURN_STATUS_ALIASES =', '// ================= API MAU SAC'), context);
   return {
     calls, context,
     async request(route, req) {
@@ -78,34 +77,6 @@ test('payment: admin cannot mark a paid order refunded without a refund transact
   const res = await h.request('put /api/orders/:id/payment', { params: { id: '1' }, auth: { sub: 1, role: 'Admin' }, body: { payment_status: 'Hoàn tiền' } });
   assert.equal(res.statusCode, 409);
   assert.equal(h.calls.length, 1);
-});
-
-test('returns: repeated completion is immutable and cannot cancel an already refunded payment', async () => {
-  const h = harness(({ query }) => {
-    if (query.includes('SELECT OrderID FROM Returns')) return { recordset: [{ OrderID: 1 }] };
-    if (query.includes('SELECT r.ReturnID, r.OrderID')) return { recordset: [{ ReturnID: 4, OrderID: 1, Status: 'Đã hoàn tất', RefundAmount: 500000, RefundedAt: new Date(), OrderStatus: 'Đã hoàn tất trả hàng', ReturnType: 'CUSTOMER' }] };
-    if (query.includes('SELECT UserID, PaymentMethod')) return { recordset: [{ ...unpaidOrder, PaymentStatus: 'Hoàn tiền' }] };
-    if (query.includes('SELECT RestockedAt')) return { recordset: [{ RestockedAt: new Date() }] };
-    return { recordset: [], rowsAffected: [1] };
-  });
-  const res = await h.request('put /api/returns/:id/status', { params: { id: '4' }, auth: { sub: 1, role: 'Admin' }, body: { status: 'Đã hoàn tất', refund_amount: 1 } });
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.body.refund_amount, 500000);
-  assert.equal(h.calls.some(c => /UPDATE|INSERT/.test(c.query)), false);
-});
-
-test('wallet: sub-cent withdrawal must not create a zero-value transaction', async () => {
-  const h = harness(({ query }) => query.includes('SELECT Balance') ? { recordset: [{ Balance: 100000 }] } : { recordset: [{ WithdrawalID: 1 }], rowsAffected: [1] });
-  const res = await h.request('post /api/wallet/withdrawals', { auth: { sub: 2, role: 'Customer' }, body: { method: 'MOMO', amount: 0.001, destination: '0901234567' } });
-  assert.equal(res.statusCode, 400);
-  assert.equal(h.calls.length, 0);
-});
-
-test('wallet: Visa destination is fully masked except its last four digits', async () => {
-  const h = harness(({ query }) => query.includes('FROM ShoeGroupWalletWithdrawals') ? { recordset: [{ method: 'VISA', destination: '4111111111111111' }] } : { recordset: [] });
-  const res = await h.request('get /api/wallet/transactions', { auth: { sub: 2, role: 'Customer' } });
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.body.withdrawals[0].destination, '••••••••••••1111');
 });
 
 module.exports = { harness, unpaidOrder };

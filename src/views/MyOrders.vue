@@ -164,7 +164,6 @@ const deliveryIssueSteps = (o) => {
   return steps
 }
 
-const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */

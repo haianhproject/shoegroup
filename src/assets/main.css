@@ -236,9 +236,7 @@ p, span, li, td, th, label, input, select, textarea, button {
   font-family: "Be Vietnam Pro", sans-serif;
 }
 .figma-customer-shell .products-page,
-.figma-customer-shell .wallet-page,
 .figma-customer-shell .orders-page,
-.figma-customer-shell .return-page,
 .figma-customer-shell .about-page,
 .figma-customer-shell .contact-page,
 .figma-customer-shell .success-page {
@@ -246,9 +244,7 @@ p, span, li, td, th, label, input, select, textarea, button {
   min-height: calc(100vh - 69px);
 }
 .figma-customer-shell .products-page > .w-full,
-.figma-customer-shell .wallet-page > .w-full,
 .figma-customer-shell .orders-page > .w-full,
-.figma-customer-shell .return-page > .w-full,
 .figma-customer-shell .about-page > .w-full,
 .figma-customer-shell .contact-page > .w-full,
 .figma-customer-shell .success-page > .w-full {
@@ -260,7 +256,6 @@ p, span, li, td, th, label, input, select, textarea, button {
 }
 .figma-customer-shell .page-title,
 .figma-customer-shell .detail-name,
-.figma-customer-shell .wallet-title,
 .figma-customer-shell .success-title {
   font-family: "Fraunces", Georgia, serif;
   font-weight: 600;
@@ -268,7 +263,6 @@ p, span, li, td, th, label, input, select, textarea, button {
 }
 .figma-customer-shell .sg-card,
 .figma-customer-shell .filter-panel,
-.figma-customer-shell .wallet-panel,
 .figma-customer-shell .address-card {
   border-color: var(--figma-line);
   border-radius: var(--figma-radius-md);
@@ -288,9 +282,7 @@ p, span, li, td, th, label, input, select, textarea, button {
 .figma-customer-shell .auth-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; letter-spacing: -.02em; }
 @media (max-width: 767px) {
   .figma-customer-shell .products-page > .w-full,
-  .figma-customer-shell .wallet-page > .w-full,
   .figma-customer-shell .orders-page > .w-full,
-  .figma-customer-shell .return-page > .w-full,
   .figma-customer-shell .about-page > .w-full,
   .figma-customer-shell .contact-page > .w-full,
   .figma-customer-shell .success-page > .w-full {

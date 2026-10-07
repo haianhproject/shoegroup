@@ -1,34 +1,66 @@
 <!-- Mục đích: Màn hình bán hàng tại quầy, lập đơn và thanh toán trực tiếp. -->
 <!-- Trang: Bán Hàng Tại Quầy (POS) -->
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   activePosOrder, resetPosOrder,
   posPayModal, confirmPosPaid, cancelPosPay, markPosQrFailed,
   posSearch, posVariants, addToCart, removeCartItem,
   posSubtotal, posDiscountAmount, posGrandTotal,
   posCouponList, applyPosCoupon, clearPosCoupon,
-  posCustomerSearch, posCustomerResults, pickPosCustomer, posCustomerReady,
+  posCustomerSearch, posCustomerResults, pickPosCustomer,
   checkoutPos, formatPrice, formatDate, validateCartItemQty, posSubmitting,
   posInvoiceModal, closePosInvoice, openLastPosInvoice, printPosInvoice,
+  posCartBusy, posCartReady, loadPosCart, posCartItemMax, fetchAllData,
 } from '../adminStore'
 
 const qtyInputs = ref({})
-function addWithQty(v) {
-  const n = Number(qtyInputs.value[v.id]) || 1
-  addToCart(v, n)
-  qtyInputs.value[v.id] = 1
+const posControlsLocked = computed(() => posCartBusy.value || posSubmitting.value || posPayModal.open || !posCartReady.value)
+const productPlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="240" height="160" fill="#f4f4f5"/><text x="120" y="85" text-anchor="middle" fill="#71717a" font-size="14">ShoeGroup</text></svg>')}`
+function clampQuantity(value, max) {
+  return Math.min(max, Math.max(1, Math.floor(Number(value) || 1)))
+}
+function updateProductQty(v, event) {
+  const quantity = clampQuantity(event.target.value, v.stock)
+  qtyInputs.value[v.id] = quantity
+  event.target.value = quantity
+}
+async function updateCartQty(c, event) {
+  const input = event.target
+  input.value = clampQuantity(input.value, posCartItemMax(c))
+  await validateCartItemQty(c, input.value)
+  input.value = activePosOrder.value.cart.find(item => item.key === c.key)?.quantity ?? c.quantity
+}
+async function addWithQty(v) {
+  if (await addToCart(v, clampQuantity(qtyInputs.value[v.id] ?? 1, v.stock))) delete qtyInputs.value[v.id]
+}
+function imageError(event) {
+  event.target.onerror = null
+  event.target.src = productPlaceholder
 }
 function updateCustomerPhone(event) {
   activePosOrder.value.customer_phone = event.target.value.replace(/\D/g, '').slice(0, 10)
 }
+watch(posVariants, variants => {
+  for (const v of variants) {
+    if (qtyInputs.value[v.id] !== undefined) qtyInputs.value[v.id] = clampQuantity(qtyInputs.value[v.id], v.stock)
+  }
+})
+onMounted(async () => {
+  await fetchAllData()
+  await loadPosCart()
+})
 </script>
 
 <template>
-  <div class="fade-in">
-    <div class="grid grid-cols-12 gap-4">
+  <div class="fade-in pos-page">
+    <div v-if="!posCartReady" class="pos-sync-notice" role="status">
+      <span>{{ posCartBusy ? 'Đang tải giỏ tại quầy...' : 'Giỏ chưa được đồng bộ. Tải lại để tiếp tục bán hàng.' }}</span>
+      <button type="button" class="btn btn-sm btn-light border" :disabled="posCartBusy" @click="loadPosCart()">Tải lại giỏ</button>
+    </div>
+    <div class="pos-layout">
       <!-- CỘT TRÁI -->
-      <div class="lg:col-span-7">
+      <div class="pos-catalog">
         <!-- Khách hàng -->
         <div class="bg-white rounded-1 shadow-sm p-4 mb-4">
           <div class="flex justify-between items-center mb-3">
@@ -41,11 +73,11 @@ function updateCustomerPhone(event) {
 
           <!-- Khách lẻ: không cần nút lưu thủ công, hệ thống tự động lưu đơn hàng khi thanh toán -->
           <div v-if="activePosOrder.customer_type === 'Khách lẻ'" class="grid grid-cols-12 gap-3">
-            <div class="md:col-span-6">
+            <div class="col-span-12 md:col-span-6">
               <label class="block text-sm font-medium uppercase text-gray-600">Tên khách hàng <span class="text-red-600">*</span></label>
               <input v-model="activePosOrder.customer_name" type="text" class="sg-input rounded-2" placeholder="Nhập tên khách hàng" maxlength="100" autocomplete="name" required>
             </div>
-            <div class="md:col-span-6">
+            <div class="col-span-12 md:col-span-6">
               <label class="block text-sm font-medium uppercase text-gray-600">Số điện thoại <span class="text-red-600">*</span></label>
               <input :value="activePosOrder.customer_phone" @input="updateCustomerPhone" type="tel" inputmode="numeric" class="sg-input rounded-2" placeholder="VD: 0901234567" maxlength="10" autocomplete="tel" required>
             </div>
@@ -81,10 +113,6 @@ function updateCustomerPhone(event) {
               </p>
             </template>
           </div>
-          <p v-if="!posCustomerReady" class="pos-customer-required mt-3 mb-0" role="status">
-            <i class="icon icon-info-circle"></i>
-            Cần có tên khách hàng và SĐT Việt Nam hợp lệ (10 số) trước khi thanh toán.
-          </p>
         </div>
 
         <!-- Sản phẩm -->
@@ -92,37 +120,52 @@ function updateCustomerPhone(event) {
           <h6 class="font-bold mb-3 text-gray-900"><i class="icon icon-box-seam mr-2"></i>Sản phẩm</h6>
           <div class="relative mb-3">
             <i class="icon icon-search absolute text-gray-600" style="left:12px;top:50%;transform:translateY(-50%);"></i>
-            <input v-model="posSearch" type="text" class="sg-input rounded-2 pl-5" placeholder="Tìm theo tên, mã, màu, size...">
+            <input v-model="posSearch" type="text" class="sg-input rounded-2 pl-5" placeholder="Tìm tên, màu, size, thương hiệu, chất liệu...">
           </div>
-          <div class="grid grid-cols-12 gap-3" style="max-height:52vh;overflow:auto;">
-            <div v-if="posVariants.length === 0" class="col-span-12 text-center text-gray-600 py-4 text-sm">Không tìm thấy sản phẩm.</div>
-            <div v-for="v in posVariants" :key="v.id" class="col-span-6 md:col-span-4">
-              <div class="admin-pos-product border rounded-2 p-2 h-full flex flex-col">
-                <div class="relative mb-2">
-                  <img :src="v.image || 'https://via.placeholder.com/160'" class="rounded-2 w-full" style="height:96px;object-fit:cover;" @error="$event.target.src='https://via.placeholder.com/160'">
-                  <span class="rounded-full border absolute" :style="{ width:'16px', height:'16px', bottom:'6px', right:'6px', background: v.color_hex || '#d1d5db' }"></span>
+          <p class="pos-stock-hint">Thêm vào giỏ sẽ trừ kho ngay. Xóa sản phẩm hoặc làm mới đơn sẽ hoàn kho.</p>
+          <div class="pos-products-grid">
+            <div v-if="posVariants.length === 0" class="pos-products-empty">Không tìm thấy sản phẩm.</div>
+            <article v-for="v in posVariants" :key="v.id" class="pos-product-card" :class="{ 'is-unavailable': v.stock <= 0 }">
+              <img :src="v.image || productPlaceholder" class="pos-product-image" :alt="v.product_name" loading="lazy" @error="imageError">
+              <div class="pos-product-info">
+                <h3 class="pos-product-name">{{ v.product_name }}</h3>
+                <div class="pos-product-attributes">
+                  <span><i class="pos-color-dot" :style="{ background: v.color_hex || '#d1d5db' }"></i>Màu: {{ v.color || 'Chưa cập nhật' }}</span>
+                  <span>Size <strong>{{ v.size || '—' }}</strong></span>
                 </div>
-                <p class="text-sm font-medium mb-0 text-gray-900 text-truncate" v-text="v.product_name"></p>
-                <p class="text-gray-600 mb-1 text-truncate" style="font-size:0.72rem;" v-text="[v.color, v.size, v.sku].filter(Boolean).join(' · ')"></p>
-                <p class="font-bold text-gray-900 mb-1 text-sm" v-text="formatPrice(v.price)"></p>
-                <p class="text-gray-600 mb-2" style="font-size:0.72rem;">Tồn kho: <span v-text="v.stock"></span></p>
-                <div class="flex gap-1 mt-auto">
-                  <input type="number" min="1" v-model.number="qtyInputs[v.id]" class="sg-input sg-input text-center rounded-2" style="width:52px;" placeholder="1">
-                  <button @click="addWithQty(v)" :disabled="v.stock <= 0" class="btn btn-sm btn-dark rounded-2 grow"><i class="icon icon-plus-lg"></i> Thêm</button>
-                </div>
+                <dl class="pos-product-details">
+                  <div><dt>Thương hiệu</dt><dd>{{ v.brand || 'Chưa cập nhật' }}</dd></div>
+                  <div><dt>Danh mục</dt><dd>{{ v.category || 'Chưa cập nhật' }}</dd></div>
+                  <div><dt>Chất liệu</dt><dd>{{ v.material || 'Chưa cập nhật' }}</dd></div>
+                  <div v-if="v.description"><dt>Mô tả</dt><dd class="pos-product-description">{{ v.description }}</dd></div>
+                </dl>
               </div>
-            </div>
+              <div class="pos-product-footer">
+              <div class="pos-product-price-row">
+                <strong>{{ formatPrice(v.price) }}</strong>
+                <span class="pos-stock-count" :class="{ 'is-empty': v.stock <= 0 }">{{ v.no_variant ? 'Chưa có biến thể' : v.stock > 0 ? `Còn ${v.stock}` : 'Hết hàng' }}</span>
+              </div>
+              <div class="pos-product-actions">
+                <div class="pos-quantity-control">
+                  <button type="button" :disabled="posControlsLocked || v.stock <= 0 || (qtyInputs[v.id] ?? 1) <= 1" @click="qtyInputs[v.id] = Math.max(1, (qtyInputs[v.id] ?? 1) - 1)" :aria-label="'Giảm số lượng ' + v.product_name">−</button>
+                  <input type="number" min="1" :max="v.stock" step="1" inputmode="numeric" :value="qtyInputs[v.id] ?? (v.stock > 0 ? 1 : 0)" :disabled="posControlsLocked || v.stock <= 0" @input="updateProductQty(v, $event)" :aria-label="'Số lượng thêm ' + v.product_name + ', size ' + v.size + ', màu ' + v.color">
+                  <button type="button" :disabled="posControlsLocked || v.stock <= 0 || (qtyInputs[v.id] ?? 1) >= v.stock" @click="qtyInputs[v.id] = Math.min(v.stock, (qtyInputs[v.id] ?? 1) + 1)" :aria-label="'Tăng số lượng ' + v.product_name">+</button>
+                </div>
+                <button type="button" @click="addWithQty(v)" :disabled="posControlsLocked || v.stock <= 0" class="btn btn-dark pos-add-button"><i class="icon icon-plus-lg"></i> Thêm</button>
+              </div>
+              </div>
+            </article>
           </div>
         </div>
       </div>
 
       <!-- CỘT PHẢI -->
-      <div class="lg:col-span-5">
+      <div class="pos-checkout">
         <!-- Đơn hiện tại -->
         <div class="bg-white rounded-1 shadow-sm p-4">
           <div class="pos-current-title-row">
             <h6 class="font-bold mb-0 text-gray-900"><i class="icon icon-receipt mr-2"></i>Đơn hiện tại</h6>
-            <button @click="resetPosOrder()" class="btn btn-sm btn-white border rounded-1 pos-reset-order" title="Làm mới đơn" aria-label="Làm mới đơn hiện tại">
+            <button @click="resetPosOrder()" :disabled="posControlsLocked" class="btn btn-sm btn-white border rounded-1 pos-reset-order" title="Làm mới đơn và hoàn hàng về kho" aria-label="Làm mới đơn hiện tại và hoàn kho">
               <i class="icon icon-arrow-counterclockwise"></i>
             </button>
           </div>
@@ -147,15 +190,23 @@ function updateCustomerPhone(event) {
 
           <div class="text-gray-600 uppercase mb-2" style="font-size:0.68rem;">Sản phẩm trong đơn</div>
           <div v-if="activePosOrder.cart.length === 0" class="text-center text-gray-600 text-sm py-3 border rounded-2 mb-3">Chưa có sản phẩm trong đơn</div>
-          <div v-else class="mb-3" style="max-height:200px;overflow:auto;">
-            <div v-for="(c, i) in activePosOrder.cart" :key="i" class="flex items-center gap-2 py-2 border-b">
-              <img :src="c.image || 'https://via.placeholder.com/40'" class="rounded-2 border" style="width:40px;height:40px;object-fit:cover;" @error="$event.target.src='https://via.placeholder.com/40'">
-              <div class="grow">
-                <p class="text-sm font-medium mb-0 text-gray-900 text-truncate" v-text="c.name"></p>
-                <p class="text-gray-600 mb-0" style="font-size:0.72rem;" v-text="[c.color, c.size].filter(Boolean).join(' · ') + ' · ' + formatPrice(c.price)"></p>
+          <div v-else class="pos-cart-lines">
+            <div v-for="(c, i) in activePosOrder.cart" :key="c.key" class="pos-cart-line">
+              <img :src="c.image || productPlaceholder" class="pos-cart-image" :alt="c.name" @error="imageError">
+              <div class="pos-cart-description">
+                <p class="pos-cart-name">{{ c.name }}</p>
+                <p class="pos-cart-variant">{{ c.color }} · Size {{ c.size }}</p>
+                <strong>{{ formatPrice(c.price) }}</strong>
               </div>
-              <input type="number" min="1" @change="validateCartItemQty(c)" v-model.number="c.quantity" class="sg-input sg-input text-center rounded-2" style="width:56px;">
-              <button @click="removeCartItem(i)" class="btn btn-sm btn-link text-red-600 p-0"><i class="icon icon-trash"></i></button>
+              <button @click="removeCartItem(i)" :disabled="posControlsLocked" class="btn pos-remove-button" :aria-label="'Xóa ' + c.name + ' khỏi giỏ và hoàn kho'"><i class="icon icon-trash"></i></button>
+              <div class="pos-cart-quantity-row">
+                <span>Đã giữ {{ c.quantity }} sản phẩm</span>
+                <div class="pos-quantity-control">
+                  <button type="button" :disabled="posControlsLocked || c.quantity <= 1" @click="validateCartItemQty(c, c.quantity - 1)" :aria-label="'Giảm số lượng ' + c.name">−</button>
+                  <input type="number" min="1" :max="posCartItemMax(c)" step="1" inputmode="numeric" :value="c.quantity" :disabled="posControlsLocked" @input="$event.target.value = clampQuantity($event.target.value, posCartItemMax(c))" @change="updateCartQty(c, $event)" :aria-label="'Số lượng trong giỏ ' + c.name">
+                  <button type="button" :disabled="posControlsLocked || c.quantity >= posCartItemMax(c)" @click="validateCartItemQty(c, c.quantity + 1)" :aria-label="'Tăng số lượng ' + c.name">+</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -182,8 +233,8 @@ function updateCustomerPhone(event) {
             <div class="col-span-6"><button @click="activePosOrder.payment_method = 'Chuyển khoản'" class="btn w-full rounded-2 border py-2" :class="activePosOrder.payment_method === 'Chuyển khoản' ? 'btn-dark text-white border-dark' : 'btn-white text-gray-600'"><i class="icon icon-bank mr-1"></i>Chuyển khoản</button></div>
           </div>
 
-          <p v-if="!posCustomerReady" class="text-red-600 text-xs mb-2 text-center">Nhập đủ tên và SĐT hợp lệ để mở thanh toán.</p>
-          <button @click="checkoutPos()" :disabled="posSubmitting || activePosOrder.cart.length === 0 || !posCustomerReady" :title="!posCustomerReady ? 'Cần nhập tên và số điện thoại khách hàng hợp lệ' : ''" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
+          <p v-if="posCartBusy" class="text-gray-600 text-xs mb-2" role="status">Đang cập nhật giỏ và tồn kho...</p>
+          <button @click="checkoutPos()" :disabled="posControlsLocked || activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
         </div>
       </div>
     </div>
@@ -330,3 +381,52 @@ function updateCustomerPhone(event) {
       </div>
   </div>
 </template>
+
+<style scoped>
+.pos-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.pos-catalog, .pos-checkout { min-width: 0; }
+.pos-sync-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 10px; background: #fff; font-size: 13px; }
+.pos-stock-hint { color: #606068; font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
+.pos-products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-content: start; gap: 8px; max-height: 68vh; overflow-y: auto; scrollbar-gutter: stable; padding: 2px 5px 8px 2px; }
+.pos-products-empty { grid-column: 1 / -1; padding: 36px 12px; text-align: center; color: #71717a; }
+.pos-product-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-content: start; gap: 8px 10px; padding: 10px; border: 1px solid #dddde1; border-radius: 12px; background: #fff; }
+.pos-product-card:hover { border-color: #aaaab3; }
+.pos-product-card.is-unavailable { background: #fafafa; }
+.pos-product-image { width: 64px; height: 72px; object-fit: contain; border-radius: 8px; background: #f4f4f5; }
+.pos-product-info { min-width: 0; }
+.pos-product-name { margin: 0 0 4px; color: #18181b; font-size: 14px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.pos-product-attributes { display: flex; flex-wrap: wrap; gap: 6px; }
+.pos-product-attributes > span { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; background: #f1f1f3; border-radius: 5px; font-size: 12px; line-height: 1.5; }
+.pos-color-dot { display: inline-block; flex-shrink: 0; width: 12px; height: 12px; border: 1px solid #a1a1aa; border-radius: 50%; }
+.pos-product-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin: 6px 0 0; }
+.pos-product-details > div { display: flex; flex-wrap: wrap; align-content: start; gap: 0 4px; min-width: 0; font-size: 12px; line-height: 1.5; }
+.pos-product-details dt { color: #71717a; flex-shrink: 0; }
+.pos-product-details dt::after { content: ':'; }
+.pos-product-details dd { margin: 0; color: #27272a; font-weight: 500; overflow-wrap: anywhere; }
+.pos-product-description { white-space: pre-line; }
+.pos-product-footer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-top: 8px; border-top: 1px solid #ededf0; }
+.pos-product-price-row, .pos-product-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pos-product-price-row > strong { color: #18181b; font-size: 15px; }
+.pos-product-actions { margin-left: auto; }
+.pos-product-actions .pos-add-button { min-width: 84px; padding-inline: 12px; }
+.pos-stock-count { padding: 4px 8px; border-radius: 5px; background: #f1f1f3; color: #33333b; font-size: 12px; font-weight: 600; }
+.pos-stock-count.is-empty { color: #8b3434; background: #fceeee; }
+.pos-quantity-control { display: inline-flex; flex: 0 0 auto; height: 42px; border: 1px solid #d4d4d8; border-radius: 8px; overflow: hidden; background: #fff; }
+.pos-quantity-control button { width: 34px; border: 0; background: #f5f5f6; color: #18181b; font-size: 20px; cursor: pointer; }
+.pos-quantity-control input { width: 46px; min-width: 0; border: 0; border-radius: 0; padding: 4px; text-align: center; color: #18181b; font-size: 14px; appearance: textfield; -moz-appearance: textfield; }
+.pos-quantity-control input::-webkit-inner-spin-button, .pos-quantity-control input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pos-quantity-control button:disabled, .pos-quantity-control input:disabled { color: #a1a1aa; cursor: not-allowed; }
+.pos-quantity-control button:focus-visible, .pos-quantity-control input:focus-visible { outline: 2px solid #18181b; outline-offset: -2px; }
+.pos-add-button { flex: 1 1 auto; min-height: 42px; justify-content: center; gap: 6px; }
+.pos-cart-lines { max-height: 380px; overflow-y: auto; margin-bottom: 20px; padding-right: 4px; }
+.pos-cart-line { display: grid; grid-template-columns: 52px minmax(0, 1fr) 36px; gap: 10px; padding: 14px 0; border-bottom: 1px solid #e4e4e7; }
+.pos-cart-image { width: 52px; height: 58px; border-radius: 8px; background: #f4f4f5; object-fit: contain; }
+.pos-cart-description { min-width: 0; font-size: 13px; }
+.pos-cart-name { margin: 0 0 4px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.pos-cart-variant { margin: 0 0 5px; color: #666670; font-size: 12px; }
+.pos-remove-button { width: 36px; min-height: 42px; padding: 0; color: #a33; align-self: start; }
+.pos-cart-quantity-row { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.pos-cart-quantity-row > span { color: #666670; font-size: 12px; }
+@media (min-width: 1280px) { .pos-layout { grid-template-columns: minmax(0, 1fr) minmax(350px, 400px); } }
+@media (max-width: 480px) { .pos-product-actions { flex: 1 1 100%; } }
+</style>

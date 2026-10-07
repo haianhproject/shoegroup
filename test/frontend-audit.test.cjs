@@ -53,14 +53,13 @@ test('checkout retry retains its key through reload and rotates after success', 
   assert.notEqual(after.getCheckoutAttempt(payload).key,first.key);
 });
 
-test('dashboard revenue excludes unpaid/cancelled orders and deducts only completed refunds', () => {
+test('dashboard revenue excludes unpaid/cancelled orders and preserves historical refund deductions', () => {
   const {recognizedOrderRevenue}=load('src/services/revenue.js');
-  const paid={id:1,status:'Đã nhận hàng',payment_status:'Đã thanh toán',is_counted_as_revenue:1,total:575000};
-  const refunds=[{order_id:1,refund_amount:100000,refunded_at:'2026-09-09'}, {order_id:1,refund_amount:500000}, {order_id:2,refund_amount:500000,refunded_at:'2026-09-09'}];
-  assert.equal(recognizedOrderRevenue(paid,refunds),475000);
-  assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'},refunds),0);
-  assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'},refunds),0);
-  assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0},refunds),0);
+  const paid={id:1,status:'Đã nhận hàng',payment_status:'Đã thanh toán',is_counted_as_revenue:1,total:575000,historical_refund_amount:100000};
+  assert.equal(recognizedOrderRevenue(paid),475000);
+  assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'}),0);
+  assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'}),0);
+  assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0}),0);
 });
 
 test('cart checks exact variant, preserves requested quantity, and flags stale stock', async () => {
@@ -514,6 +513,28 @@ test('first variant image updates cover, while cover edits and other variants st
   assert.equal(admin.productForm.image_url, 'cover-custom.png');
   assert.equal(admin.productForm.colors[0].image, 'black-new.png');
   assert.equal(saved.colors[0].image, 'black-original.png');
+});
+
+test('editing a product restores the selected color id from its saved color name', () => {
+  const admin = loadAdminImages();
+  admin.db.colors = [
+    { id: 7, name: 'Đen', hex: '#000000' },
+    { id: 8, name: 'Trắng', hex: '#ffffff' },
+  ];
+
+  admin.openProductForm(imageProduct());
+
+  assert.equal(admin.productForm.colors[0].id, 7);
+  assert.equal(admin.productForm.colors[0].name, 'Đen');
+  assert.equal(admin.productForm.colors[0].hex, '#000000');
+  assert.equal(admin.productForm.colors[1].id, 8);
+});
+
+test('product variant editor omits variant descriptions and keeps the color selector', () => {
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/pages/ProductsPage.vue'), 'utf8');
+  assert.doesNotMatch(source, /Mô tả biến thể|Chú thích \(không bắt buộc\)|colorNoteDraft/);
+  assert.match(source, /<i class="icon icon-palette mr-1"><\/i>Đổi màu/);
+  assert.match(source, /<select\s+:value="c\.id"\s+@change="changeColor/);
 });
 
 test('device uploads obey the same one-way image rule', async () => {

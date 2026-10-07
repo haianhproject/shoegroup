@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const columns = [
   { title: 'Sản phẩm', links: [{ label: 'Giày chạy bộ', query: { filter: 'running' } }, { label: 'Giày bóng rổ', query: { filter: 'basketball' } }, { label: 'Giày training', query: { filter: 'training' } }, { label: 'Giày lifestyle', query: { filter: 'lifestyle' } }] },
-  { title: 'Hỗ trợ', links: [{ label: 'Chọn size', path: '/contact' }, { label: 'Đổi trả', path: '/returns' }, { label: 'Theo dõi đơn', path: '/orders' }, { label: 'Câu hỏi thường gặp', path: '/contact' }] },
+  { title: 'Hỗ trợ', links: [{ label: 'Chọn size', path: '/contact' }, { label: 'Theo dõi đơn', path: '/orders' }, { label: 'Câu hỏi thường gặp', path: '/contact' }] },
   { title: 'Công ty', links: [{ label: 'Về chúng tôi', path: '/about' }, { label: 'Liên hệ', path: '/contact' }, { label: 'Tài khoản', path: '/account' }] },
 ]
 

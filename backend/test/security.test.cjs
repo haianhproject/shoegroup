@@ -9,10 +9,8 @@ const password = require("../src/security/password");
 test("API policy exposes only intended public/customer routes", () => {
   assert.equal(resolvePolicy("GET", "/api/v2/products"), "PUBLIC");
   assert.equal(resolvePolicy("GET", "/api/v2/orders"), "CUSTOMER");
-  assert.equal(resolvePolicy("POST", "/api/returns"), "CUSTOMER");
   assert.equal(resolvePolicy("POST", "/api/cart/items"), "CUSTOMER");
   assert.equal(resolvePolicy("DELETE", "/api/cart"), "CUSTOMER");
-  assert.equal(resolvePolicy("PUT", "/api/returns/12/status"), "ADMIN");
   assert.equal(resolvePolicy("GET", "/api/variantDiscounts"), "ADMIN");
   assert.equal(resolvePolicy("DELETE", "/api/products/10"), "ADMIN");
   assert.equal(resolvePolicy("GET", "/api/admin/events"), "ADMIN");
