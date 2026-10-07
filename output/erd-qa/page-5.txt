@@ -1,0 +1,54 @@
+ShoeGroup — Giỏ bán hàng tại quầy
+Sơ đồ chi tiết giỏ tại quầy và liên kết với tài khoản, sản phẩm, biến thể sản phẩm.
+Users — Tài khoản
+PK UserID — Mã tài khoản int NOT NULL AI
+FK RoleID — Mã vai trò int NULL
+UQ Email — Thư điện tử varchar(100) NOT NULL
+PasswordHash — Mật khẩu đã băm varchar(255) NOT NULL
+FullName — Họ và tên nvarchar(100) NOT NULL
+Phone — Số điện thoại varchar(20) NULL
+Address — Địa chỉ nvarchar(255) NULL
+IsActive — Đang hoạt động bit NULL
+CreatedAt — Thời điểm tạo datetime NULL
+PasswordResetToken — Mã đặt lại mật khẩu varchar(255) NULL
+PasswordResetTokenExpiry — Hạn mã đặt lại mật khẩu datetime NULL
+LastPasswordChangedAt — Lần đổi mật khẩu gần nhất datetime NULL
+UpdatedAt — Thời điểm cập nhật datetime NULL
+Source — Nguồn khách hàng nvarchar(30) NULL
+AvatarURL — Đường dẫn ảnh đại diện nvarchar(max) NULL
+PosCarts — Giỏ hàng tại quầy
+PK,FKUserID — Mã tài khoản int NOT NULL
+Revision — Phiên bản giỏ hàng int NOT NULL
+UpdatedAt — Thời điểm cập nhật datetime2 NOT NULL
+PosCartItems — Chi tiết giỏ tại quầy
+PK,FKUserID — Mã tài khoản int NOT NULL
+PK,FKProductVariantID — Mã biến thể sản phẩm int NOT NULL
+Quantity — Số lượng int NOT NULL
+ProductVariants — Biến thể sản phẩm
+PK ProductVariantID — Mã biến thể sản phẩm int NOT NULL AI
+FK ProductID — Mã sản phẩm int NOT NULL
+Size — Kích cỡ nvarchar(10) NULL
+SizeStandard — Hệ kích cỡ varchar(10) NULL
+ColorName — Tên màu nvarchar(50) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+ChildSKU — Mã SKU biến thể varchar(60) NULL
+StockQuantity — Số lượng tồn kho int NOT NULL
+PriceAdjustment — Mức điều chỉnh giá decimal(18,0) NULL
+IsActive — Đang hoạt động bit NULL
+FK ColorID — Mã màu sắc int NULL
+FK SizeID — Mã kích cỡ int NULL
+Version — Phiên bản dữ liệu int NOT NULL
+Products — Sản phẩm
+PK ProductID — Mã sản phẩm int NOT NULL AI
+FK CategoryID — Mã danh mục int NULL
+FK BrandID — Mã thương hiệu int NULL
+ProductName — Tên sản phẩm nvarchar(255) NOT NULL
+BasePrice — Giá cơ bản decimal(18,0) NOT NULL
+IsActive — Đang hoạt động bit NULL
+ImageURL — Đường dẫn ảnh varchar(max) NULL
+Description — Mô tả nvarchar(max) NULL
+ParentSKU — Mã SKU sản phẩm varchar(50) NULL
+IsFeatured — Là sản phẩm nổi bật bit NULL
+ViewCount — Lượt xem int NULL
+CreatedAt — Thời điểm tạo datetime NULL
+FK MaterialID — Mã chất liệu int NULL

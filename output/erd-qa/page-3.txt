@@ -1,0 +1,83 @@
+ShoeGroup — Sản phẩm và thuộc tính sản phẩm
+Sơ đồ chi tiết nhóm sản phẩm, danh mục thuộc tính, hình ảnh và ưu đãi theo biến thể.
+Brands — Thương hiệu
+PK BrandID — Mã thương hiệu int NOT NULL AI
+BrandName — Tên thương hiệu nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NULL
+LogoURL — Đường dẫn biểu trưng varchar(max) NULL
+SortOrder — Thứ tự hiển thị int NULL
+Categories — Danh mục
+PK CategoryID — Mã danh mục int NOT NULL AI
+CategoryName — Tên danh mục nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NULL
+Sport — Môn thể thao nvarchar(100) NULL
+Materials — Chất liệu
+PK MaterialID — Mã chất liệu int NOT NULL AI
+MaterialName — Tên chất liệu nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NOT NULL
+Colors — Màu sắc
+PK ColorID — Mã màu sắc int NOT NULL AI
+ColorName — Tên màu nvarchar(50) NOT NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+IsActive — Đang hoạt động bit NOT NULL
+SortOrder — Thứ tự hiển thị int NOT NULL
+Sizes — Kích cỡ
+PK SizeID — Mã kích cỡ int NOT NULL AI
+SizeName — Tên kích cỡ nvarchar(20) NOT NULL
+SizeStandard — Hệ kích cỡ varchar(10) NULL
+IsActive — Đang hoạt động bit NOT NULL
+SortOrder — Thứ tự hiển thị int NOT NULL
+Products — Sản phẩm
+PK ProductID — Mã sản phẩm int NOT NULL AI
+FK CategoryID — Mã danh mục int NULL
+FK BrandID — Mã thương hiệu int NULL
+ProductName — Tên sản phẩm nvarchar(255) NOT NULL
+BasePrice — Giá cơ bản decimal(18,0) NOT NULL
+IsActive — Đang hoạt động bit NULL
+ImageURL — Đường dẫn ảnh varchar(max) NULL
+Description — Mô tả nvarchar(max) NULL
+ParentSKU — Mã SKU sản phẩm varchar(50) NULL
+IsFeatured — Là sản phẩm nổi bật bit NULL
+ViewCount — Lượt xem int NULL
+CreatedAt — Thời điểm tạo datetime NULL
+FK MaterialID — Mã chất liệu int NULL
+ProductImages — Ảnh sản phẩm
+PK ProductImageID — Mã ảnh sản phẩm int NOT NULL AI
+FK ProductID — Mã sản phẩm int NOT NULL
+ColorName — Tên màu nvarchar(50) NULL
+ImageURL — Đường dẫn ảnh varchar(max) NOT NULL
+IsPrimary — Là ảnh chính bit NULL
+SortOrder — Thứ tự hiển thị int NULL
+ProductVariants — Biến thể sản phẩm
+PK ProductVariantID — Mã biến thể sản phẩm int NOT NULL AI
+FK ProductID — Mã sản phẩm int NOT NULL
+Size — Kích cỡ nvarchar(10) NULL
+SizeStandard — Hệ kích cỡ varchar(10) NULL
+ColorName — Tên màu nvarchar(50) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+ChildSKU — Mã SKU biến thể varchar(60) NULL
+StockQuantity — Số lượng tồn kho int NOT NULL
+PriceAdjustment — Mức điều chỉnh giá decimal(18,0) NULL
+IsActive — Đang hoạt động bit NULL
+FK ColorID — Mã màu sắc int NULL
+FK SizeID — Mã kích cỡ int NULL
+Version — Phiên bản dữ liệu int NOT NULL
+VariantDiscounts — Giảm giá biến thể
+PK VariantDiscountID — Mã giảm giá biến thể int NOT NULL AI
+FK ProductVariantID — Mã biến thể sản phẩm int NOT NULL
+FK ProductID — Mã sản phẩm int NULL
+ColorName — Tên màu nvarchar(50) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+DiscountType — Loại giảm giá nvarchar(20) NOT NULL
+DiscountValue — Giá trị giảm giá decimal(18,2) NOT NULL
+DiscountPercent — Phần trăm giảm giá int NULL
+MaxDiscountAmount — Số tiền giảm tối đa decimal(18,2) NOT NULL
+Quantity — Số lượng int NOT NULL
+UsedCount — Số lượt đã dùng int NOT NULL
+StartDate — Ngày bắt đầu datetime NULL
+EndDate — Ngày kết thúc datetime NULL
+Reason — Lý do nvarchar(100) NULL
+IsActive — Đang hoạt động bit NOT NULL
+Description — Mô tả nvarchar(500) NULL
+CreatedAt — Thời điểm tạo datetime NOT NULL
+ApplyScope — Phạm vi áp dụng varchar(20) NOT NULL

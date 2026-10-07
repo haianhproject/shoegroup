@@ -82,18 +82,10 @@ Kết luận ở đây dựa trên code hiện hành, các phụ thuộc DB và 
 
 ## ERD hiện hành
 
-- [ERD chỉnh sửa được, 6 trang](../diagrams/erd/ERD-ShoeGroup-20261001.drawio)
-- [Ảnh tổng quan](../diagrams/erd/ERD-ShoeGroup-20261001.png)
-- [Metadata trích trực tiếp từ DB, không có dữ liệu người dùng](../diagrams/erd/schema-20261001.json)
-
-Trang tổng chứa đủ 30 bảng nghiệp vụ; các trang sau tách chi tiết tài khoản/giỏ hàng,
-sản phẩm, đơn hàng/thanh toán, trả hàng/ví và migration kỹ thuật.
-PK, FK, kiểu dữ liệu và tính nullable lấy từ SQL Server, không suy đoán theo hậu tố ID.
-Ví dụ `OrderDetails.VariantDiscountID` chưa có FK vật lý nên không tự vẽ thành quan hệ ràng buộc.
-Các file `ERD-SD64-ShoeGroup-Hoan-Chinh.drawio` và `.png` đã được đồng bộ với bản hiện hành,
-cũng như `diagram/ERD-ShoeGroup.drawio` và `.png`. Riêng PDF cũ chưa xuất lại.
-Các đường nối đã xét UNIQUE và nullable; xem `diagram/ERD-KhoaNgoai.md` để đọc đủ 38 FK,
-bội số và chính sách ON DELETE của từng quan hệ.
+Các tệp ERD lịch sử của ngày 01/10 đã được loại khỏi thư mục sơ đồ.
+Xem [bộ ERD hiện hành](../diagrams/erd/README.md) và
+[chi tiết khóa ngoại hiện hành](../diagrams/erd/ERD-KhoaNgoai.md).
+Các số liệu kiểm chứng bên dưới là kết quả lịch sử tại ngày 01/10/2026.
 
 Tạo lại ERD từ DB được cấu hình trong `backend/.env`:
 

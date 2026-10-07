@@ -1,0 +1,15 @@
+[3156:1007/103754.207:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[3156:1007/103754.222:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[3156:1007/103754.222:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[3156:1007/103754.222:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[3156:1007/103754.238:ERROR:net\disk_cache\disk_cache.cc:290] Unable to create cache
+[3156:1007/103754.238:ERROR:gpu\ipc\host\gpu_disk_cache.cc:737] Gpu Cache Creation failed: -2
+[3156:1007/103754.238:ERROR:net\disk_cache\disk_cache.cc:290] Unable to create cache
+[3156:1007/103754.238:ERROR:gpu\ipc\host\gpu_disk_cache.cc:737] Gpu Cache Creation failed: -2
+[3156:1007/103754.238:ERROR:net\disk_cache\disk_cache.cc:290] Unable to create cache
+[3156:1007/103754.238:ERROR:gpu\ipc\host\gpu_disk_cache.cc:737] Gpu Cache Creation failed: -2
+[3156:1007/103754.238:ERROR:net\disk_cache\disk_cache.cc:290] Unable to create cache
+[3156:1007/103754.238:ERROR:gpu\ipc\host\gpu_disk_cache.cc:737] Gpu Cache Creation failed: -2
+[3156:1007/103754.374:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[3156:1007/103754.374:ERROR:net\disk_cache\disk_cache.cc:290] Unable to create cache
+[3156:1007/103754.374:ERROR:gpu\ipc\host\gpu_disk_cache.cc:737] Gpu Cache Creation failed: -2
