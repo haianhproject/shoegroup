@@ -24,7 +24,6 @@ import {
   closeProductForm,
   productForm,
   colorDraft,
-  colorNoteDraft,
   addColor,
   removeColor,
   toggleColorSize,
@@ -38,7 +37,6 @@ import {
   productStockTotal,
   getMaterialName,
   getBrandName,
-  getCollectionName,
   LOW_STOCK_THRESHOLD,
   productFormVariantCount,
   productFormStockTotal,
@@ -320,7 +318,6 @@ function onProductImageError(event) {
                         "
                       ></span>
                     </div>
-                    <div v-if="c.note" class="text-xs text-gray-500 mt-0.5" v-text="c.note"></div>
                   </div>
                 </div>
                 <button
@@ -333,10 +330,10 @@ function onProductImageError(event) {
                 </button>
               </div>
 
-              <!-- Khu vực Sửa Ảnh, Sửa Màu, Sửa Mô Tả Biến Thể -->
+              <!-- Khu vực sửa ảnh và màu của biến thể -->
               <div class="grid grid-cols-12 gap-2.5 p-2.5 rounded-2 bg-light-gray mb-3 text-xs">
                 <!-- Sửa Ảnh biến thể -->
-                <div class="col-span-12 sm:col-span-5">
+                <div class="col-span-12 sm:col-span-7">
                   <label class="block font-semibold text-gray-700 mb-1">
                     <i class="icon icon-image mr-1"></i>Ảnh biến thể
                   </label>
@@ -357,12 +354,12 @@ function onProductImageError(event) {
                 </div>
 
                 <!-- Sửa Màu sắc -->
-                <div class="col-span-12 sm:col-span-3">
+                <div class="col-span-12 sm:col-span-5">
                   <label class="block font-semibold text-gray-700 mb-1">
                     <i class="icon icon-palette mr-1"></i>Đổi màu
                   </label>
                   <select
-                    :value="c.id || ''"
+                    :value="c.id"
                     @change="changeColor(i, $event.target.value)"
                     class="sg-input sg-input-sm rounded-2 w-full text-xs"
                   >
@@ -374,19 +371,6 @@ function onProductImageError(event) {
                       v-text="col.name"
                     ></option>
                   </select>
-                </div>
-
-                <!-- Sửa Mô tả / Chú thích -->
-                <div class="col-span-12 sm:col-span-4">
-                  <label class="block font-semibold text-gray-700 mb-1">
-                    <i class="icon icon-pencil mr-1"></i>Mô tả biến thể
-                  </label>
-                  <input
-                    v-model="c.note"
-                    type="text"
-                    class="sg-input sg-input-sm rounded-2 w-full text-xs"
-                    placeholder="VD: Phối màu Panda, Da lộn..."
-                  />
                 </div>
               </div>
 
@@ -457,7 +441,7 @@ function onProductImageError(event) {
                   ></option>
                 </select>
               </div>
-              <div class="col-span-12 sm:col-span-4">
+              <div class="col-span-12 sm:col-span-7">
                 <label class="block text-sm font-medium text-sm font-medium mb-1"
                   >Ảnh của màu</label
                 >
@@ -486,17 +470,6 @@ function onProductImageError(event) {
                       @change="onColorDraftImageFile"
                   /></label>
                 </div>
-              </div>
-              <div class="col-span-12 sm:col-span-3">
-                <label class="block text-sm font-medium text-sm font-medium mb-1"
-                  >Chú thích (không bắt buộc)</label
-                >
-                <input
-                  v-model="colorNoteDraft"
-                  type="text"
-                  class="sg-input sg-input rounded-2"
-                  placeholder="VD: Đỏ đô, Trắng kem..."
-                />
               </div>
               <div class="col-span-12 sm:col-span-2 grid">
                 <button @click="addColor" class="btn btn-sm btn-dark rounded-2">
@@ -616,7 +589,6 @@ function onProductImageError(event) {
               <dl class="product-detail-attributes">
                 <div><dt>Danh mục</dt><dd>{{ productDetailModal.product.category || '—' }}</dd></div>
                 <div><dt>Thương hiệu</dt><dd>{{ productDetailModal.product.brand || getBrandName(productDetailModal.product.brand_id) }}</dd></div>
-                <div><dt>Bộ sưu tập</dt><dd>{{ getCollectionName(productDetailModal.product.collection_id) }}</dd></div>
                 <div><dt>Chất liệu</dt><dd>{{ getMaterialName(productDetailModal.product.material_id) }}</dd></div>
               </dl>
             </div>

@@ -37,14 +37,12 @@ const POLICIES = [
   ["GET", /^\/api\/products(\/|$|\?)/, "PUBLIC"],
   ["GET", /^\/api\/categories/, "PUBLIC"],
   ["GET", /^\/api\/brands/, "PUBLIC"],
-  ["GET", /^\/api\/collections/, "PUBLIC"],
   ["GET", /^\/api\/colors/, "PUBLIC"],
   ["GET", /^\/api\/sizes/, "PUBLIC"],
   ["GET", /^\/api\/materials/, "PUBLIC"],
   ["GET", /^\/api\/soles/, "PUBLIC"],
   ["GET", /^\/api\/cushionings/, "PUBLIC"],
   ["GET", /^\/api\/discounts/, "PUBLIC"],
-  ["GET", /^\/api\/postoffices/, "PUBLIC"],
   ["GET", /^\/api\/shippingmethods/, "PUBLIC"],
   ["POST", /^\/api\/shipping\/quote$/, "PUBLIC"],
 
@@ -59,15 +57,13 @@ const POLICIES = [
   ["POST", /^\/api\/addresses$/, "CUSTOMER"],
   ["PUT", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
   ["DELETE", /^\/api\/addresses\/\d+$/, "CUSTOMER"],
-  ["POST", /^\/api\/returns$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/orders$/, "CUSTOMER"],
   ["GET", /^\/api\/customers\/\d+\/notifications$/, "CUSTOMER"],
   ["PUT", /^\/api\/accounts\/\d+$/, "CUSTOMER"], // tu cap nhat thong tin ca nhan
-  ["GET", /^\/api\/returns$/, "CUSTOMER"],
-  ["GET", /^\/api\/wallet$/, "CUSTOMER"],
-  ["GET", /^\/api\/wallet\/transactions$/, "CUSTOMER"],
-  ["POST", /^\/api\/wallet\/withdrawals$/, "CUSTOMER"],
   ["GET", /^\/api\/orders$/, "ADMIN"],
+  ["GET", /^\/api\/admin\/events$/, "ADMIN"],
+  ["GET", /^\/api\/pos\/payment-config$/, "ADMIN"],
+  ["*", /^\/api\/pos\/cart(\/|$)/, "ADMIN"],
 
   // ===== Chi Admin =====
   ["*", /^\/api\/accounts/, "ADMIN"],
@@ -75,7 +71,6 @@ const POLICIES = [
   ["*", /^\/api\/chart-data/, "ADMIN"],
   ["*", /^\/api\/revenue-by-product/, "ADMIN"],
   ["*", /^\/api\/inventory/, "ADMIN"],
-  ["*", /^\/api\/returns\/\d+\/status$/, "ADMIN"],
   // Moi thao tac ghi tren du lieu danh muc / san pham deu la Admin
   ["POST", /^\/api\//, "ADMIN"],
   ["PUT", /^\/api\//, "ADMIN"],

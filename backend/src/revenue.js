@@ -3,7 +3,6 @@
 const recognizedWhere = `ISNULL(o.IsCountedAsRevenue,0)=1
   AND o.Status IN (N'Đã nhận hàng',N'Da nhan hang')
   AND o.PaymentStatus IN (N'Đã thanh toán',N'Da thanh toan')`;
-const refundJoin = `OUTER APPLY (SELECT ISNULL(SUM(r.RefundAmount),0) AS amount
-  FROM Returns r WHERE r.OrderID=o.OrderID AND r.RefundedAt IS NOT NULL) refunds`;
-const netAmount = `CASE WHEN o.TotalAmount>refunds.amount THEN o.TotalAmount-refunds.amount ELSE 0 END`;
+const refundJoin = '';
+const netAmount = `CASE WHEN o.TotalAmount>o.HistoricalRefundAmount THEN o.TotalAmount-o.HistoricalRefundAmount ELSE 0 END`;
 module.exports = { recognizedWhere, refundJoin, netAmount };

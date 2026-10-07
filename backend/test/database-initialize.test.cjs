@@ -39,6 +39,7 @@ test("khởi tạo chạy migration trước rồi mới xác nhận schema", as
               HasApplyScope: 1,
               HasOrderVariantDiscount: 1,
               HasDiscountRestoreMarker: 1,
+              HasPosCarts: 1,
             }],
           };
         },
@@ -63,6 +64,7 @@ test("schema thiếu ApplyScope bị chặn trước khi route có thể query",
               HasApplyScope: 0,
               HasOrderVariantDiscount: 1,
               HasDiscountRestoreMarker: 1,
+              HasPosCarts: 1,
             }],
           };
         },

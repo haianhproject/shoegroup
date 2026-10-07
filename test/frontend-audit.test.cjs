@@ -53,14 +53,13 @@ test('checkout retry retains its key through reload and rotates after success', 
   assert.notEqual(after.getCheckoutAttempt(payload).key,first.key);
 });
 
-test('dashboard revenue excludes unpaid/cancelled orders and deducts only completed refunds', () => {
+test('dashboard revenue excludes unpaid/cancelled orders and preserves historical refund deductions', () => {
   const {recognizedOrderRevenue}=load('src/services/revenue.js');
-  const paid={id:1,status:'Đã nhận hàng',payment_status:'Đã thanh toán',is_counted_as_revenue:1,total:575000};
-  const refunds=[{order_id:1,refund_amount:100000,refunded_at:'2026-09-09'}, {order_id:1,refund_amount:500000}, {order_id:2,refund_amount:500000,refunded_at:'2026-09-09'}];
-  assert.equal(recognizedOrderRevenue(paid,refunds),475000);
-  assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'},refunds),0);
-  assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'},refunds),0);
-  assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0},refunds),0);
+  const paid={id:1,status:'Đã nhận hàng',payment_status:'Đã thanh toán',is_counted_as_revenue:1,total:575000,historical_refund_amount:100000};
+  assert.equal(recognizedOrderRevenue(paid),475000);
+  assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'}),0);
+  assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'}),0);
+  assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0}),0);
 });
 
 test('cart checks exact variant, preserves requested quantity, and flags stale stock', async () => {
@@ -140,6 +139,20 @@ test('order mappings use warehouse state and server item subtotal', () => {
   assert.equal(orders.mapStatusToKey('returned to warehouse'), 'WAREHOUSE_RETURN');
   const mapped = orders.mapServerOrder({ id: 4, total: 570000, shippingFee: 30000, discount: 10000, products: [{ name: 'Shoe', price: 550000, quantity: 1 }] });
   assert.equal(mapped.subtotal, 550000);
+});
+
+test('customer sees three distinct delivery failure outcomes', () => {
+  const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
+  const unreachable = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'RETURNED_TO_WAREHOUSE' };
+  const accident = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'DELIVERY_ACCIDENT' };
+  const lost = { status: 'CANCELLED', stockIssueStatus: 'LOST_IN_TRANSIT' };
+
+  assert.equal(orders.getDeliveryIssueType(unreachable), 'UNREACHABLE');
+  assert.equal(orders.getDeliveryIssueType(accident), 'ACCIDENT');
+  assert.equal(orders.getDeliveryIssueType(lost), 'LOST');
+  assert.equal(orders.getCustomerOrderStatusLabel(unreachable), 'Chưa liên hệ được');
+  assert.equal(orders.getCustomerOrderStatusLabel(accident), 'Sự cố vận chuyển');
+  assert.equal(orders.getCustomerOrderStatusLabel(lost), 'Hàng bị thất lạc');
 });
 
 test('local order keeps the image of the purchased color variant', () => {
@@ -273,6 +286,8 @@ function loadAdminImages() {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/services/vietQr': {},
+    '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
     '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => null },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
@@ -283,6 +298,199 @@ function loadAdminImages() {
     },
   });
 }
+
+function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
+  return load('src/views/admin/adminStore.js', {
+    '@/services/checkoutAttempt': {},
+    '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/services/vietQr': {},
+    '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
+    '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
+    '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken },
+    '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
+  }, {
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    TextDecoder,
+    ...globals,
+  });
+}
+
+test('lost delivery cancels permanently while the other failures can be reshipped', () => {
+  const admin = loadAdminImages();
+  const options = admin.getDeliveryFailureOptions();
+  const unreachable = options.find(option => option.key === 'return_warehouse');
+  const accident = options.find(option => option.key === 'delivery_accident');
+  const lost = options.find(option => option.key === 'lost_delivery_cancel');
+
+  assert.equal(unreachable.next, 'Về kho');
+  assert.equal(accident.next, 'Về kho');
+  assert.equal(lost.next, 'Đã hủy');
+  assert.equal(lost.issueStatus, 'LOST_IN_TRANSIT');
+  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' })[0].key, 'reship');
+  assert.equal(admin.getOrderActions({
+    status: 'Giao hàng thất bại',
+    payment_method: 'COD',
+    stock_issue_reason: 'Mất hàng khi vận chuyển',
+  }).length, 0);
+});
+
+test('printed invoice uses ShoeGroup data, accurate totals, and no decorative tracking QR', () => {
+  const admin = loadAdminImages();
+  const mapped = admin.mapOrder({
+    id: 9,
+    total: 3075000,
+    shippingFee: 75000,
+    discount: 0,
+    products: [],
+  });
+  assert.equal(mapped.shipping_fee, 75000);
+  assert.equal(mapped.discount, 0);
+
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/adminStore.js'), 'utf8');
+  const invoiceSource = source.slice(source.indexOf('export const SHOP_INFO'), source.indexOf('/* ---------------- RETURNS'));
+  assert.match(invoiceSource, /name:\s*"SHOEGROUP"/);
+  assert.doesNotMatch(invoiceSource, /DVTD BASEBALL CAP SHOP|benmnhat@gmail\.com|160 Cao Lỗ|api\.qrserver\.com|alt='QR'/);
+  assert.doesNotMatch(invoiceSource, /<th class='c'>Trạng thái<\/th>/);
+});
+
+test('admin background merge updates order address in place for an open detail view', () => {
+  const admin = loadAdminRealtime();
+  const oldOrder = {
+    id: 7,
+    customer_address: 'Địa chỉ cũ',
+    address_id: 11,
+    customer_name: 'Tên cũ',
+    customer_phone: '0901000000',
+    address_changed: false,
+    products: [],
+    _history: [],
+    isExpanded: true,
+  };
+  const freshOrder = {
+    ...oldOrder,
+    customer_address: 'Địa chỉ mới',
+    address_id: 22,
+    customer_name: 'Tên mới',
+    customer_phone: '0902000000',
+    address_changed: true,
+    _history: [{ status: 'Chờ xác nhận', note: '[ADDRESS_CHANGED]' }],
+    isExpanded: false,
+  };
+
+  const merged = admin.mergeOrders([oldOrder], [freshOrder]);
+  assert.equal(merged[0], oldOrder);
+  assert.equal(merged[0].customer_address, 'Địa chỉ mới');
+  assert.equal(merged[0].address_id, 22);
+  assert.equal(merged[0].customer_name, 'Tên mới');
+  assert.equal(merged[0].customer_phone, '0902000000');
+  assert.equal(merged[0].address_changed, true);
+  assert.equal(merged[0].isExpanded, true);
+});
+
+test('refreshOrders fetches only orders and keeps the open detail reference live', async () => {
+  const requests = [];
+  const fetch = async (url, options) => {
+    requests.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: name => name.toLowerCase() === 'content-type' ? 'application/json' : '' },
+      json: async () => [{
+        id: 7,
+        created_at: '2026-09-29T09:00:00',
+        status: 'Chờ xác nhận',
+        total: 500000,
+        customer_name: 'Tên mới',
+        customer_phone: '0902000000',
+        customer_address: 'Địa chỉ mới',
+        address_id: 22,
+        address_changed: true,
+        products: [],
+        history: [{ status: 'Chờ xác nhận', note: '[ADDRESS_CHANGED]' }],
+      }],
+    };
+  };
+  const admin = loadAdminRealtime({ fetch });
+  admin.db.orders = [admin.mapOrder({
+    id: 7,
+    created_at: '2026-09-29T09:00:00',
+    status: 'Chờ xác nhận',
+    total: 500000,
+    customer_name: 'Tên cũ',
+    customer_phone: '0901000000',
+    customer_address: 'Địa chỉ cũ',
+    address_id: 11,
+    address_changed: false,
+    products: [],
+    history: [],
+  })];
+  const detailReference = admin.db.orders[0];
+  admin.openOrderDetail(detailReference);
+
+  await admin.refreshOrders();
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, 'http://localhost:5000/api/orders');
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.equal(admin.db.orders[0], detailReference);
+  assert.equal(admin.orderDetail.order, detailReference);
+  assert.equal(detailReference.customer_address, 'Địa chỉ mới');
+  assert.equal(detailReference.address_id, 22);
+  assert.equal(detailReference.customer_name, 'Tên mới');
+  assert.equal(detailReference.customer_phone, '0902000000');
+});
+
+test('admin SSE subscription sends bearer auth, parses order.updated, and aborts cleanly', async () => {
+  const bytes = new TextEncoder().encode(
+    ': keepalive\r\nevent: connected\r\ndata: {}\r\n\r\n' +
+    'event: order.updated\r\ndata: {"orderId":7,"reason":"address_changed"}\r\n\r\n',
+  );
+  let readCount = 0;
+  let request = null;
+  const never = new Promise(() => {});
+  const fetchStream = async (url, options) => {
+    request = { url, options };
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: () => readCount++ === 0 ? Promise.resolve({ done: false, value: bytes }) : never,
+        }),
+      },
+    };
+  };
+  const admin = loadAdminRealtime();
+  let resolveOrderEvent;
+  const orderEvent = new Promise(resolve => { resolveOrderEvent = resolve; });
+  const unsubscribe = admin.subscribeAdminEvents((event) => {
+    if (event.type === 'order.updated') resolveOrderEvent(event);
+  }, { fetch: fetchStream });
+
+  const event = await orderEvent;
+  assert.equal(request.url, 'http://localhost:5000/api/admin/events');
+  assert.equal(request.options.headers.Authorization, 'Bearer admin-token');
+  assert.equal(request.options.headers.Accept, 'text/event-stream');
+  assert.equal(request.options.cache, 'no-store');
+  assert.equal(event.data.orderId, 7);
+  assert.equal(event.data.reason, 'address_changed');
+  unsubscribe();
+  assert.equal(request.options.signal.aborted, true);
+});
+
+test('admin layout subscribes to order events while retaining polling cleanup', () => {
+  const layout = fs.readFileSync(path.join(root, 'src/views/admin/AdminLayout.vue'), 'utf8');
+  assert.match(layout, /subscribeAdminEvents\(onAdminEvent\)/);
+  assert.match(layout, /event\?\.type !== "order\.updated"/);
+  assert.match(layout, /async function refresh\(\)[\s\S]*?await fetchAllData\(true\)/);
+  assert.match(layout, /async function syncOrdersFromEvent\(\)[\s\S]*?await refreshOrders\(\)/);
+  assert.match(layout, /function onAdminEvent\(event\)[\s\S]*?syncOrdersFromEvent\(\)/);
+  assert.match(layout, /const POLL_INTERVAL = 30_000/);
+  assert.match(layout, /setInterval\(refresh, POLL_INTERVAL\)/);
+  assert.match(layout, /unsubscribeAdminEvents\?\.\(\)/);
+});
 
 const imageProduct = () => ({
   id: 1, name: 'Giày thử ảnh', image_url: 'cover-original.png',
@@ -305,6 +513,28 @@ test('first variant image updates cover, while cover edits and other variants st
   assert.equal(admin.productForm.image_url, 'cover-custom.png');
   assert.equal(admin.productForm.colors[0].image, 'black-new.png');
   assert.equal(saved.colors[0].image, 'black-original.png');
+});
+
+test('editing a product restores the selected color id from its saved color name', () => {
+  const admin = loadAdminImages();
+  admin.db.colors = [
+    { id: 7, name: 'Đen', hex: '#000000' },
+    { id: 8, name: 'Trắng', hex: '#ffffff' },
+  ];
+
+  admin.openProductForm(imageProduct());
+
+  assert.equal(admin.productForm.colors[0].id, 7);
+  assert.equal(admin.productForm.colors[0].name, 'Đen');
+  assert.equal(admin.productForm.colors[0].hex, '#000000');
+  assert.equal(admin.productForm.colors[1].id, 8);
+});
+
+test('product variant editor omits variant descriptions and keeps the color selector', () => {
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/pages/ProductsPage.vue'), 'utf8');
+  assert.doesNotMatch(source, /Mô tả biến thể|Chú thích \(không bắt buộc\)|colorNoteDraft/);
+  assert.match(source, /<i class="icon icon-palette mr-1"><\/i>Đổi màu/);
+  assert.match(source, /<select\s+:value="c\.id"\s+@change="changeColor/);
 });
 
 test('device uploads obey the same one-way image rule', async () => {
@@ -348,6 +578,84 @@ test('product detail uses the archived Figma layout without Bootstrap utilities'
   assert.match(detail, /Sản phẩm liên quan/);
   assert.match(detail, /Chọn size \(UK\)/);
   assert.doesNotMatch(detail, /\b(container-fluid|spinner-border|d-flex|flex-column|col-lg-\d+|row g-\d+|w-100|text-danger|text-muted|bi bi-)\b/);
+});
+
+test('login password visibility uses an accessible inline eye icon', () => {
+  const login = fs.readFileSync(path.join(root, 'src/views/LoginView.vue'), 'utf8');
+  assert.match(login, /<button\s+[\s\S]*?type="button"[\s\S]*?class="eye"/);
+  assert.match(login, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(login, /:aria-pressed="showPwd"/);
+  assert.match(login, /:title="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(login, /<svg\s+v-if="!showPwd"[^>]+class="eye-icon"/);
+  assert.match(login, /<svg\s+v-else[^>]+class="eye-icon"/);
+  assert.doesNotMatch(login, /icon-eye(?:-slash)?/);
+});
+
+test('registration password visibility uses an accessible inline eye icon', () => {
+  const register = fs.readFileSync(path.join(root, 'src/views/RegisterView.vue'), 'utf8');
+  assert.match(register, /<button\s+[\s\S]*?type="button"[\s\S]*?class="eye"/);
+  assert.match(register, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(register, /:aria-pressed="showPwd"/);
+  assert.match(register, /<svg\s+v-if="!showPwd"[^>]+class="eye-icon"/);
+  assert.match(register, /<svg\s+v-else[^>]+class="eye-icon"/);
+  assert.doesNotMatch(register, /icon-eye(?:-slash)?/);
+});
+
+test('reset-password interface uses consistent inline SVG icons', () => {
+  const reset = fs.readFileSync(path.join(root, 'src/views/ResetPasswordView.vue'), 'utf8');
+  assert.match(reset, /class="fp-ic"[\s\S]*?<svg[^>]+class="auth-icon auth-icon-lg"/);
+  assert.match(reset, /<svg\s+v-if="!showPwd"[^>]+class="auth-icon eye-icon"/);
+  assert.match(reset, /<svg\s+v-else[^>]+class="auth-icon eye-icon"/);
+  assert.match(reset, /:aria-label="showPwd \? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"/);
+  assert.match(reset, /class="fp-back"[\s\S]*?<svg[^>]+class="auth-icon back-icon"/);
+  assert.doesNotMatch(reset, /<i\s+class="icon/);
+});
+
+test('account lock controls preserve an active administrator', () => {
+  const accountDb = vue.reactive({ accounts: [] });
+  const signedIn = vue.ref({ id_user: 1, role_id: 1 });
+  const accounts = load('src/views/admin/pages/AccountsPage.vue', {
+    '../adminStore': {
+      db: accountDb,
+      openForm() {},
+      getRoleBadgeClass() { return ''; },
+      roleName() { return ''; },
+      toggleAccountLock() {},
+      apiWrite: async () => ({ ok: true }),
+    },
+    '../../../stores/authStore': { currentUser: signedIn },
+  }, {}, ['activeAdminCount', 'canToggleAccountLock']);
+
+  const primaryAdmin = { id: 1, role_id: 1, active: true };
+  const otherAdmin = { id: 2, role_id: 1, active: true };
+  const customer = { id: 3, role_id: 2, active: true };
+
+  accountDb.accounts = [primaryAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 1);
+  assert.equal(accounts.canToggleAccountLock(primaryAdmin), false);
+  assert.equal(accounts.canToggleAccountLock(customer), true);
+
+  accountDb.accounts = [primaryAdmin, otherAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 2);
+  assert.equal(accounts.canToggleAccountLock(primaryAdmin), false);
+  assert.equal(accounts.canToggleAccountLock(otherAdmin), true);
+
+  const lockedAdmin = { ...otherAdmin, active: false };
+  accountDb.accounts = [primaryAdmin, lockedAdmin, customer];
+  assert.equal(accounts.activeAdminCount.value, 1);
+  assert.equal(accounts.canToggleAccountLock(lockedAdmin), true);
+
+  const source = fs.readFileSync(path.join(root, 'src/views/admin/pages/AccountsPage.vue'), 'utf8');
+  assert.match(source, /v-if="canToggleAccountLock\(a\)"/);
+});
+
+test('POS walk-in customers never become synthetic login accounts', () => {
+  const server = fs.readFileSync(path.join(root, 'backend/server.js'), 'utf8');
+  const admin = fs.readFileSync(path.join(root, 'src/views/admin/adminStore.js'), 'utf8');
+  assert.doesNotMatch(server, /@walkin\.local/);
+  assert.match(server, /UserID:\s*null[\s\S]*is_walkin:\s*true/);
+  assert.match(admin, /o\.customer_id = c\.is_walkin/);
+  assert.match(admin, /is_walkin:\s*Boolean\(c\.IsWalkIn \?\? c\.is_walkin\)/);
 });
 
 test('home hero serializes rapid navigation and resets clones without animation', () => {

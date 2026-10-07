@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
   loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
-  getOrderDisplayStatus
+  getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
@@ -109,18 +109,12 @@ const isBankTransfer = (o) => {
 }
 
 const isLostDelivery = (o) => {
-  if (!o || o.status !== 'CANCELLED') return false
-  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
-  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${o.cancelReason || ''} ${historyText}`.toLowerCase()
-  return text.includes('lost_in_transit') || text.includes('mất hàng') || text.includes('thất lạc') || text.includes('lost')
+  if (!o) return false
+  return getDeliveryIssueType(o) === 'LOST'
 }
 
-const isAccidentDelivery = (o) => {
-  if (!o) return false
-  const historyText = (o.history || []).map((h) => `${h.status || ''} ${h.note || ''}`).join(' ')
-  const text = `${o.stockIssueStatus || ''} ${o.stockIssueReason || ''} ${historyText}`.toLowerCase()
-  return text.includes('delivery_accident') || text.includes('tai nạn') || text.includes('trục trặc') || text.includes('sự cố vận chuyển') || text.includes('va chạm')
-}
+const isAccidentDelivery = (o) => getDeliveryIssueType(o) === 'ACCIDENT'
+const isUnreachableDelivery = (o) => getDeliveryIssueType(o) === 'UNREACHABLE'
 
 const historyStatusKeys = (o) => (o?.history || []).map((h) => mapStatusToKey(h.status))
 const hasDeliveryIssue = (o) => {
@@ -137,17 +131,17 @@ const deliveryIssueMessage = (o) => {
   if (!o) return ''
   if (isLostDelivery(o)) {
     return isBankTransfer(o)
-      ? 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Vui lòng liên hệ shop để được hoàn tiền.'
-      : 'Đơn hàng đã hủy do thất lạc trong quá trình vận chuyển. Shop rất tiếc vì sự cố này.'
+      ? 'Hàng bị thất lạc. Đơn đã hủy; vui lòng liên hệ shop để được hoàn tiền.'
+      : 'Hàng bị thất lạc trong quá trình vận chuyển. Đơn đã hủy.'
   }
   if (o.status === 'WAREHOUSE_RETURN') {
     return isAccidentDelivery(o)
-      ? 'Đơn hàng gặp trục trặc trong quá trình vận chuyển. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
-      : 'Đơn hàng chưa giao thành công vì chưa liên hệ được người nhận. Shop sẽ sắp xếp giao lại vào ngày gần nhất; bạn có thể theo dõi tiếp trạng thái đang giao hàng và giao hàng thành công.'
+      ? 'Đơn gặp sự cố vận chuyển. Shop sẽ giao lại sớm.'
+      : 'Chưa liên hệ được người nhận. Shop sẽ giao lại sớm.'
   }
-  if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Đơn hàng đang được shop giao lại. Vui lòng để ý điện thoại để nhận hàng.'
+  if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Shop đang giao lại đơn hàng. Vui lòng để ý điện thoại.'
   if (hasDeliveryIssue(o) && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) return 'Đơn hàng đã được giao lại thành công.'
-  if (o.status === 'DELIVERY_FAILED') return 'Đơn hàng giao chưa thành công. Shop đang xử lý hướng giao lại hoặc hỗ trợ bạn trong mục Trả hàng.'
+  if (o.status === 'DELIVERY_FAILED') return 'Giao hàng chưa thành công. Shop đang xử lý.'
   return ''
 }
 
@@ -159,14 +153,17 @@ const deliveryIssueSteps = (o) => {
     || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
   const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
   const steps = [{ label: 'Đang giao hàng', icon: 'shipping', tone: 'neutral' }]
-  if (failed) steps.push({ label: 'Giao hàng thất bại', icon: 'failed', tone: 'danger' })
+  if (failed) steps.push({
+    label: isAccidentDelivery(o) ? 'Sự cố vận chuyển' : (isUnreachableDelivery(o) ? 'Chưa liên hệ được' : 'Giao hàng thất bại'),
+    icon: 'failed',
+    tone: 'danger'
+  })
   if (returned) steps.push({ label: 'Đã về kho', icon: 'warehouse', tone: 'warning' })
   if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'shipping', tone: 'active' })
   if (isDeliveryResolved(o)) steps.push({ label: 'Đã giao thành công', icon: 'delivered', tone: 'success' })
   return steps
 }
 
-const goReturn = (order) => router.push({ name: 'return-order', params: { orderId: order.id } })
 const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 /* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
@@ -456,7 +453,7 @@ onUnmounted(() => {
               <span class="oc-date"><OrderStatusIcon name="calendar" :size="13" /> {{ fmtDate(o.createdAt) }}</span>
             </div>
             <div class="oc-head-r">
-              <span class="stat-badge" :class="statusMeta[o.status]?.color"><OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="14" /> {{ ORDER_STATUS[o.status] }}</span>
+              <span class="stat-badge" :class="statusMeta[o.status]?.color"><OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="14" /> {{ getCustomerOrderStatusLabel(o) }}</span>
               <strong class="oc-total">{{ formatCurrency(o.total) }}</strong>
               <OrderStatusIcon name="chevron" :size="16" class="oc-caret" :class="{ open: expanded === o.id }" />
             </div>
@@ -498,7 +495,7 @@ onUnmounted(() => {
           <!-- Thanh tiến trình trạng thái -->
           <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
             <OrderStatusIcon name="failed" :size="17" />
-            <span><strong>Giao hàng thất bại</strong><small>Đã hủy</small></span>
+            <span><strong>Hàng bị thất lạc</strong><small>Đơn đã hủy</small></span>
           </div>
           <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps" :class="{ resolved: isDeliveryResolved(o) }">
             <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="[st.tone, { current: i === deliveryIssueSteps(o).length - 1 }]">

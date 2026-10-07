@@ -202,53 +202,6 @@ export const daysUntilRevenue = (order) => {
   return Math.max(0, Math.ceil((order.revenueEligibleDate - Date.now()) / DAY));
 };
 
-/* Tạo yêu cầu trả hàng (shipper tự lấy / gửi bưu cục) */
-export const requestReturn = async (orderId, payload) => {
-  const o = orderState.orders.find((x) => x.id === orderId);
-  if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
-  const remoteId = Number(o.serverId || orderId);
-  if (!Number.isInteger(remoteId) || remoteId <= 0) return { ok: false, message: "Đơn hàng chưa đồng bộ với máy chủ, vui lòng tải lại trang." };
-  try {
-    const { api } = await import("../services/apiClient");
-    const result = await api.post("/returns", {
-      order_id: remoteId,
-      return_type: payload.method || "CUSTOMER",
-      post_office_id: payload.postOffice?.id || null,
-      tracking_number: payload.trackingCode || "",
-      reason: payload.reason,
-      refund_amount: payload.refundAmount,
-      items: (payload.items || []).map((item) => ({
-        order_detail_id: item.order_detail_id || item.orderDetailId || null,
-        product_id: item.product_id || item.id_product || item.product?.id_product || null,
-        productId: item.productId || null,
-        size: item.size?.size_name || item.size || "",
-        color: item.color?.color_label || item.color?.color_name || item.color || "",
-        quantity: item.return_qty || item.quantity,
-        condition: item.condition || "",
-        reason: item.reason || payload.reason,
-      })),
-    });
-    o.status = "RETURNED";
-    o.serverStatus = "RETURNED";
-    o.returnInfo = {
-      method: payload.method,
-      notReceived: payload.method === "NOT_RECEIVED",
-      postOffice: payload.postOffice || null,
-      reason: payload.reason,
-      trackingCode: payload.trackingCode,
-      refundAmount: result?.RefundAmount ?? payload.refundAmount,
-      items: payload.items,
-      returnId: result?.ReturnID || null,
-      status: result?.Status || "Chờ xử lý",
-      createdAt: Date.now(),
-    };
-  } catch (error) {
-    return { ok: false, message: error?.message || "Không thể tạo yêu cầu trả hàng." };
-  }
-  saveOrders();
-  return { ok: true, order: o };
-};
-
 export const removeOrder = (orderId) => {
   const index = orderState.orders.findIndex((o) => o.id === orderId);
   if (index !== -1) { orderState.orders.splice(index, 1); saveOrders(); }
@@ -336,6 +289,46 @@ export const mapStatusToKey = (status) => {
    của khách cũng cập nhật serverStatus ngay khi API thành công, nên giao diện
    không còn phụ thuộc vào một giá trị status local cũ. */
 export const getOrderDisplayStatus = (order) => order?.serverStatus || order?.status || "PENDING";
+
+const deliveryIssueText = (order = {}) => {
+  const historyText = (order.history || [])
+    .map((item) => `${item?.status || ""} ${item?.note || ""}`)
+    .join(" ");
+  return normalizeStatusText([
+    order.stockIssueStatus,
+    order.stock_issue_status,
+    order.stockIssueReason,
+    order.stock_issue_reason,
+    order.cancelReason,
+    order.cancel_reason,
+    historyText,
+  ].filter(Boolean).join(" "));
+};
+
+// Ba kết quả giao thất bại có ý nghĩa nghiệp vụ khác nhau. Giữ một bộ phân
+// loại dùng chung giúp thẻ trạng thái, mô tả và dữ liệu cũ không nói mâu thuẫn.
+export const getDeliveryIssueType = (order) => {
+  if (!order) return "";
+  const issueCode = String(order.stockIssueStatus ?? order.stock_issue_status ?? "").trim().toUpperCase();
+  const text = deliveryIssueText(order);
+  if (issueCode === "LOST_IN_TRANSIT" || text.includes("mat hang") || text.includes("that lac") || text.includes("lost")) return "LOST";
+  if (issueCode === "DELIVERY_ACCIDENT" || text.includes("tai nan") || text.includes("truc trac") || text.includes("su co van chuyen") || text.includes("va cham")) return "ACCIDENT";
+  if (issueCode === "RETURNED_TO_WAREHOUSE" || text.includes("khong bat may") || text.includes("khong nhan hang") || text.includes("chua lien he")) return "UNREACHABLE";
+  if (issueCode === "DELIVERY_FAILED" || ["DELIVERY_FAILED", "WAREHOUSE_RETURN"].includes(getOrderDisplayStatus(order))) return "FAILED";
+  return "";
+};
+
+// Chỉ đổi nhãn khi sự cố đang là trạng thái hiện tại. Sau khi shop giao lại,
+// nhãn phải trở về “Đang giao”/“Đã giao” thay vì giữ lý do cũ trên lịch sử.
+export const getCustomerOrderStatusLabel = (order) => {
+  const status = getOrderDisplayStatus(order);
+  const issueType = getDeliveryIssueType(order);
+  if (issueType === "LOST" && ["CANCELLED", "DELIVERY_FAILED"].includes(status)) return "Hàng bị thất lạc";
+  if (status === "WAREHOUSE_RETURN" && issueType === "ACCIDENT") return "Sự cố vận chuyển";
+  if (status === "WAREHOUSE_RETURN" && issueType === "UNREACHABLE") return "Chưa liên hệ được";
+  if (status === "WAREHOUSE_RETURN") return "Chờ giao lại";
+  return ORDER_STATUS[status] || status;
+};
 
 /* Ánh xạ 1 đơn từ server (GET /api/customers/:id/orders) sang shape dùng ở trang khách */
 export const mapServerOrder = (s) => {

@@ -19,10 +19,12 @@ import {
   isLoading,
   apiErrors,
   fetchAllData,
+  refreshOrders,
+  subscribeAdminEvents,
+  applyPosStockUpdates,
   getDisplayName,
   handleLogout,
   incompleteOrdersCount,
-  pendingReturnsCount,
   activeProductCount,
   formatPrice,
   formatDate,
@@ -91,11 +93,9 @@ const activeTabTitle = computed(() => sections.flatMap(section => section.items)
 const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
-  returns: 'Tiếp nhận, kiểm tra và theo dõi các yêu cầu đổi trả.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
   categories: 'Sắp xếp sản phẩm theo bộ môn để khách hàng dễ dàng khám phá.',
   brands: 'Quản lý các thương hiệu trong danh mục của ShoeGroup.',
-  collections: 'Tổ chức các bộ sưu tập và câu chuyện sản phẩm của cửa hàng.',
   materials: 'Quản lý thông tin chất liệu được sử dụng cho sản phẩm.',
   colors: 'Đồng bộ bảng màu và các lựa chọn sản phẩm.',
   sizes: 'Quản lý kích thước cho từng dòng sản phẩm.',
@@ -167,13 +167,73 @@ watch(() => route.fullPath, () => {
 const POLL_INTERVAL = 30_000;
 let pollTimer = null;
 let disposed = false;
+let initialDataReady = false;
+let pendingOrderRefresh = false;
+let orderSyncQueued = false;
+let isOrderSyncing = false;
+let unsubscribeAdminEvents = null;
 const isRefreshing = ref(false);
 let lastFocused = Date.now();
 
+// Đồng bộ đầy đủ cho nút thủ công, lúc tab lấy lại focus và polling 30 giây.
 async function refresh() {
-  if (isRefreshing.value) return;
+  if (!initialDataReady || isRefreshing.value) return;
   isRefreshing.value = true;
-  try { await fetchAllData(true); } finally { isRefreshing.value = false; }
+  try {
+    await fetchAllData(true);
+  } catch (error) {
+    console.error("[admin] Khong the dong bo du lieu quan tri:", error);
+  } finally {
+    isRefreshing.value = false;
+    // Event có thể tới sau lúc /orders của full refresh đã được query. Chạy
+    // thêm một lượt nhẹ để không bỏ lỡ địa chỉ/trạng thái vừa thay đổi.
+    if (pendingOrderRefresh && !disposed) {
+      pendingOrderRefresh = false;
+      syncOrdersFromEvent();
+    }
+  }
+}
+
+// SSE chỉ làm mới đơn hàng; không bắt event địa chỉ phải chờ toàn bộ catalog.
+// Event tới trong lúc request đang chạy được gộp thành đúng một lượt kế tiếp.
+async function syncOrdersFromEvent() {
+  if (!initialDataReady || isRefreshing.value) {
+    pendingOrderRefresh = true;
+    return;
+  }
+  if (isOrderSyncing) {
+    orderSyncQueued = true;
+    return;
+  }
+
+  isOrderSyncing = true;
+  try {
+    do {
+      orderSyncQueued = false;
+      await refreshOrders();
+      if (orderSyncQueued && isRefreshing.value) {
+        pendingOrderRefresh = true;
+        orderSyncQueued = false;
+      }
+    } while (orderSyncQueued && !disposed);
+  } catch (error) {
+    console.error("[admin-orders] Khong the dong bo don hang:", error);
+  } finally {
+    isOrderSyncing = false;
+  }
+}
+
+function onAdminEvent(event) {
+  if (event?.type === "inventory.updated") {
+    applyPosStockUpdates(event.data?.stockUpdates);
+    return;
+  }
+  if (event?.type !== "order.updated") return;
+  if (!initialDataReady) {
+    pendingOrderRefresh = true;
+    return;
+  }
+  syncOrdersFromEvent();
 }
 
 function startPolling() {
@@ -198,11 +258,20 @@ onMounted(async () => {
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKeydown);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  unsubscribeAdminEvents = subscribeAdminEvents(onAdminEvent);
   await fetchAllData();
+  initialDataReady = true;
+  if (disposed) return;
+  if (pendingOrderRefresh) {
+    pendingOrderRefresh = false;
+    await syncOrdersFromEvent();
+  }
   if (!disposed) startPolling();
 });
 onUnmounted(() => {
   disposed = true;
+  unsubscribeAdminEvents?.();
+  unsubscribeAdminEvents = null;
   window.removeEventListener('resize', onResize);
   document.removeEventListener('keydown', onKeydown);
   stopPolling();

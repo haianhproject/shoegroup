@@ -43,12 +43,6 @@ const adminRoutes = [
         meta: { title: "Xác Nhận Thanh Toán" },
       },
       {
-        path: "returns",
-        name: "admin-returns",
-        component: () => import("./pages/ReturnsPage.vue"),
-        meta: { title: "Trả Hàng / Đổi Trả" },
-      },
-      {
         path: "pos",
         name: "admin-pos",
         component: () => import("./pages/PosPage.vue"),
@@ -71,12 +65,6 @@ const adminRoutes = [
         name: "admin-brands",
         component: () => import("./pages/BrandsPage.vue"),
         meta: { title: "Thương Hiệu" },
-      },
-      {
-        path: "collections",
-        name: "admin-collections",
-        component: () => import("./pages/CollectionsPage.vue"),
-        meta: { title: "Bộ Sưu Tập" },
       },
       {
         path: "materials",

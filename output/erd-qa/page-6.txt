@@ -1,0 +1,5 @@
+ShoeGroup — Phụ lục bảng quản lý cập nhật cơ sở dữ liệu
+AppMigrations lưu lịch sử cập nhật cấu trúc cơ sở dữ liệu. Bảng này không thuộc nhóm bảng nghiệp vụ.
+AppMigrations — Lịch sử cập nhật cấu trúc
+PK MigrationKey — Khóa bản cập nhật cấu trúc nvarchar(150) NOT NULL
+AppliedAt — Thời điểm áp dụng datetime NOT NULL

@@ -46,7 +46,7 @@
 .icon-geo-alt::before, .icon-geo-alt-fill::before { content: '⌖'; }
 .icon-clock::before, .icon-clock-fill::before, .icon-clock-history::before { content: '◷'; }
 .icon-calendar3::before { content: '▦'; }
-.icon-cash-coin::before, .icon-cash-stack::before, .icon-wallet2::before { content: '₫'; }
+.icon-cash-coin::before, .icon-cash-stack::before { content: '₫'; }
 .icon-circle-half::before { content: '◐'; }
 .icon-collection::before { content: '▤'; }
 .icon-credit-card-2-front-fill::before { content: '▭'; }

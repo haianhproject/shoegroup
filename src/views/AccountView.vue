@@ -425,104 +425,6 @@ const copyCoupon = (code) => {
   navigator.clipboard.writeText(code).then(() => notify({ type: 'success', title: 'Da sao chep!', message: code }))
 }
 
-// ==========================================
-// VÍ SHOEGROUP (TÍCH HỢP TRANG HỒ SƠ)
-// ==========================================
-const walletLoading = ref(false)
-const walletSubmitting = ref(false)
-const walletBalance = ref(0)
-const walletTransactions = ref([])
-const walletWithdrawals = ref([])
-const walletPanel = ref('history')
-const walletForm = reactive({ method: 'VISA', amount: '', destination: '', holderName: '' })
-
-const formatWalletDate = (value) => {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN')
-}
-
-const signedWalletAmount = (value) => {
-  const amount = Number(value) || 0
-  return `${amount >= 0 ? '+' : ''}${formatCurrency(amount)}`
-}
-
-const isValidLuhn = (value) => {
-  const digits = String(value || '').replace(/\D/g, '')
-  if (!digits) return false
-  let sum = 0
-  let alternate = false
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    let n = Number(digits[i])
-    if (alternate) { n *= 2; if (n > 9) n -= 9 }
-    sum += n
-    alternate = !alternate
-  }
-  return sum % 10 === 0
-}
-
-const loadWallet = async () => {
-  walletLoading.value = true
-  try {
-    const [wallet, history] = await Promise.all([api.get('/wallet'), api.get('/wallet/transactions')])
-    walletBalance.value = Number(wallet?.balance) || 0
-    walletTransactions.value = Array.isArray(history?.transactions) ? history.transactions : []
-    walletWithdrawals.value = Array.isArray(history?.withdrawals) ? history.withdrawals : []
-  } catch (error) {
-    // Không chặn nếu chưa có ví
-  } finally {
-    walletLoading.value = false
-  }
-}
-
-const resetWalletForm = () => Object.assign(walletForm, { method: 'VISA', amount: '', destination: '', holderName: '' })
-
-const submitWalletWithdrawal = async () => {
-  if (walletSubmitting.value) return
-  const amount = Number(walletForm.amount)
-  const destination = String(walletForm.destination || '').trim()
-  if (!Number.isFinite(amount) || amount <= 0) {
-    notify({ type: 'error', message: 'Nhập số tiền muốn rút lớn hơn 0.' }); return
-  }
-  if (amount > walletBalance.value) {
-    notify({ type: 'error', message: 'Số dư Ví ShoeGroup không đủ.' }); return
-  }
-  if (walletForm.method === 'VISA') {
-    const card = destination.replace(/\s+/g, '')
-    if (!/^4\d{12,18}$/.test(card) || !isValidLuhn(card)) {
-      notify({ type: 'error', message: 'Số thẻ Visa không hợp lệ.' }); return
-    }
-    if (!String(walletForm.holderName || '').trim()) {
-      notify({ type: 'error', message: 'Vui lòng nhập tên chủ thẻ Visa.' }); return
-    }
-  } else if (!/^0(?:3|5|7|8|9)\d{8}$/.test(destination.replace(/\s+/g, ''))) {
-    notify({ type: 'error', message: 'Số điện thoại MoMo không hợp lệ.' }); return
-  }
-  if (typeof window !== 'undefined' && !window.confirm(`Xác nhận rút ${formatCurrency(amount)} về ${walletForm.method === 'VISA' ? 'thẻ Visa' : 'ví MoMo'}?`)) return
-  walletSubmitting.value = true
-  try {
-    const result = await api.post('/wallet/withdrawals', {
-      method: walletForm.method,
-      amount,
-      destination,
-      holder_name: String(walletForm.holderName || '').trim(),
-    })
-    walletBalance.value = Number(result?.balance) || Math.max(0, walletBalance.value - amount)
-    resetWalletForm()
-    walletPanel.value = 'history'
-    await loadWallet()
-    notify({ type: 'success', message: 'Đã tạo yêu cầu rút tiền. ShoeGroup sẽ xử lý sớm.' })
-  } catch (error) {
-    notify({ type: 'error', message: error?.message || 'Không thể tạo yêu cầu rút tiền.' })
-  } finally {
-    walletSubmitting.value = false
-  }
-}
-
-const allWalletHistory = computed(() => [
-  ...walletTransactions.value.filter((item) => String(item.type || '').toUpperCase() !== 'WITHDRAWAL').map((item) => ({ ...item, kind: 'wallet' })),
-  ...walletWithdrawals.value.map((item) => ({ ...item, kind: 'withdrawal', amount: -Number(item.amount || 0), description: `Rút tiền về ${item.method === 'VISA' ? 'thẻ Visa' : 'ví MoMo'}`, created_at: item.created_at })),
-].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()))
 </script>
 
 <template>
@@ -560,7 +462,7 @@ const allWalletHistory = computed(() => [
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/></svg>
                 Mã giảm giá
               </button>
-              <!-- Ví ShoeGroup ẩn -->
+              
               <button class="acc-logout" @click="requestLogout">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
                 Đăng xuất
@@ -767,7 +669,7 @@ const allWalletHistory = computed(() => [
 .acc-nav button, .acc-nav a { width: 100%; border: 0; background: transparent; padding: 12px 16px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 500; color: var(--sg-ink); text-decoration: none; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; transition: background-color .2s, color .2s; }
 .acc-nav i { width: 17px; flex-shrink: 0; font-size: 17px; }
 .acc-nav button:hover, .acc-nav a:hover { background: var(--sg-soft); }
-.acc-nav button.active, .acc-nav button.active:hover, .acc-wallet-link.router-link-active { background: var(--sg-ink); color: #fff; }
+.acc-nav button.active, .acc-nav button.active:hover { background: var(--sg-ink); color: #fff; }
 .acc-nav .acc-logout { color: #C0392B; }
 .acc-nav .acc-logout:hover { background: #FBEDEC; }
 .acc-content { min-width: 0; min-height: 520px; padding: 24px; }

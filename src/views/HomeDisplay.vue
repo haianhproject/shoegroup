@@ -579,9 +579,9 @@ const categoryCards = computed(() => categorySpecs.map((spec, i) => {
 }))
 const tickerItems = ['CHẠY BỘ NAM', 'BÓNG RỔ', 'TRAINING', 'LIFESTYLE', 'TENNIS', 'SALE -30%']
 const banners = [
-  { eyebrow: 'Dòng Hiệu Suất Cao', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ.', cta: 'Xem bộ sưu tập', filter: 'running', dark: true, alt: 'Giày chạy bộ hiệu suất cao', img: homeMedia.promo.running },
+  { eyebrow: 'Dòng Hiệu Suất Cao', title: 'Được tạo ra', titleEm: 'cho tốc độ', sub: 'Công nghệ đệm tiên tiến, trọng lượng siêu nhẹ.', cta: 'Xem sản phẩm', filter: 'running', dark: true, alt: 'Giày chạy bộ hiệu suất cao', img: homeMedia.promo.running },
   { eyebrow: 'Sân đấu bóng rổ', title: 'Bứt phá mọi giới hạn', sub: 'Bám sân tối ưu, hỗ trợ cổ chân vững chắc.', cta: 'Khám phá ngay', filter: 'basketball', dark: true, alt: 'Giày thể thao dành cho sân bóng rổ', img: homeMedia.promo.basketball },
-  { eyebrow: 'Giảm đến 30%', title: 'Ưu đãi cuối mùa', sub: 'Loạt mẫu lifestyle & training giá tốt.', cta: 'Săn sale', filter: 'sale', dark: false, alt: 'Bộ sưu tập ưu đãi cuối mùa', img: homeMedia.promo.sale },
+  { eyebrow: 'Giảm đến 30%', title: 'Ưu đãi cuối mùa', sub: 'Loạt mẫu lifestyle & training giá tốt.', cta: 'Săn sale', filter: 'sale', dark: false, alt: 'Sản phẩm ưu đãi cuối mùa', img: homeMedia.promo.sale },
 ]
 const trustItems = [{ icon: 'truck', title: 'Giao hàng toàn quốc', sub: 'Xem phí khi thanh toán' }, { icon: 'return', title: 'Yêu cầu trả hàng', sub: 'Trong 14 ngày từ khi nhận' }, { icon: 'shield', title: 'Chính hãng 100%', sub: 'Cam kết hoàn tiền' }, { icon: 'support', title: 'Hỗ trợ 24/7', sub: 'Luôn sẵn sàng' }]
 const trustIcons = { truck: '<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>', return: '<path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>', shield: '<path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>', support: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-3v-8h3a2 2 0 0 1 2 2z"/><path d="M3 19a2 2 0 0 0 2 2h3v-8H5a2 2 0 0 0-2 2z"/>' }

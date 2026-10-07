@@ -235,7 +235,7 @@ onMounted(fetchAll)
     <div class="mx-auto w-full max-w-[1400px] px-5 pb-16 pt-8 sm:px-6 lg:px-12">
       <div class="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-[#737373]">Bộ sưu tập ShoeGroup</span>
+          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-[#737373]">Sản phẩm ShoeGroup</span>
           <h1 class="figma-display mt-2 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">{{ pageTitle }}</h1>
           <p class="mt-2 text-sm text-[#737373]">{{ filtered.length }} sản phẩm từ dữ liệu cửa hàng</p>
         </div>

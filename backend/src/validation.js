@@ -111,12 +111,11 @@ function validateProductPayload(body = {}, { requireVariants = false } = {}) {
   if (!name) return validationError("Tên sản phẩm không được để trống.");
   if (String(body.name ?? "").trim().length > 255) return validationError("Tên sản phẩm không được dài quá 255 ký tự.");
   const price = nonNegativeNumber(body.price, { max: 1e12 });
-  // SalePrice ở cấp sản phẩm là trường tương thích dữ liệu cũ. Giá ưu đãi
-  // hiện chỉ được cấu hình theo biến thể màu nên mọi lần lưu sản phẩm đều
-  // đưa trường này về 0, tránh hai nguồn giá cạnh tranh với nhau.
+  // Giữ giá trị trả về tương thích với payload cũ. Giá ưu đãi thực tế được
+  // tính từ VariantDiscounts; không còn lưu cột SalePrice trong Products.
   const salePrice = 0;
   if (price === null) return validationError("Giá sản phẩm phải là số không âm hợp lệ.");
-  for (const [field, label] of [["category_id", "Danh mục"], ["brand_id", "Thương hiệu"], ["collection_id", "Bộ sưu tập"], ["material_id", "Chất liệu"]]) {
+  for (const [field, label] of [["category_id", "Danh mục"], ["brand_id", "Thương hiệu"], ["material_id", "Chất liệu"]]) {
     const error = validIdField(body[field], label);
     if (error) return validationError(error);
   }

@@ -1,0 +1,253 @@
+ShoeGroup — Sơ đồ thực thể và quan hệ cơ sở dữ liệu
+25 bảng nghiệp vụ · 224 thuộc tính · 31 khóa ngoại.
+PK: khóa chính; FK: khóa ngoại; UQ: duy nhất; AI: tự tăng; NULL / NOT NULL: được phép / không được phép bỏ trống.
+Ký hiệu quan hệ: vòng tròn = 0; vạch = 1; chân quạ = nhiều. Tên tiếng Việt giải nghĩa tên bảng và thuộc tính.
+Roles — Vai trò
+PK RoleID — Mã vai trò int NOT NULL AI
+RoleName — Tên vai trò varchar(50) NOT NULL
+Users — Tài khoản
+PK UserID — Mã tài khoản int NOT NULL AI
+FK RoleID — Mã vai trò int NULL
+UQ Email — Thư điện tử varchar(100) NOT NULL
+PasswordHash — Mật khẩu đã băm varchar(255) NOT NULL
+FullName — Họ và tên nvarchar(100) NOT NULL
+Phone — Số điện thoại varchar(20) NULL
+Address — Địa chỉ nvarchar(255) NULL
+IsActive — Đang hoạt động bit NULL
+CreatedAt — Thời điểm tạo datetime NULL
+PasswordResetToken — Mã đặt lại mật khẩu varchar(255) NULL
+PasswordResetTokenExpiry — Hạn mã đặt lại mật khẩu datetime NULL
+LastPasswordChangedAt — Lần đổi mật khẩu gần nhất datetime NULL
+UpdatedAt — Thời điểm cập nhật datetime NULL
+Source — Nguồn khách hàng nvarchar(30) NULL
+AvatarURL — Đường dẫn ảnh đại diện nvarchar(max) NULL
+UserAddresses — Địa chỉ khách hàng
+PK AddressID — Mã địa chỉ int NOT NULL AI
+FK UserID — Mã tài khoản int NOT NULL
+RecipientName — Tên người nhận nvarchar(100) NULL
+Phone — Số điện thoại varchar(20) NULL
+Province — Tỉnh / thành phố nvarchar(100) NULL
+District — Quận / huyện nvarchar(100) NULL
+Ward — Phường / xã nvarchar(100) NULL
+AddressLine — Địa chỉ chi tiết nvarchar(255) NULL
+FullAddress — Địa chỉ đầy đủ nvarchar(500) NULL
+IsVerified — Đã xác minh bit NULL
+IsDefault — Là mặc định bit NULL
+CreatedAt — Thời điểm tạo datetime NULL
+Notifications — Thông báo
+PK NotificationID — Mã thông báo int NOT NULL AI
+FK UserID — Mã tài khoản int NOT NULL
+Title — Tiêu đề nvarchar(255) NOT NULL
+Message — Nội dung thông báo nvarchar(max) NOT NULL
+Type — Loại thông báo varchar(50) NULL
+RelatedID — Mã đối tượng liên quan int NULL
+IsRead — Đã đọc bit NOT NULL
+CreatedAt — Thời điểm tạo datetime NOT NULL
+Carts — Giỏ hàng
+PK CartID — Mã giỏ hàng int NOT NULL AI
+FK,UQUserID — Mã tài khoản int NOT NULL
+CreatedAt — Thời điểm tạo datetime NOT NULL
+UpdatedAt — Thời điểm cập nhật datetime NOT NULL
+CartItems — Chi tiết giỏ hàng
+PK CartItemID — Mã chi tiết giỏ hàng int NOT NULL AI
+FK CartID — Mã giỏ hàng int NOT NULL
+FK ProductVariantID — Mã biến thể sản phẩm int NOT NULL
+Quantity — Số lượng int NOT NULL
+AddedAt — Thời điểm thêm datetime NOT NULL
+Brands — Thương hiệu
+PK BrandID — Mã thương hiệu int NOT NULL AI
+BrandName — Tên thương hiệu nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NULL
+LogoURL — Đường dẫn biểu trưng varchar(max) NULL
+SortOrder — Thứ tự hiển thị int NULL
+Categories — Danh mục
+PK CategoryID — Mã danh mục int NOT NULL AI
+CategoryName — Tên danh mục nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NULL
+Sport — Môn thể thao nvarchar(100) NULL
+Materials — Chất liệu
+PK MaterialID — Mã chất liệu int NOT NULL AI
+MaterialName — Tên chất liệu nvarchar(100) NOT NULL
+IsActive — Đang hoạt động bit NOT NULL
+Colors — Màu sắc
+PK ColorID — Mã màu sắc int NOT NULL AI
+ColorName — Tên màu nvarchar(50) NOT NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+IsActive — Đang hoạt động bit NOT NULL
+SortOrder — Thứ tự hiển thị int NOT NULL
+Sizes — Kích cỡ
+PK SizeID — Mã kích cỡ int NOT NULL AI
+SizeName — Tên kích cỡ nvarchar(20) NOT NULL
+SizeStandard — Hệ kích cỡ varchar(10) NULL
+IsActive — Đang hoạt động bit NOT NULL
+SortOrder — Thứ tự hiển thị int NOT NULL
+Products — Sản phẩm
+PK ProductID — Mã sản phẩm int NOT NULL AI
+FK CategoryID — Mã danh mục int NULL
+FK BrandID — Mã thương hiệu int NULL
+ProductName — Tên sản phẩm nvarchar(255) NOT NULL
+BasePrice — Giá cơ bản decimal(18,0) NOT NULL
+IsActive — Đang hoạt động bit NULL
+ImageURL — Đường dẫn ảnh varchar(max) NULL
+Description — Mô tả nvarchar(max) NULL
+ParentSKU — Mã SKU sản phẩm varchar(50) NULL
+IsFeatured — Là sản phẩm nổi bật bit NULL
+ViewCount — Lượt xem int NULL
+CreatedAt — Thời điểm tạo datetime NULL
+FK MaterialID — Mã chất liệu int NULL
+ProductImages — Ảnh sản phẩm
+PK ProductImageID — Mã ảnh sản phẩm int NOT NULL AI
+FK ProductID — Mã sản phẩm int NOT NULL
+ColorName — Tên màu nvarchar(50) NULL
+ImageURL — Đường dẫn ảnh varchar(max) NOT NULL
+IsPrimary — Là ảnh chính bit NULL
+SortOrder — Thứ tự hiển thị int NULL
+ProductVariants — Biến thể sản phẩm
+PK ProductVariantID — Mã biến thể sản phẩm int NOT NULL AI
+FK ProductID — Mã sản phẩm int NOT NULL
+Size — Kích cỡ nvarchar(10) NULL
+SizeStandard — Hệ kích cỡ varchar(10) NULL
+ColorName — Tên màu nvarchar(50) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+ChildSKU — Mã SKU biến thể varchar(60) NULL
+StockQuantity — Số lượng tồn kho int NOT NULL
+PriceAdjustment — Mức điều chỉnh giá decimal(18,0) NULL
+IsActive — Đang hoạt động bit NULL
+FK ColorID — Mã màu sắc int NULL
+FK SizeID — Mã kích cỡ int NULL
+Version — Phiên bản dữ liệu int NOT NULL
+VariantDiscounts — Giảm giá biến thể
+PK VariantDiscountID — Mã giảm giá biến thể int NOT NULL AI
+FK ProductVariantID — Mã biến thể sản phẩm int NOT NULL
+FK ProductID — Mã sản phẩm int NULL
+ColorName — Tên màu nvarchar(50) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+DiscountType — Loại giảm giá nvarchar(20) NOT NULL
+DiscountValue — Giá trị giảm giá decimal(18,2) NOT NULL
+DiscountPercent — Phần trăm giảm giá int NULL
+MaxDiscountAmount — Số tiền giảm tối đa decimal(18,2) NOT NULL
+Quantity — Số lượng int NOT NULL
+UsedCount — Số lượt đã dùng int NOT NULL
+StartDate — Ngày bắt đầu datetime NULL
+EndDate — Ngày kết thúc datetime NULL
+Reason — Lý do nvarchar(100) NULL
+IsActive — Đang hoạt động bit NOT NULL
+Description — Mô tả nvarchar(500) NULL
+CreatedAt — Thời điểm tạo datetime NOT NULL
+ApplyScope — Phạm vi áp dụng varchar(20) NOT NULL
+Orders — Đơn hàng
+PK OrderID — Mã đơn hàng int NOT NULL AI
+FK UserID — Mã tài khoản int NULL
+TotalAmount — Tổng tiền decimal(18,0) NOT NULL
+OrderDate — Ngày đặt hàng datetime NULL
+Status — Trạng thái nvarchar(50) NULL
+ShippingAddress — Địa chỉ giao hàng nvarchar(500) NULL
+CancelReason — Lý do hủy nvarchar(500) NULL
+CustomerName — Tên khách hàng nvarchar(100) NULL
+CustomerPhone — Số điện thoại khách hàng varchar(20) NULL
+PaymentMethod — Phương thức thanh toán nvarchar(100) NULL
+ShippingFee — Phí vận chuyển decimal(18,2) NULL
+DiscountAmount — Số tiền giảm decimal(18,2) NULL
+OrderNote — Ghi chú đơn hàng nvarchar(500) NULL
+FK ShippingMethodID — Mã phương thức vận chuyển int NULL
+FK AddressID — Mã địa chỉ int NULL
+DeliveryDistanceKm — Khoảng cách giao hàng (km) decimal(9,2) NULL
+EstimatedDeliveryText — Thông tin giao hàng dự kiến nvarchar(50) NULL
+PaymentStatus — Trạng thái thanh toán nvarchar(30) NULL
+DeliveredDate — Ngày giao hàng thành công datetime NULL
+ReceivedConfirmedDate — Ngày xác nhận đã nhận hàng datetime NULL
+RevenueEligibleDate — Ngày đủ điều kiện tính doanh thu datetime NULL
+IsCountedAsRevenue — Đã tính vào doanh thu bit NULL
+AutoCancelDeadline — Hạn tự động hủy datetime NULL
+UpdatedAt — Thời điểm cập nhật datetime NULL
+TrackingNumber — Mã vận đơn varchar(60) NULL
+HandledBy — Người xử lý nvarchar(50) NULL
+PaymentDueAt — Hạn thanh toán datetime NULL
+PaymentConfirmedAt — Thời điểm xác nhận thanh toán datetime NULL
+StockIssueStatus — Trạng thái sự cố tồn kho nvarchar(30) NULL
+StockIssueReason — Lý do sự cố tồn kho nvarchar(500) NULL
+StockRestoredAt — Thời điểm hoàn kho datetime NULL
+StockDeductedAt — Thời điểm trừ kho datetime NULL
+VariantDiscountRestoredAt — Thời điểm hoàn lượt ưu đãi datetime NULL
+HistoricalRefundAmount — Số tiền hoàn lịch sử decimal(18,2) NOT NULL
+OrderDetails — Chi tiết đơn hàng
+PK OrderDetailID — Mã chi tiết đơn hàng int NOT NULL AI
+FK OrderID — Mã đơn hàng int NULL
+FK ProductID — Mã sản phẩm int NULL
+Quantity — Số lượng int NULL
+UnitPrice — Đơn giá decimal(18,2) NULL
+Size — Kích cỡ nvarchar(10) NULL
+Color — Màu sắc nvarchar(50) NULL
+FK ProductVariantID — Mã biến thể sản phẩm int NULL
+ProductNameSnapshot — Tên sản phẩm lúc bán nvarchar(255) NULL
+SKUSnapshot — Mã SKU tại thời điểm bán varchar(60) NULL
+ColorHex — Mã màu HEX varchar(20) NULL
+ImageURLSnapshot — Ảnh tại thời điểm bán varchar(max) NULL
+VariantDiscountID — Mã giảm giá biến thể int NULL
+HistoricalReturnedQuantity — Số lượng trả hàng lịch sử int NOT NULL
+OrderStatusHistory — Lịch sử trạng thái đơn
+PK HistoryID — Mã lịch sử int NOT NULL AI
+FK OrderID — Mã đơn hàng int NOT NULL
+OldStatus — Trạng thái cũ nvarchar(50) NULL
+NewStatus — Trạng thái mới nvarchar(50) NULL
+Note — Ghi chú nvarchar(500) NULL
+ChangedBy — Người thay đổi int NULL
+ChangedAt — Thời điểm thay đổi datetime NULL
+CheckoutRequests — Yêu cầu tạo đơn
+PK,FKUserID — Mã tài khoản int NOT NULL
+PK IdempotencyKey — Khóa chống tạo đơn trùng varchar(128) NOT NULL
+RequestHash — Mã băm yêu cầu char(64) NOT NULL
+FK,UQOrderID — Mã đơn hàng int NOT NULL
+ResponseJson — Kết quả phản hồi JSON nvarchar(max) NOT NULL
+CreatedAt — Thời điểm tạo datetime2 NOT NULL
+ShippingMethods — Phương thức vận chuyển
+PK ShippingMethodID — Mã phương thức vận chuyển int NOT NULL AI
+MethodName — Tên phương thức nvarchar(50) NOT NULL
+MethodCode — Mã phương thức varchar(20) NOT NULL
+BasePrice — Giá cơ bản decimal(18,0) NULL
+PricePerKm — Giá mỗi km decimal(18,0) NULL
+OriginCity — Thành phố xuất phát nvarchar(50) NULL
+EstimatedTimeText — Thời gian dự kiến nvarchar(50) NULL
+IsActive — Đang hoạt động bit NULL
+PaymentTransactions — Giao dịch thanh toán
+PK TransactionID — Mã giao dịch int NOT NULL AI
+FK OrderID — Mã đơn hàng int NOT NULL
+Provider — Đơn vị / nguồn thanh toán nvarchar(30) NOT NULL
+ProviderTxnRef — Mã tham chiếu giao dịch varchar(100) NULL
+Amount — Số tiền decimal(18,2) NOT NULL
+Status — Trạng thái nvarchar(20) NOT NULL
+SignatureValid — Chữ ký hợp lệ bit NULL
+CreatedAt — Thời điểm tạo datetime NOT NULL
+CompletedAt — Thời điểm hoàn tất datetime NULL
+Coupons — Mã giảm giá
+PK CouponID — ID mã giảm giá int NOT NULL AI
+UQ CouponCode — Mã giảm giá varchar(50) NOT NULL
+DiscountPercent — Phần trăm giảm giá int NOT NULL
+UsageLimit — Giới hạn lượt sử dụng int NOT NULL
+UsedCount — Số lượt đã dùng int NULL
+ExpiryDate — Ngày hết hạn datetime NOT NULL
+IsActive — Đang hoạt động bit NULL
+Description — Mô tả nvarchar(500) NULL
+CouponName — Tên mã giảm giá nvarchar(200) NULL
+DiscountType — Loại giảm giá nvarchar(20) NOT NULL
+DiscountValue — Giá trị giảm giá decimal(18,2) NOT NULL
+MinOrderAmount — Giá trị đơn tối thiểu decimal(18,2) NOT NULL
+MaxDiscountAmount — Số tiền giảm tối đa decimal(18,2) NOT NULL
+StartDate — Ngày bắt đầu datetime NULL
+PerUserLimit — Giới hạn lượt dùng mỗi khách int NULL
+CouponRedemptions — Lượt sử dụng mã giảm giá
+PK RedemptionID — Mã lượt dùng ưu đãi int NOT NULL AI
+FK CouponID — ID mã giảm giá int NOT NULL
+FK UserID — Mã tài khoản int NULL
+FK,UQOrderID — Mã đơn hàng int NOT NULL
+DiscountAmount — Số tiền giảm decimal(18,2) NOT NULL
+CreatedAt — Thời điểm tạo datetime2 NOT NULL
+DiscountType — Loại giảm giá nvarchar(30) NULL
+PosCarts — Giỏ hàng tại quầy
+PK,FKUserID — Mã tài khoản int NOT NULL
+Revision — Phiên bản giỏ hàng int NOT NULL
+UpdatedAt — Thời điểm cập nhật datetime2 NOT NULL
+PosCartItems — Chi tiết giỏ tại quầy
+PK,FKUserID — Mã tài khoản int NOT NULL
+PK,FKProductVariantID — Mã biến thể sản phẩm int NOT NULL
+Quantity — Số lượng int NOT NULL

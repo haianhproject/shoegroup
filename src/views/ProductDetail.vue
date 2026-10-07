@@ -142,7 +142,6 @@ const attributes = computed(() => [
   ['Danh mục', product.value?.category_name],
   ['Bộ môn', product.value?.sport],
   ['Chất liệu', product.value?.material_name],
-  ['Bộ sưu tập', product.value?.collection_name],
 ].filter(([, value]) => value))
 
 const trustItems = [

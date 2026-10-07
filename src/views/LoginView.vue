@@ -42,7 +42,28 @@ const submit = async () => {
         <div class="in-wrap"><input v-model="form.email" type="email" class="auth-input" placeholder="you@example.com" @keyup.enter="submit"></div>
 
         <label class="co-label">MẬT KHẨU</label>
-        <div class="in-wrap"><input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="••••••••" @keyup.enter="submit"><button class="eye" @click="showPwd = !showPwd"><i class="icon" :class="showPwd ? 'icon-eye-slash' : 'icon-eye'"></i></button></div>
+        <div class="in-wrap">
+          <input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="••••••••" @keyup.enter="submit">
+          <button
+            type="button"
+            class="eye"
+            :aria-label="showPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            :aria-pressed="showPwd"
+            :title="showPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            @click="showPwd = !showPwd"
+          >
+            <svg v-if="!showPwd" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12 18 18.75 12 18.75 2.25 12 2.25 12Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="m3 3 18 18" />
+              <path d="M6.71 6.71C4.86 8.1 3.48 9.96 2.75 12c1.42 4 4.92 7 9.25 7 1.38 0 2.68-.31 3.84-.86" />
+              <path d="M10.73 5.08C11.14 5.03 11.57 5 12 5c4.33 0 7.83 3 9.25 7a10.5 10.5 0 0 1-1.67 2.92" />
+              <path d="M14.12 14.12a3 3 0 0 1-4.24-4.24" />
+            </svg>
+          </button>
+        </div>
 
         <div class="auth-row">
           <label class="remember"><input type="checkbox" checked> <span>Ghi nhớ trên trình duyệt này</span></label>
@@ -136,8 +157,13 @@ const submit = async () => {
   color: #767676;
   cursor: pointer;
   padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .eye:hover { color: #111; }
+.eye:focus-visible { outline: 2px solid #111; outline-offset: 2px; border-radius: 3px; }
+.eye-icon { display: block; width: 20px; height: 20px; }
 .auth-row {
   display: flex;
   justify-content: space-between;

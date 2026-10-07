@@ -24,7 +24,7 @@ const go = (path) => { closePromo(dontShow24h.value); router.push(path) }
         <div class="promo-hero">
           <span class="sg-chip promo-chip"><i class="icon icon-stars"></i> ƯU ĐÃI ĐẶC BIỆT</span>
           <h3 class="promo-title">Chào mừng đến với <strong>ShoeGroup</strong></h3>
-          <p class="promo-sub">Bộ sưu tập giày thể thao nam 2026 — bứt phá từng bước chạy.</p>
+          <p class="promo-sub">Sản phẩm giày thể thao nam 2026 — bứt phá từng bước chạy.</p>
         </div>
 
         <div class="promo-deals">

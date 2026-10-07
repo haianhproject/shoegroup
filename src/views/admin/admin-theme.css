@@ -90,12 +90,25 @@
 .admin-shell .swatch-remove:hover { color: var(--admin-accent); }
 .admin-shell .pos-product { cursor: pointer; transition: border-color .16s ease; border-radius: 8px; }
 .admin-shell .pos-product:hover { border-color: var(--admin-ink) !important; }
+.admin-shell .pos-customer-required { display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #f4d5d9; border-radius: 8px; background: #fff7f8; color: #9f2635; font-size: .78rem; line-height: 1.4; }
+.admin-shell .pos-customer-required .icon { flex: 0 0 auto; margin-top: 1px; }
+.admin-shell .pos-current-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.admin-shell .pos-reset-order { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 32px; padding: 0; }
+.admin-shell .pos-current-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; min-width: 0; }
+.admin-shell .pos-current-code { flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 8px 10px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-shell .pos-last-invoice { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; height: 32px; padding-inline: 10px; white-space: nowrap; }
 
 /* Layout-owned modals sit outside the routed page wrapper. */
 .admin-shell .custom-modal-overlay { position: fixed; inset: 0; z-index: 1080; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; overscroll-behavior: contain; background: rgb(14 14 14 / 48%); backdrop-filter: blur(3px); }
 .admin-shell .custom-modal-box { width: 100%; max-width: 560px; max-height: calc(100dvh - 48px); overflow: auto; border: 1px solid var(--admin-line); border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgb(14 14 14 / 18%); }
 .admin-shell .custom-modal-box :is(.border-b, .border-t) { border-color: var(--admin-line); }
 .admin-shell .custom-modal-box label.block { margin-bottom: 6px; }
+.admin-shell .custom-modal-box.pos-invoice-dialog { display: flex; flex-direction: column; max-width: 560px; overflow: hidden; }
+.admin-shell .pos-invoice-header, .admin-shell .pos-invoice-footer { flex: 0 0 auto; }
+.admin-shell .pos-invoice-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.admin-shell .pos-invoice-products { overflow-x: auto; }
+.admin-shell .pos-invoice-products table { min-width: 470px; }
+.admin-shell .pos-invoice-footer .btn { min-height: 42px; }
 .admin-shell .fade-in { opacity: 1; animation: none; }
 .admin-shell .fade-in-scale { animation: none; }
 
@@ -103,6 +116,9 @@
   .admin-shell .custom-modal-overlay { padding: 12px; }
   .admin-shell .custom-modal-box { max-height: calc(100dvh - 24px); }
   .admin-shell .custom-modal-box > .p-4 { padding: 18px; }
+  .admin-shell .pos-current-toolbar { align-items: stretch; flex-direction: column; }
+  .admin-shell .pos-last-invoice { justify-content: center; width: 100%; }
+  .admin-shell .pos-invoice-products table { min-width: 440px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .admin-shell *, .admin-shell *::before, .admin-shell *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

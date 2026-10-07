@@ -654,10 +654,6 @@ export const addToCart = async (payload) => {
       product.Sport ??
       "",
 
-    collection_name:
-      product.collection_name ??
-      product.CollectionName ??
-      "",
   };
 
   // ==========================================================

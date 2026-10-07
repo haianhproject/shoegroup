@@ -3,11 +3,31 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { db, openForm, getRoleBadgeClass, roleName, toggleAccountLock, apiWrite } from '../adminStore'
+import { currentUser } from '../../../stores/authStore'
 
 const search = ref('')
 const roleMsg = ref('')
 const roleMsgOk = ref(true)
 const savingId = ref(null)
+
+const activeAdminCount = computed(function () {
+  return (db.accounts || []).filter(function (account) {
+    return Number(account.role_id) === 1 && account.active !== false
+  }).length
+})
+
+const currentUserId = computed(function () {
+  const user = currentUser?.value
+  const id = Number(user?.id_user ?? user?.id ?? user?.UserID)
+  return Number.isInteger(id) && id > 0 ? id : null
+})
+
+function canToggleAccountLock(account) {
+  if (!account) return false
+  if (Number(account.role_id) !== 1) return true
+  if (account.active === false) return true
+  return activeAdminCount.value >= 2 && Number(account.id) !== currentUserId.value
+}
 
 const filtered = computed(function () {
   const q = search.value.trim().toLowerCase()
@@ -116,6 +136,7 @@ async function changeRole(a, value) {
                 <td class="text-end pr-4">
                   <button @click="openForm('accounts', a)" class="btn btn-sm btn-light border rounded-2 mr-1" :aria-label="'Chỉnh sửa tài khoản ' + (a.name || a.username)" title="Chỉnh sửa tài khoản"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                   <button
+                    v-if="canToggleAccountLock(a)"
                     @click="toggleAccountLock(a)"
                     class="btn btn-sm btn-light border rounded-2 text-gray-700"
                     :aria-label="(a.active !== false ? 'Khóa tài khoản ' : 'Mở khóa tài khoản ') + (a.name || a.username)"
