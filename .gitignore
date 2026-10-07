@@ -11,6 +11,8 @@ all figma*/
 dist/
 build/
 coverage/
+backend-spring/target/
+.tools/
 
 # Tep tam va ket qua trung gian cua cac script bao cao
 tmp/

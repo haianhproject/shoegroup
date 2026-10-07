@@ -9,6 +9,11 @@
     "dev": "concurrently --restart-tries -1 --restart-after 1000 -n WEB,API -c cyan,green \"vite --port=3000\" \"npm --prefix backend run dev\"",
     "dev:web": "vite --port=3000",
     "dev:api": "npm --prefix backend run dev",
+    "dev:spring": "node backend-spring/scripts/dev.cjs",
+    "test:spring": "powershell -NoProfile -ExecutionPolicy Bypass -File backend-spring/scripts/maven.ps1 test",
+    "test:spring:sql": "node backend-spring/scripts/sql-test.cjs",
+    "test:spring:pos": "node backend-spring/scripts/pos-audit.cjs",
+    "migration:inventory": "node backend-spring/scripts/inventory.cjs",
     "build": "vite build",
     "test": "node --test test/*.test.cjs",
     "preview": "vite preview --port=4173"

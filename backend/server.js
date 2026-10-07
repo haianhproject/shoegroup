@@ -41,6 +41,7 @@ const { normalizeSku, variantSku } = require("./src/sku");
 const { registerPosCartRoutes, claimPosCart, consumePosCart } = require("./src/pos-cart");
 
 const app = express();
+if (process.env.MIGRATION_BRIDGE === "true") app.set("trust proxy", "loopback");
 app.disable("x-powered-by");
 const PORT = config.port; // [TOI UU] doc tu bien moi truong PORT
 
@@ -4798,7 +4799,7 @@ process.on("unhandledRejection", (err) =>
   console.error("[unhandledRejection]", err && err.message),
 );
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, process.env.MIGRATION_BRIDGE === "true" ? "127.0.0.1" : "0.0.0.0", () => {
   console.log(`Server dang chay tai http://localhost:${PORT}`);
   console.log(`   - Che do phan quyen : ${config.authMode.toUpperCase()}`);
   console.log(`   - CORS cho phep     : ${config.corsOrigins.join(", ")}`);

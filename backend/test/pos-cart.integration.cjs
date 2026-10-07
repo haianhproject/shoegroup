@@ -2,7 +2,7 @@
 // Uses a fresh isolated SQL database; never writes to the configured shop database.
 "use strict";
 const assert = require("node:assert/strict");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
 const net = require("node:net");
 process.env.AUDIT_DB_NAME = `ShoegroupAudit_Pos_${Date.now()}`;
@@ -11,32 +11,62 @@ process.env.EMAIL_USER = "";
 process.env.EMAIL_PASS = "";
 const { setup, connection, api, admin, users, DATABASE } = require("./helpers/audit-db.cjs");
 const sql = require("mssql");
-let pool, server, serverOutput = "", checks = 0;
+let pool, server, springServer, serverOutput = "", checks = 0;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function startServer() {
+  const spring = process.env.POS_AUDIT_BACKEND === "spring";
   // Refuse to send test writes to any pre-existing process on the audit port.
   await new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once("error", reject);
     probe.listen(5194, () => probe.close(resolve));
   });
+  if (spring) {
+    await new Promise((resolve, reject) => {
+      const probe = net.createServer(); probe.once("error", reject);
+      probe.listen(5195, () => probe.close(resolve));
+    });
+  }
   server = spawn(process.execPath, [path.resolve(__dirname, "../server.js")], {
     windowsHide: true,
-    env: { ...process.env, DB_NAME: DATABASE, PORT: "5194", AUTH_MODE: "enforce", EMAIL_USER: "", EMAIL_PASS: "" },
+    env: { ...process.env, DB_NAME: DATABASE, PORT: spring ? "5195" : "5194", MIGRATION_BRIDGE: spring ? "true" : "false", AUTH_MODE: "enforce", EMAIL_USER: "", EMAIL_PASS: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", data => { serverOutput += data; });
   server.stderr.on("data", data => { serverOutput += data; });
-  for (let i = 0; i < 100; i++) {
+  if (spring) {
+    const jar = path.resolve(__dirname, "../../backend-spring/target/shoegroup-api-2.0.0.jar");
+    if (!require("node:fs").existsSync(jar)) throw new Error("Build backend-spring with Maven package before the Spring POS audit.");
+    const javaHome = process.env.JAVA_HOME || "C:/Program Files/Java/jdk-21";
+    const javaCommand = process.platform === "win32" && require("node:fs").existsSync(path.join(javaHome, "bin/java.exe")) ? path.join(javaHome, "bin/java.exe") : "java";
+    const config = require("../src/security/env");
+    const location = config.db.options.instanceName ? `${config.db.server};instanceName=${config.db.options.instanceName}` : `${config.db.server}:${config.db.port || 1433}`;
+    const jdbcUrl = `jdbc:sqlserver://${location};databaseName=${DATABASE};encrypt=${config.db.options.encrypt};trustServerCertificate=${config.db.options.trustServerCertificate}`;
+    springServer = spawn(javaCommand, ["-jar", jar], {
+      windowsHide: true, cwd: path.resolve(__dirname, "../.."),
+      env: { ...process.env, DB_NAME: DATABASE, SPRING_DB_URL: jdbcUrl, DB_USER: config.db.user, DB_PASS: config.db.password, JWT_SECRET: config.jwt.secret, SPRING_PORT: "5194", LEGACY_API_URL: "http://127.0.0.1:5195", AUTH_MODE: "enforce", EMAIL_USER: "", EMAIL_PASS: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    springServer.stdout.on("data", data => { serverOutput += data; });
+    springServer.stderr.on("data", data => { serverOutput += data; });
+  }
+  for (let i = 0; i < 300; i++) {
     if (server.exitCode !== null) throw new Error(serverOutput);
+    if (springServer && springServer.exitCode !== null) throw new Error(serverOutput);
     try { if ((await api("/pos/cart", { user: admin })).status === 200) return; } catch (_) {}
     await sleep(150);
   }
   throw new Error(`Server did not become ready: ${serverOutput}`);
 }
 async function stopServer() {
-  if (!server || server.exitCode !== null) return;
-  await new Promise(resolve => { server.once("exit", resolve); server.kill(); });
+  for (const child of [springServer, server]) {
+    if (!child || child.exitCode !== null) continue;
+    await new Promise(resolve => {
+      child.once("exit", resolve);
+      if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+      else child.kill();
+    });
+  }
 }
 async function fixture(stock = 3) {
   const sku = `POS-${Date.now()}-${checks}`;
@@ -75,6 +105,25 @@ async function main() {
   pool = await connection().connect();
   assert.equal((await pool.request().query("SELECT DB_NAME() AS name")).recordset[0].name, DATABASE);
   await startServer();
+
+  if (process.env.POS_AUDIT_BACKEND === "spring") await check("native product, inventory and discount reads match the Express JSON contract", async () => {
+    for (const route of ["/products", "/v2/products?page=1&limit=2", "/v2/products?sort=price_asc", "/v2/products?categoryId=1&brandId=1&q=Audit", "/v2/products/featured?limit=2", "/inventory", "/inventory/alerts?threshold=10", "/discounts", "/variantDiscounts", "/accounts", "/shippingmethods"]) {
+      const actual = await api(route, { user: admin });
+      const expected = await api(route, { user: admin, port: 5195 });
+      assert.equal(actual.status, 200, `${route}: ${JSON.stringify(actual)}`);
+      assert.deepEqual(actual.data, expected.data, route);
+    }
+  });
+  if (process.env.POS_AUDIT_BACKEND === "spring") await check("native shipping quotes match every original province rule and aliases", async () => {
+    const distances = require("../../backend-spring/src/main/resources/shipping-distances.json");
+    const bodies = Object.keys(distances).map(province => ({ province }));
+    bodies.push({}, { province: "Unknown", address: "Ha Noi" }, { provinceName: "Đà Nẵng", district: "Vinh" }, { shippingAddress: "Hai Bà Trưng, Hà Nội" });
+    for (const body of bodies) {
+      const actual = await api("/shipping/quote", { method: "POST", body, user: admin });
+      const expected = await api("/shipping/quote", { method: "POST", body, user: admin, port: 5195 });
+      assert.equal(actual.status, 200, JSON.stringify(actual)); assert.deepEqual(actual.data, expected.data, JSON.stringify(body));
+    }
+  });
 
   await check("customer cannot reserve POS inventory; fractional/negative/oversized quantities rejected", async () => {
     const item = await fixture();
@@ -125,6 +174,8 @@ async function main() {
     assert.equal(response.status, 200, JSON.stringify(response));
     const retry = await api("/orders", { user: admin, method: "POST", body, headers });
     assert.equal(retry.data.orderId, response.data.orderId);
+    const conflict = await api("/orders", { user: admin, method: "POST", body: { ...body, note: "Changed payload" }, headers });
+    assert.equal(conflict.status, 409, JSON.stringify(conflict));
     assert.equal(await stock(item), 0);
     assert.equal((await cart()).items.length, 0);
     const marker = await pool.request().input("oid", sql.Int, response.data.orderId)
