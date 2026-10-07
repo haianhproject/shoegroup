@@ -11,7 +11,7 @@ Báo cáo: [AUDIT-2026-09-09.md](./AUDIT-2026-09-09.md). Kết quả máy đọc
 
 ## Tạo database mới (một lần)
 
-Trong PowerShell tại `E:\VS Code\shoegroup\backend`, đặt một tên mới chưa có bảng:
+Trong PowerShell tại `E:\VS Code\shoegroup\backend\legacy-express`, đặt một tên mới chưa có bảng:
 
 ```powershell
 $env:AUDIT_DB_NAME='ShoegroupAudit_local_run1'
@@ -24,7 +24,7 @@ Nếu chạy lại các suite trên audit DB hiện có thì bỏ bước setup.
 
 ## Khởi động API audit
 
-Trong terminal riêng, cwd `backend`:
+Trong terminal riêng, cwd `backend/legacy-express`:
 
 ```powershell
 $env:DB_NAME='ShoegroupAudit_local_run1'
@@ -40,7 +40,7 @@ Driver đang dùng local time để tương thích `GETDATE()` của schema cũ;
 
 ## Regression API + SQL
 
-Trong terminal khác, cwd `backend`, chạy tuần tự:
+Trong terminal khác, cwd `backend/legacy-express`, chạy tuần tự:
 
 ```powershell
 $env:AUDIT_DB_NAME='ShoegroupAudit_local_run1'
@@ -64,7 +64,7 @@ Tại project root:
 
 ```powershell
 npm test
-npm --prefix backend test
+npm --prefix backend/legacy-express test
 npm run build
 git diff --check
 ```

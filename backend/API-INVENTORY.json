@@ -1,0 +1,462 @@
+{
+  "total": 76,
+  "spring": 52,
+  "routes": [
+    {
+      "route": "POST /api/log-error",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 114
+    },
+    {
+      "route": "GET /api/admin/events",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 118
+    },
+    {
+      "route": "GET /api/pos/payment-config",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 138
+    },
+    {
+      "route": "POST /api/login",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 363
+    },
+    {
+      "route": "POST /api/register",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 444
+    },
+    {
+      "route": "GET /api/addresses",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 985
+    },
+    {
+      "route": "POST /api/addresses",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1002
+    },
+    {
+      "route": "PUT /api/addresses/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1066
+    },
+    {
+      "route": "DELETE /api/addresses/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1143
+    },
+    {
+      "route": "POST /api/cart/items",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1196
+    },
+    {
+      "route": "PUT /api/cart/items/:variantId",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1271
+    },
+    {
+      "route": "DELETE /api/cart/items/:variantId",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1310
+    },
+    {
+      "route": "DELETE /api/cart",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 1333
+    },
+    {
+      "route": "POST /api/orders",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 1356
+    },
+    {
+      "route": "PUT /api/orders/:id/address",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 1957
+    },
+    {
+      "route": "GET /api/orders",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2119
+    },
+    {
+      "route": "PUT /api/orders/:id/status",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2252
+    },
+    {
+      "route": "PUT /api/orders/:id/payment",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2500
+    },
+    {
+      "route": "GET /api/products",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 2603
+    },
+    {
+      "route": "POST /api/products",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2880
+    },
+    {
+      "route": "PUT /api/products/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2916
+    },
+    {
+      "route": "DELETE /api/products/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 2957
+    },
+    {
+      "route": "PUT /api/products/:id/restore",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3006
+    },
+    {
+      "route": "GET /api/revenue-by-product",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3023
+    },
+    {
+      "route": "GET /api/accounts",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3048
+    },
+    {
+      "route": "POST /api/accounts",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3062
+    },
+    {
+      "route": "PUT /api/accounts/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3089
+    },
+    {
+      "route": "DELETE /api/accounts/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3224
+    },
+    {
+      "route": "GET /api/categories",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3228
+    },
+    {
+      "route": "POST /api/categories",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3242
+    },
+    {
+      "route": "PUT /api/categories/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3262
+    },
+    {
+      "route": "DELETE /api/categories/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3288
+    },
+    {
+      "route": "GET /api/brands",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3307
+    },
+    {
+      "route": "POST /api/brands",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3320
+    },
+    {
+      "route": "PUT /api/brands/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3342
+    },
+    {
+      "route": "DELETE /api/brands/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3370
+    },
+    {
+      "route": "GET /api/materials",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3389
+    },
+    {
+      "route": "POST /api/materials",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3402
+    },
+    {
+      "route": "PUT /api/materials/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3417
+    },
+    {
+      "route": "DELETE /api/materials/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3440
+    },
+    {
+      "route": "GET /api/colors",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3459
+    },
+    {
+      "route": "POST /api/colors",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3472
+    },
+    {
+      "route": "PUT /api/colors/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3495
+    },
+    {
+      "route": "DELETE /api/colors/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3524
+    },
+    {
+      "route": "GET /api/sizes",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3543
+    },
+    {
+      "route": "POST /api/sizes",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3556
+    },
+    {
+      "route": "PUT /api/sizes/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3578
+    },
+    {
+      "route": "DELETE /api/sizes/:id",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3606
+    },
+    {
+      "route": "GET /api/inventory",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3625
+    },
+    {
+      "route": "GET /api/inventory/alerts",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3659
+    },
+    {
+      "route": "GET /api/variantDiscounts",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3704
+    },
+    {
+      "route": "POST /api/variantDiscounts",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3731
+    },
+    {
+      "route": "PUT /api/variantDiscounts/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3817
+    },
+    {
+      "route": "DELETE /api/variantDiscounts/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3909
+    },
+    {
+      "route": "GET /api/discounts",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 3927
+    },
+    {
+      "route": "POST /api/discounts",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3947
+    },
+    {
+      "route": "PUT /api/discounts/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 3978
+    },
+    {
+      "route": "DELETE /api/discounts/:id",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4016
+    },
+    {
+      "route": "GET /api/customers",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4035
+    },
+    {
+      "route": "POST /api/customers",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4070
+    },
+    {
+      "route": "GET /api/customers/:id/orders",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4127
+    },
+    {
+      "route": "GET /api/customers/:id/notifications",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4250
+    },
+    {
+      "route": "GET /api/chart-data",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4270
+    },
+    {
+      "route": "GET /api/shippingmethods",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 4492
+    },
+    {
+      "route": "POST /api/shipping/quote",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 4538
+    },
+    {
+      "route": "PUT /api/orders/:id/receive",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/server.js",
+      "line": 4562
+    },
+    {
+      "route": "POST /api/auth/forgot-password",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 4701
+    },
+    {
+      "route": "POST /api/auth/reset-password",
+      "implementation": "spring",
+      "file": "backend/legacy-express/server.js",
+      "line": 4747
+    },
+    {
+      "route": "GET /api/health",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/routes/optimized.routes.js",
+      "line": 29
+    },
+    {
+      "route": "GET /api/v2/products",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/routes/optimized.routes.js",
+      "line": 45
+    },
+    {
+      "route": "GET /api/v2/products/featured",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/routes/optimized.routes.js",
+      "line": 142
+    },
+    {
+      "route": "GET /api/v2/orders",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/src/routes/optimized.routes.js",
+      "line": 196
+    },
+    {
+      "route": "GET /api/v2/dashboard/summary",
+      "implementation": "express-transition",
+      "file": "backend/legacy-express/src/routes/optimized.routes.js",
+      "line": 274
+    },
+    {
+      "route": "GET /api/pos/cart",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/pos-cart.js",
+      "line": 154
+    },
+    {
+      "route": "PUT /api/pos/cart/items/:variantId",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/pos-cart.js",
+      "line": 155
+    },
+    {
+      "route": "DELETE /api/pos/cart",
+      "implementation": "spring",
+      "file": "backend/legacy-express/src/pos-cart.js",
+      "line": 156
+    }
+  ]
+}

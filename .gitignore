@@ -2,7 +2,7 @@
 node_modules/
 
 # Du lieu lam viec cua Codex (luu ngoai repository)
-.codex-work/
+tools/.work/
 
 # Prototype Figma da duoc tich hop vao src/
 all figma*/
@@ -11,8 +11,8 @@ all figma*/
 dist/
 build/
 coverage/
-backend-spring/target/
-.tools/
+backend/target/
+tools/.cache/
 
 # Tep tam va ket qua trung gian cua cac script bao cao
 tmp/
@@ -35,3 +35,13 @@ Thumbs.db
 # Anh chup tu script test
 products.png
 admin.png
+
+# Preview/QA artifacts and editor backup files
+output/erd-qa/
+output/word-qa/
+outputs/pos-stock/
+docs/deliverables/qa/
+docs/deliverables/previous-exports/pos-stock/
+*.bkp
+*.bak
+*.inspect.ndjson

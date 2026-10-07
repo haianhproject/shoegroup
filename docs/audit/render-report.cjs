@@ -8,7 +8,7 @@ const fixed=findings.filter(x=>x.status==='Fixed'),remaining=findings.filter(x=>
 const completed=features.filter(x=>x[2]==='Complete').length;
 const suiteNames=['runtime-results.json','extended-results.json','boundary-results.json','jobs-results.json','known-gaps-results.json'];
 const runtime=suiteNames.flatMap(name=>JSON.parse(fs.readFileSync(path.join(__dirname,name),'utf8')).results.map(r=>({...r,source:name})));
-const unitFiles=['test/frontend-audit.test.cjs','backend/test/payment-audit.test.cjs','backend/test/security.test.cjs','backend/test/validation.test.cjs'];
+const unitFiles=['frontend/test/frontend-audit.test.cjs','backend/legacy-express/test/payment-audit.test.cjs','backend/legacy-express/test/security.test.cjs','backend/legacy-express/test/validation.test.cjs'];
 const unit=unitFiles.flatMap(file=>[...fs.readFileSync(path.join(root,file),'utf8').matchAll(/test\(\s*(["'])(.*?)\1/g)].map(match=>({scenario:match[2],file})));
 const ui=[
 ['UI-01','Home và ProductDetail policy','14 ngày; phí xem khi checkout','Quan sát UI đúng sau sửa','PASS'],
@@ -45,7 +45,7 @@ Không cộng số test thành số bug. Một test có thể kiểm tra nhiều
 
 ${table(['Thành phần','Thực tế'],[
 ['Frontend','Vue 3 + Vue Router; Vite 6 (runtime build 6.4.3); reactive stores/localStorage; adminStore lớn'],
-['Backend','Express 5; backend/server.js khoảng 5.2k dòng + optimized v2 routes; mssql native queries'],
+['Backend','Express 5; backend/legacy-express/server.js khoảng 5.2k dòng + optimized v2 routes; mssql native queries'],
 ['Database/ORM','SQL Server 2022 Express local; không ORM; database/dbsql.sql và migrations'],
 ['Auth','JWT bearer, scrypt/bcrypt password support, role/ownership policy middleware'],
 ['Order/inventory','Orders + OrderDetails; stock tại ProductVariants; decrement khi tạo order; trạng thái/history/StockRestoredAt'],
@@ -137,7 +137,7 @@ ${table(['Nhóm','File/module'],[
 ['Backend','server.js; src/checkout-idempotency.js; src/revenue.js; src/routes/optimized.routes.js; src/security/env.js, guard.js; src/validation.js; .env.example'],
 ['SQL','20260909_checkout_idempotency.sql; 20260909_coupon_redemptions.sql; 20260909_audit_constraints.sql'],
 ['Frontend','services/checkoutAttempt.js, revenue.js, httpInterceptor.js; stores/cartStore.js, orderStore.js; CheckoutView, MyOrders, HomeDisplay, ProductDetail, CartDrawer; adminStore, PosPage, ReturnsPage'],
-['Tests/docs','backend/test/audit.*.cjs, helpers/audit-db.cjs, payment-audit.test.cjs, security.test.cjs; test/frontend-audit.test.cjs; package.json test script; docs/audit/*'],
+['Tests/docs','backend/legacy-express/test/audit.*.cjs, helpers/audit-db.cjs, payment-audit.test.cjs, security.test.cjs; frontend/test/frontend-audit.test.cjs; package.json test script; docs/audit/*'],
 ])}
 
 Không commit/deploy tự động. Git diff có cả các thay đổi người dùng đã có ở AccountView, ProductsPage, router, layout, icon/CSS và một số view; không quy toàn bộ diff đó cho audit. Không đổi URL API checkout. Idempotency-Key còn optional để tương thích client cũ; stock edit nay yêu cầu version khi sửa tồn, POS paid sai total trả409, customer payment chỉ là pending, generic return state trả409. Đây là thay đổi có chủ đích để đóng lỗ hổng, client liên quan đã được cập nhật.

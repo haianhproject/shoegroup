@@ -1,0 +1,19 @@
+{
+  "files.exclude": {
+    "**/.git": true,
+    "**/node_modules": true,
+    "tools/.cache": true,
+    "tools/.work": true,
+    "frontend/dist": true,
+    "backend/target": true,
+    "docs/deliverables/qa": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "tools/.cache": true,
+    "tools/.work": true,
+    "frontend/dist": true,
+    "backend/target": true
+  },
+  "explorer.compactFolders": false
+}

@@ -20,12 +20,12 @@ Thiết kế Figma đã được tích hợp vào các component Vue đang chạ
 
 | Figma component | ShoeGroup component | Dữ liệu/logic |
 | --- | --- | --- |
-| Header | `src/components/figma/layout/FigmaNavbar.vue` | Vue Router, authStore, cartStore, `/products`, `/categories` |
-| Footer | `src/components/figma/layout/FigmaFooter.vue` | Router links tới các route khách hàng |
-| Product card | `src/components/ShoeCard.vue` qua `FigmaProductCard.vue` | `GET /products`, giá/giảm giá/brand/category/variant/stock |
-| Product grid | `src/components/figma/product/FigmaProductGrid.vue` | phân trang và bộ lọc của ProductsView |
-| Customer shell | `src/layouts/FigmaCustomerLayout.vue` | dùng chung cho mọi route không phải admin |
-| Hero | `src/views/HomeDisplay.vue` | banner Figma, slide video Pexels, autoplay/loop/muted/playsinline |
+| Header | `frontend/src/components/figma/layout/FigmaNavbar.vue` | Vue Router, authStore, cartStore, `/products`, `/categories` |
+| Footer | `frontend/src/components/figma/layout/FigmaFooter.vue` | Router links tới các route khách hàng |
+| Product card | `frontend/src/components/ShoeCard.vue` qua `FigmaProductCard.vue` | `GET /products`, giá/giảm giá/brand/category/variant/stock |
+| Product grid | `frontend/src/components/figma/product/FigmaProductGrid.vue` | phân trang và bộ lọc của ProductsView |
+| Customer shell | `frontend/src/layouts/FigmaCustomerLayout.vue` | dùng chung cho mọi route không phải admin |
+| Hero | `frontend/src/views/HomeDisplay.vue` | banner Figma, slide video Pexels, autoplay/loop/muted/playsinline |
 
 ## API to UI mapping
 

@@ -40,7 +40,7 @@ Current checkpoint: **52/76 routes** have native Spring handlers; **24/76** stil
 | Scheduled jobs | Auto cancellation and transactional emails attached to orders | Pending, Express owns them |
 
 Run `npm run migration:inventory` for every concrete method/path and its source location.
-The checked-in `backend-spring/API-INVENTORY.json` lists all 76 method/path/source/status entries. Regenerate it with `node backend-spring/scripts/inventory.cjs --write` whenever a group is ported.
+The checked-in `backend/API-INVENTORY.json` lists all 76 method/path/source/status entries. Regenerate it with `node backend/scripts/inventory.cjs --write` whenever a group is ported.
 
 ## Critical invariants
 
@@ -61,22 +61,22 @@ npm run test:spring:pos
 npm run dev:spring
 ```
 
-`mvnw.cmd` bootstraps Maven 3.9.11 into ignored `.tools/` and verifies its SHA-512 download checksum. Set `JAVA_HOME` to a JDK 17+ if auto-detection does not find one.
+`mvnw.cmd` bootstraps Maven 3.9.11 into ignored `tools/.cache/` and verifies its SHA-512 download checksum. Set `JAVA_HOME` to a JDK 17+ if auto-detection does not find one.
 
-`dev:spring` checks ports before launching Vue, Spring and the transition API; stopping it stops those child process trees. The existing `npm run dev` remains available for the original stack.
+`dev:spring` checks ports, waits for Express schema initialization and SQL health, then waits for Spring health before starting Vue; stopping it stops those child process trees. `npm run dev` now starts this same Spring-first transition stack.
 
-Before `test:spring:pos`, build the executable jar with `backend-spring\mvnw.cmd package`. This audit uses an isolated full-schema database and ports 5194/5195. It compares native read responses with Express and exercises native POS reservations through legacy checkout/cancellation, including durable replay and conflicting checkout payloads.
+Before `test:spring:pos`, build the executable jar with `backend\mvnw.cmd package`. This audit uses an isolated full-schema database and ports 5194/5195. It compares native read responses with Express and exercises native POS reservations through legacy checkout/cancellation, including durable replay and conflicting checkout payloads.
 
 SQL Server named instances: existing `DB_INSTANCE` is supported when `DB_PORT` is absent. `SPRING_DB_URL` can override the generated JDBC URL. Credentials still come from `DB_USER`/`DB_PASS`; keep secrets out of command arguments and Git. Dotenv parsing supports quoted values and comments, with process environment taking precedence.
 
-## Verification log
+## Initial checkpoint verification log
 
 - `npm run test:spring:sql`: PASS, 22 tests (12 real SQL integration tests and 10 unit/bridge/shipping tests), isolated temporary database removed afterward.
 - SQL coverage includes plaintext password upgrade, locked accounts, role reload, IDOR, one-use reset tokens, atomic POS stock reservations, concurrent last-unit reservations, rollback, online cart non-reservation, address ownership/defaults, password-preserving account patches and concurrent last-admin protection.
 - Shipping unit tests cover every fee/ETA boundary, province precedence, accents/aliases, unknown locations and database fallback.
-- `backend-spring\mvnw.cmd package -q`: PASS, executable jar created, 10 unit tests passed (12 database tests intentionally skipped without the private SQL test URL).
+- `backend\mvnw.cmd package -q`: PASS, executable jar created, 10 unit tests passed (12 database tests intentionally skipped without the private SQL test URL).
 - `npm test`: PASS, 51/51 frontend contract/regression tests.
-- `npm --prefix backend test`: PASS, 29/29 existing backend regression tests.
+- `npm --prefix backend/legacy-express test`: PASS, 29/29 existing backend regression tests.
 - `npm run build`: PASS, Vue production bundle created without frontend source changes.
 - `npm run test:spring:pos`: PASS, 14/14 full-schema transition scenarios in a temporary database, removed afterward. Product/inventory/discount/account/shipping GET responses match Express exactly; shipping quotes match all original province rules and aliases.
 - POS audit also covers restart persistence, stale revisions, checkout replay/conflicting payloads, two-cashier last-unit contention, online/POS stock contention, checkout rollback and cancellation restoring stock once. Checkout/status mutations are still Express-backed in this audit, not evidence of a native Spring checkout.
@@ -94,3 +94,39 @@ SQL Server named instances: existing `DB_INSTANCE` is supported when `DB_PORT` i
 6. Move schema migrations, order emails and scheduled cancellation jobs to Spring. Disable legacy forwarding only after native end-to-end tests cover these groups.
 
 Do not describe this checkpoint as a completed Express replacement. `npm run dev:spring` still requires the Express transition process for the pending groups above.
+
+## Project review and cleanup (2026-10-07)
+
+- Git worktree was clean before this review; no pre-existing edits were reverted.
+- Removed `backend/legacy/server.original.js`: unreferenced backup, not the running Express server.
+- Removed six unreachable Vue/JS files: SakuraFalling, ThemePanel, themeStore, FigmaCustomerLayout, AdminWelcome and StaffReportPage. Import graph includes relative paths, Vue scripts, dynamic routes, CSS and the Vite `@/` alias. Business services, mock shipping fallback and shared navbar/footer remain in use and were preserved.
+- Removed obsolete one-shot admin style scripts, document/ERD generation scripts and the tracked Draw.io backup. Removed outdated admin README; root README now maps the actual source entry points.
+- Consolidated final and historical coursework into `docs/deliverables/`; consolidated technology diagrams under `docs/diagrams/technology/`. Historical document variants were preserved, not assumed disposable solely because of their dates.
+- QA image/PDF files were relocated into ignored `docs/deliverables/qa/` rather than physically deleted (shell deletion was blocked). These are previews, not runtime assets. Git can recover their original tracked versions. Required dependencies, Maven runtime, SQL baselines, schema migrations, `.env`, `.git`, tests and website media were preserved.
+- Removed unused `multer` from the Express package and its lockfile dependency tree using npm. No server module imports it; backend regression and full POS suites were repeated after removal. Other dependency versions were not upgraded.
+- VS Code hides dependency/build/cache folders so the actual source is easy to find. These settings do not change application behavior or build output.
+- Fixed security compatibility: SQL `IsActive=NULL` retains the legacy default-active behavior; oversized owner IDs fail closed instead of throwing; public catalog rules now require a route boundary.
+- Fixed development startup ordering: Vue no longer starts before the two backend health checks succeed.
+- Native Spring migration remains 52/76 routes. A functioning hybrid setup is not proof the application works without Express or is ready for production. No real SMTP delivery, payment-provider reconciliation or production load test has been performed.
+- Found and fixed homepage category fallback returning `undefined` instead of a numeric count. Null category IDs no longer count unrelated products.
+- Homepage newsletter has no persistence API; it no longer reports a fabricated successful registration. A real newsletter implementation remains out of scope.
+- `npm run audit:source`: PASS, 69 source files reachable, no unresolved local imports or unreachable Vue/JS/CSS modules.
+- `npm run test:spring:sql`: PASS, 23 tests including 13 real SQL cases; regression coverage added for nullable legacy active state and oversized owner IDs. Temporary database removed.
+- `backend\mvnw.cmd package -q`: PASS (10 unit tests, SQL cases deliberately skipped without the private test URL).
+- `npm test`: PASS, 53/53 after the last homepage fixes. `npm --prefix backend/legacy-express test`: PASS, 29/29. `npm run test:spring:pos`: PASS, 14/14. Vue production build repeated successfully.
+- Live startup order verified: Express/SQL healthy, Spring/SQL healthy, then Vue starts. Browser smoke checks: homepage, 11-product listing and product detail/variants render without captured console errors. Anonymous accounts/POS requests return 401.
+- Read-only local timing, 20 warm sequential samples per endpoint: health median/P95 5/9 ms; products 21/29 ms; v2 products 13/20 ms. Small local dataset only, not a concurrency/production performance benchmark.
+- All 34 relocated document/diagram/QA artifacts were checked against their original Git blob hashes; content preserved exactly (technology README intentionally updated for the new location).
+- Runtime media is not disposable: `img/hero-walk-alternate.mp4` is about 36 MiB and contributes heavily to the roughly 52 MiB frontend build. It is actively selected by the homepage, so it was preserved; video compression is a separate optimization.
+
+## Repository layout consolidation (2026-10-07)
+
+- Moved Vue source, media, tests, Vite configuration and dependency lockfile into `frontend/`. Root `package.json` now delegates commands; `npm run setup` installs both Node dependency trees from their lockfiles.
+- Spring is now the primary `backend/` project. The required Express implementation is explicitly isolated under `backend/legacy-express/`, not deleted or described as a backup. Shared secrets stay at ignored `backend/.env`.
+- Moved diagrams into `docs/diagrams/`, Maven bootstrap cache into ignored `tools/.cache/`, and local working artifacts into ignored `tools/.work/`. Updated scripts, SQL fixture paths, documentation links and VS Code exclusions.
+- `npm run dev` now starts Express transition on loopback 5001, Spring on 5000, then Vue on 3000 after both SQL health checks pass. `dev:spring` remains an alias. Layout changes did not port any additional API: still **52 native / 24 transitional**.
+- Removed unused `concurrently` and its 24 dependency packages. Applied compatible npm audit fixes without `--force`; frontend audit now reports zero known vulnerabilities. Legacy audit still reports **1 high + 3 moderate** entries: Nodemailer and the `mssql -> tedious -> sprintf-js` chain. npm suggests a major Nodemailer upgrade and an unacceptable mssql downgrade to 4.2.0; neither was applied automatically. These need separate compatibility/security work before production.
+- Revalidated after relocation: frontend **53/53**, Express **29/29**, Spring **23/23** including **13 SQL Server integration tests with no skips**, full-schema Spring/Express POS audit **14/14**. SQL/POS fixtures used isolated databases and completed cleanup. POS suite, Node tests and frontend build were repeated after dependency patches.
+- Maven executable JAR and Vue production build both passed. JavaScript syntax scan passed for 63 files; frontend import graph has 69 reachable files and no missing local imports. Regenerated API inventory has 76 valid source locations.
+- Live smoke on the new default command: Vue HTML/module and native health/products/v2-products/categories/shipping return 200; health confirms SQL connected; unauthenticated accounts/POS return 401. This is local functional verification, not a production load test or proof of complete native Spring migration.
+- Outstanding: 24 API ports, Express-owned scheduler/schema initialization/order email, dependency warnings above, SMTP delivery and real payment reconciliation. Do not claim all business logic is proven correct or production-ready from these tests alone.

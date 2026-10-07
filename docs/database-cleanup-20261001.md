@@ -1,7 +1,7 @@
 # Rà soát database ShoeGroup — 01/10/2026
 
 Đã áp dụng trực tiếp trên `ShoegroupDB` tại `DESKTOP-FP2J1RT\SQLEXPRESS`.
-Căn cứ là `backend/server.js`, các module thực sự được import trong `backend/src`,
+Căn cứ là `backend/legacy-express/server.js`, các module thực sự được import trong `backend/src`,
 giao diện `src`, catalog SQL Server và thống kê dữ liệu tại thời điểm rà soát.
 Không coi code trong `backend/legacy`, SQL dump cũ hoặc fixture lịch sử là chức năng đang chạy.
 
@@ -83,14 +83,14 @@ Kết luận ở đây dựa trên code hiện hành, các phụ thuộc DB và 
 ## ERD hiện hành
 
 Các tệp ERD lịch sử của ngày 01/10 đã được loại khỏi thư mục sơ đồ.
-Xem [bộ ERD hiện hành](../diagrams/erd/README.md) và
-[chi tiết khóa ngoại hiện hành](../diagrams/erd/ERD-KhoaNgoai.md).
+Xem [bộ ERD hiện hành](diagrams/erd/README.md) và
+[chi tiết khóa ngoại hiện hành](diagrams/erd/ERD-KhoaNgoai.md).
 Các số liệu kiểm chứng bên dưới là kết quả lịch sử tại ngày 01/10/2026.
 
 Tạo lại ERD từ DB được cấu hình trong `backend/.env`:
 
 ```powershell
-node backend/tools/export-erd.cjs
+node backend/legacy-express/tools/export-erd.cjs
 ```
 
 ## Kiểm chứng và khôi phục
@@ -107,7 +107,7 @@ node backend/tools/export-erd.cjs
 
 Backup nằm tại thư mục Backup của SQL Server:
 `C:\Program Files\Microsoft SQL Server\MSSQL16.SQLEXPRESS\MSSQL\Backup\ShoegroupDB_before_cleanup_20261001_1790850660161.bak`.
-Metadata, fingerprint và kết quả kiểm thử cục bộ nằm trong `.codex-work/db-cleanup/` (được gitignore).
+Metadata, fingerprint và kết quả kiểm thử cục bộ nằm trong `tools/.work/db-cleanup/` (được gitignore).
 Backup chứa dữ liệu trước khi dọn, kể cả các bảng/cột đã xóa; không gửi ra ngoài máy.
 Nếu cần phục hồi, ưu tiên restore backup sang một DB riêng để lấy đúng đối tượng cần cứu,
 tránh ghi đè giao dịch mới phát sinh trên DB chính.
@@ -115,5 +115,5 @@ tránh ghi đè giao dịch mới phát sinh trên DB chính.
 Migration `20261001_remove_unused_schema.sql` được giữ để truy vết; **không tự chạy khi server khởi động**.
 Các dump/migration lịch sử vẫn là tài liệu cũ. Khi dựng DB từ dump cũ phải áp dụng đợt dọn này
 cùng backend mới, sau khi backup và rà soát dữ liệu; không chạy lại migration tạo thủ tục checkout cũ.
-Script `backend/tools/verify-schema-cleanup.cjs` chỉ cho phép ghi trên tên DB
+Script `backend/legacy-express/tools/verify-schema-cleanup.cjs` chỉ cho phép ghi trên tên DB
 `ShoegroupAudit_Cleanup_*`, tắt email gửi ra ngoài và tự dừng server kiểm thử khi kết thúc.

@@ -1,33 +1,23 @@
 {
-  "name": "shoegroup",
-  "private": true,
+  "name": "shoegroup-project",
   "version": "2.0.0",
-  "description": "ShoeGroup - website ban giay (Vue 3 + Express + SQL Server)",
-  "type": "module",
+  "private": true,
+  "description": "ShoeGroup - Vue frontend, Spring Boot API and SQL Server",
   "scripts": {
-    "setup": "npm install && npm --prefix backend install",
-    "dev": "concurrently --restart-tries -1 --restart-after 1000 -n WEB,API -c cyan,green \"vite --port=3000\" \"npm --prefix backend run dev\"",
-    "dev:web": "vite --port=3000",
-    "dev:api": "npm --prefix backend run dev",
-    "dev:spring": "node backend-spring/scripts/dev.cjs",
-    "test:spring": "powershell -NoProfile -ExecutionPolicy Bypass -File backend-spring/scripts/maven.ps1 test",
-    "test:spring:sql": "node backend-spring/scripts/sql-test.cjs",
-    "test:spring:pos": "node backend-spring/scripts/pos-audit.cjs",
-    "migration:inventory": "node backend-spring/scripts/inventory.cjs",
-    "build": "vite build",
-    "test": "node --test test/*.test.cjs",
-    "preview": "vite preview --port=4173"
-  },
-  "dependencies": {
-    "chart.js": "^4.5.1",
-    "vue": "^3.5.35",
-    "vue-router": "^4.4.5"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "concurrently": "^9.1.2",
-    "tailwindcss": "^4.3.3",
-    "vite": "^6.2.3"
+    "setup": "npm --prefix frontend ci && npm --prefix backend/legacy-express ci",
+    "dev": "node backend/scripts/dev.cjs",
+    "dev:spring": "node backend/scripts/dev.cjs",
+    "dev:web": "npm --prefix frontend run dev",
+    "dev:api": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 spring-boot:run",
+    "dev:legacy": "npm --prefix backend/legacy-express run dev",
+    "build": "npm --prefix frontend run build",
+    "build:api": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 package",
+    "test": "npm --prefix frontend test && npm --prefix backend/legacy-express test",
+    "test:spring": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 test",
+    "test:spring:sql": "node backend/scripts/sql-test.cjs",
+    "test:spring:pos": "node backend/scripts/pos-audit.cjs",
+    "migration:inventory": "node backend/scripts/inventory.cjs",
+    "audit:source": "node tools/audit-source.cjs",
+    "preview": "npm --prefix frontend run preview"
   }
 }
