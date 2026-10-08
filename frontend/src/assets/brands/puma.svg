@@ -1,0 +1,7 @@
+<!-- Mục đích: Logo puma dùng trong danh sách và bộ lọc thương hiệu. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-labelledby="title">
+  <title id="title">Puma</title>
+  <rect width="320" height="160" rx="24" fill="#0e0e0e"/>
+  <path d="M226 43c18 3 34 14 43 30l-20-4-9 17-12-12-20 8 8-21-13-12c8-5 15-7 23-6Z" fill="#fff"/>
+  <text x="132" y="105" fill="#fff" font-family="Arial, sans-serif" font-size="48" font-weight="900" text-anchor="middle">PUMA</text>
+</svg>

@@ -1,3 +1,4 @@
+-- Mục đích: Tạo bảng lưu kết quả checkout để request lặp không tạo đơn trùng.
 -- Durable replay response commits together with order, items, stock and coupon.
 IF OBJECT_ID(N'dbo.CheckoutRequests', N'U') IS NULL
 BEGIN

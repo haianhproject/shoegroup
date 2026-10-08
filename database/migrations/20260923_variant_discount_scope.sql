@@ -1,3 +1,4 @@
+-- Mục đích: Thêm phạm vi khuyến mãi toàn màu hoặc đúng biến thể màu/kích thước.
 /* Cho phep chon giam gia theo ca mau hoac theo dung mot bien the mau + size.
    Ban ghi cu mac dinh la color de giu nguyen hanh vi truoc day. */
 IF OBJECT_ID(N'dbo.VariantDiscounts', N'U') IS NOT NULL

@@ -1,0 +1,7 @@
+<!-- Mục đích: Logo new-balance dùng trong danh sách và bộ lọc thương hiệu. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-labelledby="title">
+  <title id="title">New Balance</title>
+  <rect width="320" height="160" rx="24" fill="#d71920"/>
+  <path d="M43 93h43l14-27 17 52h27l37-76h-30l-20 43-15-43H89L65 79H43Z" fill="#fff"/>
+  <text x="225" y="104" fill="#fff" font-family="Arial, sans-serif" font-size="48" font-style="italic" font-weight="900" text-anchor="middle">NB</text>
+</svg>

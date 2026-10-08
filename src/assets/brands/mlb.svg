@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-labelledby="title">
-  <title id="title">MLB</title>
-  <rect width="320" height="160" rx="24" fill="#092d5c"/>
-  <path d="M210 0h110v160H175c43-29 55-83 35-160Z" fill="#cf2434"/>
-  <circle cx="246" cy="47" r="9" fill="#fff"/>
-  <text x="124" y="104" fill="#fff" font-family="Arial, sans-serif" font-size="58" font-style="italic" font-weight="900" text-anchor="middle">MLB</text>
-</svg>

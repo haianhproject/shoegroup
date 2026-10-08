@@ -1,3 +1,4 @@
+-- Mục đích: Tắt giao hàng hỏa tốc để cửa hàng chỉ dùng phương thức tiêu chuẩn.
 /* ShoeGroup - chỉ dùng giao hàng tiêu chuẩn
    Không xóa bản ghi cũ; chỉ tắt phương thức hỏa tốc để có thể khôi phục khi cần. */
 IF OBJECT_ID(N'dbo.ShippingMethods', N'U') IS NOT NULL

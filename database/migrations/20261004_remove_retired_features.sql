@@ -1,3 +1,4 @@
+-- Mục đích: Script thủ công loại bỏ chức năng SQL đã ngừng dùng sau khi giữ số liệu lịch sử.
 -- MANUAL migration. Back up and verify the database first.
 -- Run 20261004_revenue_history.sql before this script.
 SET XACT_ABORT ON;

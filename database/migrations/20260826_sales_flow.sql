@@ -1,3 +1,4 @@
+-- Mục đích: Bổ sung mốc thanh toán và dữ liệu xử lý đơn/đổi trả cho schema ban đầu.
 /* ShoeGroup - sales flow hardening (idempotent)
    Safe to run on an existing database and included at the end of dbsql.sql. */
 IF COL_LENGTH('dbo.Orders', 'PaymentDueAt') IS NULL

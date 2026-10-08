@@ -1,8 +1,9 @@
+-- Mục đích: Script thủ công dọn schema cũ; không tự chạy lúc ứng dụng khởi động.
 /* Dọn schema theo các API hiện hành, đã đối chiếu ngày 01/10/2026.
    Chạy thủ công SAU KHI backup và triển khai backend cùng phiên bản.
    Không tự chạy migration phá huỷ dữ liệu này khi API khởi động.
    Giữ nguyên các cột nullable đang phục vụ nghiệp vụ.
-   Xem docs/database-cleanup-20261001.md để biết căn cứ và cách khôi phục. */
+   Giữ bản sao database trước khi chạy để có thể khôi phục. */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 

@@ -1,3 +1,4 @@
+-- Mục đích: Giữ số tiền hoàn và số lượng trả lịch sử để tính doanh thu đúng.
 -- Keep historical revenue deductions after retiring the returns module.
 IF COL_LENGTH(N'dbo.Orders', N'HistoricalRefundAmount') IS NULL
   ALTER TABLE dbo.Orders ADD HistoricalRefundAmount decimal(18,2) NOT NULL
