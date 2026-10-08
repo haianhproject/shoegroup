@@ -1,3 +1,4 @@
+-- Mục đích: Thêm ràng buộc số lượng/giá hợp lệ; dừng nếu lịch sử có dữ liệu sai.
 -- Apply after reviewing existing data; WITH CHECK deliberately refuses invalid history.
 -- No history is deleted or silently repaired by this migration.
 IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_OrderDetails_ValidAmounts')

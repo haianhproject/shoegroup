@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử truy vấn giá sản phẩm và phạm vi khuyến mãi của API đối chiếu.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử quyền xác nhận thanh toán và trạng thái thu/hoàn tiền trong code đối chiếu.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: tạo và gửi email giao dịch để kiểm thử hợp đồng dữ liệu cũ.
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 

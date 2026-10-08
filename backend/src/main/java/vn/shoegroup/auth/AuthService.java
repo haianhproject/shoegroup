@@ -1,3 +1,4 @@
+// Mục đích: Xác thực tài khoản, giữ định dạng mật khẩu/JWT và gửi liên kết đặt lại mật khẩu.
 package vn.shoegroup.auth;
 
 import java.security.SecureRandom;
@@ -75,8 +76,10 @@ public class AuthService {
             String sender = env.getProperty("EMAIL_USER", "");
             if (sender.isBlank() || env.getProperty("EMAIL_PASS", "").isBlank()) throw new IllegalStateException("Email not configured");
             var message = new SimpleMailMessage();
-            message.setFrom(env.getProperty("EMAIL_FROM_ADDRESS", sender)); message.setTo(email);
-            message.setReplyTo(env.getProperty("EMAIL_REPLY_TO", sender));
+            String from = Values.email(env.getProperty("EMAIL_FROM_ADDRESS", ""));
+            String reply = Values.email(env.getProperty("EMAIL_REPLY_TO", ""));
+            message.setFrom(from == null ? sender : from); message.setTo(email);
+            message.setReplyTo(reply == null ? sender : reply);
             message.setSubject("Dat lai mat khau | ShoeGroup");
             message.setText("Mo lien ket de dat lai mat khau (hieu luc 1 gio):\n" + env.getProperty("FRONTEND_URL", "http://localhost:3000").replaceAll("/+$", "") + "/reset-password?token=" + token);
             mail.send(message);

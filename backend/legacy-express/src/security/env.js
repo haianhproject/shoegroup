@@ -1,3 +1,4 @@
+// Mục đích: Đọc cấu hình SQL/JWT/email cho bộ đối chiếu Express và fixture kiểm thử.
 /* ============================================================
  * env.js - Doc cau hinh tu file .env (KHONG can cai them thu vien)
  * ------------------------------------------------------------

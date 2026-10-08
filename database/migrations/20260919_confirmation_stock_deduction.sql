@@ -1,3 +1,4 @@
+-- Mục đích: Chuyển đơn online sang trừ tồn lúc quản lý xác nhận và đối soát dữ liệu cũ.
 /* ShoeGroup - chỉ trừ tồn khi quản lý xác nhận đơn.
    Chạy idempotent trên dữ liệu cũ đã dùng CartItems để giữ/trừ tồn. */
 

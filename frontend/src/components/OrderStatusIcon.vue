@@ -1,3 +1,4 @@
+<!-- Mục đích: Biểu tượng trạng thái đơn hàng dùng chung cho màn hình khách hàng. -->
 <script setup>
 defineProps({
   name: { type: String, default: 'info' },

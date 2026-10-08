@@ -1,0 +1,120 @@
+{
+  "ORDER_STATUS_TRANSITIONS": {
+    "cho xac nhan": [
+      "cho xac nhan",
+      "da xac nhan",
+      "da huy"
+    ],
+    "da xac nhan": [
+      "da xac nhan",
+      "dang van chuyen",
+      "da huy"
+    ],
+    "dang van chuyen": [
+      "dang van chuyen",
+      "da giao hang thanh cong",
+      "giao hang that bai",
+      "ve kho"
+    ],
+    "giao hang that bai": [
+      "giao hang that bai",
+      "ve kho",
+      "yeu cau tra hang",
+      "da huy"
+    ],
+    "ve kho": [
+      "ve kho",
+      "dang van chuyen",
+      "yeu cau tra hang"
+    ],
+    "da giao hang thanh cong": [
+      "da giao hang thanh cong",
+      "da nhan hang",
+      "yeu cau tra hang"
+    ],
+    "da nhan hang": [
+      "da nhan hang",
+      "yeu cau tra hang"
+    ],
+    "yeu cau tra hang": [
+      "yeu cau tra hang",
+      "da nhan hang"
+    ],
+    "da huy": [
+      "da huy"
+    ],
+    "cho xu ly": [
+      "cho xu ly",
+      "cho xac nhan",
+      "da xac nhan",
+      "da huy"
+    ],
+    "pending": [
+      "pending",
+      "cho xac nhan",
+      "da xac nhan",
+      "da huy"
+    ],
+    "dang giao": [
+      "dang giao",
+      "da giao hang thanh cong",
+      "giao hang that bai",
+      "ve kho"
+    ],
+    "shipped": [
+      "shipped",
+      "da giao hang thanh cong",
+      "giao hang that bai",
+      "ve kho"
+    ],
+    "shipping": [
+      "shipping",
+      "da giao hang thanh cong",
+      "giao hang that bai",
+      "ve kho"
+    ],
+    "delivered": [
+      "delivered",
+      "da nhan hang",
+      "yeu cau tra hang"
+    ],
+    "received": [
+      "received",
+      "yeu cau tra hang"
+    ]
+  },
+  "ORDER_STATUS_ALIASES": {
+    "cho xu ly": "Chờ xác nhận",
+    "pending": "Chờ xác nhận",
+    "cho xac nhan": "Chờ xác nhận",
+    "confirmed": "Đã xác nhận",
+    "da xac nhan": "Đã xác nhận",
+    "dang lay hang": "Đã xác nhận",
+    "dang chuan bi hang": "Đã xác nhận",
+    "processing": "Đã xác nhận",
+    "picking": "Đã xác nhận",
+    "dang van chuyen": "Đang vận chuyển",
+    "dang giao": "Đang vận chuyển",
+    "shipped": "Đang vận chuyển",
+    "giao hang that bai": "Giao hàng thất bại",
+    "khong giao duoc hang": "Giao hàng thất bại",
+    "delivery failed": "Giao hàng thất bại",
+    "delivery_failure": "Giao hàng thất bại",
+    "failed_delivery": "Giao hàng thất bại",
+    "deliveryfailed": "Giao hàng thất bại",
+    "ve kho": "Về kho",
+    "returned to warehouse": "Về kho",
+    "warehouse return": "Về kho",
+    "return_to_warehouse": "Về kho",
+    "da giao": "Đã giao hàng thành công",
+    "da giao hang thanh cong": "Đã giao hàng thành công",
+    "delivered": "Đã giao hàng thành công",
+    "da nhan hang": "Đã nhận hàng",
+    "received": "Đã nhận hàng",
+    "yeu cau tra hang": "Yêu cầu trả hàng",
+    "da hoan tat tra hang": "Đã hoàn tất trả hàng",
+    "da huy": "Đã hủy",
+    "cancelled": "Đã hủy",
+    "canceled": "Đã hủy"
+  }
+}

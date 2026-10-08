@@ -1,3 +1,4 @@
+// Mục đích: Đọc và cập nhật các thuộc tính dùng để phân loại sản phẩm.
 package vn.shoegroup.catalog;
 
 import java.util.ArrayList;

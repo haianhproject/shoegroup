@@ -1,3 +1,4 @@
+// Mục đích: API kiểm tra kết nối SQL Server và tiếp nhận lỗi do frontend gửi lên.
 package vn.shoegroup.api;
 
 import java.lang.management.ManagementFactory;

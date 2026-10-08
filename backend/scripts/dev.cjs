@@ -1,3 +1,4 @@
+// Mục đích: Khởi động Spring + Vue, chờ SQL Server sẵn sàng và dừng các tiến trình cùng nhau.
 const { spawn, spawnSync } = require('node:child_process');
 const path = require('node:path');
 const net = require('node:net');
@@ -5,13 +6,14 @@ const root = path.resolve(__dirname, '../..');
 const children = [];
 let stopping = false;
 const springPort = Number(process.env.SPRING_PORT || 5000);
-const legacyPort = Number(process.env.LEGACY_PORT || 5001);
 const webPort = Number(process.env.WEB_PORT || 3000);
 
 function available(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
-    server.once('error', reject);
+    server.once('error', error => reject(error.code === 'EADDRINUSE'
+      ? new Error(`Cong ${port} dang duoc su dung. Neu ShoeGroup da chay, mo http://localhost:${webPort}; neu can khoi dong lai, dung phien cu bang Ctrl+C truoc.`)
+      : error));
     server.listen(port, () => server.close(resolve));
   });
 }
@@ -46,16 +48,14 @@ async function ready(port, name) {
   throw new Error(`${name} did not become healthy; Vue was not started.`);
 }
 async function main() {
-  if (new Set([springPort, legacyPort, webPort]).size !== 3) throw new Error('Spring, legacy and web ports must differ.');
-  for (const port of [springPort, legacyPort, webPort]) {
+  if (springPort === webPort) throw new Error('Spring and web ports must differ.');
+  for (const port of [springPort, webPort]) {
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid server port.');
     await available(port);
   }
-  console.log(`Vue: http://localhost:${webPort} | Spring: http://localhost:${springPort} | Express transition: 127.0.0.1:${legacyPort}`);
-  start(process.execPath, ['--watch', 'backend/legacy-express/server.js'], { PORT: String(legacyPort), MIGRATION_BRIDGE: 'true', AUTH_MODE: 'enforce' });
-  await ready(legacyPort, 'Express transition');
+  console.log(`Vue: http://localhost:${webPort} | Spring: http://localhost:${springPort}`);
   start('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'backend/scripts/maven.ps1', 'spring-boot:run'], {
-    SPRING_PORT: String(springPort), LEGACY_API_URL: `http://127.0.0.1:${legacyPort}`,
+    SPRING_PORT: String(springPort),
   });
   await ready(springPort, 'Spring');
   start(process.execPath, ['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort'], { VITE_API_BASE_URL: `http://localhost:${springPort}/api` }, path.join(root, 'frontend'));

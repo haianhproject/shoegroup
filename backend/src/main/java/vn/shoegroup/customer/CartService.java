@@ -1,3 +1,4 @@
+// Mục đích: Quản lý giỏ hàng online, kiểm tra biến thể và số lượng mà không giữ tồn kho.
 package vn.shoegroup.customer;
 
 import java.util.LinkedHashMap;

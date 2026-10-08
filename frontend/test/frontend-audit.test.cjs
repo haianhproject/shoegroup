@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử luồng frontend, quyền truy cập, giá tiền, đơn hàng và tương thích API.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,6 +23,7 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
   const sandbox = {
     module, exports: module.exports, console, URL, Headers, Request, FormData,
     setInterval: () => ({ unref() {} }), clearInterval() {},
+    AbortController, setTimeout, clearTimeout,
     localStorage: storage(), sessionStorage: storage(),
     crypto: require('node:crypto').webcrypto,
     require: name => {
@@ -316,6 +318,52 @@ function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
     ...globals,
   });
 }
+
+test('admin read timeout releases loading and preserves the last complete snapshot', async () => {
+  const timers = [];
+  const requests = [];
+  const admin = loadAdminRealtime({
+    setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; },
+    clearTimeout() {},
+    fetch(url, options) {
+      requests.push(url);
+      if (url.endsWith('/orders')) return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+      return Promise.resolve({ ok: true, headers: { get: () => 'application/json' }, json: async () => [] });
+    },
+  });
+  const oldOrders = [{ id: 7, customer_name: 'Existing order' }];
+  admin.db.orders = oldOrders;
+  const preservedOrders = admin.db.orders;
+  const pending = admin.fetchAllData();
+  assert.equal(admin.isLoading.value, true);
+  assert.equal(timers[0].delay, 15000);
+  timers[0].callback();
+  await pending;
+  assert.equal(admin.isLoading.value, false);
+  assert.equal(admin.db.orders, preservedOrders);
+  assert.match(admin.apiErrors.value.find(error => error.path === '/orders').message, /phản hồi quá lâu/);
+  assert.equal(requests.filter(url => url.endsWith('/orders')).length, 1);
+});
+
+test('admin read honors caller cancellation and clears its timeout', async () => {
+  let cleared = false;
+  const caller = new AbortController();
+  const admin = loadAdminRealtime({
+    setTimeout() { return 123; },
+    clearTimeout(id) { cleared = id === 123; },
+    fetch(url, options) {
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+    },
+  });
+  const pending = admin.api('/orders', { signal: caller.signal });
+  caller.abort();
+  assert.equal(await pending, null);
+  assert.equal(cleared, true);
+});
 
 test('lost delivery cancels permanently while the other failures can be reshipped', () => {
   const admin = loadAdminImages();

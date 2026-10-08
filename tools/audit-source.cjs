@@ -1,3 +1,4 @@
+// Mục đích: Kiểm tra cây import frontend để phát hiện module không dùng hoặc đường dẫn bị thiếu.
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');

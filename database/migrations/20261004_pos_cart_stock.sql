@@ -1,3 +1,4 @@
+-- Mục đích: Tạo giỏ tại quầy giữ tồn thật và phiên bản chống thao tác từ tab cũ.
 -- Giỏ tại quầy giữ hàng thật, không tự hết hạn khi khách đang cầm hàng.
 -- Mỗi nhân viên có một giỏ; Revision chặn thao tác từ tab cũ và request lặp.
 IF OBJECT_ID(N'dbo.PosCarts', N'U') IS NULL

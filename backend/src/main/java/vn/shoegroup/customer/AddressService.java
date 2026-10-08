@@ -1,3 +1,4 @@
+// Mục đích: Quản lý sổ địa chỉ của từng khách hàng và địa chỉ giao hàng mặc định.
 package vn.shoegroup.customer;
 
 import java.util.ArrayList;

@@ -1,3 +1,4 @@
+-- Mục đích: Bổ sung ảnh đại diện cho tài khoản mà không tạo lại bảng người dùng.
 /* ShoeGroup - avatar tai khoan
    Chay an toan tren CSDL dang co, khong xoa hay tao lai bang Users. */
 IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL

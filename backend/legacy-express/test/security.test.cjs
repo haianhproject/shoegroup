@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử băm mật khẩu, JWT, giới hạn request và quy tắc phân quyền của bộ đối chiếu.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");

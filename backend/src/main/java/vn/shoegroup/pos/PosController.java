@@ -1,3 +1,4 @@
+// Mục đích: API giỏ bán hàng tại quầy và cấu hình ngân hàng để tạo mã QR thanh toán.
 package vn.shoegroup.pos;
 
 import jakarta.servlet.http.HttpServletRequest;

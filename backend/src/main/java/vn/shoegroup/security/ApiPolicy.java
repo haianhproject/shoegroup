@@ -1,3 +1,4 @@
+// Mục đích: Xác định API công khai, API của khách hàng và API chỉ dành cho quản trị viên.
 package vn.shoegroup.security;
 
 import java.util.List;

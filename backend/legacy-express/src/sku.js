@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: chuẩn hóa mã sản phẩm và mã biến thể.
 "use strict";
 
 // SKU được lưu trong varchar: dùng ASCII để không mất chữ Đ/dấu tiếng Việt.

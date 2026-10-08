@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử phí, thời gian vận chuyển và cách nhận diện tỉnh/thành.
 package vn.shoegroup.shipping;
 
 import static org.assertj.core.api.Assertions.*;

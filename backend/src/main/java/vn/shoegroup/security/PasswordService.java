@@ -1,3 +1,4 @@
+// Mục đích: Băm và kiểm tra mật khẩu tương thích scrypt/bcrypt cũ, nâng cấp mật khẩu khi cần.
 package vn.shoegroup.security;
 
 import java.nio.charset.StandardCharsets;

@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: quy tắc doanh thu sau nhận hàng và khoản hoàn lịch sử.
 // Preserve the existing 14-day/received recognition rule. Never recognize
 // unpaid, cancelled or fully returned orders merely because a flag is stale.
 const recognizedWhere = `ISNULL(o.IsCountedAsRevenue,0)=1

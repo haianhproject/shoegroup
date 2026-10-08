@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử nghiệp vụ Spring với SQL Server riêng, gồm mật khẩu, quyền và transaction tồn kho.
 package vn.shoegroup;
 
 import static org.assertj.core.api.Assertions.*;
@@ -26,7 +27,7 @@ import vn.shoegroup.pos.PosCartService;
 import vn.shoegroup.security.PasswordService;
 import vn.shoegroup.security.TokenService;
 
-@SpringBootTest(properties = {"logging.level.root=WARN", "spring.main.banner-mode=off"})
+@SpringBootTest(properties = {"logging.level.root=WARN", "spring.main.banner-mode=off", "shoegroup.schema-enabled=false", "shoegroup.jobs-enabled=false"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "SHOEGROUP_SQL_TEST_URL", matches = ".+")
 class SqlServerIntegrationTest {
@@ -34,7 +35,6 @@ class SqlServerIntegrationTest {
         String url = System.getenv("SHOEGROUP_SQL_TEST_URL");
         if (!url.matches(".*;databaseName=ShoegroupMigrationTest_\\d+_\\d+;.*")) throw new IllegalStateException("Tests require an isolated migration database.");
         registry.add("spring.datasource.url", () -> url);
-        registry.add("shoegroup.legacy-enabled", () -> false);
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired PosCartService carts;
@@ -44,10 +44,12 @@ class SqlServerIntegrationTest {
     @Autowired vn.shoegroup.customer.AddressService addresses;
     @Autowired vn.shoegroup.customer.CartService onlineCarts;
     @Autowired vn.shoegroup.customer.AccountService accounts;
+    @Autowired vn.shoegroup.catalog.ProductWriteService products;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     int first, second, customer, variant;
     @BeforeEach void fixtures() {
+        jdbc.update("DELETE FROM OrderDetails"); jdbc.update("DELETE FROM VariantDiscounts");
         jdbc.update("DELETE FROM Orders"); jdbc.update("DELETE FROM UserAddresses");
         jdbc.update("DELETE FROM CartItems"); jdbc.update("DELETE FROM Carts");
         jdbc.update("DELETE FROM PosCartItems"); jdbc.update("DELETE FROM PosCarts");
@@ -62,6 +64,37 @@ class SqlServerIntegrationTest {
     }
     String token(int id, int role) { return tokens.issue(Map.of("id_user", id, "email", "test@example.com", "full_name", "Test", "role_id", role, "role", role == 1 ? "Admin" : "Customer")); }
     int stock() { return jdbc.queryForObject("SELECT StockQuantity FROM ProductVariants WHERE ProductVariantID=?", Integer.class, variant); }
+    @Test void nativeProductWritesProtectStockAndRollbackProductChanges() throws Exception {
+        int product = jdbc.queryForObject("SELECT ProductID FROM ProductVariants WHERE ProductVariantID=?", Integer.class, variant);
+        var body = new java.util.HashMap<String, Object>(Map.of("name", "Changed shoe", "price", 200000, "variants", List.of(Map.of("id", variant, "color", "Black", "size", "42", "stock", 3, "version", 0))));
+        mvc.perform(put("/api/products/" + product).header("Authorization", "Bearer " + token(first, 1)).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+            .andExpect(status().isOk());
+        assertThat(stock()).isEqualTo(3);
+        body.put("name", "Stale update");
+        mvc.perform(put("/api/products/" + product).header("Authorization", "Bearer " + token(first, 1)).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STOCK_VERSION_CONFLICT"));
+        assertThat(jdbc.queryForObject("SELECT ProductName FROM Products WHERE ProductID=?", String.class, product)).isEqualTo("Changed shoe");
+        assertThat(stock()).isEqualTo(3);
+        mvc.perform(put("/api/products/" + product).header("Authorization", "Bearer " + token(customer, 2)).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+            .andExpect(status().isForbidden());
+        jdbc.update("INSERT OrderDetails(ProductID) VALUES(?)", product);
+        assertThatThrownBy(() -> products.delete(String.valueOf(product), true)).isInstanceOf(ApiException.class);
+        assertThat(products.delete(String.valueOf(product), false).get("mode")).isEqualTo("soft");
+        products.restore(String.valueOf(product));
+        assertThat(jdbc.queryForObject("SELECT IsActive FROM Products WHERE ProductID=?", Boolean.class, product)).isTrue();
+    }
+    @Test void productCreationKeepsVariantsAndColorImagesAtomic() {
+        int count = jdbc.queryForObject("SELECT COUNT(*) FROM Products", Integer.class);
+        assertThatThrownBy(() -> products.save(null, Map.of("name", "Duplicate", "price", 100, "variants", List.of(Map.of("color", "Black", "size", "42"), Map.of("color", "black", "size", "42")))))
+            .isInstanceOf(ApiException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM Products", Integer.class)).isEqualTo(count);
+        var result = products.save(null, Map.of("name", "New shoe", "price", 100000, "variants", List.of(Map.of("color", "Black", "size", "40", "stock", 5)), "colors", List.of(Map.of("name", "Black", "image", "https://example.test/black.png"))));
+        int product = ((Number)result.get("ProductID")).intValue();
+        assertThat(jdbc.queryForObject("SELECT StockQuantity FROM ProductVariants WHERE ProductID=?", Integer.class, product)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("SELECT ImageURL FROM ProductImages WHERE ProductID=?", String.class, product)).isEqualTo("https://example.test/black.png");
+        products.delete(String.valueOf(product), true);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM Products WHERE ProductID=?", Integer.class, product)).isZero();
+    }
     @Test void nativeLoginUpgradesLegacyPasswordAndReturnsOriginalShape() throws Exception {
         mvc.perform(post("/api/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"customer@example.com\",\"password\":\"legacy-password\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true)).andExpect(jsonPath("$.user.id_user").value(customer))

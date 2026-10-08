@@ -1,3 +1,4 @@
+// Mục đích: API quản lý danh mục, thương hiệu, chất liệu, màu và kích thước giày.
 package vn.shoegroup.catalog;
 
 import java.util.List;

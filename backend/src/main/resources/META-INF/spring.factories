@@ -1,1 +1,2 @@
+# Mục đích: Đăng ký bộ đọc backend/.env trước khi Spring khởi tạo cấu hình.
 org.springframework.boot.env.EnvironmentPostProcessor=vn.shoegroup.config.EnvFileLoader

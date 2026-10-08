@@ -1,3 +1,4 @@
+// Mục đích: Truy vấn sản phẩm, giá bán, khuyến mãi và tồn kho theo hợp đồng dữ liệu của Vue.
 package vn.shoegroup.catalog;
 
 import com.fasterxml.jackson.core.type.TypeReference;

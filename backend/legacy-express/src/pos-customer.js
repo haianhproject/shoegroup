@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: kiểm tra tên và số điện thoại khách mua tại quầy.
 const VIETNAM_MOBILE_PATTERN = /^0(?:3|5|7|8|9)\d{8}$/;
 
 function validatePosCustomerDetails(input = {}) {

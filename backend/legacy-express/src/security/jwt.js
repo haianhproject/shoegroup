@@ -1,3 +1,4 @@
+// Mục đích: Tạo/xác minh JWT định dạng cũ cho kiểm thử token tương thích Spring.
 /* ============================================================
  * jwt.js - Phat hanh & xac thuc JWT
  * ------------------------------------------------------------

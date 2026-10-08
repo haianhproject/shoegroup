@@ -1,3 +1,4 @@
+// Mục đích: API quản lý tài khoản và cập nhật hồ sơ theo quyền của người đăng nhập.
 package vn.shoegroup.customer;
 
 import jakarta.servlet.http.HttpServletRequest;

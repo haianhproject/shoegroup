@@ -1,3 +1,4 @@
+// Mục đích: API sổ địa chỉ và giỏ hàng online của khách hàng đang đăng nhập.
 package vn.shoegroup.customer;
 
 import jakarta.servlet.http.HttpServletRequest;

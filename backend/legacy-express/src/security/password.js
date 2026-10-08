@@ -1,3 +1,4 @@
+// Mục đích: Băm/xác minh mật khẩu định dạng Node để kiểm thử tương thích mật khẩu Spring.
 /* ============================================================
  * password.js - Bam & kiem tra mat khau (KHONG can cai bcrypt)
  * ------------------------------------------------------------

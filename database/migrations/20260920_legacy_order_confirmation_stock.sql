@@ -1,3 +1,4 @@
+-- Mục đích: Cập nhật thủ tục SQL tạo đơn cũ để kiểm tra hàng mà không giữ tồn trước xác nhận.
 /* Keep the legacy order procedure compatible without reserving inventory.
    The pending order is validated here and stock is deducted by the same
    confirmation transaction used by the management API. */

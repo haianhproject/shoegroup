@@ -1,3 +1,4 @@
+// Mục đích: Giới hạn số request theo thời gian để bảo vệ đăng nhập và các API ghi dữ liệu.
 package vn.shoegroup.security;
 
 import java.time.Clock;

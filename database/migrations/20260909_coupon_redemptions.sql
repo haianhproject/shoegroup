@@ -1,3 +1,4 @@
+-- Mục đích: Lưu lượt dùng mã giảm giá trong transaction tạo đơn để giới hạn theo khách.
 -- PerUserLimit already exists in Coupons; persist redemption within checkout.
 -- Historical orders have no coupon reference and cannot safely be backfilled.
 IF OBJECT_ID(N'dbo.CouponRedemptions', N'U') IS NULL

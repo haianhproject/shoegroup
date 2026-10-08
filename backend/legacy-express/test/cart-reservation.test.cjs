@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử quy tắc giỏ online không giữ tồn và giữ hàng của POS trong code đối chiếu.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

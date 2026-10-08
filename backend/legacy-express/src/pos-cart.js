@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: giỏ POS giữ/hoàn tồn để kiểm thử Spring.
 "use strict";
 
 const sql = require("mssql");

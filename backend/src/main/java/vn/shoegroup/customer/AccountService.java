@@ -1,3 +1,4 @@
+// Mục đích: Cập nhật tài khoản, mật khẩu và quyền; bảo vệ quản trị viên hoạt động cuối cùng.
 package vn.shoegroup.customer;
 
 import java.util.ArrayList;

@@ -1,3 +1,4 @@
+-- Mục đích: Bổ sung dấu vết sự cố tồn kho và xử lý tranh chấp tồn trên dữ liệu cũ.
 /* ShoeGroup - chống oversell và đối soát các đơn dữ liệu cũ
    Migration idempotent: không xóa dữ liệu, không tạo lại bảng Orders. */
 IF OBJECT_ID(N'dbo.Orders', N'U') IS NOT NULL

@@ -1,3 +1,4 @@
+// Mục đích: Giữ/hoàn hàng thật cho giỏ tại quầy bằng transaction và phiên bản giỏ chống thao tác cũ.
 package vn.shoegroup.pos;
 
 import java.util.ArrayList;

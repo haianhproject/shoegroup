@@ -1,6 +1,6 @@
 {
   "total": 76,
-  "spring": 52,
+  "spring": 76,
   "routes": [
     {
       "route": "POST /api/log-error",
@@ -82,31 +82,31 @@
     },
     {
       "route": "POST /api/orders",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 1356
     },
     {
       "route": "PUT /api/orders/:id/address",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 1957
     },
     {
       "route": "GET /api/orders",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2119
     },
     {
       "route": "PUT /api/orders/:id/status",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2252
     },
     {
       "route": "PUT /api/orders/:id/payment",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2500
     },
@@ -118,31 +118,31 @@
     },
     {
       "route": "POST /api/products",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2880
     },
     {
       "route": "PUT /api/products/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2916
     },
     {
       "route": "DELETE /api/products/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 2957
     },
     {
       "route": "PUT /api/products/:id/restore",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3006
     },
     {
       "route": "GET /api/revenue-by-product",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3023
     },
@@ -310,19 +310,19 @@
     },
     {
       "route": "POST /api/variantDiscounts",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3731
     },
     {
       "route": "PUT /api/variantDiscounts/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3817
     },
     {
       "route": "DELETE /api/variantDiscounts/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3909
     },
@@ -334,49 +334,49 @@
     },
     {
       "route": "POST /api/discounts",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3947
     },
     {
       "route": "PUT /api/discounts/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 3978
     },
     {
       "route": "DELETE /api/discounts/:id",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4016
     },
     {
       "route": "GET /api/customers",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4035
     },
     {
       "route": "POST /api/customers",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4070
     },
     {
       "route": "GET /api/customers/:id/orders",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4127
     },
     {
       "route": "GET /api/customers/:id/notifications",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4250
     },
     {
       "route": "GET /api/chart-data",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4270
     },
@@ -394,7 +394,7 @@
     },
     {
       "route": "PUT /api/orders/:id/receive",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4562
     },
@@ -402,13 +402,13 @@
       "route": "POST /api/auth/forgot-password",
       "implementation": "spring",
       "file": "backend/legacy-express/server.js",
-      "line": 4701
+      "line": 4703
     },
     {
       "route": "POST /api/auth/reset-password",
       "implementation": "spring",
       "file": "backend/legacy-express/server.js",
-      "line": 4747
+      "line": 4749
     },
     {
       "route": "GET /api/health",
@@ -430,13 +430,13 @@
     },
     {
       "route": "GET /api/v2/orders",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/src/routes/optimized.routes.js",
       "line": 196
     },
     {
       "route": "GET /api/v2/dashboard/summary",
-      "implementation": "express-transition",
+      "implementation": "spring",
       "file": "backend/legacy-express/src/routes/optimized.routes.js",
       "line": 274
     },

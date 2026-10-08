@@ -1,3 +1,4 @@
+// Mục đích: Kiểm tra JWT, đọc lại quyền/tình trạng tài khoản và chặn truy cập sai chủ sở hữu.
 package vn.shoegroup.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

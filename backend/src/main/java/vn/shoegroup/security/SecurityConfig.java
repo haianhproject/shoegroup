@@ -1,3 +1,4 @@
+// Mục đích: Cấu hình bộ lọc bảo mật Spring, CORS và chế độ xác thực không dùng session.
 package vn.shoegroup.security;
 
 import java.util.Arrays;

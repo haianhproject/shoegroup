@@ -1,3 +1,4 @@
+// Mục đích: Chọn logo thương hiệu từ ảnh SVG đóng gói trong frontend.
 // Bộ logo thương hiệu được đóng gói cùng frontend; không tải ảnh từ website ngoài.
 import nikeLogo from '../assets/brands/nike.svg'
 import adidasLogo from '../assets/brands/adidas.svg'

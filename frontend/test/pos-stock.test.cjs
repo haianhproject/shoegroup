@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử frontend POS giữ/hoàn tồn, phiên bản giỏ và trường hợp hết hàng.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,7 +23,7 @@ function store(fetch) {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/views/admin/adminStore.js'), 'utf8');
   vm.runInNewContext(transformSync(source, { format: 'cjs' }).code, {
     module, exports: module.exports, require: name => { if (!(name in mocks)) throw Error(name); return mocks[name]; },
-    console, fetch, setTimeout() {}, clearTimeout() {},
+    console, fetch, AbortController, setTimeout() {}, clearTimeout() {},
   });
   const state = module.exports;
   state.db.products = [{ id: 1, name: 'Giày', price: 300000, active: true }];

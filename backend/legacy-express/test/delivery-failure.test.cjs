@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử quy tắc về kho, giao lại và thất lạc của đơn hàng đối chiếu.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

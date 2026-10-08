@@ -1,3 +1,4 @@
+// Mục đích: Chặn request có nội dung quá lớn trước khi xử lý API.
 package vn.shoegroup.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

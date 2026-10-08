@@ -1,3 +1,4 @@
+// Mục đích: Biểu diễn lỗi nghiệp vụ với mã HTTP và mã lỗi gửi về frontend.
 package vn.shoegroup.api;
 
 public class ApiException extends RuntimeException {

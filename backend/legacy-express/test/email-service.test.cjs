@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử email giao dịch và điều kiện gửi email trong bộ đối chiếu.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createEmailService } = require("../src/email");

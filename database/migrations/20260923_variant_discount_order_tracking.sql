@@ -1,3 +1,4 @@
+-- Mục đích: Lưu khuyến mãi đã dùng trên từng dòng đơn để hoàn hạn mức đúng một lần.
 /* Ghi lai khuyen mai bien the da ap dung cho tung dong don hang de co the
    hoan quota chinh xac khi don bi huy. Cac lenh idempotent. */
 IF OBJECT_ID(N'dbo.OrderDetails', N'U') IS NOT NULL

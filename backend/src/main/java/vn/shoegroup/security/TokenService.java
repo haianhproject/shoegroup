@@ -1,3 +1,4 @@
+// Mục đích: Tạo và xác minh JWT tương thích token đã dùng với frontend hiện có.
 package vn.shoegroup.security;
 
 import com.fasterxml.jackson.core.type.TypeReference;

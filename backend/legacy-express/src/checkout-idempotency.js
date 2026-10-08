@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: khóa checkout, băm nội dung và lưu phản hồi chống trùng đơn.
 const { createHash } = require('node:crypto');
 
 function stableJson(value) {

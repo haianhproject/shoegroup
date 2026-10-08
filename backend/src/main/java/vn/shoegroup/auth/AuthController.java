@@ -1,3 +1,4 @@
+// Mục đích: API đăng nhập, đăng ký, quên mật khẩu và đặt lại mật khẩu.
 package vn.shoegroup.auth;
 
 import java.util.Map;

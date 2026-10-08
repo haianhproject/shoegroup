@@ -96,10 +96,22 @@ function withAuthHeaders(headers = {}) {
   };
 }
 
+const ADMIN_READ_TIMEOUT_MS = 15_000;
+
 export async function api(path, options) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(options?.signal?.reason);
+  if (options?.signal?.aborted) abortFromCaller();
+  else options?.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ADMIN_READ_TIMEOUT_MS);
   try {
     const res = await fetch(API + path, {
       ...options,
+      signal: controller.signal,
       headers: withAuthHeaders(options?.headers),
     });
     if (!res.ok) {
@@ -114,12 +126,18 @@ export async function api(path, options) {
     apiErrors.value = apiErrors.value.filter((x) => x.path !== path);
     return ct.includes("application/json") ? await res.json() : null;
   } catch (e) {
-    console.error("API lỗi:", path, e.message);
+    const message = timedOut
+      ? "Máy chủ phản hồi quá lâu. Vui lòng thử đồng bộ lại."
+      : e.message;
+    console.error("API lỗi:", path, message);
     apiErrors.value = [
       ...apiErrors.value.filter((x) => x.path !== path),
-      { path, message: e.message },
+      { path, message },
     ];
     return null;
+  } finally {
+    clearTimeout(timeout);
+    options?.signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 

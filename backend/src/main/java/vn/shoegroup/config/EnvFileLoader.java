@@ -1,3 +1,4 @@
+// Mục đích: Đọc cấu hình cục bộ từ backend/.env và thiết lập kết nối SQL Server.
 package vn.shoegroup.config;
 
 import io.github.cdimascio.dotenv.Dotenv;

@@ -1,3 +1,4 @@
+// Mục đích: Tạo database kiểm thử riêng, chạy kiểm thử Spring/SQL Server và dọn database sau khi xong.
 const sql = require('../../backend/legacy-express/node_modules/mssql');
 const config = require('../../backend/legacy-express/src/security/env');
 const fs = require('node:fs');

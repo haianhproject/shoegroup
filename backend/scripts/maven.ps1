@@ -1,3 +1,4 @@
+# Mục đích: Chuẩn bị Maven/JDK và chạy lệnh build, test hoặc khởi động backend Spring.
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $taskTools = Join-Path $taskRoot 'tools/.cache'

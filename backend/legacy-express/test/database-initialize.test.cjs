@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử migrations và kiểm tra cấu trúc SQL của bộ đối chiếu.
 "use strict";
 
 const test = require("node:test");

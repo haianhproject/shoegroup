@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: áp dụng migrations cho database riêng trong kiểm thử.
 "use strict";
 
 // Chạy toàn bộ migration bắt buộc và chỉ cho API dùng CSDL sau khi schema đã

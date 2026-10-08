@@ -1,3 +1,4 @@
+// Mục đích: Tính phí và thời gian giao hàng theo tỉnh, khoảng cách và quy tắc vận chuyển hiện hành.
 package vn.shoegroup.shipping;
 
 import com.fasterxml.jackson.core.type.TypeReference;

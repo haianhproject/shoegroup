@@ -1,3 +1,4 @@
+// Mục đích: Kiểm tra, chuẩn hóa dữ liệu đầu vào như ID, email, mật khẩu và trạng thái.
 package vn.shoegroup.api;
 
 import java.util.Locale;

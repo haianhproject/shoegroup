@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: đọc cấu hình ngân hàng tại quầy.
 function clean(value, maxLength) {
   return String(value ?? "").trim().slice(0, maxLength);
 }

@@ -1,3 +1,4 @@
+// Mục đích: Chuẩn hóa cấu hình ngân hàng và tạo URL mã QR thanh toán tại quầy.
 const MAX_TRANSFER_CONTENT_LENGTH = 25;
 
 function plainTransferText(value, maxLength = 50) {

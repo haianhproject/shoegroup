@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử tương thích mật khẩu/JWT và quy tắc bảo vệ API.
 package vn.shoegroup.security;
 
 import static org.assertj.core.api.Assertions.*;

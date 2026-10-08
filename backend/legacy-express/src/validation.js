@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: kiểm tra dữ liệu sản phẩm, mã giảm giá và khuyến mãi.
 "use strict";
 
 /*

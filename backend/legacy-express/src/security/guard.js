@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: kiểm tra xác thực, quyền, chủ sở hữu và giới hạn request.
 /* ============================================================
  * guard.js - Lop bao mat dung chung cho toan bo API
  * ------------------------------------------------------------

@@ -1,3 +1,4 @@
+// Mục đích: API đọc phương thức giao hàng và tính phí/thời gian vận chuyển.
 package vn.shoegroup.shipping;
 
 import java.util.List;

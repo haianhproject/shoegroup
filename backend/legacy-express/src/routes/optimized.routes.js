@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express: API phân trang sản phẩm, đơn hàng và tổng quan để so sánh với Spring.
 /* ============================================================
  * optimized.routes.js - CAC API MOI, HIEU NANG CAO
  * ------------------------------------------------------------

@@ -1,3 +1,4 @@
+// Mục đích: Đối chiếu Express cũ cho kiểm thử tương thích Spring; không chạy cùng ứng dụng.
 const express = require("express");
 const cors = require("cors");
 const sql = require("mssql");
@@ -4694,8 +4695,10 @@ async function runAutoCancelJob() {
     console.log("AutoCancel job:", e.message);
   }
 }
-setInterval(runAutoCancelJob, 60 * 60 * 1000);
-setTimeout(runAutoCancelJob, 5000);
+if (process.env.JOBS_ENABLED !== 'false') {
+  setInterval(runAutoCancelJob, 60 * 60 * 1000);
+  setTimeout(runAutoCancelJob, 5000);
+}
 
 // 5) Quen mat khau - tao token, gui email (xem huong dan trong tai lieu)
 app.post("/api/auth/forgot-password", async (req, res) => {

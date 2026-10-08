@@ -1,3 +1,4 @@
+// Mục đích: Tạo schema, tài khoản, token và dữ liệu kiểm thử SQL riêng cho audit Spring.
 "use strict";
 
 // Explicitly isolated integration fixture. Never imports the SQL dump's seed data.

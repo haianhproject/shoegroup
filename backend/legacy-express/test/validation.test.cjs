@@ -1,3 +1,4 @@
+// Mục đích: Kiểm thử điều kiện dữ liệu sản phẩm, tài khoản, danh mục và khuyến mãi.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 

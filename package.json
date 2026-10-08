@@ -9,14 +9,12 @@
     "dev:spring": "node backend/scripts/dev.cjs",
     "dev:web": "npm --prefix frontend run dev",
     "dev:api": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 spring-boot:run",
-    "dev:legacy": "npm --prefix backend/legacy-express run dev",
     "build": "npm --prefix frontend run build",
     "build:api": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 package",
     "test": "npm --prefix frontend test && npm --prefix backend/legacy-express test",
     "test:spring": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 test",
     "test:spring:sql": "node backend/scripts/sql-test.cjs",
     "test:spring:pos": "node backend/scripts/pos-audit.cjs",
-    "migration:inventory": "node backend/scripts/inventory.cjs",
     "audit:source": "node tools/audit-source.cjs",
     "preview": "npm --prefix frontend run preview"
   }

@@ -1,3 +1,4 @@
+// Mục đích: Cấu hình build Vue, Tailwind, đường dẫn import và chuyển API tới Spring.
 import vue from "@vitejs/plugin-vue"
 import tailwindcss from "@tailwindcss/vite"
 import path from "path"

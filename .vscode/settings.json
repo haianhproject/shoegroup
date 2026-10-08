@@ -5,8 +5,7 @@
     "tools/.cache": true,
     "tools/.work": true,
     "frontend/dist": true,
-    "backend/target": true,
-    "docs/deliverables/qa": true
+    "backend/target": true
   },
   "search.exclude": {
     "**/node_modules": true,

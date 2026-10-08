@@ -1,3 +1,4 @@
+-- Mục đích: Lưu ảnh biến thể vào chi tiết đơn để lịch sử giữ đúng ảnh màu đã mua.
 /* ShoeGroup - cố định ảnh đúng màu/biến thể trong lịch sử đơn hàng.
    Dữ liệu cũ được bổ sung từ ProductImages; đơn mới tự lưu snapshot khi tạo. */
 

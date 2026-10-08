@@ -1,3 +1,4 @@
+// Mục đích: API xem sản phẩm, sản phẩm nổi bật, tồn kho và danh sách khuyến mãi.
 package vn.shoegroup.catalog;
 
 import java.util.List;
