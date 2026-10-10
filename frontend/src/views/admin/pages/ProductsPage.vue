@@ -10,7 +10,6 @@ import {
   filteredProducts,
   formatPrice,
   restoreItem,
-  deleteProduct,
   isProductSoftDeleted,
   onProductImageFile,
   colorImageDraft,
@@ -57,6 +56,38 @@ function onProductImageError(event) {
   event.target.onerror = null;
   event.target.src = productImagePlaceholder;
 }
+
+// Kiểm tra dữ liệu cơ bản trước khi gọi hàm lưu có sẵn trong adminStore.
+async function handleSaveProduct() {
+  if (!String(productForm.name ?? "").trim()) {
+    window.alert("Vui lòng nhập tên sản phẩm.");
+    document.getElementById("product-name")?.focus();
+    return;
+  }
+
+  if (productForm.category_id === "" || productForm.category_id == null) {
+    window.alert("Vui lòng chọn danh mục sản phẩm.");
+    document.getElementById("product-category")?.focus();
+    return;
+  }
+
+  if (productForm.price === "" || productForm.price == null || !Number.isFinite(Number(productForm.price)) || Number(productForm.price) < 0) {
+    window.alert("Vui lòng nhập giá bán hợp lệ (lớn hơn hoặc bằng 0).");
+    document.getElementById("product-price")?.focus();
+    return;
+  }
+
+  for (const color of productForm.colors || []) {
+    for (const variant of color.variants || []) {
+      if (variant.stock === "" || variant.stock == null || !Number.isFinite(Number(variant.stock)) || Number(variant.stock) < 0) {
+        window.alert(`Số lượng tồn kho của màu ${color.name || "đã chọn"}, size ${variant.size || "đã chọn"} phải là số không âm.`);
+        return;
+      }
+    }
+  }
+
+  await saveProduct();
+}
 </script>
 
 <template>
@@ -75,7 +106,7 @@ function onProductImageError(event) {
 
     <div class="products-summary" aria-label="Tổng quan sản phẩm">
       <div><span>Tổng sản phẩm</span><strong>{{ db.products.length }}</strong></div>
-      <div><span>Đang hiển thị</span><strong>{{ activeProductCount }}</strong></div>
+      <div><span>Hoạt động</span><strong>{{ activeProductCount }}</strong></div>
       <div><span>Sản phẩm nổi bật</span><strong>{{ featuredProductCount }}</strong></div>
     </div>
 
@@ -130,14 +161,13 @@ function onProductImageError(event) {
                 <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
               </td>
               <td>
-                <span class="products-status" :class="{ 'is-active': p.active }"><span aria-hidden="true"></span>{{ p.active ? 'Đang hiển thị' : 'Đã ẩn' }}</span>
+                <span class="products-status" :class="{ 'is-active': p.active }"><span aria-hidden="true"></span>{{ p.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
               </td>
               <td>
                 <div class="products-actions">
                   <button @click="openProductDetail(p)" type="button" class="products-action products-action-view" :aria-label="'Xem chi tiết ' + p.name" title="Xem chi tiết sản phẩm"><i class="icon icon-eye" aria-hidden="true"></i></button>
                   <button @click="openProductForm(p)" type="button" class="products-action" :aria-label="'Chỉnh sửa ' + p.name" title="Chỉnh sửa sản phẩm"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                   <button v-if="isProductSoftDeleted(p)" @click="restoreItem('products', p)" type="button" class="products-action" :aria-label="'Khôi phục ' + p.name" title="Khôi phục sản phẩm"><i class="icon icon-arrow-counterclockwise" aria-hidden="true"></i></button>
-                  <button @click="deleteProduct(p)" type="button" class="products-action products-action-danger" :aria-label="(isProductSoftDeleted(p) ? 'Xóa vĩnh viễn ' : 'Ẩn ') + p.name" :title="isProductSoftDeleted(p) ? 'Xóa vĩnh viễn sản phẩm' : 'Ẩn sản phẩm'"><i class="icon" :class="isProductSoftDeleted(p) ? 'icon-trash-fill' : 'icon-eye-slash'" aria-hidden="true"></i></button>
                 </div>
               </td>
             </tr>
@@ -176,7 +206,7 @@ function onProductImageError(event) {
         <div class="product-form-panel mb-4">
           <h2 class="product-panel-title">Thông tin cơ bản</h2>
           <div class="mb-3">
-            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm</label
+            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm <span class="required-mark">*</span></label
             ><input
               id="product-name"
               v-model="productForm.name"
@@ -197,7 +227,7 @@ function onProductImageError(event) {
           </div>
           <div class="grid grid-cols-12 gap-3">
             <div class="col-span-12 md:col-span-6">
-              <label for="product-category" class="block text-sm font-medium">Danh mục</label
+              <label for="product-category" class="block text-sm font-medium">Danh mục <span class="required-mark">*</span></label
               ><select
                 id="product-category"
                 v-model="productForm.category_id"
@@ -245,7 +275,7 @@ function onProductImageError(event) {
               </select>
             </div>
             <div class="col-span-12">
-              <label for="product-price" class="block text-sm font-medium">Giá bán (VNĐ)</label
+              <label for="product-price" class="block text-sm font-medium">Giá bán (VNĐ) <span class="required-mark">*</span></label
               ><input
                 id="product-price"
                 v-model.number="productForm.price"
@@ -504,7 +534,7 @@ function onProductImageError(event) {
                   ? 'badge-active'
                   : 'bg-secondary-subtle text-gray-600'
               "
-              v-text="productForm.active ? 'Đang hoạt động' : 'Đã ẩn'"
+              v-text="productForm.active ? 'Đang hoạt động' : 'Không hoạt động'"
             ></span>
           </div>
           <div class="flex items-center gap-2 flex items-center mb-2">
@@ -529,7 +559,7 @@ function onProductImageError(event) {
           </div>
         </div>
         <div class="product-editor-save">
-          <button @click="saveProduct" type="button" class="btn btn-dark w-full rounded-2 font-bold py-2">
+          <button @click="handleSaveProduct" type="button" class="btn btn-dark w-full rounded-2 font-bold py-2">
             <i class="icon icon-check2-circle mr-2" aria-hidden="true"></i> Lưu sản phẩm
           </button>
           <button @click="closeProductForm" type="button" class="btn btn-light border w-full rounded-2">Hủy thay đổi</button>
@@ -568,7 +598,7 @@ function onProductImageError(event) {
                 <span>SKU cha: {{ productDetailModal.product.parent_sku || 'Chưa thiết lập' }}</span>
               </div>
               <div class="product-detail-badges">
-                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Đang hiển thị' : 'Đã ẩn' }}</span>
+                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
                 <span v-if="productDetailModal.product.is_featured" class="product-detail-featured"><i class="icon icon-star-fill" aria-hidden="true"></i>Nổi bật</span>
               </div>
             </div>
@@ -660,6 +690,11 @@ function onProductImageError(event) {
 </template>
 
 <style scoped>
+.required-mark {
+  color: #dc2626;
+  font-weight: 700;
+}
+
 .products-page,
 .product-editor {
   min-width: 0;

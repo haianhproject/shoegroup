@@ -190,3 +190,49 @@ export const resetPassword = async ({ token, newPassword }) => {
     return { ok: false, message: error?.message || "Không thể kết nối đến máy chủ." };
   }
 };
+
+
+/* ===== PHÂN QUYỀN QUẢN LÝ SẢN PHẨM ===== */
+
+// Chuẩn hóa vai trò tài khoản
+export const getUserRole = () => {
+  const user = authState.currentUser;
+  return String(
+    user?.role_name ??
+    user?.roleName ??
+    user?.role ??
+    ""
+  ).trim().toLowerCase();
+};
+
+// Chỉ Admin được thêm, sửa, khôi phục sản phẩm
+export const canManageProducts = computed(() => {
+  const user = authState.currentUser;
+
+  if (!user) return false;
+
+  const role = getUserRole();
+  const roleId = Number(user.role_id ?? user.RoleID);
+
+  return (
+    role === "admin" ||
+    role === "quản trị viên" ||
+    roleId === 1
+  );
+});
+
+// Nhân viên chỉ được xem sản phẩm
+export const isEmployee = computed(() => {
+  const role = getUserRole();
+  const user = authState.currentUser;
+
+  const roleId = Number(user?.role_id ?? user?.RoleID);
+
+  return (
+    role === "nhân viên" ||
+    role === "employee" ||
+    role === "staff" ||
+    roleId === 2
+  );
+});
+

@@ -2875,7 +2875,9 @@ export function productStockTotal(productId) {
 }
 /* ---------------- CATALOG HELPERS ---------------- */
 export const categorySearch = ref("");
-export const filteredCategories = computed(() => db.categories);
+export const filteredCategories = computed(() =>
+  [...db.categories].sort((a, b) => Number(a.id ?? a.ID ?? 0) - Number(b.id ?? b.ID ?? 0)),
+);
 // Chi cac danh muc dang hoat dong (an danh muc da tat nhu mu/non)
 export const activeCategories = computed(() =>
   db.categories.filter((c) => c.active),
@@ -2963,16 +2965,18 @@ export function getProductName(id) {
  * giảm tối đa, số lượng, thời gian chạy, tìm kiếm + lọc trạng thái)
  * ================================================================ */
 export const discountTypes = ["Phần trăm", "Cố định"];
-export const discountStatuses = ["Tất cả", "Đang chạy", "Hết hạn", "Tạm dừng"];
+export const discountStatuses = [
+  "Tất cả",
+  "Hoạt động",
+  "Không hoạt động",
+];
 export const discountSearch = ref("");
 export const discountStatusFilter = ref("Tất cả");
 
 export function getDiscountStatus(d) {
-  if (!d.active)
-    return { label: "Tạm dừng", cls: "bg-light text-secondary border" };
-  if (isExpired(d.expiry))
-    return { label: "Hết hạn", cls: "bg-light text-danger border" };
-  return { label: "Đang chạy", cls: "bg-dark text-white" };
+  return d.active
+    ? { label: "Hoạt động", cls: "bg-dark text-white" }
+    : { label: "Không hoạt động", cls: "bg-light text-secondary border" };
 }
 export function formatDiscountValue(d) {
   return d.discount_type === "Cố định"
@@ -3026,17 +3030,56 @@ export async function saveDiscount() {
   const maxDiscount = Number(d.max_discount || 0);
   const usageLimit = Number(d.quantity || 0);
   if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
-    notify("Mã giảm giá phải gồm 2-50 ký tự chữ/số/-/_", "error");
+    notify("Mã khuyến mại phải gồm 2-50 ký tự chữ/số/-/_", "error");
     return;
   }
   if (!name || name.length > 200 || !Number.isFinite(val) || val <= 0 || (d.discount_type === "Phần trăm" && val > 100)) {
-    notify("Tên hoặc giá trị mã giảm giá không hợp lệ", "error");
+    notify("Tên hoặc giá trị mã khuyến mại không hợp lệ", "error");
     return;
   }
   if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || !Number.isSafeInteger(usageLimit) || usageLimit < 0) {
-    notify("Điều kiện mã giảm giá không hợp lệ", "error");
+    notify("Điều kiện mã khuyến mại không hợp lệ", "error");
     return;
   }
+  if (!code) {
+  notify("Vui lòng nhập mã khuyến mại", "error");
+  return;
+}
+
+if (!name) {
+  notify("Vui lòng nhập tên chương trình", "error");
+  return;
+}
+
+if (!d.discount_type) {
+  notify("Vui lòng chọn loại giảm giá", "error");
+  return;
+}
+
+if (!Number.isFinite(val) || val <= 0) {
+  notify("Giá trị giảm phải lớn hơn 0", "error");
+  return;
+}
+
+if (d.discount_type === "Phần trăm" && val > 100) {
+  notify("Giá trị giảm theo phần trăm không được vượt quá 100%", "error");
+  return;
+}
+
+if (!d.start_date) {
+  notify("Vui lòng chọn ngày bắt đầu", "error");
+  return;
+}
+
+if (!d.expiry) {
+  notify("Vui lòng chọn ngày kết thúc", "error");
+  return;
+}
+
+if (new Date(d.expiry) < new Date(d.start_date)) {
+  notify("Ngày kết thúc không được trước ngày bắt đầu", "error");
+  return;
+}
   const payload = {
     CouponCode: code,
     CouponName: name,
@@ -3059,7 +3102,7 @@ export async function saveDiscount() {
   });
   if (!res.ok) {
     notify(
-      "Lưu mã giảm giá thất bại (máy chủ " +
+      "Lưu mã khuyến mại thất bại (máy chủ " +
         (res.status || "không phản hồi") +
         "). Kiểm tra API /discounts.",
       "error",
@@ -3067,7 +3110,7 @@ export async function saveDiscount() {
     return;
   }
   discountModal.open = false;
-  notify(isEdit ? "Đã cập nhật mã giảm giá" : "Đã thêm mã giảm giá", "success");
+  notify(isEdit ? "Đã cập nhật mã khuyến mại" : "Đã thêm mã khuyến mại", "success");
   fetchAllData();
 }
 
@@ -3295,7 +3338,7 @@ export async function saveVariantDiscount() {
     return;
   }
   if (d.active && variantAlreadyDiscounted(d.variant_id, d.id, d.start_date, d.end_date, scope)) {
-    notify("Phạm vi này đã có chương trình giảm giá trùng thời gian", "error");
+    notify("Phạm vi này đã có chương trình khuyến mại trùng thời gian", "error");
     return;
   }
   const payload = {
@@ -3332,7 +3375,7 @@ export async function saveVariantDiscount() {
     }
     variantDiscountModal.open = false;
     notify(
-      isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
+      isEdit ? "Đã cập nhật khuyến mại biến thể" : "Đã thêm khuyến mại biến thể",
       "success",
     );
     fetchAllData();
@@ -3445,12 +3488,12 @@ export const SPORTS = [
 
 const fieldDefs = {
   categories: [
-    { key: "name", label: "Tên danh mục" },
-    { key: "sport", label: "Bộ môn thể thao", type: "select" },
+    { key: "name", label: "Tên danh mục *", required: true },
+    { key: "sport", label: "Bộ môn thể thao *", type: "select", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   brands: [
-    { key: "name", label: "Tên thương hiệu" },
+    { key: "name", label: "Tên thương hiệu *", required: true },
     {
       key: "logo_url",
       label: "Logo thương hiệu (ảnh trong máy)",
@@ -3460,36 +3503,36 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   materials: [
-    { key: "name", label: "Tên chất liệu" },
+    { key: "name", label: "Tên chất liệu *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   soles: [
-    { key: "name", label: "Tên đế giày" },
+    { key: "name", label: "Tên đế giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   cushionings: [
-    { key: "name", label: "Tên đệm giày" },
+    { key: "name", label: "Tên đệm giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   colors: [
-    { key: "name", label: "Tên màu" },
-    { key: "hex", label: "Mã màu", type: "color" },
+    { key: "name", label: "Tên màu *", required: true },
+    { key: "hex", label: "Mã màu *", type: "color", required: true },
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   sizes: [
-    { key: "name", label: "Tên size (VD: 40)" },
-    { key: "standard", label: "Chuẩn (EU/US/UK)" },
+    { key: "name", label: "Tên size (VD: 40) *", required: true },
+    { key: "standard", label: "Chuẩn (EU/US/UK) *", required: true },
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   /* Khớp đúng cột của bảng Coupons trong dbnew
      (trước đây dùng percent/limit -> gửi lên CSDL không có cột tương ứng nên lưu lỗi) */
   discounts: [
-    { key: "code", label: "Mã giảm giá (CouponCode)" },
-    { key: "name", label: "Tên chương trình" },
-    { key: "discount_type", label: "Kiểu giảm", type: "select" },
-    { key: "value", label: "Giá trị giảm", type: "number" },
+    { key: "code", label: "Mã khuyến mại *", required: true },
+    { key: "name", label: "Tên chương trình *", required: true },
+    { key: "discount_type", label: "Kiểu giảm *", type: "select", required: true },
+    { key: "value", label: "Giá trị giảm *", type: "number", required: true },
     { key: "min_order", label: "Đơn tối thiểu", type: "number" },
     { key: "max_discount", label: "Giảm tối đa", type: "number" },
     { key: "start_date", label: "Ngày bắt đầu", type: "date" },
@@ -3499,9 +3542,9 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   accounts: [
-    { key: "username", label: "Email đăng nhập", type: "email" },
-    { key: "name", label: "Họ tên" },
-    { key: "role_id", label: "Phân quyền", type: "select" },
+    { key: "username", label: "Email đăng nhập *", type: "email", required: true },
+    { key: "name", label: "Họ tên *", required: true },
+    { key: "role_id", label: "Phân quyền *", type: "select", required: true },
     {
       key: "password",
       label: "Mật khẩu (để trống nếu không đổi)",
@@ -3558,7 +3601,7 @@ const formTitles = {
   materials: "Chất Liệu",
   colors: "Màu Sắc",
   sizes: "Kích Thước",
-  discounts: "Mã Giảm Giá",
+  discounts: "Mã Khuyến Mại",
   accounts: "Tài Khoản",
 };
 export function openForm(type, item) {
@@ -3578,22 +3621,35 @@ export function openForm(type, item) {
 export async function saveForm() {
   const type = formModal.type;
   const data = formModal.data;
-  if (type === "discounts") {
-    if (!data.code) {
-      notify("Vui lòng nhập mã giảm giá", "error");
+  // Kiểm tra toàn bộ trường bắt buộc trước khi gửi dữ liệu lên máy chủ.
+  const requiredFields = (fieldDefs[type] || []).filter((field) => field.required);
+  for (const field of requiredFields) {
+    // Khi sửa tài khoản, email đăng nhập không được thay đổi.
+    if (type === "accounts" && data.id && field.key === "username") continue;
+    const value = data[field.key];
+    if (value === null || value === undefined || String(value).trim() === "") {
+      notify("Vui lòng nhập " + field.label.replace(/\s*\*$/, ""), "error");
       return;
     }
-  } else if (type !== "accounts" && type !== "customers" && !data.name) {
-    notify("Vui lòng nhập tên", "error");
-    return;
   }
   if (type === "accounts") {
-    if (!data.username) {
-      notify("Vui lòng nhập email đăng nhập", "error");
+    const email = String(data.username || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notify("Vui lòng nhập địa chỉ email hợp lệ.", "error");
       return;
     }
     if (!data.id && !(data.password && String(data.password).trim())) {
       notify("Vui lòng nhập mật khẩu cho tài khoản mới", "error");
+      return;
+    }
+    if (data.password && String(data.password).length < 6) {
+      notify("Mật khẩu phải có ít nhất 6 ký tự.", "error");
+      return;
+    }
+  }
+  if (type === "discounts") {
+    if (!(Number(data.value) > 0)) {
+      notify("Giá trị khuyến mại phải lớn hơn 0.", "error");
       return;
     }
   }
@@ -3646,23 +3702,14 @@ export const confirmModal = reactive({
 export function deleteItem(type, id, name) {
   confirmModal.type = type;
   confirmModal.id = id;
-  confirmModal.mode = "generic";
+  confirmModal.mode = "deactivate";
   confirmModal.danger = false;
-  if (type === "variantDiscounts") {
-    confirmModal.confirmLabel = "Tạm dừng";
-    confirmModal.title = "Tạm dừng giảm giá?";
-    confirmModal.message =
-      'Tạm dừng chương trình giảm giá của "' +
-      (name || "#" + id) +
-      '"? Bạn vẫn có thể mở lại bằng nút chỉnh sửa.';
-  } else {
-    confirmModal.confirmLabel = "Xác nhận";
-    confirmModal.title = "Xác nhận xoá";
-    confirmModal.message =
-      'Bạn có chắc muốn xoá "' +
-      (name || "#" + id) +
-      '"? Hành động này không thể hoàn tác.';
-  }
+  confirmModal.payload = null;
+  confirmModal.confirmLabel = "Chuyển trạng thái";
+  confirmModal.title = "Ngừng hoạt động bản ghi?";
+  confirmModal.message =
+    'Chuyển "' + (name || "#" + id) +
+    '" sang trạng thái Không hoạt động? Dữ liệu vẫn được giữ lại và có thể khôi phục sau.';
   confirmModal.open = true;
 }
 
@@ -3742,31 +3789,21 @@ export async function doRestoreItem(type, item) {
   fetchAllData();
 }
 
-// Nut xoa tren trang san pham: lan 1 = xoa mem (an), lan 2 (khi da an) = xoa cung
+// Chuyển trạng thái sản phẩm, không xóa dữ liệu khỏi cơ sở dữ liệu.
 export function deleteProduct(p) {
   confirmModal.type = "products";
   confirmModal.id = p.id;
-  if (isProductSoftDeleted(p)) {
-    confirmModal.mode = "hard";
-    confirmModal.danger = true;
-    confirmModal.confirmLabel = "Xoá cứng";
-    confirmModal.title = "Xoá cứng sản phẩm?";
-    confirmModal.message =
-      'Bạn sắp XOÁ CỨNG "' +
-      (p.name || "#" + p.id) +
-      '" khỏi cơ sở dữ liệu. Toàn bộ biến thể, ảnh và chi tiết đơn hàng liên quan sẽ bị xoá vĩnh viễn và KHÔNG THỂ khôi phục. Việc này có thể ẢNH HƯỞ-NG ĐẾN DOANH THU đã ghi nhận.';
-  } else {
-    confirmModal.mode = "soft";
-    confirmModal.danger = false;
-    confirmModal.confirmLabel = "Xoá mềm (ẩn)";
-    confirmModal.title = "Xoá mềm sản phẩm?";
-    confirmModal.message =
-      'Ẩn "' +
-      (p.name || "#" + p.id) +
-      '" khỏi cửa hàng (xoá mềm). Dữ liệu vẫn được giữ lại. Bấm xoá lần nữa khi sản phẩm đã ẩn để xoá cứng.';
-  }
+  confirmModal.mode = "deactivate";
+  confirmModal.danger = false;
+  confirmModal.payload = null;
+  confirmModal.confirmLabel = "Ngừng hoạt động";
+  confirmModal.title = "Ngừng hoạt động sản phẩm?";
+  confirmModal.message =
+    'Chuyển sản phẩm "' + (p.name || "#" + p.id) +
+    '" sang trạng thái Không hoạt động? Dữ liệu sản phẩm, biến thể và lịch sử đơn hàng sẽ được giữ nguyên.';
   confirmModal.open = true;
 }
+
 export async function executeConfirm() {
   // Khôi phục bản ghi đã xoá mềm
   if (confirmModal.mode === "restore") {
@@ -3794,38 +3831,37 @@ export async function executeConfirm() {
     fetchAllData();
     return;
   }
-  const suffix =
-    confirmModal.type === "products" && confirmModal.mode === "soft"
-      ? "?soft=1"
-      : "";
-  const res = await apiWrite(
-    "/" + confirmModal.type + "/" + confirmModal.id + suffix,
-    { method: "DELETE" },
-  );
+  // Không gửi yêu cầu DELETE để tránh xóa dữ liệu kinh doanh khỏi CSDL.
+  // Chỉ cập nhật trạng thái hoạt động; dữ liệu có thể được khôi phục sau.
+  const type = confirmModal.type;
+  const id = confirmModal.id;
+  const currentList = db[type] || [];
+  const currentItem = currentList.find((item) => String(item.id) === String(id));
+  if (!currentItem && type !== "variantDiscounts") {
+    notify("Không tìm thấy dữ liệu cần cập nhật. Vui lòng tải lại trang.", "error");
+    return;
+  }
+  const payload = type === "variantDiscounts"
+    ? { active: false }
+    : { ...currentItem, active: false };
+  const res = await apiWrite("/" + type + "/" + id, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) {
     notify(
       res.data?.message ||
-        ("Thao tác thất bại (máy chủ " +
+        ("Không thể cập nhật trạng thái (máy chủ " +
           (res.status || "không phản hồi") +
-          "). Kiểm tra API /" +
-          confirmModal.type +
-          "."),
+          "). Kiểm tra API /" + type + "."),
       "error",
     );
     return;
   }
-  const doneMode = confirmModal.mode;
   confirmModal.open = false;
-  notify(
-    doneMode === "soft"
-      ? "Đã xoá mềm (ẩn) sản phẩm"
-      : doneMode === "hard"
-        ? "Đã xoá cứng sản phẩm khỏi CSDL"
-        : confirmModal.type === "variantDiscounts"
-          ? "Đã tạm dừng giảm giá biến thể"
-          : "Đã xoá thành công",
-    "success",
-  );
+  confirmModal.payload = null;
+  notify("Đã chuyển sang trạng thái Không hoạt động. Dữ liệu vẫn được giữ lại.", "success");
   fetchAllData();
 }
 
