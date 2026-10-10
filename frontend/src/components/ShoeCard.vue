@@ -3,6 +3,7 @@
 import { computed, nextTick, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { api } from "../services/apiClient"
+import { variantSizeLabel } from "../services/variantSize"
 import { addToCart, cartState, formatCurrency, showDrawer } from "../stores/cartStore"
 import { notify } from "../stores/uiStore"
 import fallbackProductImage from "../../img/hero-sneakers.jpg"
@@ -99,13 +100,13 @@ const sizeList = computed(() => {
   const rows = selectedColor.value
     ? variants.value.filter((variant) => normalizeText(variant.color) === normalizeText(selectedColor.value.name))
     : variants.value
-  return [...new Set(rows.map((variant) => variant.size).filter(Boolean))]
+  return [...new Set(rows.map(variantSizeLabel).filter(Boolean))]
 })
 
 const getVariant = (colorName, sizeName) => {
   return variants.value.find((variant) =>
     normalizeText(variant.color) === normalizeText(colorName)
-      && normalizeText(variant.size) === normalizeText(sizeName),
+      && normalizeText(variantSizeLabel(variant)) === normalizeText(sizeName),
   ) || null
 }
 
@@ -359,7 +360,7 @@ const buildCartPayload = () => {
       price: selectedVariant.value?.price ?? activeProduct.value?.price,
       sale_price: selectedVariant.value?.sale_price ?? 0,
     }, quantity: selectedQty.value,
-    size: { size_name: selectedSize.value || activeProduct.value?.default_size || "" }, color: colorObj,
+    size: { size_name: selectedVariant.value?.size || selectedSize.value || activeProduct.value?.default_size || "", standard:selectedVariant.value?.standard }, color: colorObj,
     variantId: selectedVariantId.value,
     stockQuantity: selectedVariantStock.value,
   }

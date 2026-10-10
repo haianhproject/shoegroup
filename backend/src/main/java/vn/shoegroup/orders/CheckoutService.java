@@ -157,9 +157,9 @@ public class CheckoutService {
       }
     }
     Integer uid = Math.toIntExact(user.id());
-    if (user.admin()) uid = optionalId(first(b, null, "userId", "user_id"));
+    if (user.staff()) uid = optionalId(first(b, null, "userId", "user_id"));
     Integer aid = optionalId(first(b, null, "addressId", "address_id"));
-    if (!user.admin() && aid == null)
+    if (!user.staff() && aid == null)
       throw new ApiException(400, "Vui long chon dia chi tu so dia chi.");
     String name = Values.text(first(b, "Khach le", "customerName", "customer_name"), 100),
         phone =
@@ -170,10 +170,10 @@ public class CheckoutService {
       throw new ApiException(400, "So dien thoai khong hop le.");
     String method = text(first(b, "COD", "paymentMethod", "payment_method")),
         methodKey = normalize(method),
-        status = user.admin() ? sql.canonical(first(b, "Chờ xác nhận", "status")) : "Chờ xác nhận";
+        status = user.staff() ? sql.canonical(first(b, "Chờ xác nhận", "status")) : "Chờ xác nhận";
     String
         payment =
-            user.admin()
+            user.staff()
                 ? OrderSql.payment(first(b, "Chua thanh toan", "paymentStatus", "payment_status"))
                 : "Chưa thanh toán",
         handled = Values.text(first(b, null, "handledBy", "handled_by"), 50);
@@ -183,7 +183,7 @@ public class CheckoutService {
     BigDecimal submitted = money(first(b, 0, "totalAmount", "total"));
     money(first(b, 0, "shippingFee", "shipping_fee"));
     money(first(b, 0, "discountAmount", "discount_amount"));
-    if (user.admin()) {
+    if (user.staff()) {
       name =
           Values.text(first(b, "", "customerName", "customer_name"), 100).replaceAll("\\s+", " ");
       if (name.isEmpty() || !phone.matches("0[35789]\\d{8}"))
@@ -196,7 +196,8 @@ public class CheckoutService {
           || !Set.of("Chưa thanh toán", "Đã thanh toán").contains(payment)
           || status.equals("Đã nhận hàng") && !paid(payment))
         throw new ApiException(400, "Trang thai khoi tao don tai quay khong hop le.");
-      if (handled.isEmpty()) handled = "Quầy";
+      handled = Values.text(sql.jdbc.queryForObject("SELECT FullName FROM Users WHERE UserID=:id",params("id",user.id()),String.class),50);
+      if (handled.isEmpty()) handled = "Nhân viên #" + user.id();
     } else {
       if (methodKey.contains("chuyen khoan") || methodKey.contains("bank"))
         method = "Chuyển khoản ngân hàng";
@@ -228,7 +229,7 @@ public class CheckoutService {
       String size = Values.text(item.get("size"), 10), color = Values.text(item.get("color"), 50);
       if (vid == null && (size.isEmpty() || color.isEmpty()))
         throw new ApiException(400, "San pham thieu size hoac mau.");
-      if (user.admin()) {
+      if (user.staff()) {
         Object price = first(item, null, "price", "unitPrice");
         if (price == null) throw new ApiException(400, "Thieu gia san pham.");
         money(price);
@@ -240,7 +241,7 @@ public class CheckoutService {
             .thenComparingLong(i -> number(i.get("vid")))
             .thenComparing(i -> text(i.get("sz")))
             .thenComparing(i -> text(i.get("clr"))));
-    if (user.admin()) claimCart(user.id(), b.get("pos_cart_revision"), items);
+    Integer posCart=user.staff()?claimCart(user.id(), b.get("pos_cart_id"), b.get("pos_cart_revision"), items):null;
     Map<String, Object> selected = null;
     if (aid != null) {
       if (uid == null) throw new ApiException(401, "Can tai khoan de su dung dia chi.");
@@ -254,7 +255,7 @@ public class CheckoutService {
         sql.query(OP, 1)
             .replace(
                 "${isAdminOrder ? \"WITH (UPDLOCK, HOLDLOCK)\" : \"\"}",
-                user.admin() ? "WITH (UPDLOCK,HOLDLOCK)" : "");
+                user.staff() ? "WITH (UPDLOCK,HOLDLOCK)" : "");
     for (var item : items) {
       var priced = sql.jdbc.queryForList(pricing, item);
       if (priced.isEmpty())
@@ -273,7 +274,7 @@ public class CheckoutService {
           subtotal.add(money(p.get("price")).multiply(BigDecimal.valueOf(number(item.get("qty")))));
     }
     Map<String, Object> quote =
-        user.admin()
+        user.staff()
             ? params("fee", 0, "methodId", null, "distanceKm", null, "eta", null)
             : shipping.quote(
                 params(
@@ -325,7 +326,7 @@ public class CheckoutService {
       }
     }
     BigDecimal total = money(subtotal.add(fee).subtract(discount).max(BigDecimal.ZERO));
-    if (user.admin()
+    if (user.staff()
         && paid(payment)
         && submitted.subtract(total).abs().compareTo(new BigDecimal("0.001")) > 0)
       throw new ApiException(409, "Tong tien da thay doi; kiem tra lai so tien da thu.");
@@ -366,7 +367,7 @@ public class CheckoutService {
             "due",
             null);
     int id = ((Number) sql.one(OP, 4, order).get("OrderID")).intValue();
-    if (user.admin() && paid(payment)) {
+    if (user.staff() && paid(payment)) {
       sql.update(OP, 5, params("oid", id));
       sql.collect(id, total, bank(method) ? "POS_TRANSFER" : "POS_CASH");
     }
@@ -378,12 +379,12 @@ public class CheckoutService {
           && sql.update(OP, 8, params("id", item.get("vdid"), "qty", item.get("qty"))) != 1)
         throw new ApiException(409, "Khuyen mai bien the vua het luot.");
     }
-    if (user.admin()) {
+    if (user.staff()) {
       sql.jdbc.update(
           "UPDATE Orders SET StockDeductedAt=GETDATE(),StockRestoredAt=NULL WHERE OrderID=:oid;"
-              + " DELETE FROM PosCartItems WHERE UserID=:uid; UPDATE PosCarts SET"
-              + " Revision=Revision+1,UpdatedAt=SYSDATETIME() WHERE UserID=:uid",
-          params("oid", id, "uid", user.id()));
+              + " DELETE FROM PosCartItems WHERE PosCartID=:cart; UPDATE PosCarts SET"
+              + " Status='Paid',Revision=Revision+1,UpdatedAt=SYSDATETIME() WHERE PosCartID=:cart AND UserID=:uid",
+          params("oid", id, "uid", user.id(),"cart",posCart));
     } else {
       sql.validateStock(id);
       sql.update(OP, 9, params("uid", uid));
@@ -440,24 +441,23 @@ public class CheckoutService {
         throw new IllegalStateException(ex);
       }
     }
-    effects.afterCommit(id, "created", !user.admin() && !bank(method) ? "created" : null);
+    effects.afterCommit(id, "created", !user.staff() && !bank(method) ? "created" : null);
     return response;
   }
 
-  private void claimCart(long user, Object expected, List<Map<String, Object>> items) {
+  private int claimCart(long user, Object cart, Object expected, List<Map<String, Object>> items) {
     if (!(expected instanceof Number n)
         || n.doubleValue() != n.longValue()
         || n.longValue() < 0
         || n.longValue() > Integer.MAX_VALUE)
       throw new ApiException(400, "POS_CART_CONFLICT", "Hay tai lai gio tai quay.");
-    var p = params("uid", user);
-    sql.jdbc.update(
-        "IF NOT EXISTS(SELECT 1 FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE UserID=:uid) INSERT"
-            + " PosCarts(UserID) VALUES(:uid)",
-        p);
+    var p = params("uid", user,"cart",cart==null?null:Values.integer(cart,1,Integer.MAX_VALUE,null));
+    var rows=sql.jdbc.queryForList("SELECT TOP 1 PosCartID,Revision FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE UserID=:uid AND (:cart IS NULL OR PosCartID=:cart) AND Status='Open' AND ExpiresAt>SYSDATETIME() ORDER BY PosCartID",p);
+    if(rows.isEmpty()) throw new ApiException(409,"POS_CART_CONFLICT","Hóa đơn không tồn tại hoặc đã hết hạn.");
+    int cartId=((Number)rows.get(0).get("PosCartID")).intValue(); p.put("cart",cartId);
     int revision =
         sql.jdbc.queryForObject(
-            "SELECT Revision FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE UserID=:uid",
+            "SELECT Revision FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE PosCartID=:cart",
             p,
             Integer.class);
     if (revision != n.intValue())
@@ -466,7 +466,7 @@ public class CheckoutService {
         sql.jdbc.queryForList(
             "SELECT ci.ProductVariantID AS vid,v.ProductID AS pid,ci.Quantity AS qty FROM"
                 + " PosCartItems ci JOIN ProductVariants v ON"
-                + " v.ProductVariantID=ci.ProductVariantID WHERE ci.UserID=:uid",
+                + " v.ProductVariantID=ci.ProductVariantID WHERE ci.PosCartID=:cart",
             p);
     Map<Long, Map<String, Object>> requested = new HashMap<>();
     for (var item : items) {
@@ -485,5 +485,6 @@ public class CheckoutService {
                       || number(i.get("qty")) != number(row.get("qty"));
                 }))
       throw new ApiException(409, "POS_CART_CONFLICT", "So luong khong khop gio da giu.");
+    return cartId;
   }
 }

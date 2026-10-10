@@ -12,6 +12,7 @@ import {
   checkoutPos, formatPrice, formatDate, validateCartItemQty, posSubmitting,
   posInvoiceModal, closePosInvoice, openLastPosInvoice, printPosInvoice,
   posCartBusy, posCartReady, loadPosCart, posCartItemMax, fetchAllData,
+  posPendingCarts, posCartId, switchPosCart, addPendingPosCart,
 } from '../adminStore'
 
 const qtyInputs = ref({})
@@ -54,6 +55,10 @@ onMounted(async () => {
 
 <template>
   <div class="fade-in pos-page">
+    <div class="flex gap-2 mb-3 items-center" style="max-width:100%;overflow-x:auto;padding-bottom:6px" role="tablist" aria-label="Hóa đơn chờ">
+      <button v-for="cart in posPendingCarts" :key="cart.id" type="button" role="tab" :aria-selected="cart.id===posCartId" :disabled="posControlsLocked" @click="switchPosCart(cart.id)" class="btn btn-sm border" :class="cart.id===posCartId?'btn-dark':'btn-light'" style="white-space:nowrap">Hóa đơn #{{ cart.id }}</button>
+      <button type="button" class="btn btn-sm btn-light border" title="Thêm hóa đơn chờ" aria-label="Thêm hóa đơn chờ" :disabled="posControlsLocked" @click="addPendingPosCart"><i class="icon icon-plus-lg"></i></button>
+    </div>
     <div v-if="!posCartReady" class="pos-sync-notice" role="status">
       <span>{{ posCartBusy ? 'Đang tải giỏ tại quầy...' : 'Giỏ chưa được đồng bộ. Tải lại để tiếp tục bán hàng.' }}</span>
       <button type="button" class="btn btn-sm btn-light border" :disabled="posCartBusy" @click="loadPosCart()">Tải lại giỏ</button>
@@ -131,7 +136,7 @@ onMounted(async () => {
                 <h3 class="pos-product-name">{{ v.product_name }}</h3>
                 <div class="pos-product-attributes">
                   <span><i class="pos-color-dot" :style="{ background: v.color_hex || '#d1d5db' }"></i>Màu: {{ v.color || 'Chưa cập nhật' }}</span>
-                  <span>Size <strong>{{ v.size || '—' }}</strong></span>
+                  <span>Cỡ <strong>{{ v.standard }} {{ v.size || '—' }}</strong></span>
                 </div>
                 <dl class="pos-product-details">
                   <div><dt>Thương hiệu</dt><dd>{{ v.brand || 'Chưa cập nhật' }}</dd></div>
@@ -195,7 +200,7 @@ onMounted(async () => {
               <img :src="c.image || productPlaceholder" class="pos-cart-image" :alt="c.name" @error="imageError">
               <div class="pos-cart-description">
                 <p class="pos-cart-name">{{ c.name }}</p>
-                <p class="pos-cart-variant">{{ c.color }} · Size {{ c.size }}</p>
+                <p class="pos-cart-variant">{{ c.color }} · {{ c.standard || 'EU' }} {{ c.size }}</p>
                 <strong>{{ formatPrice(c.price) }}</strong>
               </div>
               <button @click="removeCartItem(i)" :disabled="posControlsLocked" class="btn pos-remove-button" :aria-label="'Xóa ' + c.name + ' khỏi giỏ và hoàn kho'"><i class="icon icon-trash"></i></button>

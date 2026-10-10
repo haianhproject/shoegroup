@@ -54,10 +54,14 @@ class SqlServerIntegrationTest {
         jdbc.update("DELETE FROM CartItems"); jdbc.update("DELETE FROM Carts");
         jdbc.update("DELETE FROM PosCartItems"); jdbc.update("DELETE FROM PosCarts");
         jdbc.update("DELETE FROM ProductImages"); jdbc.update("DELETE FROM ProductVariants"); jdbc.update("DELETE FROM Products");
+        jdbc.update("DELETE FROM Colors"); jdbc.update("DELETE FROM Sizes");
         jdbc.update("DELETE FROM Users"); jdbc.update("DELETE FROM Categories");
         first = user("first@example.com", 1); second = user("second@example.com", 1); customer = user("customer@example.com", 2);
-        int product = jdbc.queryForObject("INSERT Products(ProductName,BasePrice,IsActive) OUTPUT INSERTED.ProductID VALUES(N'Test shoe',100000,1)", Integer.class);
-        variant = jdbc.queryForObject("INSERT ProductVariants(ProductID,Size,ColorName,StockQuantity,PriceAdjustment,Version,IsActive) OUTPUT INSERTED.ProductVariantID VALUES(?,N'42',N'Black',1,0,0,1)", Integer.class, product);
+        int color=jdbc.queryForObject("INSERT Colors(ColorName,ColorHex,IsActive) OUTPUT INSERTED.ColorID VALUES(N'Black','#000000',1)",Integer.class);
+        int size=jdbc.queryForObject("INSERT Sizes(SizeName,SizeStandard,IsActive) OUTPUT INSERTED.SizeID VALUES(N'42','EU',1)",Integer.class);
+        jdbc.update("INSERT Sizes(SizeName,SizeStandard,IsActive) VALUES(N'40','EU',1)");
+        int product = jdbc.queryForObject("INSERT Products(ProductName,IsActive) OUTPUT INSERTED.ProductID VALUES(N'Test shoe',1)", Integer.class);
+        variant = jdbc.queryForObject("INSERT ProductVariants(ProductID,SizeID,ColorID,StockQuantity,SalePrice,Version,IsActive) OUTPUT INSERTED.ProductVariantID VALUES(?,?,?,1,100000,0,1)", Integer.class, product,size,color);
     }
     int user(String email, int role) {
         return jdbc.queryForObject("INSERT Users(RoleID,FullName,Email,PasswordHash,IsActive) OUTPUT INSERTED.UserID VALUES(?,N'Test',?,N'legacy-password',1)", Integer.class, role, email);
@@ -115,6 +119,22 @@ class SqlServerIntegrationTest {
         jdbc.update("UPDATE Users SET IsActive=0 WHERE UserID=?", first);
         mvc.perform(get("/api/categories").header("Authorization", "Bearer " + token)).andExpect(status().isUnauthorized());
     }
+    @Test void employeeLoginAndPosAreAllowedButCatalogAndAccountWritesAreDenied() throws Exception {
+        int employee=user("employee@example.com",3); String bearer="Bearer "+token(employee,3);
+        mvc.perform(post("/api/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"employee@example.com\",\"password\":\"legacy-password\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.user.role").value("Employee"));
+        mvc.perform(get("/api/pos/cart").header("Authorization",bearer)).andExpect(status().isOk());
+        mvc.perform(get("/api/accounts").header("Authorization",bearer)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/products").header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(put("/api/accounts/"+employee).header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"role_id\":1}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(put("/api/pos/cart/items/"+variant).header("Authorization",bearer).contentType(MediaType.APPLICATION_JSON).content("{\"revision\":0,\"quantity\":1}"))
+            .andExpect(status().isOk());
+        assertThat(stock()).isZero();
+        var created=accounts.create(Map.of("username","staff-new@example.com","name","Staff","password","staff-password","role_id",3));
+        assertThat(created.get("success")).isEqualTo(true);
+    }
     @Test void nullableLegacyActiveStateAndOversizedOwnerIdsRemainSafe() throws Exception {
         jdbc.update("UPDATE Users SET IsActive=NULL WHERE UserID=?", customer);
         String bearer = "Bearer " + token(customer, 2);
@@ -159,6 +179,31 @@ class SqlServerIntegrationTest {
         assertThatThrownBy(() -> carts.handle(first, "item", variant, Map.of("revision", 0, "quantity", "1"))).isInstanceOf(ApiException.class);
         assertThat(stock()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM PosCarts WHERE UserID=?", Integer.class, first)).isZero();
+    }
+    @Test void pendingInvoicesAreIndependentAndExpireOnlyOnce() {
+        jdbc.update("UPDATE ProductVariants SET StockQuantity=10 WHERE ProductVariantID=?",variant);
+        var a=carts.handle(first,null,null,Map.of());
+        var b=carts.handle(first,"create",null,Map.of());
+        int ca=((Number)a.get("cart_id")).intValue(),cb=((Number)b.get("cart_id")).intValue();
+        carts.handle(first,"item",variant,Map.of("cart_id",ca,"revision",0,"quantity",2));
+        carts.handle(first,"item",variant,Map.of("cart_id",cb,"revision",0,"quantity",3));
+        assertThat(stock()).isEqualTo(5);
+        assertThatThrownBy(()->carts.handle(second,"item",variant,Map.of("cart_id",ca,"revision",1,"quantity",1))).isInstanceOf(ApiException.class);
+        assertThat(stock()).isEqualTo(5);
+        jdbc.update("UPDATE PosCarts SET ExpiresAt=DATEADD(day,-1,SYSDATETIME()) WHERE PosCartID=?",ca);
+        carts.expireAll();carts.expireAll();
+        assertThat(stock()).isEqualTo(7);
+        assertThat(jdbc.queryForObject("SELECT Quantity FROM PosCartItems WHERE PosCartID=?",Integer.class,cb)).isEqualTo(3);
+    }
+    @Test void parentOffDisablesChildrenWithoutResettingIndividualStatusOnRestore() {
+        int product=jdbc.queryForObject("SELECT ProductID FROM ProductVariants WHERE ProductVariantID=?",Integer.class,variant);
+        products.delete(String.valueOf(product),false);
+        assertThat(jdbc.queryForObject("SELECT IsActive FROM ProductVariants WHERE ProductVariantID=?",Boolean.class,variant)).isFalse();
+        products.restore(String.valueOf(product));
+        assertThat(jdbc.queryForObject("SELECT IsActive FROM ProductVariants WHERE ProductVariantID=?",Boolean.class,variant)).isFalse();
+        assertThatThrownBy(()->products.variantStatus(String.valueOf(product),String.valueOf(variant),Map.of("active",true,"version",0))).isInstanceOf(ApiException.class);
+        products.variantStatus(String.valueOf(product),String.valueOf(variant),Map.of("active",true,"version",1));
+        assertThat(jdbc.queryForObject("SELECT IsActive FROM ProductVariants WHERE ProductVariantID=?",Boolean.class,variant)).isTrue();
     }
     @Test void resetTokensAreConsumedAtomicallyAndExpiredTokensFail() {
         String token = "a".repeat(64);

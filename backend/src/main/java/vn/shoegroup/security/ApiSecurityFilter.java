@@ -47,14 +47,17 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
                 if (rows.isEmpty() || !Boolean.TRUE.equals(rows.get(0).get("IsActive"))) {
                     deny(res, 401, "Tai khoan khong con hoat dong."); return;
                 }
-                user = new ApiUser(id, ((Number)rows.get(0).get("RoleID")).intValue() == 1);
+                int role = ((Number)rows.get(0).get("RoleID")).intValue();
+                user = new ApiUser(id, role == 1, role == 3);
             } catch (RuntimeException ex) { deny(res, 503, "Khong the kiem tra phien dang nhap luc nay."); return; }
         }
         ApiPolicy.Level level = ApiPolicy.resolve(method, path);
         if (level != ApiPolicy.Level.PUBLIC && user == null) {
             deny(res, 401, "Ban chua dang nhap hoac phien da het han."); return;
         }
-        if (user != null && ((level == ApiPolicy.Level.ADMIN && !user.admin()) || !ApiPolicy.owns(path, user.id(), user.admin()))) {
+        if (user != null && ((level == ApiPolicy.Level.ADMIN && !user.admin())
+                || (level == ApiPolicy.Level.STAFF && !user.staff())
+                || !ApiPolicy.owns(path, user.id(), user.admin()))) {
             deny(res, 403, "Ban khong co quyen thuc hien thao tac nay."); return;
         }
         req.setAttribute("apiUser", user);

@@ -25,7 +25,9 @@ public class SchemaInitializer {
           "20260923_variant_discount_order_tracking.sql",
           "20260923_variant_discount_scope.sql",
           "20261004_pos_cart_stock.sql",
-          "20261004_revenue_history.sql");
+          "20261004_revenue_history.sql",
+          "20261010_catalog_optimization.sql",
+          "20261010_staff_role.sql");
   private final JdbcTemplate jdbc;
 
   public SchemaInitializer(JdbcTemplate jdbc) {
@@ -49,6 +51,11 @@ public class SchemaInitializer {
                   locked = true;
                 }
                 for (String name : MIGRATIONS) {
+                  if (name.compareTo("20261010_catalog_optimization.sql") < 0) {
+                    try (var done = statement.executeQuery("SELECT CASE WHEN OBJECT_ID('dbo.ProductVariantRead','V') IS NOT NULL THEN 1 ELSE 0 END")) {
+                      if (done.next() && done.getInt(1) == 1) continue;
+                    }
+                  }
                   String script;
                   try (var in = new ClassPathResource("db/migrations/" + name).getInputStream()) {
                     script =
