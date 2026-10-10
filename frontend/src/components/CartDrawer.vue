@@ -78,7 +78,7 @@ const goCheckout = async () => {
 }
 
 const attrsOf = (item) => {
-  return [{ label: 'Size', value: item.size?.size_name }, { label: 'Màu', value: item.color?.color_label }].filter(x => x.value)
+  return [{ label: 'Cỡ', value: [item.size?.standard,item.size?.size_name].filter(Boolean).join(' ') }, { label: 'Màu', value: item.color?.color_label }].filter(x => x.value)
 }
 const handleIncrease = async (item) => { const r = await increaseQuantity(item.id_product_detail); if (!r.ok) notify({ type: 'warning', message: r.message }) }
 const handleDecrease = async (id) => { const r = await decreaseQuantity(id); if (!r.ok && r.message !== 'Số lượng tối thiểu là 1') notify({ type: 'warning', message: r.message }) }

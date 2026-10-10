@@ -901,7 +901,7 @@ const placeOrder = async () => {
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-xs font-bold text-[#0E0E0E] leading-snug line-clamp-2 uppercase tracking-tight">{{ item.product?.product_name }}</div>
-                <div class="text-[11px] text-[#737373] mt-0.5">UK {{ item.size?.size_name || item.size }} · {{ item.color?.color_label || item.color?.color_name || item.color }}</div>
+                <div class="text-[11px] text-[#737373] mt-0.5">{{ item.size?.standard || 'Cỡ' }} {{ item.size?.size_name || item.size }} · {{ item.color?.color_label || item.color?.color_name || item.color }}</div>
               </div>
               <div class="text-sm font-semibold text-[#0E0E0E] whitespace-nowrap">
                 {{ formatCurrency(item.subtotal) }}

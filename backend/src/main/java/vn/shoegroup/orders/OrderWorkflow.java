@@ -33,7 +33,7 @@ public class OrderWorkflow {
   }
 
   private void owner(ApiUser user, Map<String, Object> order) {
-    if (!user.admin() && number(order.get("UserID")) != user.id())
+    if (!user.staff() && number(order.get("UserID")) != user.id())
       throw new ApiException(403, "Ban khong duoc cap nhat don hang nay.");
   }
 
@@ -51,7 +51,7 @@ public class OrderWorkflow {
     boolean shipping =
         Set.of("dang van chuyen", "dang giao", "shipped", "shipping").contains(current);
     boolean lostCancellation =
-        user.admin()
+        user.staff()
             && cancel
             && lost(reason)
             && (shipping || current.equals("giao hang that bai"));
@@ -71,11 +71,11 @@ public class OrderWorkflow {
       throw new ApiException(400, "CANCEL_REASON_REQUIRED", "Vui long nhap ly do huy.");
     if (!cancel && !sql.allowed(order.get("Status"), next))
       throw new ApiException(409, "Khong the chuyen trang thai don hang.");
-    if (!user.admin() && !cancel)
+    if (!user.staff() && !cancel)
       throw new ApiException(403, "Khach hang chi co the huy don qua API nay.");
     if (cancel && !cancelled && !EDITABLE.contains(current) && !lostCancellation)
       throw new ApiException(409, "Don hang khong con o trang thai co the huy.");
-    if (user.admin()
+    if (user.staff()
         && Set.of("da xac nhan", "dang van chuyen").contains(n)
         && bank(order.get("PaymentMethod"))
         && !paid(order.get("PaymentStatus")))
@@ -102,7 +102,7 @@ public class OrderWorkflow {
     if (cancel && paid(order.get("PaymentStatus"))) sql.refund(id, order.get("TotalAmount"));
     if (n.equals("da giao hang thanh cong") && cod(order.get("PaymentMethod")))
       sql.collect(id, order.get("TotalAmount"), "COD_COLLECTION");
-    boolean direct = user.admin() && shipping && (warehouse || lostCancellation);
+    boolean direct = user.staff() && shipping && (warehouse || lostCancellation);
     if (direct) sql.history(id, order.get("Status"), "Giao hàng thất bại", reason, user.id());
     sql.history(
         id,
@@ -156,7 +156,7 @@ public class OrderWorkflow {
     owner(user, order);
     String current = normalize(order.get("PaymentStatus")), status = normalize(order.get("Status"));
     boolean terminal = Set.of("da huy", "da hoan tat tra hang").contains(status),
-        customer = !user.admin();
+        customer = !user.staff();
     if (customer) {
       if (!bank(order.get("PaymentMethod"))
           || !Set.of("cho thanh toan", "da thanh toan").contains(n))

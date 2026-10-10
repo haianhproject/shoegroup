@@ -15,6 +15,8 @@
     "test:spring": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/maven.ps1 test",
     "test:spring:sql": "node backend/scripts/sql-test.cjs",
     "test:spring:pos": "node backend/scripts/pos-audit.cjs",
+    "db:export": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/export-database.ps1",
+    "db:verify": "node backend/scripts/verify-database-export.cjs",
     "audit:source": "node tools/audit-source.cjs",
     "preview": "npm --prefix frontend run preview"
   }

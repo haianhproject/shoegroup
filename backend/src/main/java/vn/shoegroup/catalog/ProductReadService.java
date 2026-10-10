@@ -27,8 +27,11 @@ public class ProductReadService {
     private static long number(Object value) { return value instanceof Number n ? n.longValue() : 0; }
     private static double price(Object value) { return value instanceof Number n ? n.doubleValue() : 0; }
     public List<Map<String, Object>> products() {
+        return products(false);
+    }
+    public List<Map<String, Object>> products(boolean allVariants) {
         var products = jdbc.queryForList(sql("/api/products", 0), Map.of());
-        var variants = jdbc.queryForList(sql("/api/products", 1), Map.of());
+        var variants = jdbc.queryForList(allVariants ? sql("/api/products", 1).replace("WHERE ISNULL(v.IsActive, 1) = 1", "") : sql("/api/products", 1), Map.of());
         var images = jdbc.queryForList(sql("/api/products", 2), Map.of());
         Map<String, Object> imageByColor = new HashMap<>();
         for (var image : images) {
@@ -46,6 +49,10 @@ public class ProductReadService {
             long stock = vs.stream().mapToLong(v -> number(v.get("stock"))).sum();
             product.put("variants", vs); product.put("sizes", sizes); product.put("total_stock", stock); product.put("stock", stock);
             product.put("variant_count", vs.size()); product.put("in_stock", stock > 0);
+            var enabled = vs.stream().filter(v -> !Boolean.FALSE.equals(v.get("active"))).toList();
+            if(enabled.isEmpty()) enabled=vs;
+            product.put("min_price",enabled.stream().mapToDouble(v -> price(v.get("price"))).min().orElse(0));
+            product.put("max_price",enabled.stream().mapToDouble(v -> price(v.get("price"))).max().orElse(0));
             product.put("stock_by_size", sizes.stream().map(size -> Map.of("size", size, "stock", vs.stream().filter(v -> size.equals(v.get("size"))).mapToLong(v -> number(v.get("stock"))).sum())).toList());
             Map<String, Map<String, Object>> colors = new LinkedHashMap<>();
             for (var variant : vs) {

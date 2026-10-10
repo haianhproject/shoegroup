@@ -28,7 +28,7 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
     crypto: require('node:crypto').webcrypto,
     require: name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
-      if (name === 'vue') return { ...vue, onMounted() {}, onUnmounted() {} };
+      if (name === 'vue') return { ...vue, onMounted() {}, onUnmounted() {}, onBeforeUnmount() {} };
       throw new Error(`Unexpected dependency ${name} in ${relative}`);
     },
     ...globals,
@@ -290,7 +290,7 @@ function loadAdminImages() {
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
-    '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
+    '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:vue.ref(false), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => null },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
   }, {
@@ -301,13 +301,88 @@ function loadAdminImages() {
   });
 }
 
+test('employee role is 3 and customers cannot enter the staff workspace',()=>{
+  const auth=load('src/stores/authStore.js',{'../services/apiClient':{api:{},setToken(){},clearToken(){}}});
+  auth.authState.currentUser={role_id:2,role:'Customer'};
+  assert.equal(auth.isEmployee.value,false);assert.equal(auth.canUseStaffWorkspace.value,false);
+  auth.authState.currentUser={role_id:3,role:'Employee'};
+  assert.equal(auth.isEmployee.value,true);assert.equal(auth.canUseStaffWorkspace.value,true);assert.equal(auth.canManageProducts.value,false);
+  auth.authState.currentUser={role_id:1,role:'Admin'};
+  assert.equal(auth.canManageProducts.value,true);
+});
+
+test('coupon lifecycle separates scheduled, exhausted, inactive and ended',()=>{
+  const admin=loadAdminImages(),future=new Date(Date.now()+86400000).toISOString(),past=new Date(Date.now()-86400000).toISOString();
+  const coupon={active:true,quantity:5,used:0,expiry:future,start_date:past};
+  assert.equal(admin.getDiscountStatus(coupon).label,'Hoạt động');
+  assert.equal(admin.getDiscountStatus({...coupon,start_date:future}).label,'Sắp diễn ra');
+  assert.equal(admin.getDiscountStatus({...coupon,used:5}).label,'Hết mã');
+  assert.equal(admin.getDiscountStatus({...coupon,active:false}).label,'Không hoạt động');
+  assert.equal(admin.getDiscountStatus({...coupon,expiry:past}).label,'Đã kết thúc');
+  assert.equal(admin.getDiscountStatus({...coupon,quantity:0,used:10}).label,'Hoạt động');
+  admin.openDiscountForm({...coupon,expiry:past});assert.equal(admin.discountModal.open,false);
+  admin.openDiscountForm(coupon);assert.match(admin.discountModal.data.expiry,/^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('product status uses a dedicated update without resending variants or stock',async()=>{
+  const calls=[];
+  const admin=loadAdminRealtime({fetch:async(url,options)=>{calls.push({url,options});return {ok:true,headers:{get:()=> 'application/json'},json:async()=>options?.method==='PUT'?{success:true}:[]};}});
+  admin.db.products=[{id:1,name:'Shoe',active:true,variants:[{id:11,stock:99}]}];
+  admin.toggleProductStatus(admin.db.products[0]);await admin.executeConfirm();
+  const write=calls.find(c=>c.options?.method==='PUT');
+  assert.ok(write.url.endsWith('/products/1/status'));assert.deepEqual(JSON.parse(write.options.body),{active:false});
+  assert.equal(calls.some(c=>c.options?.method==='DELETE'),false);
+});
+
+test('required catalog fields reject whitespace before making an API request',async()=>{
+  let writes=0;
+  const admin=loadAdminRealtime({fetch:async()=>{writes++;return {ok:true,json:async()=>({success:true})};}});
+  admin.openForm('brands');admin.formModal.data.name='   ';await admin.saveForm();assert.equal(writes,0);
+  admin.openForm('sizes');admin.formModal.data.name='40';admin.formModal.data.standard='';await admin.saveForm();assert.equal(writes,0);
+});
+
+test('product confirmation requires a category and finite per-variant prices',()=>{
+  const admin=loadAdminImages();admin.openProductForm();admin.productForm.name='Shoe';
+  admin.productForm.colors=[{name:'Black',variants:[{price:100000,stock:1}]}];
+  admin.requestSaveProduct();assert.equal(admin.confirmModal.open,false);
+  admin.productForm.category_id=1;admin.productForm.colors[0].variants[0].price=Infinity;
+  admin.requestSaveProduct();assert.equal(admin.confirmModal.open,false);
+  admin.productForm.colors[0].variants[0].price=100000;admin.requestSaveProduct();assert.equal(admin.confirmModal.mode,'save-product');
+});
+
+test('bulk sizes preserve IDs, separate systems and do not delete saved variants',()=>{
+  const admin=loadAdminImages();
+  admin.db.sizes=[{id:1,name:'40',standard:'EU',active:true},{id:2,name:'40',standard:'US',active:true},{id:3,name:'41',standard:'EU',active:true}];
+  admin.openProductForm();admin.productForm.colors=[{id:1,name:'Black',variants:[{id:11,size_id:1,size:'40',standard:'EU',stock:3,price:100000,active:true,sku:'STABLE'}]}];
+  admin.productForm.same_price=true;admin.productForm.common_price=250000;
+  admin.setAllColorSizes(0,'EU');admin.setAllColorSizes(0,'EU');
+  assert.equal(admin.productForm.colors[0].variants.length,2);
+  admin.applyCommonVariantPrice();assert.equal(admin.productForm.colors[0].variants[0].price,250000);
+  admin.toggleColorSize(0,admin.db.sizes[0]);
+  const saved=admin.productForm.colors[0].variants[0];assert.equal(saved.id,11);assert.equal(saved.active,false);assert.equal(saved.sku,'STABLE');
+  admin.toggleColorSize(0,admin.db.sizes[1]);assert.equal(admin.productForm.colors[0].variants.length,3);
+});
+
+test('size filters preserve ascending IDs and distinguish same names in different systems',()=>{
+  const admin=loadAdminImages();admin.db.sizes=[{id:3,name:'40',standard:'US',active:true},{id:1,name:'40',standard:'EU',active:true},{id:2,name:'41',standard:'EU',active:false}];
+  admin.sizeSearch.value='40';admin.sizeStandardFilter.value='EU';assert.equal(admin.filteredSizes.value.length,1);assert.equal(admin.filteredSizes.value[0].id,1);
+  admin.sizeSearch.value='';admin.sizeStandardFilter.value='';assert.equal(admin.filteredSizes.value[0].id,1);
+  admin.sizeStatusFilter.value='inactive';assert.equal(admin.filteredSizes.value[0].id,2);
+});
+
+test('POS displays the individual variant price and omits inactive variants',()=>{
+  const admin=loadAdminImages();admin.db.products=[{id:1,name:'Shoe',price:100000,active:true}];
+  admin.db.inventory=[{id:11,product_id:1,color:'Black',size:'40',price:250000,stock:2,active:true},{id:12,product_id:1,color:'Black',size:'41',price:350000,stock:3,active:false}];
+  assert.equal(admin.posVariants.value.length,1);assert.equal(admin.posVariants.value[0].price,250000);
+});
+
 function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
-    '@/stores/authStore': { currentUser: vue.ref(null), logout() {} },
+    '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:vue.ref(false), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
   }, {
@@ -318,6 +393,26 @@ function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
     ...globals,
   });
 }
+
+test('a POS connection failure keeps the selected pending invoice and customer draft', async () => {
+  const calls=[];
+  const admin=loadAdminRealtime({fetch:async url=>{calls.push(url);throw Error('offline');}});
+  admin.posCartId.value=123;
+  admin.activePosOrder.value.customer_name='Draft customer';
+  assert.equal(await admin.loadPosCart(),false);
+  assert.equal(admin.posCartId.value,123);
+  assert.equal(admin.activePosOrder.value.customer_name,'Draft customer');
+  assert.equal(calls.length,1);
+});
+
+test('inventory fallback keeps variant prices and inactive state from products',async()=>{
+  const admin=loadAdminRealtime({fetch:async url=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>String(url).endsWith('/products')?[{id:1,name:'Shoe',active:true,price:100000,variants:[{id:11,size:'7.5',standard:'UK',color:'Black',price:350000,stock:3,active:false,version:2}]}]:[]})});
+  await admin.fetchAllData();
+  assert.equal(admin.db.inventory[0].price,350000);
+  assert.equal(admin.db.inventory[0].standard,'UK');
+  assert.equal(admin.db.inventory[0].active,false);
+  assert.equal(admin.posVariants.value.length,0);
+});
 
 test('admin read timeout releases loading and preserves the last complete snapshot', async () => {
   const timers = [];
@@ -624,8 +719,31 @@ test('product detail uses the archived Figma layout without Bootstrap utilities'
   const detail = fs.readFileSync(path.join(root, 'src/views/ProductDetail.vue'), 'utf8');
   assert.match(detail, /lg:grid-cols-2/);
   assert.match(detail, /Sản phẩm liên quan/);
-  assert.match(detail, /Chọn size \(UK\)/);
+  assert.match(detail, /Chọn kích cỡ/);
+  assert.doesNotMatch(detail,/Chọn size \(UK\)/);
   assert.doesNotMatch(detail, /\b(container-fluid|spinner-border|d-flex|flex-column|col-lg-\d+|row g-\d+|w-100|text-danger|text-muted|bi bi-)\b/);
+});
+
+test('customer size selection separates US and UK and keeps the raw size and exact variant in checkout',()=>{
+  const sizeLabels=load('src/services/variantSize.js');
+  const detail=load('src/views/ProductDetail.vue',{
+    'vue-router':{useRoute:()=>({params:{id:1}}),useRouter:()=>({push(){}})},
+    '../components/figma/product/FigmaProductCard.vue':{},
+    '../components/figma/product/FigmaProductGrid.vue':{},
+    '../services/apiClient':{api:{}},
+    '../services/variantSize':sizeLabels,
+    '../stores/cartStore':{addToCart(){},formatCurrency(){},showDrawer(){}},
+    '../stores/uiStore':{notify(){}},
+    '../../img/hero-sneakers.jpg':'image.jpg',
+  },{},['product','selectedColor','selectedSize','availableSizes','selectedVariant','sizeStock','buildCartPayload']);
+  detail.product.value={id:1,price:100000,variants:[{id:11,color:'Black',size:'7.5',standard:'US',price:200000,stock:2},{id:12,color:'Black',size:'7.5',standard:'UK',price:350000,stock:3}]};
+  detail.selectedColor.value={name:'Black'};
+  assert.deepEqual(Array.from(detail.availableSizes.value),['US 7.5','UK 7.5']);
+  detail.selectedSize.value='UK 7.5';
+  assert.equal(detail.selectedVariant.value.id,12);
+  assert.equal(detail.sizeStock('UK 7.5'),3);
+  const payload=detail.buildCartPayload();
+  assert.equal(payload.variantId,12);assert.equal(payload.size.size_name,'7.5');assert.equal(payload.product.price,350000);
 });
 
 test('login password visibility uses an accessible inline eye icon', () => {
@@ -694,7 +812,7 @@ test('account lock controls preserve an active administrator', () => {
   assert.equal(accounts.canToggleAccountLock(lockedAdmin), true);
 
   const source = fs.readFileSync(path.join(root, 'src/views/admin/pages/AccountsPage.vue'), 'utf8');
-  assert.match(source, /v-if="canToggleAccountLock\(a\)"/);
+  assert.match(source, /v-if="canToggleAccountLock\(account\)"/);
 });
 
 test('POS walk-in customers never become synthetic login accounts', () => {

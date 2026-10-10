@@ -13,6 +13,7 @@ import { useRoute, useRouter } from "vue-router";
 import AdminIcon from "./components/AdminIcon.vue";
 import AdminLogoutModal from "./components/AdminLogoutModal.vue";
 import brandMark from "../../../img/logogiay.png";
+import { isEmployee } from '../../stores/authStore';
 import { genericBrandLogo, resolveBrandLogo } from "../../utils/brandLogos";
 import {
   isNavOpen,
@@ -75,8 +76,8 @@ const sections = [
     { to: '/admin/panel/sizes', icon: 'ruler', label: 'Kích thước' },
   ] },
   { title: 'Kinh doanh', items: [
-    { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã khuyến mãi' },
-    { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Giảm giá biến thể' },
+    { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã giảm giá' },
+    { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Khuyến mại sản phẩm' },
     { to: '/admin/panel/customers', icon: 'people', label: 'Khách hàng' },
   ] },
   { title: 'Hệ thống', items: [
@@ -86,11 +87,11 @@ const sections = [
 const normalizeSearch = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
 const visibleSections = computed(() => sections.map(section => ({
   ...section,
-  items: section.items.filter(item => normalizeSearch(item.label).includes(normalizeSearch(navSearch.value.trim()))),
+  items: section.items.filter(item => (!isEmployee.value || ['payments','pos','products'].includes(item.to.split('/').pop())) && normalizeSearch(item.label).includes(normalizeSearch(navSearch.value.trim()))),
 })).filter(section => section.items.length));
 const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
 const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
-const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products'].includes(route.name));
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-discounts'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
@@ -311,7 +312,7 @@ onUnmounted(() => {
         <p v-if="!visibleSections.length" class="admin-nav-empty">Không tìm thấy mục phù hợp.</p>
       </nav>
       <div class="admin-sidebar-footer">
-        <div class="admin-profile"><span class="admin-avatar">{{ initials }}</span><span class="admin-profile-info"><strong>{{ getDisplayName }}</strong><small>Quản trị viên</small></span></div>
+        <div class="admin-profile"><span class="admin-avatar">{{ initials }}</span><span class="admin-profile-info"><strong>{{ getDisplayName }}</strong><small>{{ isEmployee ? 'Nhân viên' : 'Quản trị viên' }}</small></span></div>
         <button type="button" class="admin-icon-button admin-logout" aria-label="Đăng xuất" title="Đăng xuất" @click="onLogout"><AdminIcon name="logout" /></button>
       </div>
     </aside>
@@ -575,6 +576,7 @@ onUnmounted(() => {
               v-else
               v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :type="f.type || 'text'"
+              :step="f.step" :min="f.min" :required="f.required"
               :disabled="f.disabled"
               class="sg-input rounded-2"
             />

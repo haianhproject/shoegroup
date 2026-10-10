@@ -56,6 +56,7 @@ public class DiscountService {
   }
 
   private static Timestamp date(Object value, boolean endOfDay, boolean required) {
+    if(value instanceof Timestamp timestamp) return timestamp;
     String raw = Objects.toString(value, "").trim();
     if (raw.isEmpty()) {
       if (required) throw new ApiException(400, "Thieu ngay het han.");
@@ -77,7 +78,17 @@ public class DiscountService {
   }
 
   @Transactional(isolation = Isolation.SERIALIZABLE)
-  public Map<String, Object> coupon(String routeId, Map<String, Object> b) {
+  public Map<String, Object> coupon(String routeId, Map<String, Object> input) {
+    Map<String,Object> b=new HashMap<>(input);
+    if(routeId!=null) {
+      int id=Values.integer(routeId,1,Integer.MAX_VALUE,null);
+      var rows=jdbc.queryForList("SELECT *,CASE WHEN ExpiryDate<GETDATE() THEN 1 ELSE 0 END AS Finished FROM Coupons WITH(UPDLOCK,HOLDLOCK) WHERE CouponID=?",id);
+      if(rows.isEmpty()) throw new ApiException(404,"Không tìm thấy mã giảm giá.");
+      if(((Number)rows.get(0).get("Finished")).intValue()==1) throw new ApiException(409,"Mã giảm giá đã kết thúc, không được sửa.");
+      if(b.size()==1 && (b.containsKey("active")||b.containsKey("IsActive"))) {
+        Object active=field(b,false,"IsActive","active"); b=new HashMap<>(rows.get(0)); b.put("IsActive",active);
+      }
+    }
     String code = text(field(b, "", "CouponCode", "code"), 50).toUpperCase(Locale.ROOT),
         name = text(field(b, "", "CouponName", "name"), 200);
     if (!code.matches("[A-Z0-9][A-Z0-9_-]{1,49}") || name.isEmpty())
@@ -94,7 +105,7 @@ public class DiscountService {
     int limit =
         Values.integer(field(b, 0, "UsageLimit", "limit", "quantity"), 0, Integer.MAX_VALUE, 0);
     Timestamp start = date(field(b, null, "StartDate", "start_date"), false, false),
-        expiry = date(field(b, null, "ExpiryDate", "expiry"), false, true);
+        expiry = date(field(b, null, "ExpiryDate", "expiry"), true, true);
     if (start != null && !expiry.after(start))
       throw new ApiException(400, "Ngay het han phai sau ngay bat dau.");
     String description = text(field(b, "", "Description", "description"), 500);
@@ -135,125 +146,57 @@ public class DiscountService {
   }
 
   @Transactional(isolation = Isolation.SERIALIZABLE)
-  public Map<String, Object> variant(String routeId, Map<String, Object> b) {
-    int
-        vid =
-            Values.integer(
-                field(b, null, "ProductVariantID", "variant_id"), 1, Integer.MAX_VALUE, null),
-        pid = Values.integer(field(b, null, "ProductID", "product_id"), 1, Integer.MAX_VALUE, null);
-    String scope =
-        text(field(b, "color", "ApplyScope", "apply_scope", "scope"), 20).toLowerCase(Locale.ROOT);
-    if (scope.equals("size")) scope = "variant";
-    if (!scope.equals("color") && !scope.equals("variant"))
-      throw new ApiException(400, "Pham vi giam gia khong hop le.");
-    String kind = type(field(b, "", "DiscountType", "discount_type", "type"), false);
-    BigDecimal value = amount(field(b, 0, "DiscountValue", "value"));
-    if (value.signum() <= 0
-        || (kind.equals("percent")
-            && (value.compareTo(BigDecimal.valueOf(100)) >= 0
-                || value.stripTrailingZeros().scale() > 0)))
-      throw new ApiException(400, "Gia tri giam gia khong hop le.");
-    int quantity = Values.integer(field(b, 0, "Quantity", "quantity"), 0, Integer.MAX_VALUE, 0);
-    Timestamp start = date(field(b, null, "StartDate", "start_date"), false, false),
-        end = date(field(b, null, "EndDate", "end_date"), true, false);
-    if (start != null && end != null && !end.after(start))
-      throw new ApiException(400, "Ngay ket thuc phai sau ngay bat dau.");
-    boolean active = Values.bool(field(b, true, "IsActive", "active"), true);
-    String reason = text(field(b, "", "Reason", "reason"), 100),
-        description = text(field(b, "", "Description", "description"), 500),
-        hex = text(field(b, "", "ColorHex", "color_hex"), 20);
-    if (!hex.isEmpty() && !hex.matches("(?i)#[0-9a-f]{3,8}"))
-      throw new ApiException(400, "Ma mau khong hop le.");
-    // Serialize overlapping promotions on one product, including different sizes of a color.
-    jdbc.queryForList(
-        "SELECT ProductID FROM Products WITH(UPDLOCK,HOLDLOCK) WHERE ProductID=?", pid);
-    var variants =
-        jdbc.queryForList(
-            "SELECT v.ColorName,v.ColorHex,p.BasePrice+ISNULL(v.PriceAdjustment,0) AS"
-                + " ExactPrice,p.BasePrice+ISNULL((SELECT MIN(s.PriceAdjustment) FROM"
-                + " ProductVariants s WHERE s.ProductID=v.ProductID AND"
-                + " ISNULL(s.ColorName,N'')=ISNULL(v.ColorName,N'') AND ISNULL(s.IsActive,1)=1),0)"
-                + " AS ColorPrice FROM ProductVariants v JOIN Products p ON p.ProductID=v.ProductID"
-                + " WHERE v.ProductID=? AND v.ProductVariantID=? AND ISNULL(v.IsActive,1)=1 AND"
-                + " ISNULL(p.IsActive,1)=1",
-            pid,
-            vid);
-    if (variants.isEmpty()) throw new ApiException(400, "Bien the khong thuoc san pham dang ban.");
-    var row = variants.get(0);
-    if (kind.equals("fixed")
-        && value.compareTo(
-                new BigDecimal(
-                    row.get(scope.equals("variant") ? "ExactPrice" : "ColorPrice").toString()))
-            >= 0) throw new ApiException(400, "Gia ban moi phai nho hon gia goc.");
-    Integer id = routeId == null ? null : Values.integer(routeId, 1, Integer.MAX_VALUE, null);
-    if (active
-        && !jdbc.queryForList(
-                "SELECT TOP 1 VariantDiscountID FROM VariantDiscounts WITH(UPDLOCK,HOLDLOCK) WHERE"
-                    + " ProductID=? AND IsActive=1 AND VariantDiscountID<>? AND ((?='color' AND"
-                    + " ISNULL(ColorName,N'')=?) OR (?='variant' AND"
-                    + " ((ISNULL(ApplyScope,'color')='color' AND ISNULL(ColorName,N'')=?) OR"
-                    + " (ISNULL(ApplyScope,'color')='variant' AND ProductVariantID=?)))) AND"
-                    + " (ISNULL(Quantity,0)<=0 OR ISNULL(UsedCount,0)<Quantity) AND (EndDate IS"
-                    + " NULL OR EndDate>=ISNULL(?,GETDATE())) AND (? IS NULL OR StartDate IS NULL"
-                    + " OR StartDate<=?)",
-                pid,
-                id == null ? 0 : id,
-                scope,
-                Objects.toString(row.get("ColorName"), ""),
-                scope,
-                Objects.toString(row.get("ColorName"), ""),
-                vid,
-                start,
-                end,
-                end)
-            .isEmpty()) throw new ApiException(409, "Pham vi da co chuong trinh trung thoi gian.");
-    var args =
-        new ArrayList<Object>(
-            Arrays.asList(
-                vid,
-                pid,
-                row.get("ColorName"),
-                row.get("ColorHex"),
-                scope,
-                kind.equals("percent") ? "Theo phần trăm" : "Cố định",
-                value,
-                kind.equals("percent") ? value : 0,
-                0,
-                quantity,
-                start,
-                end,
-                reason,
-                active,
-                description));
-    if (id == null) {
-      int created =
-          jdbc.queryForObject(
-              "INSERT"
-                  + " VariantDiscounts(ProductVariantID,ProductID,ColorName,ColorHex,ApplyScope,DiscountType,DiscountValue,DiscountPercent,MaxDiscountAmount,Quantity,StartDate,EndDate,Reason,IsActive,Description,UsedCount,CreatedAt)"
-                  + " OUTPUT INSERTED.VariantDiscountID"
-                  + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,GETDATE())",
-              Integer.class,
-              args.toArray());
-      return Map.of("success", true, "id", created);
+  public Map<String, Object> variant(String routeId, Map<String, Object> input) {
+    Map<String,Object> b=new HashMap<>(input);
+    Integer id=routeId==null?null:Values.integer(routeId,1,Integer.MAX_VALUE,null);
+    if(id!=null) {
+      var existing=jdbc.queryForList("SELECT *,CASE WHEN EndDate<GETDATE() THEN 1 ELSE 0 END AS Finished FROM VariantDiscounts WITH(UPDLOCK,HOLDLOCK) WHERE VariantDiscountID=?",id);
+      if(existing.isEmpty()) throw new ApiException(404,"Không tìm thấy khuyến mại.");
+      if(((Number)existing.get(0).get("Finished")).intValue()==1) throw new ApiException(409,"Khuyến mại đã kết thúc, không được sửa.");
+      if(b.size()==1 && (b.containsKey("active")||b.containsKey("IsActive"))) {
+        Object active=Values.first(b,false,"active","IsActive");
+        if(!Values.bool(active,true)) {
+          jdbc.update("UPDATE VariantDiscounts SET IsActive=0 WHERE VariantDiscountID=?",id);
+          return Values.success();
+        }
+        b=new HashMap<>(existing.get(0)); b.put("IsActive",active);
+      }
+    }
+    String scope=text(field(b,"color","ApplyScope","apply_scope","scope"),20).toLowerCase(Locale.ROOT);
+    if(!Set.of("color","variant").contains(scope)) throw new ApiException(400,"Phạm vi khuyến mại không hợp lệ.");
+    Object rawVid=field(b,null,"ProductVariantID","variant_id");
+    Integer vid=rawVid==null||rawVid.toString().isBlank()?null:Values.integer(rawVid,1,Integer.MAX_VALUE,null);
+    int pid=Values.integer(field(b,null,"ProductID","product_id"),1,Integer.MAX_VALUE,null);
+    Object rawColor=field(b,null,"ColorID","color_id");
+    Integer color=rawColor==null||rawColor.toString().isBlank()?null:Values.integer(rawColor,1,Integer.MAX_VALUE,null);
+    jdbc.queryForList("SELECT ProductID FROM Products WITH(UPDLOCK,HOLDLOCK) WHERE ProductID=?",pid);
+    var target=jdbc.queryForList("SELECT TOP 1 v.ColorID,v.SalePrice AS ExactPrice,(SELECT MIN(s.SalePrice) FROM ProductVariants s WHERE s.ProductID=v.ProductID AND s.ColorID=v.ColorID AND s.IsActive=1) AS ColorPrice FROM ProductVariants v JOIN Products p ON p.ProductID=v.ProductID WHERE v.ProductID=? AND ((? IS NOT NULL AND v.ProductVariantID=?) OR (? IS NULL AND v.ColorID=?)) AND v.IsActive=1 AND p.IsActive=1 ORDER BY v.ProductVariantID",pid,vid,vid,vid,color);
+    if(target.isEmpty() || (scope.equals("variant")&&vid==null)) throw new ApiException(400,"Vui lòng chọn sản phẩm, màu hoặc biến thể đang hoạt động.");
+    int resolved=((Number)target.get(0).get("ColorID")).intValue();
+    if(color!=null && color!=resolved) throw new ApiException(400,"Màu không thuộc biến thể đã chọn.");
+    color=resolved;
+    String kind=type(field(b,"Theo phần trăm","DiscountType","discount_type","type"),false);
+    BigDecimal value=amount(field(b,0,"DiscountValue","value"));
+    if(value.signum()<=0 || (kind.equals("percent")&&(value.compareTo(BigDecimal.valueOf(100))>=0||value.stripTrailingZeros().scale()>0))) throw new ApiException(400,"Phần trăm giảm phải là số nguyên từ 1 đến 99.");
+    if(kind.equals("fixed") && value.compareTo((BigDecimal)target.get(0).get(scope.equals("variant")?"ExactPrice":"ColorPrice"))>=0) throw new ApiException(400,"Giá khuyến mại phải nhỏ hơn giá bán.");
+    int quantity=Values.integer(field(b,0,"Quantity","quantity"),0,Integer.MAX_VALUE,0);
+    BigDecimal cap=amount(field(b,0,"MaxDiscountAmount","max_discount"));
+    Timestamp begin=date(field(b,null,"StartDate","start_date"),false,false),end=date(field(b,null,"EndDate","end_date"),true,false);
+    if(begin!=null&&end!=null&&!end.after(begin)) throw new ApiException(400,"Ngày kết thúc phải sau ngày bắt đầu.");
+    boolean active=Values.bool(field(b,true,"IsActive","active"),true);
+    if(active&&!jdbc.queryForList("SELECT TOP 1 d.VariantDiscountID FROM VariantDiscounts d WITH(UPDLOCK,HOLDLOCK) LEFT JOIN ProductVariants v ON v.ProductVariantID=d.ProductVariantID WHERE d.ProductID=? AND d.IsActive=1 AND d.VariantDiscountID<>? AND (ISNULL(d.Quantity,0)<=0 OR d.UsedCount<d.Quantity) AND (d.EndDate IS NULL OR d.EndDate>=ISNULL(?,GETDATE())) AND (? IS NULL OR d.StartDate IS NULL OR d.StartDate<=?) AND ((?='color' AND COALESCE(d.ColorID,v.ColorID)=?) OR (?='variant' AND ((d.ApplyScope='color' AND d.ColorID=?) OR (d.ApplyScope='variant' AND d.ProductVariantID=?))))",pid,id==null?0:id,begin,end,end,scope,color,scope,color,vid).isEmpty()) throw new ApiException(409,"Phạm vi đã có khuyến mại trùng thời gian.");
+    var args=new ArrayList<Object>(Arrays.asList(scope.equals("variant")?vid:null,pid,color,scope,kind.equals("percent")?"Theo phần trăm":"Cố định",value,cap,quantity,begin,end,text(field(b,"","Reason","reason"),100),active));
+    if(id==null) {
+      int created=jdbc.queryForObject("INSERT VariantDiscounts(ProductVariantID,ProductID,ColorID,ApplyScope,DiscountType,DiscountValue,MaxDiscountAmount,Quantity,StartDate,EndDate,Reason,IsActive,UsedCount,CreatedAt) OUTPUT INSERTED.VariantDiscountID VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,GETDATE())",Integer.class,args.toArray());
+      return Map.of("success",true,"id",created);
     }
     args.add(id);
-    if (jdbc.update(
-            "UPDATE VariantDiscounts SET"
-                + " ProductVariantID=?,ProductID=?,ColorName=?,ColorHex=?,ApplyScope=?,DiscountType=?,DiscountValue=?,DiscountPercent=?,MaxDiscountAmount=?,Quantity=?,StartDate=?,EndDate=?,Reason=?,IsActive=?,Description=?"
-                + " WHERE VariantDiscountID=?",
-            args.toArray())
-        != 1) throw new ApiException(404, "Khong tim thay giam gia bien the.");
+    jdbc.update("UPDATE VariantDiscounts SET ProductVariantID=?,ProductID=?,ColorID=?,ApplyScope=?,DiscountType=?,DiscountValue=?,MaxDiscountAmount=?,Quantity=?,StartDate=?,EndDate=?,Reason=?,IsActive=? WHERE VariantDiscountID=?",args.toArray());
     return Values.success();
   }
 
+  @Transactional(isolation = Isolation.SERIALIZABLE)
   public Map<String, Object> delete(String routeId, boolean variant) {
-    int id = Values.integer(routeId, 1, Integer.MAX_VALUE, null);
-    if (jdbc.update(
-            variant
-                ? "UPDATE VariantDiscounts SET IsActive=0 WHERE VariantDiscountID=?"
-                : "DELETE FROM Coupons WHERE CouponID=?",
-            id)
-        != 1) throw new ApiException(404, "Khong tim thay khuyen mai.");
-    return Values.success();
+    return variant ? variant(routeId,Map.of("active",false)) : coupon(routeId,Map.of("active",false));
   }
 }

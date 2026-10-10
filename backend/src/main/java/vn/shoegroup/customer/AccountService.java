@@ -30,9 +30,9 @@ public class AccountService {
         String email = Values.email(Values.first(body, null, "username", "email"));
         String name = name(body.get("name"));
         String password = password(body.get("password"));
-        int role = Values.integer(body.get("role_id"), 1, 2, null);
+        int role = Values.integer(body.get("role_id"), 1, 3, null);
         if (email == null) throw new ApiException(400, "Email khong hop le.");
-        jdbc.update("INSERT Users(Email,PasswordHash,FullName,RoleID,IsActive) VALUES(?,?,?,?,1)", email, passwords.hash(password), name, role);
+        jdbc.update("INSERT Users(Email,PasswordHash,FullName,RoleID,IsActive) VALUES(?,?,?,?,?)", email, passwords.hash(password), name, role, Values.bool(body.get("active"),true));
         return Values.success();
     }
     @Transactional(isolation = Isolation.SERIALIZABLE)
@@ -58,7 +58,7 @@ public class AccountService {
             field(sets, params, "AvatarURL", "avatar", avatar.isEmpty() ? null : avatar);
         }
         if (body.get("role_id") != null && !body.get("role_id").equals(""))
-            field(sets, params, "RoleID", "role", Values.integer(body.get("role_id"), 1, 2, null));
+            field(sets, params, "RoleID", "role", Values.integer(body.get("role_id"), 1, 3, null));
         if (body.containsKey("active")) field(sets, params, "IsActive", "active", Values.bool(body.get("active"), true));
         if (body.get("password") != null && !body.get("password").toString().trim().isEmpty()) {
             field(sets, params, "PasswordHash", "password", passwords.hash(password(body.get("password"))));

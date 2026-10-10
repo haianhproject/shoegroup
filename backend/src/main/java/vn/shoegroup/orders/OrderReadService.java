@@ -106,7 +106,7 @@ public class OrderReadService {
         limit = Values.integer(input.get("limit"), 1, 100, 20);
     Map<String, Object> args = new HashMap<>();
     Object owner = user.id();
-    if (user.admin())
+    if (user.staff())
       owner =
           input.getOrDefault("userId", "").isEmpty()
               ? null

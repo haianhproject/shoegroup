@@ -1,7 +1,8 @@
 <!-- Mục đích: Trang quản lý sản phẩm và biến thể, gồm danh sách cùng form thêm/sửa. -->
 <!-- Trang: Quản Lý Sản Phẩm (danh sách + form thêm/sửa) -->
 <script setup>
-import { computed } from "vue";
+import { canManageProducts } from '../../../stores/authStore';
+import { computed, ref } from "vue";
 import {
   productSearch,
   filterCategory,
@@ -9,9 +10,6 @@ import {
   openProductForm,
   filteredProducts,
   formatPrice,
-  restoreItem,
-  deleteProduct,
-  isProductSoftDeleted,
   onProductImageFile,
   colorImageDraft,
   onColorImageFile,
@@ -19,7 +17,7 @@ import {
   onColorDraftImageFile,
   changeColor,
   activeCategories,
-  SHOE_SIZES,
+  availableVariantSizes, setAllColorSizes, applyCommonVariantPrice, toggleVariantStatus,
   productFormOpen,
   closeProductForm,
   productForm,
@@ -28,7 +26,7 @@ import {
   removeColor,
   toggleColorSize,
   colorHasSize,
-  saveProduct,
+  requestSaveProduct, productSaving, toggleProductStatus,
   productDetailModal,
   openProductDetail,
   closeProductDetail,
@@ -44,6 +42,8 @@ import {
   colorStockTotal,
 } from "../adminStore";
 
+const variantStandard = ref("EU");
+const currentSizes = computed(() => availableVariantSizes.value.filter(s => s.standard === variantStandard.value));
 const activeProductCount = computed(() => db.products.filter((p) => p.active).length);
 const featuredProductCount = computed(() => db.products.filter((p) => p.is_featured).length);
 const productImagePlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="12" fill="#f3f3f4"/><rect x="48" y="49" width="64" height="62" rx="8" fill="none" stroke="#b6b6bb" stroke-width="3"/><circle cx="68" cy="69" r="7" fill="#b6b6bb"/><path d="m50 99 23-23 15 15 9-9 14 17" fill="none" stroke="#b6b6bb" stroke-width="3" stroke-linejoin="round"/></svg>')}`;
@@ -68,14 +68,14 @@ function onProductImageError(event) {
         <h1>Quản lý sản phẩm</h1>
         <p class="products-subtitle">Theo dõi sản phẩm, biến thể và tồn kho trong một nơi.</p>
       </div>
-      <button @click="openProductForm()" type="button" class="btn btn-dark products-add-button">
+      <button v-if="canManageProducts" @click="openProductForm()" type="button" class="btn btn-dark products-add-button">
         <i class="icon icon-plus-lg" aria-hidden="true"></i> Thêm sản phẩm
       </button>
     </header>
 
     <div class="products-summary" aria-label="Tổng quan sản phẩm">
       <div><span>Tổng sản phẩm</span><strong>{{ db.products.length }}</strong></div>
-      <div><span>Đang hiển thị</span><strong>{{ activeProductCount }}</strong></div>
+      <div><span>Hoạt động</span><strong>{{ activeProductCount }}</strong></div>
       <div><span>Sản phẩm nổi bật</span><strong>{{ featuredProductCount }}</strong></div>
     </div>
 
@@ -122,7 +122,7 @@ function onProductImageError(event) {
                 <span class="products-material" v-text="getMaterialName(p.material_id)"></span>
               </td>
               <td class="products-price">
-                <strong>{{ formatPrice(p.price) }}</strong>
+                <strong>{{ formatPrice(p.min_price ?? p.price) }}<span v-if="p.max_price > p.min_price"> – {{ formatPrice(p.max_price) }}</span></strong>
               </td>
               <td class="text-center products-variant-count" v-text="productVariantCount(p.id)"></td>
               <td class="text-center">
@@ -130,14 +130,13 @@ function onProductImageError(event) {
                 <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
               </td>
               <td>
-                <span class="products-status" :class="{ 'is-active': p.active }"><span aria-hidden="true"></span>{{ p.active ? 'Đang hiển thị' : 'Đã ẩn' }}</span>
+                <span class="products-status" :class="{ 'is-active': p.active }"><span aria-hidden="true"></span>{{ p.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
               </td>
               <td>
                 <div class="products-actions">
                   <button @click="openProductDetail(p)" type="button" class="products-action products-action-view" :aria-label="'Xem chi tiết ' + p.name" title="Xem chi tiết sản phẩm"><i class="icon icon-eye" aria-hidden="true"></i></button>
-                  <button @click="openProductForm(p)" type="button" class="products-action" :aria-label="'Chỉnh sửa ' + p.name" title="Chỉnh sửa sản phẩm"><i class="icon icon-pencil" aria-hidden="true"></i></button>
-                  <button v-if="isProductSoftDeleted(p)" @click="restoreItem('products', p)" type="button" class="products-action" :aria-label="'Khôi phục ' + p.name" title="Khôi phục sản phẩm"><i class="icon icon-arrow-counterclockwise" aria-hidden="true"></i></button>
-                  <button @click="deleteProduct(p)" type="button" class="products-action products-action-danger" :aria-label="(isProductSoftDeleted(p) ? 'Xóa vĩnh viễn ' : 'Ẩn ') + p.name" :title="isProductSoftDeleted(p) ? 'Xóa vĩnh viễn sản phẩm' : 'Ẩn sản phẩm'"><i class="icon" :class="isProductSoftDeleted(p) ? 'icon-trash-fill' : 'icon-eye-slash'" aria-hidden="true"></i></button>
+                  <button v-if="canManageProducts" @click="openProductForm(p)" type="button" class="products-action" :aria-label="'Chỉnh sửa ' + p.name" title="Chỉnh sửa sản phẩm"><i class="icon icon-pencil" aria-hidden="true"></i></button>
+                  <input v-if="canManageProducts" type="checkbox" role="switch" :checked="p.active" @change="toggleProductStatus(p,$event)" :aria-label="'Trạng thái '+p.name" :title="p.active?'Ngừng hoạt động':'Bật hoạt động'">
                 </div>
               </td>
             </tr>
@@ -148,7 +147,7 @@ function onProductImageError(event) {
                   <h2>{{ productSearch || filterCategory ? 'Không tìm thấy sản phẩm' : 'Danh mục đang trống' }}</h2>
                   <p>{{ productSearch || filterCategory ? 'Thử từ khóa khác hoặc xóa bộ lọc để xem thêm sản phẩm.' : 'Thêm sản phẩm đầu tiên để bắt đầu quản lý cửa hàng.' }}</p>
                   <button v-if="productSearch || filterCategory" @click="resetProductFilters" type="button" class="btn btn-light border rounded-2">Xóa bộ lọc</button>
-                  <button v-else @click="openProductForm()" type="button" class="btn btn-dark rounded-2">Thêm sản phẩm</button>
+                  <button v-else-if="canManageProducts" @click="openProductForm()" type="button" class="btn btn-dark rounded-2">Thêm sản phẩm</button>
                 </div>
               </td>
             </tr>
@@ -176,11 +175,12 @@ function onProductImageError(event) {
         <div class="product-form-panel mb-4">
           <h2 class="product-panel-title">Thông tin cơ bản</h2>
           <div class="mb-3">
-            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm</label
+            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm *</label
             ><input
               id="product-name"
               v-model="productForm.name"
               type="text"
+              required maxlength="255"
               class="sg-input rounded-2"
               placeholder="Ví dụ: Giày Sneaker Classic"
             />
@@ -197,7 +197,7 @@ function onProductImageError(event) {
           </div>
           <div class="grid grid-cols-12 gap-3">
             <div class="col-span-12 md:col-span-6">
-              <label for="product-category" class="block text-sm font-medium">Danh mục</label
+            <label for="product-category" class="block text-sm font-medium">Danh mục *</label
               ><select
                 id="product-category"
                 v-model="productForm.category_id"
@@ -244,20 +244,18 @@ function onProductImageError(event) {
                 ></option>
               </select>
             </div>
-            <div class="col-span-12">
-              <label for="product-price" class="block text-sm font-medium">Giá bán (VNĐ)</label
-              ><input
-                id="product-price"
-                v-model.number="productForm.price"
-                type="number"
-                class="sg-input rounded-2"
-              />
-            </div>
+
         </div>
         </div>
 
         <div class="product-form-panel">
-          <h2 class="product-panel-title">Màu sắc &amp; kích cỡ</h2>
+          <h2 class="product-panel-title">Biến thể sản phẩm</h2>
+          <div class="flex flex-wrap gap-3 items-end mb-3">
+            <label class="flex items-center gap-2"><input v-model="productForm.same_price" type="checkbox" @change="applyCommonVariantPrice">Cùng giá cho các biến thể</label>
+            <div v-if="productForm.same_price"><label for="common-price" class="block text-sm">Giá chung (VNĐ) *</label><input id="common-price" v-model.number="productForm.common_price" type="number" min="1" step="1" class="sg-input" @input="applyCommonVariantPrice" style="max-width:180px"></div>
+            <div><label for="initial-stock" class="block text-sm">Tồn ban đầu</label><input id="initial-stock" v-model.number="productForm.default_stock" type="number" min="0" step="1" class="sg-input" style="max-width:130px"></div>
+            <div><label for="size-system" class="block text-sm">Hệ kích cỡ</label><select id="size-system" v-model="variantStandard" class="sg-input"><option>EU</option><option>US</option><option>UK</option></select></div>
+          </div>
 
           <!-- TONG HOP: tach theo bien the -->
           <div class="flex flex-wrap gap-2 mb-3">
@@ -324,9 +322,9 @@ function onProductImageError(event) {
                   type="button"
                   @click="removeColor(i)"
                   class="btn btn-sm btn-outline-danger rounded-2 py-1 px-2.5 text-xs ml-auto"
-                  title="Xóa biến thể màu này"
+                  title="Ngừng hoạt động các biến thể màu này"
                 >
-                  <i class="icon icon-trash mr-1"></i> Xóa màu
+                  {{ (c.variants || []).some(v=>v.id) ? 'Ngừng màu' : 'Bỏ màu chưa lưu' }}
                 </button>
               </div>
 
@@ -365,7 +363,7 @@ function onProductImageError(event) {
                   >
                     <option :value="c.id" v-text="c.name"></option>
                     <option
-                      v-for="col in db.colors.filter(item => item.name !== c.name)"
+                      v-for="col in db.colors.filter(item => item.active && item.name !== c.name)"
                       :key="col.id"
                       :value="col.id"
                       v-text="col.name"
@@ -376,44 +374,24 @@ function onProductImageError(event) {
 
               <!-- Kích cỡ & Số lượng cho màu này -->
               <div class="pt-2 border-t">
-                <label class="block text-xs font-semibold text-gray-700 mb-1.5"
-                  >Kích cỡ &amp; số lượng cho màu này</label
-                >
-                <div class="flex flex-wrap gap-1 mb-2">
-                  <button
-                    v-for="s in SHOE_SIZES"
-                    :key="s"
-                    type="button"
-                    @click="toggleColorSize(i, s)"
-                    class="btn btn-sm rounded-2 text-xs"
-                    :class="colorHasSize(c, s) ? 'btn-dark' : 'btn-outline-secondary'"
-                    v-text="s"
-                  ></button>
+                <div class="flex flex-wrap gap-2 items-center mb-2">
+                  <label v-for="size in currentSizes" :key="size.id" class="flex items-center gap-1 border px-2 py-1 text-sm">
+                    <input type="checkbox" :checked="colorHasSize(c,size)" @change="toggleColorSize(i,size)">{{ size.standard }} {{ size.name }}
+                  </label>
+                  <button type="button" @click="setAllColorSizes(i,variantStandard)" class="btn btn-sm btn-light border" title="Thêm toàn bộ kích cỡ thuộc hệ đang chọn">Chọn tất cả</button>
                 </div>
-                <div v-if="c.variants && c.variants.length" class="grid grid-cols-12 gap-2">
-                  <div
-                    v-for="(sv, si) in c.variants"
-                    :key="si"
-                    class="col-span-6 sm:col-span-4 md:col-span-3"
-                  >
-                    <div class="flex input-group-sm">
-                      <span
-                        class="flex items-center text-xs"
-                        v-text="'Size ' + sv.size"
-                      ></span>
-                      <input
-                        v-model.number="sv.stock"
-                        type="number"
-                        min="0"
-                        class="sg-input text-end text-xs"
-                        placeholder="SL"
-                      />
-                    </div>
-                  </div>
+                <div class="table-responsive">
+                  <table v-if="c.variants?.length" class="table align-middle mb-0" style="min-width:580px">
+                    <thead><tr><th>SKU</th><th>Kích cỡ</th><th>Giá bán (VNĐ) *</th><th>Tồn kho *</th><th>Trạng thái</th></tr></thead>
+                    <tbody><tr v-for="sv in c.variants" :key="sv.id || sv.size_id || sv.size">
+                      <td style="max-width:170px;overflow-wrap:anywhere" class="text-xs">{{ sv.sku || (productForm.id ? 'SKU-'+productForm.id+'-C'+c.id+'-S'+sv.size_id : 'Tự sinh khi lưu') }}</td>
+                      <td style="white-space:nowrap">{{ sv.standard || 'EU' }} {{ sv.size }}</td>
+                      <td><input v-model.number="sv.price" :disabled="productForm.same_price" type="number" min="1" step="1" required class="sg-input" style="width:140px" :aria-label="'Giá '+c.name+' '+sv.size"></td>
+                      <td><input v-model.number="sv.stock" type="number" min="0" step="1" required class="sg-input" style="width:85px" :aria-label="'Tồn kho '+c.name+' '+sv.size"></td>
+                      <td><label class="flex gap-2 items-center text-xs"><input v-model="sv.active" :disabled="!productForm.active" type="checkbox" role="switch">{{ !productForm.active || sv.active === false ? 'Không hoạt động' : Number(sv.stock) === 0 ? 'Hết hàng' : 'Hoạt động' }}</label></td>
+                    </tr></tbody>
+                  </table>
                 </div>
-                <span v-else class="text-gray-500 text-xs fst-italic"
-                  >Chọn size ở trên rồi nhập số lượng.</span
-                >
               </div>
             </div>
             <span
@@ -434,7 +412,7 @@ function onProductImageError(event) {
                 >
                   <option value="">-- Chọn màu --</option>
                   <option
-                    v-for="c in db.colors"
+                    v-for="c in db.colors.filter(c => c.active)"
                     :key="c.id"
                     :value="c.id"
                     v-text="c.name"
@@ -504,7 +482,7 @@ function onProductImageError(event) {
                   ? 'badge-active'
                   : 'bg-secondary-subtle text-gray-600'
               "
-              v-text="productForm.active ? 'Đang hoạt động' : 'Đã ẩn'"
+              v-text="productForm.active ? 'Hoạt động' : 'Không hoạt động'"
             ></span>
           </div>
           <div class="flex items-center gap-2 flex items-center mb-2">
@@ -514,7 +492,7 @@ function onProductImageError(event) {
               type="checkbox"
               id="activeSwitch"
             /><label class="text-sm text-sm" for="activeSwitch"
-              >Hiển thị trên cửa hàng</label
+              >Hoạt động</label
             >
           </div>
           <div class="flex items-center gap-2 flex items-center">
@@ -529,7 +507,7 @@ function onProductImageError(event) {
           </div>
         </div>
         <div class="product-editor-save">
-          <button @click="saveProduct" type="button" class="btn btn-dark w-full rounded-2 font-bold py-2">
+          <button @click="requestSaveProduct" :disabled="productSaving" type="button" class="btn btn-dark w-full rounded-2 font-bold py-2">
             <i class="icon icon-check2-circle mr-2" aria-hidden="true"></i> Lưu sản phẩm
           </button>
           <button @click="closeProductForm" type="button" class="btn btn-light border w-full rounded-2">Hủy thay đổi</button>
@@ -568,7 +546,7 @@ function onProductImageError(event) {
                 <span>SKU cha: {{ productDetailModal.product.parent_sku || 'Chưa thiết lập' }}</span>
               </div>
               <div class="product-detail-badges">
-                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Đang hiển thị' : 'Đã ẩn' }}</span>
+                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
                 <span v-if="productDetailModal.product.is_featured" class="product-detail-featured"><i class="icon icon-star-fill" aria-hidden="true"></i>Nổi bật</span>
               </div>
             </div>
@@ -610,12 +588,12 @@ function onProductImageError(event) {
               <table class="table mb-0 align-middle product-detail-table">
             <thead>
               <tr>
+                <th>SKU</th>
                 <th>Ảnh</th>
                 <th>Màu sắc</th>
                 <th>Kích cỡ</th>
-                <th>SKU</th>
                 <th>Giá bán</th>
-                <th class="text-end">Tồn kho</th>
+                <th class="text-end">Tồn kho</th><th>Trạng thái</th>
               </tr>
             </thead>
             <tbody>
@@ -623,17 +601,17 @@ function onProductImageError(event) {
                 v-for="v in productVariants(productDetailModal.product.id)"
                 :key="v.id"
               >
+                <td class="product-detail-sku">{{ v.sku || '—' }}</td>
                 <td><img :src="v.image_url || productDetailModal.product.image_url || productImagePlaceholder" :alt="'Biến thể ' + (v.color || '') + ' ' + (v.size || '')" class="product-detail-variant-image" @error="onProductImageError" /></td>
                 <td>
                   <span class="product-detail-color"><span class="color-dot" :style="{ background: v.color_hex || '#ccc' }" aria-hidden="true"></span><span>{{ v.color || 'Mặc định' }}</span></span>
                 </td>
-                <td v-text="v.size"></td>
-                <td class="product-detail-sku">{{ v.sku || '—' }}</td>
-                <td class="product-detail-variant-price">{{ formatPrice(Number(productDetailModal.product.price) + (Number(v.price_adjustment) || 0)) }}</td>
-                <td class="text-end"><span class="product-detail-stock" :class="{ 'is-empty': Number(v.stock) <= 0, 'is-low': Number(v.stock) > 0 && Number(v.stock) <= LOW_STOCK_THRESHOLD }">{{ v.stock }}</span></td>
+                <td>{{ v.standard || 'EU' }} {{ v.size }}</td>
+                <td class="product-detail-variant-price">{{ formatPrice(v.price ?? productDetailModal.product.price) }}</td>
+                <td class="text-end"><span class="product-detail-stock" :class="{ 'is-empty': Number(v.stock) <= 0, 'is-low': Number(v.stock) > 0 && Number(v.stock) <= LOW_STOCK_THRESHOLD }">{{ v.stock }}</span></td><td><label class="flex gap-2 items-center text-sm"><input v-if="canManageProducts" type="checkbox" role="switch" :checked="v.active" @change="toggleVariantStatus(productDetailModal.product.id,v,$event)" :aria-label="'Trạng thái '+v.sku">{{ !v.active ? 'Không hoạt động' : Number(v.stock)===0 ? 'Hết hàng' : 'Hoạt động' }}</label></td>
               </tr>
               <tr v-if="!productVariants(productDetailModal.product.id).length">
-                <td colspan="6"><div class="product-detail-empty"><i class="icon icon-box-seam" aria-hidden="true"></i><strong>Chưa có biến thể</strong><span>Chỉnh sửa sản phẩm để thêm màu sắc, kích cỡ và số lượng.</span></div></td>
+                <td colspan="7"><div class="product-detail-empty"><i class="icon icon-box-seam" aria-hidden="true"></i><strong>Chưa có biến thể</strong><span>Chỉnh sửa sản phẩm để thêm màu sắc, kích cỡ và số lượng.</span></div></td>
               </tr>
             </tbody>
               </table>
@@ -644,6 +622,7 @@ function onProductImageError(event) {
         <footer class="product-detail-footer">
           <button @click="closeProductDetail" type="button" class="btn btn-light border rounded-2">Đóng</button>
           <button
+            v-if="canManageProducts"
             @click="
               openProductForm(productDetailModal.product);
               closeProductDetail();

@@ -45,7 +45,7 @@ class SecurityCompatibilityTest {
     @Test void policiesKeepFailClosedAndOwnershipRules() {
         assertThat(ApiPolicy.resolve("GET", "/api/products")).isEqualTo(ApiPolicy.Level.PUBLIC);
         assertThat(ApiPolicy.resolve("POST", "/api/products")).isEqualTo(ApiPolicy.Level.ADMIN);
-        assertThat(ApiPolicy.resolve("GET", "/api/variantDiscounts")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("GET", "/api/variantDiscounts")).isEqualTo(ApiPolicy.Level.STAFF);
         assertThat(ApiPolicy.resolve("POST", "/api/orders")).isEqualTo(ApiPolicy.Level.CUSTOMER);
         assertThat(ApiPolicy.resolve("PUT", "/api/orders/12/status")).isEqualTo(ApiPolicy.Level.CUSTOMER);
         assertThat(ApiPolicy.resolve("GET", "/api/unknown")).isEqualTo(ApiPolicy.Level.ADMIN);
@@ -61,5 +61,15 @@ class SecurityCompatibilityTest {
         limits.loginSucceeded("ip");
         assertThat(limits.acquire("ip", true)).isZero();
         assertThat(limits.acquire("ip", true)).isPositive();
+    }
+    @Test void employeeAccessDoesNotBecomeAdminAccess() {
+        var employee=new ApiUser(3,false,true);
+        assertThat(employee.staff()).isTrue(); assertThat(employee.admin()).isFalse();
+        assertThat(new ApiUser(2,false).staff()).isFalse();
+        assertThat(ApiPolicy.resolve("GET","/api/orders")).isEqualTo(ApiPolicy.Level.STAFF);
+        assertThat(ApiPolicy.resolve("PUT","/api/pos/cart/items/4")).isEqualTo(ApiPolicy.Level.STAFF);
+        assertThat(ApiPolicy.resolve("PUT","/api/products/4/status")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("PUT","/api/variantDiscounts/4")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("GET","/api/accounts")).isEqualTo(ApiPolicy.Level.ADMIN);
     }
 }

@@ -19,7 +19,7 @@ import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAtt
 import { recognizedOrderRevenue } from '@/services/revenue';
 import { buildPosPaymentQrUrl, buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '@/services/vietQr';
 import { validatePosCustomer } from '@/services/posCustomer';
-import { currentUser, logout } from "@/stores/authStore";
+import { currentUser, logout, isEmployee } from "@/stores/authStore";
 
 import { API_BASE_URL, getToken } from "../../services/apiClient";
 import { normalizeStatusText } from "@/stores/orderStore";
@@ -390,6 +390,7 @@ export const incompleteOrdersCount = computed(
 export const outOfStockProductsCount = computed(() => {
   const stockByProduct = {};
   db.inventory.forEach((v) => {
+    if(v.active===false) return;
     const pid = String(v.product_id);
     stockByProduct[pid] = (stockByProduct[pid] || 0) + (Number(v.stock) || 0);
   });
@@ -1774,6 +1775,9 @@ export const activePosOrder = computed(() => posOrder.value);
 export const posCartBusy = ref(false);
 export const posCartReady = ref(false);
 const posCartRevision = ref(0);
+export const posPendingCarts = ref([]);
+export const posCartId = ref(null);
+const posDrafts = new Map();
 
 function clearPosOrderLocally() {
   posOrder.value = newPosOrder();
@@ -1791,6 +1795,9 @@ export function applyPosStockUpdates(updates = []) {
 }
 
 function applyPosCart(data) {
+  if(data.cart_id && String(data.cart_id)!==String(posCartId.value)) posOrder.value=posDrafts.get(String(data.cart_id)) || newPosOrder();
+  posCartId.value = data.cart_id ?? posCartId.value;
+  posPendingCarts.value = data.carts || posPendingCarts.value;
   posCartRevision.value = data.revision;
   activePosOrder.value.cart = data.items.map((item) => {
     const product = db.products.find((p) => String(p.id) === String(item.product_id));
@@ -1805,7 +1812,16 @@ function applyPosCart(data) {
 }
 
 async function readPosCart() {
-  const response = await api("/pos/cart");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ADMIN_READ_TIMEOUT_MS);
+  let result;
+  try {
+    result = await apiWrite("/pos/cart" + (posCartId.value ? "?cart_id=" + posCartId.value : ""), { signal:controller.signal });
+    // Only an expired/closed cart can switch invoices; a connection failure must keep the current draft.
+    if ([404,409].includes(result.status) && posCartId.value)
+      result = await apiWrite("/pos/cart", { signal:controller.signal });
+  } finally { clearTimeout(timer); }
+  const response = result?.ok ? result.data : null;
   if (!response?.success) {
     posCartReady.value = false;
     notify("Không tải được giỏ tại quầy. Vui lòng tải lại trước khi bán hàng.", "error");
@@ -1829,7 +1845,7 @@ async function writePosCart(path, method, data = {}) {
     const result = await apiWrite(path, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, revision: posCartRevision.value }),
+      body: JSON.stringify({ ...data, cart_id: posCartId.value, revision: posCartRevision.value }),
     });
     if (!result.ok) {
       notify(result.data?.message || "Chưa xác nhận được thay đổi giỏ. Đang tải lại để kiểm tra.", "error");
@@ -1847,6 +1863,24 @@ async function writePosCart(path, method, data = {}) {
 // Hủy đơn đang nhập phải hoàn toàn bộ lượng đã giữ trước khi xóa giao diện.
 export async function resetPosOrder() {
   if (await writePosCart("/pos/cart", "DELETE")) clearPosOrderLocally();
+}
+export async function switchPosCart(id) {
+  if(posCartBusy.value || posSubmitting.value || posPayModal.open || String(id)===String(posCartId.value)) return;
+  posDrafts.set(String(posCartId.value),JSON.parse(JSON.stringify(posOrder.value)));
+  posCartId.value=id;
+  posOrder.value=posDrafts.get(String(id)) || newPosOrder();
+  posCartReady.value=false;
+  await loadPosCart();
+}
+export async function addPendingPosCart() {
+  if(posCartBusy.value || posSubmitting.value || posPayModal.open) return;
+  posCartBusy.value=true;
+  try {
+    const result=await apiWrite("/pos/carts",{method:"POST"});
+    if(!result.ok) { notify(result.data?.message || "Không tạo được hóa đơn chờ.","error"); return; }
+    posDrafts.set(String(posCartId.value),JSON.parse(JSON.stringify(posOrder.value)));
+    posOrder.value=newPosOrder(); applyPosCart(result.data);
+  } finally { posCartBusy.value=false; }
 }
 // Modal QR chuyển khoản cho bán hàng tại quầy
 export const posPayModal = reactive({
@@ -1943,7 +1977,7 @@ function activeVariantDiscount(productId, color, variantId) {
 }
 
 function effectiveVariantPrice(product, variant) {
-  const base = Math.max(0, (Number(product?.price) || 0) + (Number(variant?.price_adjustment) || 0));
+  const base = Math.max(0, Number(variant?.price ?? variant?.base_price ?? ((Number(product?.price) || 0) + (Number(variant?.price_adjustment) || 0))));
   const discount = activeVariantDiscount(variant?.product_id ?? product?.id, variant?.color, variant?.id);
   if (!discount) return base;
   const value = Number(discount.value) || 0;
@@ -1973,6 +2007,7 @@ export const posVariants = computed(() => {
   // 1) Ưu tiên biến thể trong kho (màu/size/SKU/tồn kho)
   db.inventory.forEach((v) => {
     covered.add(String(v.product_id));
+    if(v.active===false) return;
     const p = db.products.find((x) => String(x.id) === String(v.product_id));
     if (p && p.active === false) return;
     list.push({
@@ -1984,6 +2019,7 @@ export const posVariants = computed(() => {
       color: v.color,
       color_hex: v.color_hex,
       size: v.size,
+      standard:v.standard || 'EU',
       sku: v.sku,
       stock: Math.max(0, Number(v.stock) || 0),
       image: v.image_url || (p ? p.image_url : ""),
@@ -2016,7 +2052,7 @@ export const posVariants = computed(() => {
   return list.filter(
     (v) =>
       !q ||
-      [v.product_name, v.color, v.size, v.brand, v.category, v.material]
+      [v.product_name, v.color, v.size, v.standard, v.sku, v.brand, v.category, v.material]
         .some(value => plainText(value).includes(q)),
   );
 });
@@ -2306,6 +2342,7 @@ async function finalizePosOrder() {
   }
   const payload = {
     pos_cart_revision: posCartRevision.value,
+    pos_cart_id: posCartId.value,
     user_id: o.customer_id || null,
     customer_name: o.customer_name,
     customer_phone: o.customer_phone,
@@ -2424,9 +2461,10 @@ async function finalizePosOrder() {
 export const productSearch = ref("");
 export const filterCategory = ref("");
 export const productFormOpen = ref(false);
+export const productSaving = ref(false);
 export const filteredProducts = computed(() => {
   const q = productSearch.value.trim().toLowerCase();
-  return db.products.filter(
+  return db.products.slice().sort((a,b)=>Number(a.id)-Number(b.id)).filter(
     (p) =>
       (!q || (p.name || "").toLowerCase().includes(q)) &&
       (!filterCategory.value ||
@@ -2442,6 +2480,8 @@ function emptyProduct() {
     brand_id: "",
     material_id: "",
     price: 0,
+    same_price: false,
+    common_price: 0,
     image_url: "",
     is_featured: false,
     active: true,
@@ -2543,6 +2583,11 @@ export function openProductForm(p) {
             size: String(v.size),
             stock: Number(v.stock) || 0,
             version: v.version,
+            size_id: v.size_id,
+            standard: v.standard || "EU",
+            sku: v.sku || "",
+            price: Number(v.price ?? productForm.price),
+            active: v.active !== false,
           })),
       };
     });
@@ -2560,6 +2605,17 @@ export function openProductForm(p) {
 }
 export function closeProductForm() {
   productFormOpen.value = false;
+}
+export const availableVariantSizes = computed(() => db.sizes.filter(s=>s.active).slice().sort((a,b)=>a.standard.localeCompare(b.standard)||Number(a.name)-Number(b.name)));
+export function setAllColorSizes(index,standard='EU') {
+  const c=productForm.colors[index]; if(!c) return;
+  if(!Array.isArray(c.variants)) c.variants=[];
+  for(const s of availableVariantSizes.value.filter(s=>s.standard===standard)) if(!c.variants.some(v=>String(v.size_id)===String(s.id)))
+    c.variants.push({size_id:s.id,size:s.name,standard:s.standard,stock:Number(productForm.default_stock)||0,price:productForm.same_price?Number(productForm.common_price):0,active:true});
+}
+export function applyCommonVariantPrice() {
+  if(!productForm.same_price) return;
+  for(const c of productForm.colors) for(const v of c.variants || []) v.price=Number(productForm.common_price);
 }
 export function changeColor(index, newColorId) {
   const c = productForm.colors[index];
@@ -2663,23 +2719,25 @@ export async function onFormImageFile(e, key) {
   notify("Đã tải ảnh từ thiết bị", "success");
 }
 export function removeColor(i) {
-  productForm.colors.splice(i, 1);
+  const c=productForm.colors[i];
+  if((c?.variants || []).some(v=>v.id)) { for(const v of c.variants) v.active=false; }
+  else productForm.colors.splice(i, 1);
 }
 // Chon/bo size cho RIENG tung mau + nhap so luong
 export function toggleColorSize(colorIndex, size) {
   const c = productForm.colors[colorIndex];
   if (!c) return;
   if (!Array.isArray(c.variants)) c.variants = [];
-  const s = String(size);
-  const idx = c.variants.findIndex((v) => String(v.size) === s);
-  if (idx >= 0) c.variants.splice(idx, 1);
-  else c.variants.push({ size: s, stock: 0 });
+  const s = typeof size==='object'?size:db.sizes.find(x=>x.name===String(size)&&x.standard==='EU') || {name:String(size),standard:'EU'};
+  const idx = c.variants.findIndex(v=>s.id ? String(v.size_id)===String(s.id):String(v.size)===s.name);
+  if (idx >= 0) { if(c.variants[idx].id) c.variants[idx].active=!c.variants[idx].active; else c.variants.splice(idx, 1); }
+  else c.variants.push({ size:s.name,size_id:s.id,standard:s.standard,stock:Number(productForm.default_stock)||0,price:productForm.same_price?Number(productForm.common_price):0,active:true });
 }
 export function colorHasSize(c, size) {
   return (
     !!c &&
     Array.isArray(c.variants) &&
-    c.variants.some((v) => String(v.size) === String(size))
+    c.variants.some((v) => (typeof size==='object'?String(v.size_id)===String(size.id):String(v.size)===String(size)) && v.active!==false)
   );
 }
 export function addSize() {
@@ -2741,15 +2799,15 @@ export function getMaterialName(id) {
   return m ? m.name : "—";
 }
 export async function saveProduct() {
-  if (!productForm.name) {
+  if(productSaving.value) return;
+  if (!productForm.name.trim()) {
     notify("Vui lòng nhập tên sản phẩm", "error");
     return;
   }
-  const basePrice = Number(productForm.price);
-  if (!Number.isFinite(basePrice) || basePrice < 0) {
-    notify("Giá bán không được nhỏ hơn 0", "error");
-    return;
+  if(!Number.isSafeInteger(Number(productForm.category_id)) || Number(productForm.category_id)<=0) {
+    notify("Vui lòng chọn danh mục sản phẩm.","error"); return;
   }
+  applyCommonVariantPrice();
   const isEdit = !!productForm.id;
   const payload = JSON.parse(JSON.stringify(productForm));
   payload.sale_price = 0;
@@ -2774,20 +2832,28 @@ export async function saveProduct() {
   // Lay dung so luong nguoi dung nhap cho tung bien the -> luu len CSDL.
   (productForm.colors || []).forEach((c) => {
     (c.variants || []).forEach((sv) => {
-      let stock = Number(sv.stock) || 0;
-      if (stock < 0) stock = 0;
+      const stock = sv.stock === '' || sv.stock == null ? NaN : Number(sv.stock);
       flatVariants.push({
         id: sv.id,
         version: sv.version,
+        color_id:c.id,
+        size_id:sv.size_id,
+        standard:sv.standard || "EU",
+        price:Number(sv.price ?? productForm.price),
+        active:sv.active!==false,
         color: c.name,
         hex: colorHex(c.name),
         size: String(sv.size),
-        sku: buildVariantSku(productForm.name, c.name, sv.size),
+        sku: sv.sku || "",
         stock,
       });
     });
   });
   payload.variants = flatVariants;
+  delete payload.price;
+  if(flatVariants.some(v=>!Number.isFinite(v.price)||v.price<=0||!Number.isSafeInteger(v.stock)||v.stock<0)) {
+    notify("Mỗi biến thể cần giá bán lớn hơn 0 và tồn kho nguyên không âm.","error"); return;
+  }
   payload.sizes = Array.from(new Set(flatVariants.map((v) => String(v.size))));
   if (!flatVariants.length) {
     notify(
@@ -2802,6 +2868,8 @@ export async function saveProduct() {
       "warning",
     );
   }
+  productSaving.value=true;
+  try {
   const res = isEdit
     ? await apiWrite("/products/" + productForm.id, {
         method: "PUT",
@@ -2815,7 +2883,7 @@ export async function saveProduct() {
       });
   if (!res.ok) {
     notify(
-      "Lưu sản phẩm thất bại (mã " +
+      res.data?.message || "Lưu sản phẩm thất bại (mã " +
         res.status +
         "). Kiểm tra kết nối máy chủ / cơ sở dữ liệu.",
       "error",
@@ -2825,6 +2893,17 @@ export async function saveProduct() {
   notify(isEdit ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới", "success");
   productFormOpen.value = false;
   fetchAllData();
+  } finally { productSaving.value=false; }
+}
+export function requestSaveProduct() {
+  if(!Number.isSafeInteger(Number(productForm.category_id)) || Number(productForm.category_id)<=0) {
+    notify("Vui lòng chọn danh mục sản phẩm.","error"); return;
+  }
+  const variants=productForm.colors.flatMap(c=>c.variants || []);
+  if(!productForm.name.trim() || !variants.length || variants.some(v=>!Number.isFinite(Number(productForm.same_price?productForm.common_price:v.price)) || Number(productForm.same_price?productForm.common_price:v.price)<=0 || v.stock==='' || v.stock==null || !Number.isSafeInteger(Number(v.stock)) || Number(v.stock)<0)) {
+    notify('Nhập tên sản phẩm, giá và tồn kho hợp lệ trước khi lưu.','error'); return;
+  }
+  Object.assign(confirmModal,{open:true,mode:'save-product',title:'Xác nhận lưu sản phẩm',message:productForm.active?'Lưu thông tin và các biến thể của sản phẩm này?':'Lưu sản phẩm ở trạng thái không hoạt động và ngừng toàn bộ biến thể?',confirmLabel:'Lưu',danger:false});
 }
 
 // ---- Modal chi tiết sản phẩm (hiển thị đầy đủ thuộc tính) ----
@@ -2858,6 +2937,11 @@ export function productVariants(productId) {
     sku: v.sku ?? v.ChildSKU ?? "",
     stock: Number(v.stock ?? v.StockQuantity ?? 0) || 0,
     version: v.version ?? v.Version,
+    price: v.price ?? v.SalePrice,
+    active: v.active ?? v.IsActive ?? true,
+    standard:v.standard ?? v.SizeStandard ?? "EU",
+    size_id:v.size_id ?? v.SizeID,
+    color_id:v.color_id ?? v.ColorID,
   }));
 }
 export function productVariantCount(productId) {
@@ -2875,7 +2959,9 @@ export function productStockTotal(productId) {
 }
 /* ---------------- CATALOG HELPERS ---------------- */
 export const categorySearch = ref("");
-export const filteredCategories = computed(() => db.categories);
+export const filteredCategories = computed(() =>
+  [...db.categories].sort((a, b) => Number(a.id ?? a.ID ?? 0) - Number(b.id ?? b.ID ?? 0)),
+);
 // Chi cac danh muc dang hoat dong (an danh muc da tat nhu mu/non)
 export const activeCategories = computed(() =>
   db.categories.filter((c) => c.active),
@@ -2893,7 +2979,8 @@ export function getProductCount(catId) {
   return db.products.filter((p) => String(p.category_id) === String(catId))
     .length;
 }
-export const filteredBrands = computed(() => db.brands);
+export const brandSearch = ref("");
+export const filteredBrands = computed(() => db.brands.filter(b => String(b.name).toLowerCase().includes(brandSearch.value.trim().toLowerCase()) || String(b.id).includes(brandSearch.value.trim())).slice().sort((a,b)=>Number(a.id)-Number(b.id)));
 export function getBrandProductCount(id) {
   return db.products.filter((p) => String(p.brand_id) === String(id)).length;
 }
@@ -2901,9 +2988,26 @@ export function getBrandName(id) {
   const b = db.brands.find((x) => String(x.id) === String(id));
   return b ? b.name : "—";
 }
-export const filteredColors = computed(() => db.colors);
-export const filteredSizes = computed(() => db.sizes);
-export const filteredMaterials = computed(() => db.materials);
+export const filteredColors = computed(() => db.colors.slice().sort((a,b)=>Number(a.id)-Number(b.id)));
+export const sizeSearch = ref("");
+export const sizeStandardFilter = ref("");
+export const sizeStatusFilter = ref("");
+export const filteredSizes = computed(() => db.sizes.filter(s=>(!sizeSearch.value||String(s.name).includes(sizeSearch.value.trim()))&&(!sizeStandardFilter.value||s.standard===sizeStandardFilter.value)&&(!sizeStatusFilter.value||s.active===(sizeStatusFilter.value==='active'))).slice().sort((a,b)=>Number(a.id)-Number(b.id)));
+export async function toggleCatalogStatus(type,item,event) {
+  if(event) event.target.checked=item.active;
+  const result=await apiWrite('/'+type+'/'+item.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...item,active:!item.active})});
+  if(!result.ok) { notify(result.data?.message || 'Không cập nhật được trạng thái.','error'); return; }
+  item.active=!item.active;
+  if(event) event.target.checked=item.active;
+}
+export async function toggleVariantStatus(productId,v,event) {
+  if(event) event.target.checked=v.active;
+  const result=await apiWrite('/products/'+productId+'/variants/'+v.id+'/status',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!v.active,version:v.version})});
+  if(!result.ok) notify(result.data?.message || 'Không cập nhật được biến thể.','error');
+  else { v.active=!v.active; if(event) event.target.checked=v.active; }
+  await fetchAllData();
+}
+export const filteredMaterials = computed(() => db.materials.slice().sort((a,b)=>Number(a.id)-Number(b.id)));
 export function getMaterialProductCount(id) {
   return db.products.filter((p) => String(p.material_id) === String(id)).length;
 }
@@ -2963,16 +3067,29 @@ export function getProductName(id) {
  * giảm tối đa, số lượng, thời gian chạy, tìm kiếm + lọc trạng thái)
  * ================================================================ */
 export const discountTypes = ["Phần trăm", "Cố định"];
-export const discountStatuses = ["Tất cả", "Đang chạy", "Hết hạn", "Tạm dừng"];
+export const discountStatuses = ["Tất cả", "Sắp diễn ra", "Hoạt động", "Không hoạt động", "Hết mã", "Đã kết thúc"];
 export const discountSearch = ref("");
 export const discountStatusFilter = ref("Tất cả");
 
 export function getDiscountStatus(d) {
-  if (!d.active)
-    return { label: "Tạm dừng", cls: "bg-light text-secondary border" };
-  if (isExpired(d.expiry))
-    return { label: "Hết hạn", cls: "bg-light text-danger border" };
-  return { label: "Đang chạy", cls: "bg-dark text-white" };
+  if (couponFinished(d)) return {label:"Đã kết thúc",cls:"bg-light text-secondary border"};
+  if (Number(d.quantity)>0 && Number(d.used)>=Number(d.quantity)) return {label:"Hết mã",cls:"bg-light text-danger border"};
+  if (d.active && d.start_date && new Date(d.start_date)>new Date()) return {label:"Sắp diễn ra",cls:"bg-light text-secondary border"};
+  return d.active
+    ? { label: "Hoạt động", cls: "bg-dark text-white" }
+    : { label: "Không hoạt động", cls: "bg-light text-secondary border" };
+}
+export function couponFinished(d) {
+  return !!d.expiry && Number.isFinite(new Date(d.expiry).getTime()) && new Date(d.expiry)<new Date();
+}
+export const discountDetail = reactive({open:false,item:null});
+export function openDiscountDetail(item) { discountDetail.item=item; discountDetail.open=true; }
+export async function toggleDiscountStatus(d,event) {
+  if(event) event.target.checked=d.active;
+  if(couponFinished(d)) { notify("Mã giảm giá đã kết thúc, không được sửa.","error"); return; }
+  const res=await apiWrite('/discounts/'+d.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!d.active})});
+  if(!res.ok) { notify(res.data?.message || 'Không đổi được trạng thái.','error'); return; }
+  d.active=!d.active; if(event) event.target.checked=d.active;
 }
 export function formatDiscountValue(d) {
   return d.discount_type === "Cố định"
@@ -3010,8 +3127,11 @@ function emptyDiscount() {
 }
 export const discountModal = reactive({ open: false, data: emptyDiscount() });
 export function openDiscountForm(item) {
+  if(item && couponFinished(item)) { notify("Mã giảm giá đã kết thúc, không được sửa.","error"); return; }
   Object.assign(discountModal.data, emptyDiscount());
   if (item) Object.assign(discountModal.data, JSON.parse(JSON.stringify(item)));
+  discountModal.data.start_date=dateInputValue(discountModal.data.start_date);
+  discountModal.data.expiry=dateInputValue(discountModal.data.expiry);
   discountModal.open = true;
 }
 export function closeDiscountForm() {
@@ -3019,6 +3139,7 @@ export function closeDiscountForm() {
 }
 export async function saveDiscount() {
   const d = discountModal.data;
+  if(d.id && couponFinished(db.discounts.find(x=>x.id===d.id) || d)) { notify("Mã giảm giá đã kết thúc, không được sửa.","error"); return; }
   const code = String(d.code || "").trim().toUpperCase();
   const name = String(d.name || "").trim();
   const val = Number(d.value);
@@ -3026,16 +3147,20 @@ export async function saveDiscount() {
   const maxDiscount = Number(d.max_discount || 0);
   const usageLimit = Number(d.quantity || 0);
   if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
-    notify("Mã giảm giá phải gồm 2-50 ký tự chữ/số/-/_", "error");
+    notify("Mã khuyến mại phải gồm 2-50 ký tự chữ/số/-/_", "error");
     return;
   }
   if (!name || name.length > 200 || !Number.isFinite(val) || val <= 0 || (d.discount_type === "Phần trăm" && val > 100)) {
-    notify("Tên hoặc giá trị mã giảm giá không hợp lệ", "error");
+    notify("Tên hoặc giá trị mã khuyến mại không hợp lệ", "error");
     return;
   }
   if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || !Number.isSafeInteger(usageLimit) || usageLimit < 0) {
-    notify("Điều kiện mã giảm giá không hợp lệ", "error");
+    notify("Điều kiện mã khuyến mại không hợp lệ", "error");
     return;
+  }
+  if (!discountTypes.includes(d.discount_type)) { notify("Vui lòng chọn loại giảm giá hợp lệ.", "error"); return; }
+  if (!d.start_date || !d.expiry || !localDateBoundary(d.start_date) || !localDateBoundary(d.expiry) || new Date(d.expiry) < new Date(d.start_date)) {
+    notify("Vui lòng chọn thời gian hợp lệ; ngày kết thúc không được trước ngày bắt đầu.", "error"); return;
   }
   const payload = {
     CouponCode: code,
@@ -3059,7 +3184,7 @@ export async function saveDiscount() {
   });
   if (!res.ok) {
     notify(
-      "Lưu mã giảm giá thất bại (máy chủ " +
+      res.data?.message || "Lưu mã giảm giá thất bại (máy chủ " +
         (res.status || "không phản hồi") +
         "). Kiểm tra API /discounts.",
       "error",
@@ -3067,7 +3192,7 @@ export async function saveDiscount() {
     return;
   }
   discountModal.open = false;
-  notify(isEdit ? "Đã cập nhật mã giảm giá" : "Đã thêm mã giảm giá", "success");
+  notify(isEdit ? "Đã cập nhật mã khuyến mại" : "Đã thêm mã khuyến mại", "success");
   fetchAllData();
 }
 
@@ -3099,13 +3224,13 @@ function productImage(pid) {
 export const variantColorOptions = computed(() => {
   const map = {};
   db.inventory.forEach((v) => {
+    if(v.active===false) return;
     const key = v.product_id + "|" + (v.color || "");
-    const variantBasePrice =
-      (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) +
-      (Number(v.price_adjustment) || 0);
+    const variantBasePrice = Number(v.price ?? ((Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) + (Number(v.price_adjustment) || 0)));
     if (!map[key]) {
       map[key] = {
         variant_id: v.id,
+        color_id:v.color_id,
         product_id: v.product_id,
         product_name: v.product_name || getProductName(v.product_id),
         color: v.color || "Mặc định",
@@ -3123,18 +3248,17 @@ export const variantColorOptions = computed(() => {
 });
 
 // Danh sách từng biến thể thật để có thể giảm riêng một size.
-export const variantSizeOptions = computed(() => db.inventory.map((v) => {
-  const basePrice =
-    (Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) +
-    (Number(v.price_adjustment) || 0);
+export const variantSizeOptions = computed(() => db.inventory.filter(v=>v.active!==false).map((v) => {
+  const basePrice = Number(v.price ?? ((Number(db.products.find((p) => String(p.id) === String(v.product_id))?.price) || 0) + (Number(v.price_adjustment) || 0)));
   return {
     variant_id: v.id,
+    color_id:v.color_id,
     product_id: v.product_id,
     product_name: v.product_name || getProductName(v.product_id),
     color: v.color || "Mặc định",
     raw_color: v.color || "",
     color_hex: v.color_hex || "#d1d5db",
-    size: v.size || "Mặc định",
+    size: v.size ? (v.standard || 'EU')+' '+v.size : "Mặc định",
     sku: v.sku || "",
     stock: Number(v.stock) || 0,
     base_price: basePrice,
@@ -3154,7 +3278,7 @@ export function getVariantInfo(vd) {
       color: byId.color || "Mặc định",
       color_hex: byId.color_hex || "#d1d5db",
       sku: byId.sku || "",
-      size: scope === "variant" ? (byId.size || vd.size || "Mặc định") : "",
+      size: scope === "variant" ? (byId.size ? (byId.standard || 'EU')+' '+byId.size : vd.size || "Mặc định") : "",
       scope_label: scope === "variant" ? "Đúng size" : "Mọi size",
       image: productImage(byId.product_id),
     };
@@ -3173,10 +3297,10 @@ export function formatVariantDiscountValue(vd) {
   return (Number(vd.value) || 0) + "%";
 }
 export function getVariantDiscountStatus(vd) {
-  if (!vd.active)
-    return { label: "Tạm dừng", cls: "bg-secondary-subtle text-secondary" };
   if (isExpired(vd.end_date))
     return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
+  if (!vd.active)
+    return { label: "Không hoạt động", cls: "bg-secondary-subtle text-secondary" };
   if (Number(vd.quantity) > 0 && Number(vd.used || 0) >= Number(vd.quantity))
     return { label: "Đã dùng hết", cls: "bg-warning-subtle text-warning-emphasis" };
   const startsAt = localDateBoundary(vd.start_date);
@@ -3256,6 +3380,10 @@ export function openVariantDiscountForm(item) {
   Object.assign(variantDiscountModal.data, emptyVariantDiscount());
   if (item)
     Object.assign(variantDiscountModal.data, JSON.parse(JSON.stringify(item)));
+  if(item?.apply_scope==='color' && !item.variant_id) {
+    const option=variantColorOptions.value.find(v=>String(v.product_id)===String(item.product_id)&&String(v.color_id)===String(item.color_id));
+    variantDiscountModal.data.variant_id=option?.variant_id || '';
+  }
   variantDiscountModal.open = true;
 }
 export function closeVariantDiscountForm() {
@@ -3295,25 +3423,22 @@ export async function saveVariantDiscount() {
     return;
   }
   if (d.active && variantAlreadyDiscounted(d.variant_id, d.id, d.start_date, d.end_date, scope)) {
-    notify("Phạm vi này đã có chương trình giảm giá trùng thời gian", "error");
+    notify("Phạm vi này đã có chương trình khuyến mại trùng thời gian", "error");
     return;
   }
   const payload = {
     ProductVariantID: variantId,
     ProductID: productId,
     ApplyScope: scope,
-    ColorName: info ? info.raw_color : d.color,
-    ColorHex: info ? info.color_hex : d.color_hex,
+    ColorID: info?.color_id ?? d.color_id,
     DiscountType: d.discount_type,
     DiscountValue: val,
-    DiscountPercent: d.discount_type === "Theo phần trăm" ? val : 0,
     MaxDiscountAmount: 0,
     Quantity: quantity,
     StartDate: d.start_date || null,
     EndDate: d.end_date || null,
     Reason: d.reason || "",
     IsActive: !!d.active,
-    Description: d.description || "",
   };
   const isEdit = !!d.id;
   variantDiscountModal.saving = true;
@@ -3332,7 +3457,7 @@ export async function saveVariantDiscount() {
     }
     variantDiscountModal.open = false;
     notify(
-      isEdit ? "Đã cập nhật giảm giá biến thể" : "Đã thêm giảm giá biến thể",
+      isEdit ? "Đã cập nhật khuyến mại biến thể" : "Đã thêm khuyến mại biến thể",
       "success",
     );
     fetchAllData();
@@ -3342,6 +3467,13 @@ export async function saveVariantDiscount() {
 }
 
 /* ---------------- CUSTOMERS (CRM) ---------------- */
+export async function toggleVariantDiscount(vd,event) {
+  if(event) event.target.checked=vd.active;
+  const result=await apiWrite('/variantDiscounts/'+vd.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!vd.active})});
+  if(!result.ok) notify(result.data?.message || 'Không cập nhật được khuyến mại.','error');
+  else { vd.active=!vd.active; if(event) event.target.checked=vd.active; }
+  await fetchAllData();
+}
 export const customerSearch = ref("");
 export const filteredCustomers = computed(() => {
   const q = customerSearch.value.trim().toLowerCase();
@@ -3411,12 +3543,11 @@ export const filteredAccounts = computed(() => {
       (a.email || "").toLowerCase().includes(q),
   );
 });
-/* Vai trò lấy theo BẢNG Roles trong CSDL (dbnew: 1=Admin, 2=Customer).
-   Trước đây form còn cho chọn RoleID = 3 ("Nhân viên") - mã này KHÔNG có trong
-   bảng Roles nên lưu tài khoản sẽ lỗi khoá ngoại. */
+/* Vai trò: 1 quản trị viên, 2 khách hàng, 3 nhân viên. Spring kiểm tra lại quyền từ DB. */
 export const ROLE_OPTIONS = [
   { value: 1, label: "Quản trị viên" },
   { value: 2, label: "Khách hàng" },
+  { value: 3, label: "Nhân viên" },
 ];
 export function roleName(roleId) {
   const found = ROLE_OPTIONS.find((r) => String(r.value) === String(roleId));
@@ -3445,12 +3576,12 @@ export const SPORTS = [
 
 const fieldDefs = {
   categories: [
-    { key: "name", label: "Tên danh mục" },
-    { key: "sport", label: "Bộ môn thể thao", type: "select" },
+    { key: "name", label: "Tên danh mục *", required: true },
+    { key: "sport", label: "Bộ môn thể thao *", type: "select", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   brands: [
-    { key: "name", label: "Tên thương hiệu" },
+    { key: "name", label: "Tên thương hiệu *", required: true },
     {
       key: "logo_url",
       label: "Logo thương hiệu (ảnh trong máy)",
@@ -3460,36 +3591,36 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   materials: [
-    { key: "name", label: "Tên chất liệu" },
+    { key: "name", label: "Tên chất liệu *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   soles: [
-    { key: "name", label: "Tên đế giày" },
+    { key: "name", label: "Tên đế giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   cushionings: [
-    { key: "name", label: "Tên đệm giày" },
+    { key: "name", label: "Tên đệm giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   colors: [
-    { key: "name", label: "Tên màu" },
-    { key: "hex", label: "Mã màu", type: "color" },
+    { key: "name", label: "Tên màu *", required: true },
+    { key: "hex", label: "Mã màu *", type: "color", required: true },
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   sizes: [
-    { key: "name", label: "Tên size (VD: 40)" },
-    { key: "standard", label: "Chuẩn (EU/US/UK)" },
+    { key: "name", label: "Kích cỡ *", type:"number", step:0.5, min:0, required:true },
+    { key: "standard", label: "Hệ kích cỡ *", type:"select", required:true },
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   /* Khớp đúng cột của bảng Coupons trong dbnew
      (trước đây dùng percent/limit -> gửi lên CSDL không có cột tương ứng nên lưu lỗi) */
   discounts: [
-    { key: "code", label: "Mã giảm giá (CouponCode)" },
-    { key: "name", label: "Tên chương trình" },
-    { key: "discount_type", label: "Kiểu giảm", type: "select" },
-    { key: "value", label: "Giá trị giảm", type: "number" },
+    { key: "code", label: "Mã khuyến mại *", required: true },
+    { key: "name", label: "Tên chương trình *", required: true },
+    { key: "discount_type", label: "Kiểu giảm *", type: "select", required: true },
+    { key: "value", label: "Giá trị giảm *", type: "number", required: true },
     { key: "min_order", label: "Đơn tối thiểu", type: "number" },
     { key: "max_discount", label: "Giảm tối đa", type: "number" },
     { key: "start_date", label: "Ngày bắt đầu", type: "date" },
@@ -3499,9 +3630,9 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   accounts: [
-    { key: "username", label: "Email đăng nhập", type: "email" },
-    { key: "name", label: "Họ tên" },
-    { key: "role_id", label: "Phân quyền", type: "select" },
+    { key: "username", label: "Email đăng nhập *", type: "email", required: true },
+    { key: "name", label: "Họ tên *", required: true },
+    { key: "role_id", label: "Phân quyền *", type: "select", required: true },
     {
       key: "password",
       label: "Mật khẩu (để trống nếu không đổi)",
@@ -3519,6 +3650,8 @@ export const formModal = reactive({
 export const formFields = computed(() => {
   const defs = fieldDefs[formModal.type] || [];
   return defs.map((f) => {
+    if(formModal.type==='accounts' && f.key==='password') return {...f,required:!formModal.data.id,label:formModal.data.id?f.label:'Mật khẩu *'};
+    if(formModal.type==='sizes' && f.key==='standard') return {...f,options:['EU','US','UK'].map(s=>({value:s,label:s}))};
     if (f.key === "brand_id")
       return {
         ...f,
@@ -3540,7 +3673,6 @@ export const formFields = computed(() => {
     if (f.key === "role_id")
       return {
         ...f,
-        disabled: !!formModal.data.id,
         options: ROLE_OPTIONS.map((r) => ({ ...r })),
       };
     if (formModal.type === "accounts" && f.key === "username")
@@ -3558,7 +3690,7 @@ const formTitles = {
   materials: "Chất Liệu",
   colors: "Màu Sắc",
   sizes: "Kích Thước",
-  discounts: "Mã Giảm Giá",
+  discounts: "Mã Khuyến Mại",
   accounts: "Tài Khoản",
 };
 export function openForm(type, item) {
@@ -3568,8 +3700,10 @@ export function openForm(type, item) {
   (fieldDefs[type] || []).forEach((f) => {
     base[f.key] = f.type === "checkbox" ? true : "";
   });
-  // Mặc định là Khách hàng (RoleID = 2) vì bảng Roles chỉ có 1 và 2
+  // Tài khoản tạo mới mặc định không có quyền quản trị.
   if (type === "accounts" && !item) base.role_id = 2;
+  if (type === "sizes" && !item) { base.standard='EU'; base.sort_order=0; }
+  if (type === "colors" && !item) { base.hex='#000000'; base.sort_order=0; }
   formModal.data = item
     ? { ...base, ...JSON.parse(JSON.stringify(item)) }
     : base;
@@ -3578,22 +3712,35 @@ export function openForm(type, item) {
 export async function saveForm() {
   const type = formModal.type;
   const data = formModal.data;
-  if (type === "discounts") {
-    if (!data.code) {
-      notify("Vui lòng nhập mã giảm giá", "error");
+  // Kiểm tra toàn bộ trường bắt buộc trước khi gửi dữ liệu lên máy chủ.
+  const requiredFields = (fieldDefs[type] || []).filter((field) => field.required);
+  for (const field of requiredFields) {
+    // Khi sửa tài khoản, email đăng nhập không được thay đổi.
+    if (type === "accounts" && data.id && field.key === "username") continue;
+    const value = data[field.key];
+    if (value === null || value === undefined || String(value).trim() === "") {
+      notify("Vui lòng nhập " + field.label.replace(/\s*\*$/, ""), "error");
       return;
     }
-  } else if (type !== "accounts" && type !== "customers" && !data.name) {
-    notify("Vui lòng nhập tên", "error");
-    return;
   }
   if (type === "accounts") {
-    if (!data.username) {
-      notify("Vui lòng nhập email đăng nhập", "error");
+    const email = String(data.username || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notify("Vui lòng nhập địa chỉ email hợp lệ.", "error");
       return;
     }
     if (!data.id && !(data.password && String(data.password).trim())) {
       notify("Vui lòng nhập mật khẩu cho tài khoản mới", "error");
+      return;
+    }
+    if (data.password && String(data.password).length < 6) {
+      notify("Mật khẩu phải có ít nhất 6 ký tự.", "error");
+      return;
+    }
+  }
+  if (type === "discounts") {
+    if (!(Number(data.value) > 0)) {
+      notify("Giá trị khuyến mại phải lớn hơn 0.", "error");
       return;
     }
   }
@@ -3616,7 +3763,7 @@ export async function saveForm() {
       });
   if (!res.ok) {
     notify(
-      "Lưu thất bại (mã " +
+      res.data?.message || "Lưu thất bại (mã " +
         res.status +
         "). Kiểm tra kết nối máy chủ / cơ sở dữ liệu.",
       "error",
@@ -3646,23 +3793,14 @@ export const confirmModal = reactive({
 export function deleteItem(type, id, name) {
   confirmModal.type = type;
   confirmModal.id = id;
-  confirmModal.mode = "generic";
+  confirmModal.mode = "deactivate";
   confirmModal.danger = false;
-  if (type === "variantDiscounts") {
-    confirmModal.confirmLabel = "Tạm dừng";
-    confirmModal.title = "Tạm dừng giảm giá?";
-    confirmModal.message =
-      'Tạm dừng chương trình giảm giá của "' +
-      (name || "#" + id) +
-      '"? Bạn vẫn có thể mở lại bằng nút chỉnh sửa.';
-  } else {
-    confirmModal.confirmLabel = "Xác nhận";
-    confirmModal.title = "Xác nhận xoá";
-    confirmModal.message =
-      'Bạn có chắc muốn xoá "' +
-      (name || "#" + id) +
-      '"? Hành động này không thể hoàn tác.';
-  }
+  confirmModal.payload = null;
+  confirmModal.confirmLabel = "Chuyển trạng thái";
+  confirmModal.title = "Ngừng hoạt động bản ghi?";
+  confirmModal.message =
+    'Chuyển "' + (name || "#" + id) +
+    '" sang trạng thái Không hoạt động? Dữ liệu vẫn được giữ lại và có thể khôi phục sau.';
   confirmModal.open = true;
 }
 
@@ -3718,10 +3856,10 @@ export async function doRestoreItem(type, item) {
       method: "PUT",
     });
     if (!res.ok) {
-      notify("Khôi phục thất bại", "error");
+      notify("Bật hoạt động sản phẩm thất bại", "error");
       return;
     }
-    notify("Đã khôi phục sản phẩm", "success");
+    notify("Đã bật hoạt động sản phẩm", "success");
     fetchAllData();
     return;
   }
@@ -3742,32 +3880,32 @@ export async function doRestoreItem(type, item) {
   fetchAllData();
 }
 
-// Nut xoa tren trang san pham: lan 1 = xoa mem (an), lan 2 (khi da an) = xoa cung
+// Chuyển trạng thái sản phẩm, không xóa dữ liệu khỏi cơ sở dữ liệu.
 export function deleteProduct(p) {
   confirmModal.type = "products";
   confirmModal.id = p.id;
-  if (isProductSoftDeleted(p)) {
-    confirmModal.mode = "hard";
-    confirmModal.danger = true;
-    confirmModal.confirmLabel = "Xoá cứng";
-    confirmModal.title = "Xoá cứng sản phẩm?";
-    confirmModal.message =
-      'Bạn sắp XOÁ CỨNG "' +
-      (p.name || "#" + p.id) +
-      '" khỏi cơ sở dữ liệu. Toàn bộ biến thể, ảnh và chi tiết đơn hàng liên quan sẽ bị xoá vĩnh viễn và KHÔNG THỂ khôi phục. Việc này có thể ẢNH HƯỞ-NG ĐẾN DOANH THU đã ghi nhận.';
-  } else {
-    confirmModal.mode = "soft";
-    confirmModal.danger = false;
-    confirmModal.confirmLabel = "Xoá mềm (ẩn)";
-    confirmModal.title = "Xoá mềm sản phẩm?";
-    confirmModal.message =
-      'Ẩn "' +
-      (p.name || "#" + p.id) +
-      '" khỏi cửa hàng (xoá mềm). Dữ liệu vẫn được giữ lại. Bấm xoá lần nữa khi sản phẩm đã ẩn để xoá cứng.';
-  }
+  confirmModal.mode = "deactivate";
+  confirmModal.danger = false;
+  confirmModal.payload = null;
+  confirmModal.confirmLabel = "Ngừng hoạt động";
+  confirmModal.title = "Ngừng hoạt động sản phẩm?";
+  confirmModal.message =
+    'Chuyển sản phẩm "' + (p.name || "#" + p.id) +
+    '" sang trạng thái Không hoạt động? Dữ liệu sản phẩm, biến thể và lịch sử đơn hàng sẽ được giữ nguyên.';
   confirmModal.open = true;
 }
+export function toggleProductStatus(p,event) {
+  if(event) event.target.checked=p.active;
+  if(!p.active) {
+    restoreItem('products',p);
+    confirmModal.title='Bật hoạt động sản phẩm'; confirmModal.confirmLabel='Bật hoạt động';
+    confirmModal.message='Bật sản phẩm này? Các biến thể sẽ giữ trạng thái hiện tại để bạn chọn bật riêng.';
+  } else {
+    Object.assign(confirmModal,{open:true,type:'products',id:p.id,mode:'product-status',danger:false,confirmLabel:'Ngừng hoạt động',title:'Ngừng hoạt động sản phẩm',message:'Bạn có muốn ngừng hoạt động toàn bộ biến thể của sản phẩm '+p.name+' không?'});
+  }
+}
 export async function executeConfirm() {
+  if(confirmModal.mode==='save-product') { confirmModal.open=false; await saveProduct(); return; }
   // Khôi phục bản ghi đã xoá mềm
   if (confirmModal.mode === "restore") {
     const item = confirmModal.payload || { id: confirmModal.id };
@@ -3794,38 +3932,37 @@ export async function executeConfirm() {
     fetchAllData();
     return;
   }
-  const suffix =
-    confirmModal.type === "products" && confirmModal.mode === "soft"
-      ? "?soft=1"
-      : "";
-  const res = await apiWrite(
-    "/" + confirmModal.type + "/" + confirmModal.id + suffix,
-    { method: "DELETE" },
-  );
+  // Không gửi yêu cầu DELETE để tránh xóa dữ liệu kinh doanh khỏi CSDL.
+  // Chỉ cập nhật trạng thái hoạt động; dữ liệu có thể được khôi phục sau.
+  const type = confirmModal.type;
+  const id = confirmModal.id;
+  const currentList = db[type] || [];
+  const currentItem = currentList.find((item) => String(item.id) === String(id));
+  if (!currentItem && type !== "variantDiscounts") {
+    notify("Không tìm thấy dữ liệu cần cập nhật. Vui lòng tải lại trang.", "error");
+    return;
+  }
+  const payload = ["variantDiscounts","discounts","products"].includes(type)
+    ? { active: false }
+    : { ...currentItem, active: false };
+  const res = await apiWrite("/" + type + "/" + id + (type==='products'?'/status':''), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) {
     notify(
       res.data?.message ||
-        ("Thao tác thất bại (máy chủ " +
+        ("Không thể cập nhật trạng thái (máy chủ " +
           (res.status || "không phản hồi") +
-          "). Kiểm tra API /" +
-          confirmModal.type +
-          "."),
+          "). Kiểm tra API /" + type + "."),
       "error",
     );
     return;
   }
-  const doneMode = confirmModal.mode;
   confirmModal.open = false;
-  notify(
-    doneMode === "soft"
-      ? "Đã xoá mềm (ẩn) sản phẩm"
-      : doneMode === "hard"
-        ? "Đã xoá cứng sản phẩm khỏi CSDL"
-        : confirmModal.type === "variantDiscounts"
-          ? "Đã tạm dừng giảm giá biến thể"
-          : "Đã xoá thành công",
-    "success",
-  );
+  confirmModal.payload = null;
+  notify("Đã chuyển sang trạng thái Không hoạt động. Dữ liệu vẫn được giữ lại.", "success");
   fetchAllData();
 }
 
@@ -3986,7 +4123,7 @@ async function loadAllData(isBackground) {
       api("/categories"),
       api("/discounts"),
       api("/customers"),
-      api("/accounts"),
+      isEmployee.value ? Promise.resolve([]) : api("/accounts"),
       api("/brands"),
       api("/inventory"),
       api("/variantDiscounts"),
@@ -4024,6 +4161,8 @@ async function loadAllData(isBackground) {
       id: p.ProductID ?? p.id,
       name: p.ProductName ?? p.name,
       price: p.BasePrice ?? p.price ?? 0,
+      min_price:p.min_price ?? p.price ?? 0,
+      max_price:p.max_price ?? p.price ?? 0,
       sale_price: p.SalePrice ?? p.sale_price ?? 0,
       category_id: p.CategoryID ?? p.category_id,
       category: p.CategoryName ?? p.category ?? "",
@@ -4105,6 +4244,11 @@ async function loadAllData(isBackground) {
       sku: v.ChildSKU ?? v.sku ?? "",
       stock: Number(v.StockQuantity ?? v.stock ?? 0) || 0,
       version: v.Version ?? v.version,
+      price: v.SalePrice ?? v.price,
+      active: (v.IsActive ?? v.active) !== false,
+      color_id:v.ColorID ?? v.color_id,
+      size_id:v.SizeID ?? v.size_id,
+      standard:v.SizeStandard ?? v.standard ?? "EU",
       price_adjustment: v.PriceAdjustment ?? v.price_adjustment ?? 0,
       image_url: v.image_url ?? v.ImageURL ?? "",
     })).map(v => {
@@ -4128,6 +4272,12 @@ async function loadAllData(isBackground) {
             color_hex: v.hex ?? v.color_hex ?? v.ColorHex ?? "",
             sku: v.sku ?? v.ChildSKU ?? "",
             stock: Number(v.stock ?? v.StockQuantity ?? 0) || 0,
+            price:v.price ?? v.SalePrice,
+            active:(v.active ?? v.IsActive) !== false,
+            standard:v.standard ?? v.SizeStandard ?? 'EU',
+            size_id:v.size_id ?? v.SizeID,
+            color_id:v.color_id ?? v.ColorID,
+            version:v.version ?? v.Version,
             price_adjustment: 0,
             image_url: p.image_url ?? p.ImageURL ?? "",
           });
@@ -4141,6 +4291,7 @@ async function loadAllData(isBackground) {
       variant_id: v.ProductVariantID ?? v.variant_id ?? v.product_variant_id,
       product_id: v.ProductID ?? v.product_id,
       color: v.ColorName ?? v.color ?? "",
+      color_id:v.ColorID ?? v.color_id,
       color_hex: v.ColorHex ?? v.color_hex ?? "",
       size: v.Size ?? v.size ?? "",
       discount_type: v.DiscountType ?? v.discount_type ?? "Theo phần trăm",

@@ -37,11 +37,29 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 | `read-queries.json`, `order-queries.json` trong resources | Truy vấn SQL dùng bởi các API Java |
 | `order-rules.json`, `shipping-distances.json` trong resources | Quy tắc trạng thái đơn và khoảng cách tính phí giao hàng |
 | `backend/API-INVENTORY.json` | Danh sách 76 API dùng trong kiểm thử controller Java |
-| `database/ShoegroupDB_FULL_20260929.sql` | Bản SQL để cài database và tạo schema kiểm thử; giữ nguyên mã hóa gốc |
-| `database/migrations/` | Các bản cập nhật SQL; script ghi thủ công không tự chạy lúc khởi động |
+| `database/ShoegroupDB_FULL_20261010.sql` | DB đầy đủ mới nhất, có lệnh xóa/tạo lại DB; dùng cho cả nhóm cập nhật |
+| `database/ShoegroupDB_FULL_20260929.sql` | Bản gốc dùng tạo fixture kiểm thử tương thích; không dùng thay DB bản mới |
+| `database/migrations/` | Các bản cập nhật SQL; Spring chạy những bản đã đăng ký trong SchemaInitializer |
+| `database/ERD.drawio`, `database/ERD.md`, `database/schema-current.json` | Sơ đồ và cấu trúc DB thực tế, xuất tự động từ SQL Server |
 | `.vscode/settings.json`, `.gitignore` | Ẩn/bỏ qua thư viện, build và dữ liệu cục bộ |
 
 ## Chạy Và Kiểm Tra
+
+### Thay Database Cho Cả Nhóm
+
+1. Lấy code mới từ `main`, dừng ứng dụng và sao lưu database riêng trước khi thay.
+2. Mở `database/ShoegroupDB_FULL_20261010.sql` trong SSMS, kết nối SQL Server của mình rồi chạy toàn bộ file (F5). File **xóa hoàn toàn ShoegroupDB cũ**, tạo lại và nhập đủ cấu trúc/dữ liệu ngày 10/10/2026; không cần đổi đường dẫn MDF/LDF.
+3. Cấu hình `backend/.env` theo máy mình, để `DB_NAME=ShoegroupDB`; lần đầu chạy `npm run setup`, sau đó `npm run dev`. Spring tự kiểm tra các migration đã áp dụng.
+
+Bản full có dữ liệu tài khoản/đơn hàng; chỉ chia sẻ với thành viên được phép. Không có mật khẩu kết nối SQL/JWT/SMTP từ `.env`.
+`npm run db:verify` thử phục hồi bản full mới nhất vào DB riêng, đối chiếu rồi dọn DB thử; không thay DB đang dùng.
+`npm run db:export` sao lưu `.bak` và xuất lại SQL theo ngày hiện tại; máy xuất cần công cụ SMO 16 của SQL Server 2022 và quyền sao lưu DB. Dừng ứng dụng trước khi xuất để dữ liệu không thay đổi giữa các bảng.
+
+### Nâng Cấp Không Xóa Dữ Liệu
+
+Trước khi chạy bản tối ưu 2026-10-10 trên DB có dữ liệu, dùng
+`node backend/scripts/catalog-migration.cjs --apply --erd` để sao lưu, cập nhật DB và đồng bộ ERD.
+Chi tiết thay đổi và kiểm thử nằm trong `MIGRATION.md`.
 
 Cần Node.js 22+, JDK 17+ và SQL Server. Lần đầu dùng `npm run setup`,
 cấu hình `backend/.env` theo file mẫu. Maven được chuẩn bị trong `tools/.cache/`.

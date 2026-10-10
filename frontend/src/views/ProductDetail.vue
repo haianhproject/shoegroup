@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
 import FigmaProductGrid from '../components/figma/product/FigmaProductGrid.vue'
 import { api } from '../services/apiClient'
+import { variantSizeLabel } from '../services/variantSize'
 import { addToCart, formatCurrency, showDrawer } from '../stores/cartStore'
 import { notify } from '../stores/uiStore'
 import fallbackProductImage from '../../img/hero-sneakers.jpg'
@@ -68,7 +69,7 @@ const colorOptions = computed(() => {
 
 const allSizes = computed(() => {
   if (!product.value) return []
-  const variantSizes = product.value.variants.map((variant) => variant.size).filter(Boolean)
+  const variantSizes = product.value.variants.map(variantSizeLabel).filter(Boolean)
   if (variantSizes.length) return [...new Set(variantSizes)]
   return product.value.sizes.map((size) => String(size?.size_name ?? size?.name ?? size)).filter(Boolean)
 })
@@ -77,21 +78,21 @@ const availableSizes = computed(() => {
   if (!product.value?.variants.length || !selectedColor.value) return allSizes.value
   return [...new Set(product.value.variants
     .filter((variant) => variant.color === selectedColor.value.name)
-    .map((variant) => variant.size)
+    .map(variantSizeLabel)
     .filter(Boolean))]
 })
 
 const selectedVariant = computed(() => {
   if (!product.value?.variants.length) return null
   return product.value.variants.find((variant) =>
-    variant.color === selectedColor.value?.name && variant.size === String(selectedSize.value),
+    variant.color === selectedColor.value?.name && variantSizeLabel(variant) === String(selectedSize.value),
   ) || null
 })
 
 const sizeStock = (size) => {
   if (!product.value?.variants.length) return Number(product.value?.total_stock ?? product.value?.stock_quantity ?? 0) || 0
   const variant = product.value.variants.find((item) =>
-    item.color === selectedColor.value?.name && item.size === String(size),
+    item.color === selectedColor.value?.name && variantSizeLabel(item) === String(size),
   )
   return Math.max(0, Number(variant?.stock) || 0)
 }
@@ -175,7 +176,7 @@ const buildCartPayload = () => ({
     sale_price: selectedVariant.value?.sale_price ?? product.value.sale_price,
   },
   quantity: quantity.value,
-  size: { size_name: String(selectedSize.value ?? '') },
+  size: { size_name: String(selectedVariant.value?.size ?? selectedSize.value ?? ''), standard:selectedVariant.value?.standard },
   color: {
     color_name: selectedColor.value?.name ?? 'Tiêu chuẩn',
     color_label: selectedColor.value?.label ?? 'Tiêu chuẩn',
@@ -333,7 +334,7 @@ onMounted(fetchData)
           </div>
 
           <div v-if="availableSizes.length" class="mb-6">
-            <div class="mb-2.5 text-[13px] font-semibold">Chọn size (UK)</div>
+            <div class="mb-2.5 text-[13px] font-semibold">Chọn kích cỡ</div>
             <div class="flex flex-wrap gap-2">
               <button v-for="size in availableSizes" :key="size" type="button"
                 class="relative flex h-11 w-12 items-center justify-center rounded-lg border text-sm font-semibold transition-colors"
