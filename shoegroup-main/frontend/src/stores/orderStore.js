@@ -1,0 +1,679 @@
+// Mục đích: Quản lý danh sách đơn, trạng thái và các thao tác đơn hàng phía khách hàng.
+import { computed, reactive } from "vue";
+import { getCurrentUser } from "./authStore";
+
+/* =====================================================================
+   orderStore — quản lý đơn hàng phía khách (localStorage demo)
+   - status luôn là KEY tiếng Anh (PENDING, CONFIRMED, ...); nhãn hiển
+     thị lấy từ ORDER_STATUS[key].
+   - Nghiệp vụ: tự hủy khi quá hạn nhận hàng, xác nhận đã nhận hàng kiểu
+     Shopee, giữ 14 ngày trước khi tính doanh thu, yêu cầu trả hàng.
+   ===================================================================== */
+
+const STORAGE_KEY = "shoegroup_orders_v2";
+const DAY = 864e5;
+
+export const RECEIVE_TIMEOUT_DAYS = 7; // quá hạn nhận hàng -> tự hủy
+export const REVENUE_HOLD_DAYS = 14; // chờ 14 ngày sau khi nhận -> tính doanh thu
+
+/* KEY -> nhãn tiếng Việt */
+export const ORDER_STATUS = {
+  PENDING: "Chờ xử lý",
+  CONFIRMED: "Đã xác nhận",
+  SHIPPING: "Đang giao",
+  DELIVERY_FAILED: "Giao hàng thất bại",
+  WAREHOUSE_RETURN: "Về kho",
+  DELIVERED: "Đã giao",
+  RECEIVED: "Đã nhận hàng",
+  COMPLETED: "Hoàn thành",
+  CANCELLED: "Đã hủy",
+  RETURNED: "Trả hàng",
+};
+
+/* Danh sách {key,label} dùng cho bộ lọc trạng thái */
+export const ORDER_STATUS_LIST = Object.keys(ORDER_STATUS).map((key) => ({
+  key,
+  label: ORDER_STATUS[key],
+}));
+
+/* ---------- Helpers ---------- */
+const readOrdersFromStorage = () => {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+};
+
+export const saveOrders = () => {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orderState.orders));
+};
+
+const formatOrderDate = (date) =>
+  new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+
+const createOrderId = () => `SG${Date.now().toString().slice(-6)}`;
+
+export const formatCurrency = (value) =>
+  new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " ₫";
+
+/* ---------- State ---------- */
+export const orderState = reactive({
+  orders: readOrdersFromStorage(),
+});
+
+/* Nạp lại đơn hàng (dùng ở onMounted của trang đơn hàng) */
+export const loadOrders = async () => {
+  // State đã được nạp từ localStorage khi khởi tạo store. Không nạp lại bản
+  // local cũ ở mỗi lần polling vì nó có thể làm giao diện nhảy ngược về một
+  // trạng thái đã hủy trong lúc đang chờ phản hồi mới nhất từ server.
+  await syncFromServer();
+  return orderState.orders;
+};
+
+/* Tự động hủy đơn quá hạn nhận hàng */
+export const runAutoCancel = () => {
+  const now = Date.now();
+  let changed = false;
+  orderState.orders.forEach((o) => {
+    if (
+      !o.serverId && !o.fromServer &&
+      o.autoCancelDeadline &&
+      now > o.autoCancelDeadline &&
+      ["PENDING", "CONFIRMED"].includes(o.status)
+    ) {
+      o.status = "CANCELLED";
+      o.cancelReason =
+        "Shop chưa chuẩn bị hàng cho khách. Xin lỗi quý khách, vui lòng đặt lại đơn hàng.";
+      o.autoCancelled = true;
+      changed = true;
+    }
+  });
+
+  if (changed) saveOrders();
+};
+runAutoCancel();
+
+export const ordersByCurrentUser = computed(() => {
+  const user = getCurrentUser();
+  if (!user) return [];
+  const uid = user.id_user || user.id || user.UserID;
+  return orderState.orders.filter(
+    (o) => (uid && String(o.userId) === String(uid)) || o.customer?.email === user.email,
+  );
+});
+
+export const createOrder = ({
+  customer, items, subtotal, shippingFee, discount, total,
+  shippingMethod, paymentMethod, note,
+}) => {
+  const user = getCurrentUser();
+  if (!user) return { ok: false, message: "Vui lòng đăng nhập trước khi đặt hàng." };
+
+  const now = new Date();
+  const order = {
+    id: createOrderId(),
+    serverId: null,
+    userId: user.id_user || user.id || user.UserID || null,
+    createdAt: now.getTime(),
+    date: formatOrderDate(now),
+    status: "PENDING",
+    autoCancelDeadline: now.getTime() + RECEIVE_TIMEOUT_DAYS * DAY,
+    deliveredDate: null,
+    receivedConfirmedDate: null,
+    revenueEligibleDate: null,
+    isCountedAsRevenue: false,
+    autoCancelled: false,
+    cancelReason: "",
+    customer: {
+      fullName: customer.fullName,
+      phone: customer.phone,
+      email: customer.email,
+      country: customer.country,
+      address: customer.address,
+      province: customer.province,
+    },
+    items: items.map((item) => {
+      const attrs = item.attributes || {};
+      const prod = item.product || {};
+      return {
+        id_product: prod.id_product,
+        id_product_detail: item.id_product_detail,
+        product_name: prod.product_name,
+        // Ảnh của dòng đơn phải bám đúng màu/biến thể đã chọn. Ảnh sản phẩm
+        // chỉ là fallback khi biến thể không có ảnh riêng.
+        image_url: item.color?.image || item.image_url || prod.image_url || "",
+        size: { size_name: item.size?.size_name || "" },
+        color: { color_label: item.color?.color_label || item.color?.color_name || "" },
+        attributes: {
+          material_name: attrs.material_name || prod.material_name || "",
+          sole_name: attrs.sole_name || prod.sole_name || "",
+          cushioning_name: attrs.cushioning_name || prod.cushioning_name || "",
+          brand_name: attrs.brand_name || prod.brand_name || "",
+          category_name: attrs.category_name || prod.category_name || "",
+          sport: attrs.sport || prod.sport || "",
+        },
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: item.subtotal ?? item.unitPrice * item.quantity,
+      };
+    }),
+    subtotal, shippingFee, discount, total,
+    shippingMethod, paymentMethod, note: note || "",
+    payment_status: "Chưa thanh toán",
+  };
+
+  orderState.orders.unshift(order);
+  saveOrders();
+  return { ok: true, order };
+};
+
+/* DEMO: giả lập shop đã giao để hiển thị nút "Đã nhận hàng" */
+export const markAsDelivered = (orderId) => {
+  const o = orderState.orders.find((x) => x.id === orderId);
+  if (!o) return;
+  o.status = "DELIVERED";
+  if (o.serverId) o.serverStatus = "DELIVERED";
+  o.deliveredDate = Date.now();
+  o.autoCancelDeadline = null;
+  saveOrders();
+};
+
+/* Khách bấm "Đã nhận hàng" (giống Shopee).
+   Đơn xác nhận nhưng CHƯA tính doanh thu — chờ 14 ngày cho yêu cầu trả hàng. */
+export const confirmReceived = (orderId) => {
+  const o = orderState.orders.find((x) => x.id === orderId);
+  if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
+  const now = Date.now();
+  o.status = "RECEIVED";
+  if (o.serverId) o.serverStatus = "RECEIVED";
+  o.receivedConfirmedDate = now;
+  o.revenueEligibleDate = now + REVENUE_HOLD_DAYS * DAY;
+  o.isCountedAsRevenue = false;
+  saveOrders();
+  return { ok: true, order: o };
+};
+
+/* Số ngày còn lại trước khi đơn được tính doanh thu */
+export const daysUntilRevenue = (order) => {
+  if (!order.revenueEligibleDate) return null;
+  return Math.max(0, Math.ceil((order.revenueEligibleDate - Date.now()) / DAY));
+};
+
+export const removeOrder = (orderId) => {
+  const index = orderState.orders.findIndex((o) => o.id === orderId);
+  if (index !== -1) { orderState.orders.splice(index, 1); saveOrders(); }
+};
+
+// Chỉ đánh dấu hoàn tiền khi đơn thực sự đã thu tiền. Đơn COD đang chờ xử lý
+// chưa thu tiền phải giữ trạng thái "Đã hủy"; trước đây mọi đơn đều bị gắn
+// "Hoàn tiền", khiến giao diện và báo cáo doanh thu sai.
+const localPaymentKey = (value) => String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/đ/gi, "d")
+  .toLowerCase()
+  .trim()
+  .replace(/\s+/g, " ");
+
+const orderWasPaid = (order) => {
+  const paymentKey = localPaymentKey(order?.payment_status ?? order?.PaymentStatus);
+  return ["da thanh toan", "cho hoan tien", "hoan tien"].includes(paymentKey);
+};
+
+export const cancelOrder = (orderId, reason, paymentStatus) => {
+  const o = orderState.orders.find((x) => x.id === orderId);
+  if (!o) return;
+  o.status = "CANCELLED";
+  if (o.serverId) o.serverStatus = "CANCELLED";
+  o.payment_status = paymentStatus || (o.payment_status === "Hoàn tiền" ? "Hoàn tiền" : orderWasPaid(o) ? "Chờ hoàn tiền" : "Đã hủy");
+  o.cancelReason = reason || "Khách hàng hủy đơn.";
+  saveOrders();
+};
+
+/* Gắn ID đơn hàng phía server để đồng bộ trạng thái sau này */
+export const setServerId = (localId, serverId) => {
+  const o = orderState.orders.find((x) => x.id === localId);
+  if (o) {
+    o.serverId = serverId;
+    o.fromServer = true;
+    saveOrders();
+  }
+};
+
+import { API_BASE_URL } from "../services/apiClient";
+const API_BASE = API_BASE_URL;
+
+/* Chuẩn hóa chuỗi tiếng Việt để so khớp trạng thái không lỗi */
+export const normalizeStatusText = (str) => {
+  if (!str) return "";
+  return String(str)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+};
+
+/* Ánh xạ trạng thái từ Server (DB SQL / Admin) sang KEY nội bộ (PENDING, CONFIRMED, ...) */
+export const mapStatusToKey = (status) => {
+  if (!status) return "PENDING";
+  const raw = String(status).trim();
+  if (ORDER_STATUS[raw]) return raw;
+
+  const n = normalizeStatusText(raw);
+
+  // "chuyển" được bỏ dấu thành "chuyen" và có chứa chuỗi "huy". Chỉ nhận
+  // hủy khi "huy" là một từ độc lập để không biến "Đang vận chuyển" thành
+  // CANCELLED.
+  if (/(^|[^a-z0-9])(da\s+)?huy(?=$|[^a-z0-9])/.test(n) || n.includes("cancel")) return "CANCELLED";
+  if (n.includes("ve kho") || n.includes("returned to warehouse") || n.includes("warehouse return") || n.includes("return_to_warehouse")) return "WAREHOUSE_RETURN";
+  if (n.includes("tra hang") || n.includes("hoan tien") || n.includes("return")) return "RETURNED";
+  if (n.includes("da nhan") || n.includes("receive")) return "RECEIVED";
+  if (n.includes("hoan thanh") || n.includes("complete")) return "COMPLETED";
+  if (n.includes("giao hang that bai") || n.includes("khong giao duoc hang") || n.includes("delivery failed") || n.includes("delivery failure") || n.includes("delivery_failure")) return "DELIVERY_FAILED";
+  if (n.includes("da giao") || n.includes("giao hang thanh cong") || n.includes("deliver")) return "DELIVERED";
+  if (n.includes("van chuyen") || n.includes("dang giao") || n.includes("ship")) return "SHIPPING";
+  if (n.includes("chuan bi") || n.includes("lay hang") || n.includes("process") || n.includes("picking")) return "CONFIRMED";
+  if (n.includes("da xac nhan") || n.includes("confirm")) return "CONFIRMED";
+  if (n.includes("cho xac nhan") || n.includes("cho xu ly") || n.includes("pending")) return "PENDING";
+
+  return "PENDING";
+};
+
+/* Trạng thái server là nguồn sự thật cho đơn đã đồng bộ. Các thao tác hợp lệ
+   của khách cũng cập nhật serverStatus ngay khi API thành công, nên giao diện
+   không còn phụ thuộc vào một giá trị status local cũ. */
+export const getOrderDisplayStatus = (order) => order?.serverStatus || order?.status || "PENDING";
+
+const deliveryIssueText = (order = {}) => {
+  const historyText = (order.history || [])
+    .map((item) => `${item?.status || ""} ${item?.note || ""}`)
+    .join(" ");
+  return normalizeStatusText([
+    order.stockIssueStatus,
+    order.stock_issue_status,
+    order.stockIssueReason,
+    order.stock_issue_reason,
+    order.cancelReason,
+    order.cancel_reason,
+    historyText,
+  ].filter(Boolean).join(" "));
+};
+
+// Ba kết quả giao thất bại có ý nghĩa nghiệp vụ khác nhau. Giữ một bộ phân
+// loại dùng chung giúp thẻ trạng thái, mô tả và dữ liệu cũ không nói mâu thuẫn.
+export const getDeliveryIssueType = (order) => {
+  if (!order) return "";
+  const issueCode = String(order.stockIssueStatus ?? order.stock_issue_status ?? "").trim().toUpperCase();
+  const text = deliveryIssueText(order);
+  if (issueCode === "LOST_IN_TRANSIT" || text.includes("mat hang") || text.includes("that lac") || text.includes("lost")) return "LOST";
+  if (issueCode === "DELIVERY_ACCIDENT" || text.includes("tai nan") || text.includes("truc trac") || text.includes("su co van chuyen") || text.includes("va cham")) return "ACCIDENT";
+  if (issueCode === "RETURNED_TO_WAREHOUSE" || text.includes("khong bat may") || text.includes("khong nhan hang") || text.includes("chua lien he")) return "UNREACHABLE";
+  if (issueCode === "DELIVERY_FAILED" || ["DELIVERY_FAILED", "WAREHOUSE_RETURN"].includes(getOrderDisplayStatus(order))) return "FAILED";
+  return "";
+};
+
+// Chỉ đổi nhãn khi sự cố đang là trạng thái hiện tại. Sau khi shop giao lại,
+// nhãn phải trở về “Đang giao”/“Đã giao” thay vì giữ lý do cũ trên lịch sử.
+export const getCustomerOrderStatusLabel = (order) => {
+  const status = getOrderDisplayStatus(order);
+  const issueType = getDeliveryIssueType(order);
+  if (issueType === "LOST" && ["CANCELLED", "DELIVERY_FAILED"].includes(status)) return "Hàng bị thất lạc";
+  if (status === "WAREHOUSE_RETURN" && issueType === "ACCIDENT") return "Sự cố vận chuyển";
+  if (status === "WAREHOUSE_RETURN" && issueType === "UNREACHABLE") return "Chưa liên hệ được";
+  if (status === "WAREHOUSE_RETURN") return "Chờ giao lại";
+  return ORDER_STATUS[status] || status;
+};
+
+/* Ánh xạ 1 đơn từ server (GET /api/customers/:id/orders) sang shape dùng ở trang khách */
+export const mapServerOrder = (s) => {
+  const key = mapStatusToKey(s.status);
+  let createdAt = Date.now();
+  if (s.created_at) {
+    const d = new Date(s.created_at);
+    if (!isNaN(d)) createdAt = d.getTime();
+  } else if (s.date) {
+    const m = String(s.date).match(/(\d{2})\/(\d{2})\/(\d{4})[ T]?(\d{2})?:?(\d{2})?:?(\d{2})?/);
+    if (m) createdAt = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
+    else { const d = new Date(s.date); if (!isNaN(d)) createdAt = d.getTime(); }
+  }
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const deliveredDate = toTimestamp(s.delivered_date ?? s.DeliveredDate);
+  const receivedConfirmedDate = toTimestamp(s.received_confirmed_date ?? s.ReceivedConfirmedDate);
+  const revenueEligibleDate = toTimestamp(s.revenue_eligible_date ?? s.RevenueEligibleDate);
+  const paymentDueAt = s.payment_due_at || s.PaymentDueAt || null;
+  const paymentConfirmedAt = s.payment_confirmed_at || s.PaymentConfirmedAt || null;
+  const rawCounted = s.is_counted_as_revenue ?? s.IsCountedAsRevenue;
+  const isCountedAsRevenue = rawCounted === true || rawCounted === 1 || rawCounted === "1" || String(rawCounted).toLowerCase() === "true";
+  return {
+    id: "SV" + s.id,
+    serverId: s.id,
+    userId: s.user_id ?? null,
+    createdAt,
+    date: s.date || "",
+    status: key,
+    serverStatus: key,
+    autoCancelDeadline: toTimestamp(s.auto_cancel_deadline ?? s.AutoCancelDeadline),
+    deliveredDate: deliveredDate || (key === "DELIVERED" ? createdAt : null),
+    receivedConfirmedDate,
+    revenueEligibleDate,
+    isCountedAsRevenue,
+    stockIssueStatus: s.stock_issue_status ?? s.StockIssueStatus ?? null,
+    stockIssueReason: s.stock_issue_reason ?? s.StockIssueReason ?? "",
+    stockRestoredAt: toTimestamp(s.stock_restored_at ?? s.StockRestoredAt),
+    history: (s.history || s.OrderStatusHistory || []).map((h) => ({
+      status: h.status ?? h.Status ?? h.NewStatus ?? "",
+      date: h.date ?? h.ChangedAt ?? null,
+      note: h.note ?? h.Note ?? "",
+    })),
+    autoCancelled: false,
+    cancelReason: s.cancel_reason || "",
+    fromServer: true,
+    shippingAddress: s.shipping_address || s.customer_address || "",
+    addressId: s.address_id ?? null,
+    addressChanged: Boolean(s.address_changed),
+    customer: {
+      fullName: s.customer_name || "",
+      phone: s.customer_phone || "",
+      email: "",
+      address: s.customer_address || "",
+    },
+    items: (s.products || []).map((d) => ({
+      order_detail_id: d.order_detail_id ?? d.OrderDetailID ?? null,
+      product_id: d.product_id ?? d.ProductID ?? null,
+      product_variant_id: d.variant_id ?? d.ProductVariantID ?? null,
+      product_name: d.name || "",
+      image_url: d.image || "",
+      size: { size_name: d.size || "" },
+      color: { color_label: d.color || "" },
+      quantity: d.quantity ?? 1,
+      unitPrice: d.price ?? 0,
+      subtotal: (d.price ?? 0) * (d.quantity ?? 1),
+    })),
+    subtotal: s.subtotalAmount ?? s.subtotal ?? (s.products || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
+    shippingFee: s.shippingFee ?? 0,
+    discount: s.discount ?? 0,
+    total: s.total ?? 0,
+    shippingMethod: {
+      code: s.shipping_method_code || "",
+      name: s.shipping_method || "Theo đơn hàng",
+      eta: s.shipping_eta || "",
+    },
+    paymentMethod: {
+      code: s.payment_method_code || "",
+      name: s.payment_method || "COD",
+    },
+    payment_status: s.payment_status || s.PaymentStatus || "Chưa thanh toán",
+    paymentDueAt,
+    paymentConfirmedAt,
+    tracking_code: s.tracking_code || s.TrackingNumber || "",
+    note: s.note || "",
+  };
+};
+
+const comparableItemKey = (item = {}) => {
+  const productId = item.product_id ?? item.id_product ?? item.product?.id_product ?? "";
+  const size = normalizeStatusText(item.size?.size_name ?? item.size ?? "");
+  const color = normalizeStatusText(item.color?.color_label ?? item.color?.color_name ?? item.color ?? "");
+  const quantity = Number(item.quantity ?? 0);
+  return `${productId}|${size}|${color}|${quantity}`;
+};
+
+const comparableItems = (items) => (Array.isArray(items) ? items : [])
+  .map(comparableItemKey)
+  .sort()
+  .join(";");
+
+/* Ghép một bản đơn local cũ với đơn server tương ứng. Việc ghép chỉ diễn ra
+   khi thời điểm, tổng tiền và toàn bộ dòng sản phẩm đều khớp để tránh nối
+   nhầm hai đơn mua gần nhau. */
+export const ordersLikelySame = (localOrder, serverOrder) => {
+  if (!localOrder || !serverOrder) return false;
+  const mapped = mapServerOrder(serverOrder);
+  const localCreatedAt = Number(localOrder.createdAt);
+  const serverCreatedAt = Number(mapped.createdAt);
+  if (!Number.isFinite(localCreatedAt) || !Number.isFinite(serverCreatedAt)) return false;
+  if (Math.abs(localCreatedAt - serverCreatedAt) > 10 * 60 * 1000) return false;
+  if (Math.abs(Number(localOrder.total || 0) - Number(mapped.total || 0)) > 1) return false;
+
+  const localItems = comparableItems(localOrder.items);
+  const serverItems = comparableItems(mapped.items);
+  if (!localItems || localItems !== serverItems) return false;
+
+  const localPhone = String(localOrder.customer?.phone || "").replace(/\D/g, "");
+  const serverPhone = String(mapped.customer?.phone || "").replace(/\D/g, "");
+  return !localPhone || !serverPhone || localPhone === serverPhone;
+};
+
+/* Đồng bộ trạng thái từ server (Admin cập nhật) về đơn của khách */
+export const syncFromServer = async () => {
+  const user = getCurrentUser();
+  if (!user) return;
+
+  const uid = user.id_user || user.id || user.UserID;
+  if (!uid) return;
+
+  let list = [];
+  try {
+    const { api } = await import("../services/apiClient");
+    list = await api.get(`/customers/${uid}/orders`);
+  } catch (err) {
+    console.warn("Lỗi syncFromServer:", err);
+    return;
+  }
+  return reconcileOrdersFromServer(list);
+};
+
+export const reconcileOrdersFromServer = (list) => {
+  if (!Array.isArray(list)) return false;
+  let changed = false;
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  // Các phiên bản cũ có thể đã tạo đơn thành công nhưng chưa kịp lưu serverId.
+  // Ghép lại bản local đó thay vì để song song một đơn SG... cũ và một đơn
+  // SV... mới, vì bản SG... có thể tiếp tục hiển thị trạng thái "Đã hủy".
+  const duplicateServerCopies = new Set();
+  orderState.orders.forEach((o) => {
+    const hasCurrentServerOrder = o.serverId != null
+      && list.some((item) => String(item.id) === String(o.serverId));
+    if (hasCurrentServerOrder) return;
+
+    const candidates = list.filter((item) => ordersLikelySame(o, item));
+    if (candidates.length !== 1) return;
+
+    const candidate = candidates[0];
+    const existingServerCopy = orderState.orders.find((item) =>
+      item !== o && String(item.serverId) === String(candidate.id)
+    );
+    if (existingServerCopy && !(existingServerCopy.fromServer && String(existingServerCopy.id).startsWith("SV"))) return;
+
+    if (existingServerCopy) duplicateServerCopies.add(existingServerCopy);
+    o.serverId = candidate.id;
+    o.fromServer = true;
+    changed = true;
+  });
+  if (duplicateServerCopies.size) {
+    orderState.orders = orderState.orders.filter((o) => !duplicateServerCopies.has(o));
+    changed = true;
+  }
+
+  // 1. Cập nhật các đơn đã tồn tại trong local storage
+  orderState.orders.forEach((o) => {
+    const s = list.find((item) => String(item.id) === String(o.serverId));
+    if (!s) return;
+
+    const key = mapStatusToKey(s.status);
+    if (o.serverStatus !== key) {
+      o.serverStatus = key;
+      changed = true;
+    }
+    o.fromServer = true;
+    // Đơn đã đồng bộ luôn lấy trạng thái hiện tại trên server làm nguồn thật.
+    if (o.status !== key) {
+      o.status = key;
+      if (key === "DELIVERED" && !o.deliveredDate) {
+        o.deliveredDate = Date.now();
+        o.autoCancelDeadline = null;
+      }
+      if (key === "CANCELLED") {
+        o.cancelReason = s.cancel_reason || o.cancelReason || "Đơn bị hủy.";
+      }
+      changed = true;
+    }
+
+    // Một lần giao thất bại/về kho không còn đồng nghĩa với hủy đơn. Khi shop
+    // đã xếp giao lại, xóa lý do hủy cũ để giao diện không tiếp tục hiện cảnh
+    // báo "Đơn bị hủy".
+    if (key !== "CANCELLED") {
+      if (o.cancelReason) {
+        o.cancelReason = "";
+        changed = true;
+      }
+      if (o.autoCancelled) {
+        o.autoCancelled = false;
+        changed = true;
+      }
+    }
+
+    // Yêu cầu trả hàng bị từ chối/hủy sẽ trả đơn về trạng thái giao/nhận;
+    // xóa cờ local để người mua có thể gửi yêu cầu mới đúng điều kiện.
+    if (key !== "RETURNED" && o.returnInfo) {
+      delete o.returnInfo;
+      changed = true;
+    }
+
+    if (s.payment_status && o.payment_status !== s.payment_status) {
+      o.payment_status = s.payment_status;
+      changed = true;
+    }
+    if (Array.isArray(s.products) || Array.isArray(s.OrderDetails)) {
+      const snapshot = mapServerOrder(s);
+      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total']) {
+        if (JSON.stringify(o[field]) !== JSON.stringify(snapshot[field])) {
+          o[field] = snapshot[field];
+          changed = true;
+        }
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_status") || Object.prototype.hasOwnProperty.call(s, "StockIssueStatus")) {
+      const serverIssueStatus = s.stock_issue_status ?? s.StockIssueStatus ?? null;
+      if ((o.stockIssueStatus ?? null) !== (serverIssueStatus ?? null)) {
+        o.stockIssueStatus = serverIssueStatus;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_issue_reason") || Object.prototype.hasOwnProperty.call(s, "StockIssueReason")) {
+      const serverIssueReason = s.stock_issue_reason ?? s.StockIssueReason ?? "";
+      if ((o.stockIssueReason ?? "") !== serverIssueReason) {
+        o.stockIssueReason = serverIssueReason;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "stock_restored_at") || Object.prototype.hasOwnProperty.call(s, "StockRestoredAt")) {
+      const serverRestoredAt = toTimestamp(s.stock_restored_at ?? s.StockRestoredAt);
+      if ((o.stockRestoredAt ?? null) !== (serverRestoredAt ?? null)) {
+        o.stockRestoredAt = serverRestoredAt;
+        changed = true;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(s, "history") || Object.prototype.hasOwnProperty.call(s, "OrderStatusHistory")) {
+      const serverHistory = (s.history || s.OrderStatusHistory || []).map((h) => ({
+        status: h.status ?? h.Status ?? h.NewStatus ?? "",
+        date: h.date ?? h.ChangedAt ?? null,
+        note: h.note ?? h.Note ?? "",
+      }));
+      if (JSON.stringify(o.history || []) !== JSON.stringify(serverHistory)) {
+        o.history = serverHistory;
+        changed = true;
+      }
+    }
+
+    const serverAddress = s.shipping_address || s.customer_address || "";
+    if (serverAddress && o.shippingAddress !== serverAddress) {
+      o.shippingAddress = serverAddress;
+      changed = true;
+    }
+    const serverAddressId = s.address_id ?? null;
+    if ((o.addressId ?? null) !== serverAddressId) {
+      o.addressId = serverAddressId;
+      changed = true;
+    }
+
+    const hasField = (...names) => names.some((name) => Object.prototype.hasOwnProperty.call(s, name));
+    const dateFields = [
+      ["deliveredDate", ["delivered_date", "DeliveredDate"]],
+      ["receivedConfirmedDate", ["received_confirmed_date", "ReceivedConfirmedDate"]],
+      ["revenueEligibleDate", ["revenue_eligible_date", "RevenueEligibleDate"]],
+      ["autoCancelDeadline", ["auto_cancel_deadline", "AutoCancelDeadline"]],
+    ];
+    dateFields.forEach(([field, names]) => {
+      if (!hasField(...names)) return;
+      const value = toTimestamp(s[names[0]] ?? s[names[1]]);
+      if ((o[field] ?? null) !== (value ?? null)) {
+        o[field] = value;
+        changed = true;
+      }
+    });
+    if (hasField("is_counted_as_revenue", "IsCountedAsRevenue")) {
+      const rawCounted = s.is_counted_as_revenue ?? s.IsCountedAsRevenue;
+      const serverCounted = rawCounted === true || rawCounted === 1 || rawCounted === "1" || String(rawCounted).toLowerCase() === "true";
+      if (Boolean(o.isCountedAsRevenue) !== serverCounted) {
+        o.isCountedAsRevenue = serverCounted;
+        changed = true;
+      }
+    }
+    if (hasField("payment_due_at", "PaymentDueAt")) {
+      const serverPaymentDue = s.payment_due_at ?? s.PaymentDueAt ?? null;
+      if ((o.paymentDueAt ?? null) !== (serverPaymentDue ?? null)) {
+        o.paymentDueAt = serverPaymentDue;
+        changed = true;
+      }
+    }
+    if (hasField("payment_confirmed_at", "PaymentConfirmedAt")) {
+      const serverPaymentConfirmed = s.payment_confirmed_at ?? s.PaymentConfirmedAt ?? null;
+      if ((o.paymentConfirmedAt ?? null) !== (serverPaymentConfirmed ?? null)) {
+        o.paymentConfirmedAt = serverPaymentConfirmed;
+        changed = true;
+      }
+    }
+    if (hasField("tracking_code", "TrackingNumber")) {
+      const serverTracking = s.tracking_code ?? s.TrackingNumber ?? "";
+      if ((o.tracking_code ?? "") !== serverTracking) {
+        o.tracking_code = serverTracking;
+        changed = true;
+      }
+    }
+  });
+
+  // 2. Thêm các đơn từ server về local nếu chưa có
+  const existingServerIds = new Set(
+    orderState.orders.map((o) => (o.serverId != null ? String(o.serverId) : null)).filter(Boolean)
+  );
+
+  list.forEach((s) => {
+    if (!s || s.id == null) return;
+    if (existingServerIds.has(String(s.id))) return;
+    try {
+      orderState.orders.push(mapServerOrder(s));
+      existingServerIds.add(String(s.id));
+      changed = true;
+    } catch (e) {}
+  });
+
+  if (changed) saveOrders();
+  return changed;
+};

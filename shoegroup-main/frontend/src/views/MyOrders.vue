@@ -1,0 +1,828 @@
+<!-- Mục đích: Trang đơn hàng của tôi: xem tiến độ, hủy đơn, đổi địa chỉ và xác nhận nhận hàng. -->
+﻿<script setup>
+// Mục đích: Trang theo dõi lịch sử, trạng thái và thao tác trên đơn hàng của khách.
+import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
+  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
+  getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel
+} from '../stores/orderStore'
+import { notify } from '../stores/uiStore'
+import { api } from "../services/apiClient"
+import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
+import OrderStatusIcon from '../components/OrderStatusIcon.vue'
+
+const router = useRouter()
+const search = ref('')
+const statusFilter = ref('ALL')
+const expanded = ref(null)
+const isLoading = ref(true)
+const orderCardRefs = new Map()
+
+const isCentered = computed(() => router.currentRoute.value.query.center === 'true')
+
+const statusMeta = {
+  PENDING: { color: 'amber', icon: 'pending' },
+  CONFIRMED: { color: 'blue', icon: 'confirmed' },
+  SHIPPING: { color: 'cyan', icon: 'shipping' },
+  DELIVERY_FAILED: { color: 'red', icon: 'failed' },
+  WAREHOUSE_RETURN: { color: 'amber', icon: 'warehouse' },
+  DELIVERED: { color: 'green', icon: 'delivered' },
+  RECEIVED: { color: 'green', icon: 'delivered' },
+  COMPLETED: { color: 'green', icon: 'delivered' },
+  CANCELLED: { color: 'red', icon: 'cancelled' },
+  RETURNED: { color: 'gray', icon: 'returned' },
+}
+
+// Luồng trạng thái chuẩn để vẽ thanh tiến trình (stepper)
+// Thanh tiến trình kết thúc ở mốc giao hàng thành công; không vẽ thêm
+// một icon "Hoàn thành" không có thao tác tương ứng.
+const FLOW = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED']
+const stepIndex = (s) => {
+  if (s === 'RECEIVED' || s === 'COMPLETED') return FLOW.indexOf('DELIVERED')
+  return FLOW.indexOf(s)
+}
+
+const filtered = computed(() => {
+  let list = ordersByCurrentUser.value.map((order) => {
+    const status = getOrderDisplayStatus(order)
+    return status === order.status ? order : { ...order, status }
+  })
+  if (statusFilter.value !== 'ALL') list = list.filter((o) => o.status === statusFilter.value)
+  const q = search.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter((o) =>
+      (o.items || []).some((it) => (it.product_name || it.product?.product_name || '').toLowerCase().includes(q)) ||
+      String(o.id).includes(q)
+    )
+  }
+  return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+})
+
+const setOrderCardRef = (id, element) => {
+  if (element) orderCardRefs.set(id, element)
+  else orderCardRefs.delete(id)
+}
+
+const toggle = (id) => {
+  expanded.value = expanded.value === id ? null : id
+}
+
+const scrollExpandedIntoView = () => {
+  const card = orderCardRefs.get(expanded.value)
+  const detail = card?.querySelector('.oc-detail')
+  if (!detail) return
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
+
+const handleCancel = (order) => {
+  cancelModal.orderId = order.id
+  cancelModal.serverId = order.serverId
+  cancelModal.reason = ''
+  cancelModal.open = true
+}
+
+const closeCancelModal = () => { cancelModal.open = false }
+
+const submitCancel = async () => {
+  const reason = cancelModal.reason.trim() || 'Khách hàng hủy đơn.'
+  if (cancelModal.serverId) {
+    try {
+      await api.put(`/orders/${cancelModal.serverId}/status`, { status: 'Đã hủy', reason })
+    } catch (error) {
+      notify({ type: 'error', message: error.message || 'Không thể hủy đơn ở trạng thái hiện tại.' })
+      return
+    }
+  }
+  cancelOrder(cancelModal.orderId, reason)
+  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
+  closeCancelModal()
+}
+
+const isBankTransfer = (o) => {
+  if (o.paymentMethod?.code === 'BANK' || o.paymentMethod?.code === 'MOMO') return true
+  if (typeof o.paymentMethod === 'string' && (o.paymentMethod.toLowerCase().includes('chuyển khoản') || o.paymentMethod.toLowerCase().includes('momo') || o.paymentMethod.toLowerCase().includes('bank'))) return true
+  if (o.paymentMethod?.name && (o.paymentMethod.name.toLowerCase().includes('chuyển khoản') || o.paymentMethod.name.toLowerCase().includes('momo') || o.paymentMethod.name.toLowerCase().includes('bank'))) return true
+  return false
+}
+
+const isLostDelivery = (o) => {
+  if (!o) return false
+  return getDeliveryIssueType(o) === 'LOST'
+}
+
+const isAccidentDelivery = (o) => getDeliveryIssueType(o) === 'ACCIDENT'
+const isUnreachableDelivery = (o) => getDeliveryIssueType(o) === 'UNREACHABLE'
+
+const historyStatusKeys = (o) => (o?.history || []).map((h) => mapStatusToKey(h.status))
+const hasDeliveryIssue = (o) => {
+  if (!o) return false
+  const keys = historyStatusKeys(o)
+  return ['DELIVERY_FAILED', 'WAREHOUSE_RETURN'].includes(o.status)
+    || keys.includes('DELIVERY_FAILED')
+    || keys.includes('WAREHOUSE_RETURN')
+}
+
+const isDeliveryResolved = (o) => ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o?.status)
+
+const deliveryIssueMessage = (o) => {
+  if (!o) return ''
+  if (isLostDelivery(o)) {
+    return isBankTransfer(o)
+      ? 'Hàng bị thất lạc. Đơn đã hủy; vui lòng liên hệ shop để được hoàn tiền.'
+      : 'Hàng bị thất lạc trong quá trình vận chuyển. Đơn đã hủy.'
+  }
+  if (o.status === 'WAREHOUSE_RETURN') {
+    return isAccidentDelivery(o)
+      ? 'Đơn gặp sự cố vận chuyển. Shop sẽ giao lại sớm.'
+      : 'Chưa liên hệ được người nhận. Shop sẽ giao lại sớm.'
+  }
+  if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Shop đang giao lại đơn hàng. Vui lòng để ý điện thoại.'
+  if (hasDeliveryIssue(o) && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) return 'Đơn hàng đã được giao lại thành công.'
+  if (o.status === 'DELIVERY_FAILED') return 'Giao hàng chưa thành công. Shop đang xử lý.'
+  return ''
+}
+
+const deliveryIssueSteps = (o) => {
+  if (!o || !hasDeliveryIssue(o)) return []
+  const historyKeys = historyStatusKeys(o)
+  const failed = o.status === 'DELIVERY_FAILED'
+    || historyKeys.includes('DELIVERY_FAILED')
+    || ['DELIVERY_FAILED', 'RETURNED_TO_WAREHOUSE', 'DELIVERY_ACCIDENT'].includes(String(o.stockIssueStatus || '').toUpperCase())
+  const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
+  const steps = [{ label: 'Đang giao hàng', icon: 'shipping', tone: 'neutral' }]
+  if (failed) steps.push({
+    label: isAccidentDelivery(o) ? 'Sự cố vận chuyển' : (isUnreachableDelivery(o) ? 'Chưa liên hệ được' : 'Giao hàng thất bại'),
+    icon: 'failed',
+    tone: 'danger'
+  })
+  if (returned) steps.push({ label: 'Đã về kho', icon: 'warehouse', tone: 'warning' })
+  if (returned && o.status === 'SHIPPING') steps.push({ label: 'Đang giao lại', icon: 'shipping', tone: 'active' })
+  if (isDeliveryResolved(o)) steps.push({ label: 'Đã giao thành công', icon: 'delivered', tone: 'success' })
+  return steps
+}
+
+const fmtDate = (d) => d ? new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
+/* ---- Logic Đổi Địa Chỉ Nhận Hàng ---- */
+const savedAddresses = ref([])
+const changeAddrModal = reactive({
+  open: false,
+  order: null,
+  selectedAddrId: null,
+  updating: false,
+  showAddNew: false,
+  newRecipient: '',
+  newPhone: '',
+  newProvince: '',
+  newWard: '',
+  newLine: '',
+  newIsDefault: false,
+  adding: false,
+})
+
+const selectedAddressIsCurrent = computed(() => {
+  const orderAddressId = Number(changeAddrModal.order?.addressId)
+  const selectedId = Number(changeAddrModal.selectedAddrId)
+  return Number.isInteger(orderAddressId) && orderAddressId > 0 && orderAddressId === selectedId
+})
+
+const isValidPhone = (phone) => {
+  const value = String(phone || '').trim()
+  return /^0(?:3|5|7|8|9)[0-9]{8}$/.test(value) && !/(\d)\1{5,}/.test(value)
+}
+
+const loadSavedAddresses = async () => {
+  try {
+    savedAddresses.value = await addressBookApi.list()
+    return true
+  } catch (error) {
+    savedAddresses.value = []
+    notify({ type: 'error', message: error.message || 'Không tải được sổ địa chỉ.' })
+    return false
+  }
+}
+
+const openChangeAddress = async (order) => {
+  if (order.addressChanged) {
+    notify({
+      type: 'warning',
+      title: 'Đã hết lượt đổi địa chỉ',
+      message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.'
+    })
+    return
+  }
+  if (['SHIPPING', 'DELIVERY_FAILED', 'WAREHOUSE_RETURN', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'CANCELLED', 'RETURNED'].includes(order.status)) {
+    notify({
+      type: 'warning',
+      title: 'Không thể thay đổi',
+      message: 'Đơn hàng đang giao hoặc đã kết thúc nên không thể đổi địa chỉ nhận hàng.'
+    })
+    return
+  }
+
+  if (!await loadSavedAddresses()) return
+  changeAddrModal.order = order
+  changeAddrModal.showAddNew = false
+  changeAddrModal.newRecipient = ''
+  changeAddrModal.newPhone = ''
+  changeAddrModal.newProvince = ''
+  changeAddrModal.newWard = ''
+  changeAddrModal.newLine = ''
+  changeAddrModal.newIsDefault = false
+
+  if (savedAddresses.value.length > 0) {
+    const current = savedAddresses.value.find(a => Number(a.id) === Number(order.addressId))
+    const matchingSnapshot = savedAddresses.value.find(a => formatAddress(a) === order.shippingAddress)
+    const selected = current || matchingSnapshot || savedAddresses.value.find(a => a.isDefault) || savedAddresses.value[0]
+    changeAddrModal.selectedAddrId = selected.id
+  } else {
+    changeAddrModal.selectedAddrId = null
+    changeAddrModal.showAddNew = true
+  }
+
+  changeAddrModal.open = true
+}
+
+const provinces = ref([])
+const wards = ref([])
+
+const fetchProvinces = async () => {
+  try {
+    provinces.value = await vietnamAddressApi.provinces()
+  } catch (error) {
+    provinces.value = []
+    notify({ type: 'error', message: error.message || 'Không tải được danh sách Tỉnh/Thành.' })
+  }
+}
+
+const onProvinceChange = async () => {
+  changeAddrModal.newWard = ''
+  wards.value = []
+  const target = provinces.value.find(p => p.name === changeAddrModal.newProvince)
+  if (target) {
+    const requestedProvince = changeAddrModal.newProvince
+    try {
+      const rows = await vietnamAddressApi.wards(target.code)
+      if (changeAddrModal.newProvince === requestedProvince) wards.value = rows
+    } catch (error) {
+      if (changeAddrModal.newProvince === requestedProvince) wards.value = []
+      notify({ type: 'error', message: error.message || 'Không tải được danh sách Phường/Xã.' })
+    }
+  }
+}
+
+const saveNewAddrQuick = async () => {
+  const m = changeAddrModal
+  if (m.adding) return
+  if (!m.newRecipient.trim() || !m.newPhone.trim() || !m.newProvince || !m.newWard || !m.newLine.trim()) {
+    notify({ type: 'error', message: 'Vui lòng điền đủ thông tin địa chỉ mới.' })
+    return
+  }
+  if (!isValidPhone(m.newPhone)) {
+    notify({ type: 'error', message: 'Số điện thoại nhận hàng không hợp lệ.' })
+    return
+  }
+
+  m.adding = true
+  try {
+    const newAddress = await addressBookApi.create({
+      recipient: m.newRecipient.trim(),
+      phone: m.newPhone.trim(),
+      province: m.newProvince,
+      ward: m.newWard,
+      line: m.newLine.trim(),
+      isDefault: m.newIsDefault,
+    })
+    const others = savedAddresses.value
+      .filter(address => address.id !== newAddress.id)
+      .map(address => newAddress.isDefault ? { ...address, isDefault: false } : address)
+    savedAddresses.value = [newAddress, ...others].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+    changeAddrModal.selectedAddrId = newAddress.id
+    changeAddrModal.showAddNew = false
+    notify({ type: 'success', message: 'Đã thêm địa chỉ vào sổ và chọn cho đơn này.' })
+  } catch (error) {
+    notify({ type: 'error', message: error.message || 'Không thể thêm địa chỉ.' })
+  } finally {
+    m.adding = false
+  }
+}
+
+const confirmUpdateAddress = async () => {
+  const liveOrder = orderState.orders.find(o => o.id === changeAddrModal.order?.id)
+  if (changeAddrModal.order?.addressChanged || liveOrder?.addressChanged) {
+    notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Mỗi đơn hàng chỉ được đổi địa chỉ nhận hàng một lần.' })
+    changeAddrModal.open = false
+    return
+  }
+  const targetAddr = savedAddresses.value.find(a => a.id === changeAddrModal.selectedAddrId)
+  if (!targetAddr) {
+    notify({ type: 'error', message: 'Vui lòng chọn một địa chỉ từ sổ địa chỉ.' })
+    return
+  }
+  if (selectedAddressIsCurrent.value) {
+    notify({ type: 'info', message: 'Đây đã là địa chỉ nhận hàng hiện tại của đơn.' })
+    return
+  }
+
+  changeAddrModal.updating = true
+  const orderId = changeAddrModal.order.id
+  const serverId = changeAddrModal.order.serverId
+  const newFullAddr = formatAddress(targetAddr)
+
+  try {
+    let updatedShippingAddress = newFullAddr
+    let addressWasChanged = true
+    if (serverId) {
+      const updated = await api.put(`/orders/${serverId}/address`, { addressId: targetAddr.id })
+      updatedShippingAddress = updated?.shippingAddress || updatedShippingAddress
+      addressWasChanged = updated?.unchanged !== true
+    }
+
+    const localOrder = orderState.orders.find(o => o.id === orderId)
+    if (localOrder) {
+      localOrder.shippingAddress = updatedShippingAddress
+      localOrder.addressId = targetAddr.id
+      localOrder.addressChanged = addressWasChanged || Boolean(localOrder.addressChanged)
+      localOrder.customer = {
+        ...localOrder.customer,
+        fullName: targetAddr.recipient,
+        phone: targetAddr.phone,
+        address: targetAddr.line,
+        province: targetAddr.province
+      }
+      saveOrders()
+    }
+
+    notify({ type: 'success', title: 'Thành công', message: 'Đã đổi địa chỉ nhận đơn hàng thành công!' })
+    changeAddrModal.open = false
+  } catch (e) {
+    if (e?.status === 409 && e?.data?.code === 'ADDRESS_CHANGE_LIMIT_REACHED') {
+      const localOrder = orderState.orders.find(o => o.id === orderId)
+      if (localOrder) {
+        localOrder.addressChanged = true
+        saveOrders()
+      }
+      changeAddrModal.open = false
+      notify({ type: 'warning', title: 'Đã hết lượt đổi địa chỉ', message: 'Địa chỉ của đơn này đã được đổi một lần trước đó.' })
+    } else {
+      notify({ type: 'error', message: e.message || 'Không thể cập nhật địa chỉ lúc này. Vui lòng thử lại.' })
+    }
+  } finally {
+    changeAddrModal.updating = false
+  }
+}
+
+let pollTimer = null
+let lastHidden = 0
+
+async function syncOrders() {
+  await loadOrders()
+  runAutoCancel()
+}
+
+function onVisibilityChange() {
+  if (!document.hidden) {
+    if (Date.now() - lastHidden > 4000) syncOrders()
+  } else {
+    lastHidden = Date.now()
+  }
+}
+
+onMounted(async () => {
+  await loadOrders()
+  runAutoCancel()
+  isLoading.value = false
+  await Promise.all([loadSavedAddresses(), fetchProvinces()])
+  pollTimer = setInterval(syncOrders, 6000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
+</script>
+
+<template>
+  <div class="orders-page" :class="{ 'flex items-center justify-center min-h-screen': isCentered }">
+    <div class="w-full px-4 py-4" :style="isCentered ? 'max-width: 900px; width: 100%;' : ''">
+      <div class="sg-title-bar mb-2"></div>
+      <h1 class="op-title">Đơn hàng của tôi</h1>
+
+      <!-- Toolbar -->
+      <div class="op-toolbar sg-card">
+        <div class="op-search">
+          <i class="icon icon-search"></i>
+          <input v-model="search" type="search" placeholder="Tìm đơn theo tên sản phẩm hoặc mã đơn…">
+        </div>
+        <div class="op-filters">
+          <button class="stat-pill" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">Tất cả</button>
+          <button v-for="s in ORDER_STATUS_LIST" :key="s.key" class="stat-pill" :class="{ active: statusFilter === s.key }" @click="statusFilter = s.key">{{ s.label }}</button>
+        </div>
+      </div>
+
+      <div v-if="isLoading" class="text-center py-5"><div class="sg-spinner text-gray-900"></div></div>
+      <div v-else-if="filtered.length === 0" class="empty sg-card">
+        <i class="icon icon-inbox"></i><h5>Không có đơn hàng</h5>
+        <p class="text-gray-600">Bạn chưa có đơn hàng nào ở trạng thái này.</p>
+        <router-link to="/products" class="btn-sg">Mua sắm ngay</router-link>
+      </div>
+
+      <div v-else class="order-list">
+        <div
+          v-for="o in filtered"
+          :key="o.id"
+          :ref="(element) => setOrderCardRef(o.id, element)"
+          class="order-card sg-card"
+          :class="{ 'is-expanded': expanded === o.id }"
+        >
+          <!-- Header -->
+          <div
+            class="oc-head"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expanded === o.id"
+            @click="toggle(o.id)"
+            @keydown.enter.prevent="toggle(o.id)"
+            @keydown.space.prevent="toggle(o.id)"
+          >
+            <div class="oc-head-l">
+              <span class="oc-id">#{{ o.id }}</span>
+              <span class="oc-date"><OrderStatusIcon name="calendar" :size="13" /> {{ fmtDate(o.createdAt) }}</span>
+            </div>
+            <div class="oc-head-r">
+              <span class="stat-badge" :class="statusMeta[o.status]?.color"><OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="14" /> {{ getCustomerOrderStatusLabel(o) }}</span>
+              <strong class="oc-total">{{ formatCurrency(o.total) }}</strong>
+              <OrderStatusIcon name="chevron" :size="16" class="oc-caret" :class="{ open: expanded === o.id }" />
+            </div>
+          </div>
+
+          <!-- Preview thumbnails -->
+          <div class="oc-thumbs">
+            <img v-for="(it, i) in (o.items || []).slice(0, 4)" :key="i" :src="it.image_url || it.product?.image_url" :alt="it.product_name">
+            <span v-if="(o.items || []).length > 4" class="more">+{{ o.items.length - 4 }}</span>
+            <span class="oc-count">{{ (o.items || []).length }} sản phẩm</span>
+          </div>
+
+          <!-- Thông tin địa chỉ nhận & Nút đổi địa chỉ -->
+          <div class="addr-box-brief my-3 p-3 rounded flex justify-between items-center flex-wrap gap-2">
+            <div>
+              <div class="address-title font-bold text-sm text-gray-900">
+                <OrderStatusIcon name="location" :size="15" class="address-icon" />Địa chỉ nhận hàng:
+                <span v-if="o.addressChanged" class="order-status order-status-alert ml-2">Đã đổi địa chỉ</span>
+              </div>
+              <div class="text-sm text-gray-600 mt-1">
+                <strong>{{ o.customer?.fullName }}</strong> ({{ o.customer?.phone }}) -
+                <span>{{ o.shippingAddress || `${o.customer?.address}, ${o.customer?.province}` }}</span>
+              </div>
+            </div>
+            <div>
+              <button
+                v-if="['PENDING', 'CONFIRMED'].includes(o.status) && !o.addressChanged"
+                class="btn-change-addr"
+                @click.stop="openChangeAddress(o)"
+              >
+                <i class="icon icon-pencil-square mr-1"></i>Đổi sổ địa chỉ
+              </button>
+                <span v-else-if="!o.addressChanged" class="order-status order-status-muted py-2 px-3 text-sm">
+                <OrderStatusIcon name="lock" :size="14" />Khóa đổi địa chỉ
+              </span>
+            </div>
+          </div>
+
+          <!-- Thanh tiến trình trạng thái -->
+          <div v-if="isLostDelivery(o)" class="oc-status-flat red lost-delivery-status">
+            <OrderStatusIcon name="failed" :size="17" />
+            <span><strong>Hàng bị thất lạc</strong><small>Đơn đã hủy</small></span>
+          </div>
+          <div v-else-if="hasDeliveryIssue(o)" class="oc-issue-steps" :class="{ resolved: isDeliveryResolved(o) }">
+            <div v-for="(st, i) in deliveryIssueSteps(o)" :key="st.label" class="oc-issue-step" :class="[st.tone, { current: i === deliveryIssueSteps(o).length - 1 }]">
+              <span class="oc-step-dot"><OrderStatusIcon :name="st.icon" :size="15" /></span>
+              <small>{{ st.label }}</small>
+              <span v-if="i < deliveryIssueSteps(o).length - 1" class="oc-issue-line"></span>
+            </div>
+          </div>
+          <div v-else-if="!['CANCELLED','RETURNED'].includes(o.status)" class="oc-steps">
+            <div v-for="(st, i) in FLOW" :key="st" class="oc-step" :class="{ done: stepIndex(o.status) >= i, current: o.status === st || (o.status === 'RECEIVED' && st === 'COMPLETED'), success: st === 'DELIVERED' && isDeliveryResolved(o) }">
+              <span class="oc-step-dot"><OrderStatusIcon :name="statusMeta[st]?.icon" :size="15" /></span>
+              <small>{{ ORDER_STATUS[st] }}</small>
+            </div>
+          </div>
+          <div v-else class="oc-status-flat" :class="statusMeta[o.status]?.color">
+            <OrderStatusIcon :name="statusMeta[o.status]?.icon" :size="17" /> {{ ORDER_STATUS[o.status] }}
+          </div>
+
+          <div v-if="deliveryIssueMessage(o)" class="oc-delivery-note" :class="{ danger: isLostDelivery(o), success: isDeliveryResolved(o) }">
+            <OrderStatusIcon :name="isLostDelivery(o) ? 'failed' : (isDeliveryResolved(o) ? 'delivered' : 'info')" :size="16" />
+            <span>{{ deliveryIssueMessage(o) }}</span>
+          </div>
+
+          <!-- Auto-cancel reason -->
+          <div v-if="o.status === 'CANCELLED' && o.cancelReason && !isLostDelivery(o)" class="oc-cancel">
+            <i class="icon icon-exclamation-triangle"></i> {{ o.cancelReason }}
+          </div>
+
+          <!-- Revenue hold notice -->
+          <div v-if="o.status === 'RECEIVED' && !o.isCountedAsRevenue" class="oc-hold">
+            <i class="icon icon-shield-check"></i> Đơn đã nhận. Đang trong thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày — còn <strong>{{ daysUntilRevenue(o) }}</strong> ngày.
+          </div>
+
+          <!-- Transfer notices -->
+          <div v-if="isBankTransfer(o) && o.payment_status === 'Đã thanh toán'" class="oc-hold" style="border-color: #16a34a; color: #15803d; background: #f0fdf4;">
+            <i class="icon icon-check-circle"></i> Thanh toán thành công. Cửa hàng đang xử lý đơn.
+          </div>
+
+          <!-- Quick actions (always visible) -->
+          <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
+            <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
+            <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
+              <span class="delivery-success-pill">
+                <OrderStatusIcon name="delivered" :size="16" /> Đã giao thành công
+              </span>
+              <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:6px;background:#0068ff;color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
+                <svg width="16" height="16" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+                  <rect width="40" height="40" rx="10" fill="#fff"/>
+                  <path d="M20 6C12.268 6 6 11.82 6 19c0 4.08 1.98 7.72 5.08 10.18L9.5 34l5.1-1.6C16.5 33.44 18.2 33.8 20 33.8c7.732 0 14-5.82 14-13S27.732 6 20 6z" fill="#0068ff"/>
+                  <path d="M14 17h7M14 21h4m-4-8h7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                Sản phẩm có vấn đề?
+              </a>
+            </template>
+            <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="icon icon-arrow-repeat mr-1"></i>Đặt lại</button>
+          </div>
+
+          <!-- Expanded detail -->
+          <transition name="exp" @after-enter="scrollExpandedIntoView">
+            <div v-if="expanded === o.id" class="oc-detail">
+              <div class="oc-line" v-for="(it, i) in o.items" :key="i">
+                <img :src="it.image_url || it.product?.image_url" class="oc-line-img">
+                <div class="grow">
+                  <div class="oc-line-name">{{ it.product_name || it.product?.product_name }}</div>
+                  <div class="oc-line-attr">
+                    <span v-if="it.size">Size {{ it.size?.size_name || it.size }}</span>
+                    <span v-if="it.color">· {{ it.color?.color_label || it.color }}</span>
+                    <span v-if="it.attributes?.material_name">· {{ it.attributes.material_name }}</span>
+                  </div>
+                </div>
+                <div class="oc-line-qty">x{{ it.quantity }}</div>
+                <div class="oc-line-price">{{ formatCurrency(it.subtotal || it.unitPrice * it.quantity) }}</div>
+              </div>
+              <div class="oc-meta">
+                <div><span>Giao đến</span><strong>{{ o.shippingAddress || `${o.customer?.address}, ${o.customer?.province}` }}</strong></div>
+                <div>
+                  <span>Vận chuyển</span>
+                  <strong>{{ o.shippingMethod?.name || o.shippingMethod || '—' }}<template v-if="o.shippingMethod?.eta"> ({{ o.shippingMethod.eta }})</template></strong>
+                </div>
+                <div><span>Thanh toán</span><strong>{{ o.paymentMethod?.name || o.paymentMethod || '—' }}</strong></div>
+                <div><span>Phí giao</span><strong>{{ formatCurrency(o.shippingFee) }}</strong></div>
+              </div>
+            </div>
+          </transition>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Đổi Sổ Địa Chỉ Nhận Hàng -->
+    <transition name="suc">
+      <div v-if="changeAddrModal.open" class="modal-overlay" @click.self="changeAddrModal.open = false">
+        <div class="sg-card modal-box">
+          <div class="flex justify-between items-center mb-3">
+            <h5 class="font-bold mb-0">Đổi địa chỉ nhận đơn #{{ changeAddrModal.order?.id }}</h5>
+            <button class="btn-close-modal" @click="changeAddrModal.open = false"><i class="icon icon-x-lg"></i></button>
+          </div>
+
+          <div v-if="!changeAddrModal.showAddNew">
+            <label class="co-label mb-2">Chọn địa chỉ từ Sổ địa chỉ của bạn:</label>
+            <div class="flex flex-col gap-2 mb-3 max-h-addr">
+              <label
+                v-for="a in savedAddresses"
+                :key="a.id"
+                class="addr-radio-card"
+                :class="{ active: changeAddrModal.selectedAddrId === a.id }"
+              >
+                <input type="radio" v-model="changeAddrModal.selectedAddrId" :value="a.id" name="order_addr_sel">
+                <div class="grow ml-2">
+                  <div class="flex items-center gap-2">
+                    <strong class="text-sm">{{ a.recipient }}</strong>
+                    <span class="text-gray-500 text-sm">| {{ a.phone }}</span>
+                    <span v-if="a.isDefault" class="sg-chip-default">Mặc định</span>
+                  </div>
+                  <div class="text-gray-600 smaller mt-1">
+                    {{ formatAddress(a) }}
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div class="flex justify-between items-center mt-3 pt-3 border-t">
+              <button class="btn-add-quick" @click="changeAddrModal.showAddNew = true">
+                <i class="icon icon-plus-lg mr-1"></i>Thêm địa chỉ mới khác
+              </button>
+              <div class="flex gap-2">
+                <button class="btn-sg-outline" @click="changeAddrModal.open = false">Hủy</button>
+                <button class="btn-sg" :disabled="changeAddrModal.updating || selectedAddressIsCurrent" @click="confirmUpdateAddress">
+                  <span v-if="changeAddrModal.updating">Đang cập nhật...</span>
+                  <span v-else-if="selectedAddressIsCurrent"><i class="icon icon-check2 mr-1"></i>Địa chỉ hiện tại</span>
+                  <span v-else><i class="icon icon-check2 mr-1"></i>Xác nhận đổi</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Form Thêm Địa Chỉ Mới Trực Tiếp -->
+          <div v-else>
+            <div class="grid grid-cols-12 gap-3">
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Người nhận <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newRecipient" class="sg-input w-full" placeholder="Tên người nhận">
+              </div>
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Số điện thoại <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newPhone" class="sg-input w-full" placeholder="Số điện thoại">
+              </div>
+
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Tỉnh / Thành phố <span class="text-red-600">*</span></label>
+                <select v-model="changeAddrModal.newProvince" class="sg-input sg-select w-full" @change="onProvinceChange">
+                  <option value="" disabled>-- Chọn Tỉnh/TP --</option>
+                  <option v-for="p in provinces" :key="p.code" :value="p.name">{{ p.name }}</option>
+                </select>
+              </div>
+
+              <div class="col-span-12 md:col-span-6">
+                <label class="co-label">Phường / Xã <span class="text-red-600">*</span></label>
+                <select v-model="changeAddrModal.newWard" class="sg-input sg-select w-full" :disabled="!changeAddrModal.newProvince">
+                  <option value="" disabled>-- Chọn Phường/Xã --</option>
+                  <option v-for="w in wards" :key="w.code" :value="w.name">{{ w.name }}</option>
+                </select>
+              </div>
+
+              <div class="col-span-12">
+                <label class="co-label">Số nhà, tên đường <span class="text-red-600">*</span></label>
+                <input v-model="changeAddrModal.newLine" class="sg-input w-full" placeholder="Số 123 Đường Cầu Giấy...">
+              </div>
+
+              <div class="col-span-12">
+                <label class="check-row">
+                  <input type="checkbox" v-model="changeAddrModal.newIsDefault">
+                  <span class="font-semibold text-sm">Đặt làm địa chỉ mặc định tài khoản</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center mt-3 pt-3 border-t">
+              <button class="btn-sg-outline" @click="changeAddrModal.showAddNew = false">Quay lại danh sách</button>
+              <button class="btn-sg" :disabled="changeAddrModal.adding" @click="saveNewAddrQuick">
+                <i class="icon icon-save mr-1"></i>{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </transition>
+
+    <!-- Cancel Order Modal -->
+    <transition name="suc">
+      <div v-if="cancelModal.open" class="modal-overlay" @click.self="closeCancelModal">
+        <div class="sg-card modal-box">
+          <h5 class="font-bold mb-3">Lý do hủy đơn</h5>
+          <p class="text-gray-600 mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
+          <textarea v-model="cancelModal.reason" class="sg-input w-full" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
+          <div class="flex gap-2 mt-4 justify-end">
+            <button class="btn-sg-outline" @click="closeCancelModal">Đóng</button>
+            <button class="btn-sg" style="background: #ef4444; box-shadow: 0 10px 24px rgba(239, 68, 68, 0.3);" @click="submitCancel">Xác nhận hủy</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+  </div>
+</template>
+
+<style scoped>
+.orders-page { background: var(--sg-canvas); min-height: 100vh; }
+.op-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
+.op-toolbar { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; margin: 14px 0 20px; }
+.op-search { display: flex; align-items: center; gap: 10px; background: var(--sg-canvas); border: 1.5px solid var(--sg-line); border-radius: 12px; padding: 8px 14px; }
+.op-search i { color: var(--sg-muted); }
+.op-search input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
+.op-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat-pill { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .35rem .9rem; font-size: .82rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
+.stat-pill:hover { border-color: #0A0A0A; color: #0A0A0A; }
+.stat-pill.active { background: var(--sg-ink); color: #fff; border-color: var(--sg-ink); }
+.empty { text-align: center; padding: 60px; }
+.empty i { font-size: 3rem; color: var(--sg-muted); }
+.order-list { display: flex; flex-direction: column; gap: 14px; }
+.order-card { padding: 18px; transition: border-color .25s ease, box-shadow .25s ease; }
+.order-card.is-expanded { border-color: #a3a3a3; box-shadow: 0 12px 30px rgba(10, 10, 10, .08); }
+.oc-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: 12px; flex-wrap: wrap; }
+.oc-head:focus-visible { outline: 2px solid #0a0a0a; outline-offset: 6px; border-radius: 4px; }
+.oc-head-l { display: flex; align-items: center; gap: 14px; }
+.oc-id { font-weight: 900; font-size: 1.05rem; }
+.oc-date { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; color: var(--sg-muted); }
+.oc-head-r { display: flex; align-items: center; gap: 14px; }
+.oc-total { font-size: 1.1rem; color: #0A0A0A; }
+.oc-caret { transition: transform .3s; color: var(--sg-muted); }
+.oc-caret.open { transform: rotate(180deg); }
+.stat-badge { font-size: .75rem; font-weight: 700; padding: .32rem .68rem; border: 1px solid transparent; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
+.stat-badge.amber { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.stat-badge.blue { background: #f5f5f5; border-color: #d4d4d4; color: #262626; }
+.stat-badge.cyan { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.stat-badge.green { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.stat-badge.red { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
+.stat-badge.gray { background: #f5f5f5; border-color: #e5e5e5; color: #525252; }
+.oc-thumbs { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.oc-thumbs img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
+.oc-thumbs .more { width: 52px; height: 52px; border-radius: 6px; background: var(--sg-canvas); display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--sg-muted); }
+.oc-count { margin-left: auto; font-size: .82rem; color: var(--sg-muted); }
+.oc-cancel { margin-top: 12px; background: #fff; border: 1px solid #D4001A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #D4001A; }
+.oc-hold { margin-top: 12px; background: #fff; border: 1px solid #0A0A0A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #0A0A0A; }
+
+.addr-box-brief { background: #fafafa; border: 1px solid #e5e5e5; }
+.address-title { display: flex; align-items: center; gap: 5px; }
+.address-icon { color: #525252; }
+.btn-change-addr { border: 1px solid #0A0A0A; background: #fff; color: #0A0A0A; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.btn-change-addr:hover { background: #0A0A0A; color: #fff; }
+
+.oc-detail { margin-top: 16px; padding: 16px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fafafa; scroll-margin-top: 88px; }
+.oc-line { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.oc-line-img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
+.oc-line-name { font-weight: 700; font-size: .9rem; }
+.oc-line-attr { font-size: .76rem; color: var(--sg-muted); }
+.oc-line-qty { font-weight: 700; color: var(--sg-ink-2); }
+.oc-line-price { font-weight: 800; min-width: 90px; text-align: right; }
+.oc-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; background: var(--sg-canvas); border-radius: 6px; padding: 14px; }
+.oc-meta span { display: block; font-size: .72rem; color: var(--sg-muted); }
+.oc-meta strong { font-size: .85rem; }
+.oc-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.btn-cancel-outline { color: #b91c1c; border-color: #fecaca; }
+.btn-cancel-outline:hover { background: #fff5f5; color: #b91c1c; border-color: #ef4444; }
+
+.co-label { font-weight: 700; font-size: 0.82rem; color: #333; }
+.max-h-addr { max-height: 240px; overflow-y: auto; }
+.addr-radio-card { display: flex; align-items: center; border: 1.5px solid var(--sg-line); border-radius: 6px; padding: 10px 14px; cursor: pointer; transition: 0.2s; background: #fff; }
+.addr-radio-card.active { border-color: #0a0a0a; background: #fafafa; }
+.addr-radio-card input { accent-color: #0a0a0a; }
+
+.btn-add-quick { border: 0; background: transparent; color: #D4001A; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+.btn-add-quick:hover { text-decoration: underline; }
+.order-status { display: inline-flex; align-items: center; border-radius: 4px; font-size: .78rem; font-weight: 600; line-height: 1.2; }
+.order-status-alert { color: #0E0E0E; background: #F0F0F0; padding: 4px 8px; }
+.order-status-muted { color: #737373; background: #F0F0F0; }
+.check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: #0a0a0a; }
+
+.btn-close-modal { border: 0; background: transparent; font-size: 1.1rem; color: #6b7280; cursor: pointer; }
+.exp-enter-active, .exp-leave-active { transition: all .3s ease; overflow: hidden; }
+.exp-enter-from, .exp-leave-to { opacity: 0; max-height: 0; }
+.exp-enter-to, .exp-leave-from { opacity: 1; max-height: 1200px; }
+.oc-steps { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; margin-top: 16px; }
+.oc-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; text-align: center; }
+.oc-step:not(:last-child)::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--sg-line); z-index: 0; }
+.oc-step.done:not(:last-child)::after { background: #0A0A0A; }
+.oc-step-dot { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 1.5px solid var(--sg-line); color: var(--sg-muted); display: flex; align-items: center; justify-content: center; z-index: 1; }
+.oc-step.done .oc-step-dot { background: #0A0A0A; border-color: #0A0A0A; color: #fff; }
+.oc-step.current .oc-step-dot { box-shadow: 0 0 0 4px rgba(10,10,10,.2); }
+.oc-step.success .oc-step-dot { background: #16a34a; border-color: #16a34a; color: #fff; box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
+.oc-step small { font-size: .68rem; color: var(--sg-muted); font-weight: 700; line-height: 1.1; }
+.oc-step.done small { color: var(--sg-ink); }
+.oc-step.success small { color: #15803d; }
+.oc-issue-steps { display: flex; align-items: flex-start; gap: 0; margin-top: 16px; padding: 13px 10px 10px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fafafa; }
+.oc-issue-steps.resolved { border-color: #bbf7d0; background: #f0fdf4; }
+.oc-issue-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; position: relative; text-align: center; color: #737373; }
+.oc-issue-step .oc-step-dot { background: #fff; border-color: #d4d4d4; color: #525252; }
+.oc-issue-step.danger { color: #b91c1c; }
+.oc-issue-step.danger .oc-step-dot { border-color: #fca5a5; color: #dc2626; }
+.oc-issue-step.warning { color: #92400e; }
+.oc-issue-step.warning .oc-step-dot { border-color: #fcd34d; color: #b45309; }
+.oc-issue-step.active { color: #1d4ed8; }
+.oc-issue-step.active .oc-step-dot { border-color: #93c5fd; color: #2563eb; }
+.oc-issue-step.success { color: #15803d; }
+.oc-issue-step.success .oc-step-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+.oc-issue-step.current:not(.success) .oc-step-dot { box-shadow: 0 0 0 4px rgba(82,82,82,.12); }
+.oc-issue-step.current.success .oc-step-dot { box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
+.oc-issue-step small { max-width: 110px; font-size: .68rem; font-weight: 700; line-height: 1.1; }
+.oc-issue-line { position: absolute; top: 14px; left: calc(50% + 15px); width: calc(100% - 30px); height: 2px; background: #d4d4d4; }
+.oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
+.oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
+.oc-status-flat.amber { background: #fef3c7; color: #92400e; }
+.oc-status-flat.green { background: #f0fdf4; color: #15803d; }
+.oc-status-flat.gray { background: #e5e7eb; color: #374151; }
+.lost-delivery-status span { display: inline-flex; flex-direction: column; gap: 2px; }
+.lost-delivery-status small { font-size: .7rem; font-weight: 700; }
+.oc-delivery-note { margin-top: 10px; display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #1e40af; font-size: .78rem; line-height: 1.45; }
+.oc-delivery-note.danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
+.oc-delivery-note.success { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+.delivery-success-pill { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; }
+@media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
+.modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 22px; }
+.suc-enter-active { transition: opacity .3s; }
+.suc-enter-from { opacity: 0; }
+</style>

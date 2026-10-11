@@ -1,0 +1,217 @@
+<!-- Mục đích: Trang tạo tài khoản khách hàng mới và kiểm tra dữ liệu đăng ký. -->
+<script setup>
+import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { register } from '../stores/authStore'
+import { notify } from '../stores/uiStore'
+import BrandLogo from '../components/BrandLogo.vue'
+
+const router = useRouter()
+const form = reactive({ fullName: '', email: '', password: '', confirm: '' })
+const showPwd = ref(false)
+const loading = ref(false)
+
+const isValidEmail = (value) => {
+  const email = String(value || '').trim()
+  const at = email.lastIndexOf('@')
+  if (at <= 0 || at !== email.indexOf('@') || email.length > 100) return false
+  const local = email.slice(0, at)
+  const domain = email.slice(at + 1)
+  if (local.length > 64 || !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local) || local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false
+  const labels = domain.split('.')
+  return domain.length <= 253 && labels.length > 1 && labels.at(-1).length >= 2 && labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
+}
+
+const submit = async () => {
+  const name = form.fullName.trim()
+  const email = form.email.trim()
+  if (!name) { notify({ type: 'error', message: 'Vui lòng nhập họ và tên.' }); return }
+  if (name.length < 2) { notify({ type: 'error', message: 'Họ tên phải có ít nhất 2 ký tự.' }); return }
+  if (!email) { notify({ type: 'error', message: 'Vui lòng nhập email.' }); return }
+  if (!isValidEmail(email)) { notify({ type: 'error', message: 'Email không đúng định dạng (VD: you@example.com).' }); return }
+  if (!form.password) { notify({ type: 'error', message: 'Vui lòng nhập mật khẩu.' }); return }
+  if (form.password.length < 6) { notify({ type: 'error', message: 'Mật khẩu tối thiểu 6 ký tự.' }); return }
+  if (form.password !== form.confirm) { notify({ type: 'error', message: 'Mật khẩu xác nhận không khớp.' }); return }
+  loading.value = true
+  const r = await register({ fullName: name, email: email, password: form.password })
+  loading.value = false
+  if (!r.ok) { notify({ type: 'error', title: 'Đăng ký thất bại', message: r.message }); return }
+  notify({ type: 'success', title: 'Tạo tài khoản thành công!', message: 'Chào mừng đến với ShoeGroup.' })
+  router.push('/')
+}
+</script>
+
+<template>
+  <div class="auth-page">
+    <div class="auth-shell">
+      <div class="auth-form">
+        <router-link to="/" class="auth-logo">
+          <BrandLogo :size="32" :radius="6" />
+          <span class="auth-logo-text"><span class="logo-shoe">SHOE</span><span class="logo-group">GROUP</span></span>
+        </router-link>
+        <h2 class="auth-title">TẠO TÀI KHOẢN</h2>
+        <p class="auth-sub">Tham gia ShoeGroup để nhận ưu đãi và trải nghiệm mua sắm tốt nhất.</p>
+
+        <label class="co-label">HỌ VÀ TÊN</label>
+        <div class="in-wrap"><input v-model="form.fullName" class="auth-input" placeholder="Nguyễn Văn A"></div>
+        <label class="co-label">EMAIL</label>
+        <div class="in-wrap"><input v-model.trim="form.email" type="email" inputmode="email" autocomplete="email" maxlength="100" class="auth-input" placeholder="you@example.com"></div>
+        <label class="co-label">MẬT KHẨU</label>
+        <div class="in-wrap">
+          <input v-model="form.password" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="ít nhất 6 ký tự">
+          <button
+            type="button"
+            class="eye"
+            :aria-label="showPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            :aria-pressed="showPwd"
+            :title="showPwd ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            @click="showPwd = !showPwd"
+          >
+            <svg v-if="!showPwd" class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12 18 18.75 12 18.75 2.25 12 2.25 12Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <svg v-else class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="m3 3 18 18" />
+              <path d="M6.71 6.71C4.86 8.1 3.48 9.96 2.75 12c1.42 4 4.92 7 9.25 7 1.38 0 2.68-.31 3.84-.86" />
+              <path d="M10.73 5.08C11.14 5.03 11.57 5 12 5c4.33 0 7.83 3 9.25 7a10.5 10.5 0 0 1-1.67 2.92" />
+              <path d="M14.12 14.12a3 3 0 0 1-4.24-4.24" />
+            </svg>
+          </button>
+        </div>
+        <label class="co-label">XÁC NHẬN MẬT KHẨU</label>
+        <div class="in-wrap"><input v-model="form.confirm" :type="showPwd ? 'text' : 'password'" class="auth-input" placeholder="Nhập lại mật khẩu" @keyup.enter="submit"></div>
+
+        <button class="auth-btn" :disabled="loading" @click="submit">{{ loading ? 'Đang tạo…' : 'ĐĂNG KÝ' }}</button>
+        <p class="auth-foot">Đã có tài khoản? <router-link to="/login">Đăng nhập</router-link></p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #ffffff;
+}
+.auth-shell {
+  max-width: 460px;
+  width: 100%;
+}
+.auth-form {
+  padding: 48px 0;
+}
+.auth-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #111;
+  text-decoration: none;
+  letter-spacing: 0.08em;
+}
+.auth-logo-text { font-family: "Inter", sans-serif; font-size: 1.25rem; }
+.auth-logo-text .logo-shoe { color: #0A0A0A; }
+.auth-logo-text .logo-group { color: #0A0A0A; }
+.auth-title {
+  font-weight: 700;
+  font-size: 1.75rem;
+  margin-top: 40px;
+  margin-bottom: 8px;
+  letter-spacing: 0.06em;
+  color: #111;
+}
+.auth-sub {
+  color: #767676;
+  margin-bottom: 28px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.co-label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #111;
+  margin: 16px 0 8px;
+  display: block;
+  letter-spacing: 0.08em;
+}
+.in-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid #d5d5d5;
+  border-radius: 4px;
+  padding: 0 14px;
+  transition: border-color 0.2s;
+  background: #fff;
+}
+.in-wrap:focus-within {
+  border-color: #111;
+}
+.auth-input {
+  border: 0;
+  outline: none;
+  padding: 14px 0;
+  width: 100%;
+  font-size: 0.95rem;
+  font-weight: 400;
+  background: transparent;
+  color: #111;
+}
+.auth-input::placeholder { color: #aaa; }
+.eye {
+  border: 0;
+  background: transparent;
+  color: #767676;
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eye:hover { color: #111; }
+.eye:focus-visible { outline: 2px solid #111; outline-offset: 2px; border-radius: 3px; }
+.eye-icon { display: block; width: 20px; height: 20px; }
+.auth-btn {
+  width: 100%;
+  margin-top: 28px;
+  padding: 15px 24px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.auth-btn:hover { background: #333; }
+.auth-btn:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+.auth-foot {
+  text-align: center;
+  margin-top: 24px;
+  color: #767676;
+  font-size: 0.9rem;
+}
+.auth-foot a {
+  font-weight: 600;
+  color: #111;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.auth-foot a:hover { color: #666; }
+
+@media (max-width: 520px) {
+  .auth-page { padding: 24px 20px; }
+  .auth-form { padding: 32px 0; }
+}
+</style>
+

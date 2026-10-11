@@ -1,0 +1,24 @@
+{
+  "name": "shoegroup",
+  "private": true,
+  "version": "2.0.0",
+  "description": "ShoeGroup - Vue 3 frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000",
+    "build": "vite build",
+    "test": "node --test test/*.test.cjs",
+    "preview": "vite preview --port=4173"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "vue": "^3.5.35",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^6.2.3"
+  }
+}

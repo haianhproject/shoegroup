@@ -1,0 +1,48 @@
+# Mục đích: Loại thư viện, build, dữ liệu tạm và cấu hình bí mật khỏi Git.
+# Phu thuoc
+node_modules/
+
+# Du lieu lam viec cua Codex (luu ngoai repository)
+tools/.work/
+
+# Prototype Figma da duoc tich hop vao src/
+all figma*/
+
+# Ban build
+dist/
+build/
+coverage/
+backend/target/
+tools/.cache/
+
+# Tep tam va ket qua trung gian cua cac script bao cao
+tmp/
+
+# Bien moi truong - TUYET DOI khong commit (chua mat khau DB, JWT_SECRET, mat khau mail)
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+!.env.example
+!backend/.env.example
+
+# Log & rac he thong
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Anh chup tu script test
+products.png
+admin.png
+
+# Preview/QA artifacts and editor backup files
+output/erd-qa/
+output/word-qa/
+outputs/pos-stock/
+docs/deliverables/qa/
+docs/deliverables/previous-exports/pos-stock/
+*.bkp
+*.bak
+*.inspect.ndjson

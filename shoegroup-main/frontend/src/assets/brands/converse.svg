@@ -1,0 +1,8 @@
+<!-- Mục đích: Logo converse dùng trong danh sách và bộ lọc thương hiệu. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-labelledby="title">
+  <title id="title">Converse</title>
+  <rect width="320" height="160" rx="24" fill="#f7f4ec"/>
+  <circle cx="76" cy="80" r="42" fill="none" stroke="#0e0e0e" stroke-width="7"/>
+  <path d="m76 47 9 23 25 1-20 15 7 24-21-14-21 14 7-24-20-15 25-1Z" fill="#0e0e0e"/>
+  <text x="207" y="91" fill="#0e0e0e" font-family="Arial, sans-serif" font-size="30" font-weight="900" text-anchor="middle">CONVERSE</text>
+</svg>
