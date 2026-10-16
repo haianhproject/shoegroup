@@ -3,6 +3,7 @@
 <!-- Trang: Quản Lý Màu Sắc -->
 
 <script setup>
+import ActivityStatus from '../components/ActivityStatus.vue';
 import {
   openForm,
   filteredColors,
@@ -11,10 +12,10 @@ import {
 </script>
 
 <template>
-  <div class="fade-in colors-page">
+  <div class="fade-in colors-page admin-catalog-page">
     <!-- Tiêu đề và nút thêm -->
     <div class="page-header">
-      <h5 class="page-title">Quản Lý Màu Sắc</h5>
+      <h5 class="page-title">Quản lý màu sắc</h5>
 
       <button
         type="button"
@@ -40,14 +41,14 @@ import {
       </div>
 
       <div class="table-responsive">
-        <table class="table align-middle mb-0 colors-table">
+        <table class="table align-middle mb-0 colors-table admin-catalog-table">
           <thead>
             <tr>
               <th class="pl-4">ID</th>
               <th>Tên màu</th>
               <th>Mã màu</th>
               <th>Trạng thái</th>
-              <th class="text-end pr-4">Hành động</th>
+              <th class="text-end pr-4">Thao tác</th>
             </tr>
           </thead>
 
@@ -82,36 +83,12 @@ import {
 
               <!-- Trạng thái -->
               <td>
-                <span
-                  class="status-badge"
-                  :class="
-                    c.active === false
-                      ? 'status-inactive'
-                      : 'status-active'
-                  "
-                >
-                  <span
-                    class="status-dot"
-                    :class="
-                      c.active === false
-                        ? 'dot-inactive'
-                        : 'dot-active'
-                    "
-                  ></span>
-
-                  {{
-                    c.active === false
-                      ? 'Không hoạt động'
-                      : 'Hoạt động'
-                  }}
-                </span>
+                <ActivityStatus :active="c.active" />
               </td>
 
               <!-- Hành động -->
               <td class="text-end pr-4">
                 <div class="action-buttons">
-                  <input type="checkbox" role="switch" :checked="c.active" @change="toggleCatalogStatus('colors',c,$event)" :aria-label="'Trạng thái màu '+c.name" :title="c.active?'Ngừng hoạt động':'Bật hoạt động'">
-
                   <button
                     type="button"
                     @click="openForm('colors', c)"
@@ -121,6 +98,7 @@ import {
                   >
                     <i class="icon icon-pencil"></i>
                   </button>
+                  <input type="checkbox" role="switch" :checked="c.active" @change="toggleCatalogStatus('colors',c,$event)" :aria-label="'Trạng thái màu '+c.name" :title="c.active?'Ngừng hoạt động':'Bật hoạt động'">
                 </div>
               </td>
             </tr>
@@ -298,44 +276,6 @@ import {
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
-}
-
-/* Trạng thái */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.dot-active {
-  background: #16a34a;
-}
-
-.dot-inactive {
-  background: #dc2626;
 }
 
 /* Các nút hành động */

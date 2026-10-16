@@ -125,7 +125,7 @@ import {
               </td>
 
               <td class="text-center text-sm">
-                {{ Number(d.quantity) > 0 ? Math.max(0,Number(d.quantity)-Number(d.used)) : 'Không giới hạn' }}
+                {{ d.quantity!=null ? Math.max(0,Number(d.quantity)-Number(d.used)) : 'Không giới hạn' }}
               </td>
 
               <td>
@@ -163,9 +163,9 @@ import {
         <dl class="p-4 grid grid-cols-2 gap-3">
           <dt>Chương trình</dt><dd>{{ discountDetail.item.name }}</dd>
           <dt>Giảm giá</dt><dd>{{ formatDiscountValue(discountDetail.item) }}</dd>
-          <dt>Tổng số lượt</dt><dd>{{ Number(discountDetail.item.quantity)>0?discountDetail.item.quantity:'Không giới hạn' }}</dd>
+          <dt>Tổng số lượt</dt><dd>{{ discountDetail.item.quantity ?? 'Không giới hạn' }}</dd>
           <dt>Đã sử dụng</dt><dd>{{ discountDetail.item.used }}</dd>
-          <dt>Còn lại</dt><dd>{{ Number(discountDetail.item.quantity)>0?Math.max(0,discountDetail.item.quantity-discountDetail.item.used):'Không giới hạn' }}</dd>
+          <dt>Còn lại</dt><dd>{{ discountDetail.item.quantity!=null?Math.max(0,discountDetail.item.quantity-discountDetail.item.used):'Không giới hạn' }}</dd>
           <dt>Trạng thái</dt><dd>{{ getDiscountStatus(discountDetail.item).label }}</dd>
         </dl>
       </div>
@@ -282,9 +282,12 @@ import {
               </div>
 
               <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">Tổng số lượt (0 = không giới hạn)</label>
+                <label class="discount-label">Tổng số lượt <span class="required" v-if="discountModal.data.quantity!=null">*</span></label>
+                <label class="flex gap-2 items-center mb-2"><input type="checkbox" :checked="discountModal.data.quantity==null" @change="discountModal.data.quantity=$event.target.checked?null:1">Không giới hạn</label>
                 <input
                   v-model.number="discountModal.data.quantity"
+                  :disabled="discountModal.data.quantity==null"
+                  :required="discountModal.data.quantity!=null"
                   type="number"
                   min="0"
                   step="1"

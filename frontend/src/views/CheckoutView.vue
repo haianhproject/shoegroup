@@ -390,9 +390,9 @@ const couponExpiryLabel = (coupon) => coupon?.expiry
   ? `HSD ${new Date(coupon.expiry).toLocaleDateString('vi-VN')}`
   : 'Không giới hạn thời gian'
 const couponUsageLabel = (coupon) => {
-  const limit = Number(coupon?.limit ?? coupon?.quantity ?? 0)
+  const limit = coupon?.limit ?? coupon?.quantity ?? null
   const used = Number(coupon?.used) || 0
-  return limit > 0 ? `Còn ${Math.max(0, limit - used)} lượt` : 'Dùng không giới hạn'
+  return limit!=null ? `Còn ${Math.max(0, Number(limit) - used)} lượt` : 'Dùng không giới hạn'
 }
 const selectCoupon = (coupon) => {
   couponCode.value = coupon?.code || ''
@@ -410,6 +410,7 @@ async function loadCoupons() {
         if (!d.active) return false
         if (d.expiry && new Date(d.expiry) < now) return false
         if (d.start_date && new Date(d.start_date) > now) return false
+        if (d.limit!=null && Number(d.used)>=Number(d.limit)) return false
         return true
       })
     }
@@ -429,9 +430,9 @@ const applyCoupon = () => {
     return
   }
 
-  const limit = Number(c.limit ?? c.quantity ?? 0)
+  const limit = c.limit ?? c.quantity ?? null
   const used = Number(c.used ?? 0)
-  if (limit > 0 && used >= limit) {
+  if (limit!=null && used >= Number(limit)) {
     couponError.value = 'Mã giảm giá này đã hết lượt sử dụng.'
     appliedCoupon.value = null
     return

@@ -43,7 +43,9 @@ async function main() {
     "SELECT OBJECT_NAME(parent_object_id) AS t,name,is_disabled,is_not_trusted,delete_referential_action,update_referential_action FROM sys.foreign_keys ORDER BY t,name",
     "SELECT OBJECT_NAME(parent_object_id) AS t,name,definition,is_disabled,is_not_trusted FROM sys.check_constraints ORDER BY t,name",
     "SELECT OBJECT_NAME(parent_object_id) AS t,name,definition FROM sys.default_constraints ORDER BY t,name",
-    "SELECT t.name,c.name,CONVERT(varchar(40),c.last_value) AS last_value FROM sys.identity_columns c JOIN sys.tables t ON t.object_id=c.object_id WHERE t.is_ms_shipped=0 ORDER BY t.name,c.name"
+    "SELECT OBJECT_NAME(object_id) AS t,name,definition,is_persisted FROM sys.computed_columns ORDER BY t,name",
+    "SELECT t.name,c.name,CONVERT(varchar(40),c.last_value) AS last_value FROM sys.identity_columns c JOIN sys.tables t ON t.object_id=c.object_id WHERE t.is_ms_shipped=0 ORDER BY t.name,c.name",
+    "SELECT class,OBJECT_SCHEMA_NAME(major_id) s,OBJECT_NAME(major_id) t,minor_id,name,CONVERT(nvarchar(4000),value) value FROM sys.extended_properties WHERE class=1 ORDER BY s,t,minor_id,name"
   ];
   for (let i=0;i<queries.length;i++) {
     const expected=(await source.request().query(queries[i])).recordset;

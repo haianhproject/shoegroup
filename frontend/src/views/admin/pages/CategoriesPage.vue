@@ -2,6 +2,7 @@
 <!-- Trang quản lý danh mục / bộ môn -->
 <script setup>
 import { computed, ref } from "vue";
+import ActivityStatus from '../components/ActivityStatus.vue';
 import {
   openForm,
   db,
@@ -33,14 +34,6 @@ const categories = computed(() => {
     });
 });
 
-const getStatusText = (category) =>
-  category.active === false ? "Không hoạt động" : "Hoạt động";
-
-const getStatusClass = (category) =>
-  category.active === false
-    ? "status-inactive"
-    : "status-active";
-
 /**
  * Chỉ mở biểu mẫu khi thêm mới hoặc chỉnh sửa.
  * Việc kiểm tra bắt buộc khi lưu cần được thực hiện
@@ -56,7 +49,7 @@ function editCategory(category) {
 </script>
 
 <template>
-  <div class="categories-page">
+  <div class="categories-page admin-catalog-page">
     <!-- Tiêu đề -->
     <div class="page-heading">
       <div>
@@ -66,7 +59,7 @@ function editCategory(category) {
         </p>
       </div>
 
-      <button class="btn-primary-custom" @click="addCategory">
+      <button type="button" class="btn btn-dark btn-primary-custom" @click="addCategory">
         <i class="icon icon-plus-lg" aria-hidden="true"></i>
         Thêm danh mục
       </button>
@@ -100,15 +93,15 @@ function editCategory(category) {
       </div>
 
       <div class="table-responsive">
-        <table class="category-table">
+        <table class="category-table admin-catalog-table">
           <thead>
             <tr>
               <th class="id-column">ID</th>
-              <th>Tên danh mục <span class="required-mark">*</span></th>
-              <th>Bộ môn <span class="required-mark">*</span></th>
+              <th>Tên danh mục</th>
+              <th>Bộ môn</th>
               <th class="center-column">Số sản phẩm</th>
               <th>Trạng thái</th>
-              <th class="action-column">Hành động</th>
+              <th class="action-column">Thao tác</th>
             </tr>
           </thead>
 
@@ -133,25 +126,22 @@ function editCategory(category) {
               </td>
 
               <td>
-                <span
-                  class="status-badge"
-                  :class="getStatusClass(category)"
-                >
-                  <span class="status-dot"></span>
-                  {{ getStatusText(category) }}
-                </span>
+                <ActivityStatus :active="category.active" />
               </td>
 
               <td class="action-column">
+                <div class="admin-row-actions">
                 <button
                   type="button"
                   class="btn-edit"
                   title="Chỉnh sửa danh mục"
+                  :aria-label="'Chỉnh sửa danh mục '+category.name"
                   @click="editCategory(category)"
                 >
                   <i class="icon icon-pencil" aria-hidden="true"></i>
                 </button>
                 <input type="checkbox" role="switch" :checked="category.active" @change="toggleCatalogStatus('categories',category,$event)" :aria-label="'Trạng thái danh mục '+category.name" :title="category.active?'Ngừng hoạt động':'Bật hoạt động'">
+                </div>
               </td>
             </tr>
 
@@ -365,11 +355,6 @@ function editCategory(category) {
   font-weight: 650;
 }
 
-.required-mark {
-  color: #dc2626;
-  font-weight: 800;
-}
-
 .sport-tag {
   display: inline-block;
   padding: 5px 9px;
@@ -384,40 +369,11 @@ function editCategory(category) {
   text-align: center !important;
 }
 
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #ecfdf3;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .action-column {
   min-width: 140px;
   text-align: right;
   white-space: nowrap;
 }
-.action-column input { margin-left:12px; }
 
 .btn-edit {
   display: inline-flex;

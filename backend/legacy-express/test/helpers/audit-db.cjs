@@ -47,8 +47,7 @@ async function setup() {
     const tables = await pool.request().query("SELECT COUNT(*) AS count FROM sys.tables");
     if (tables.recordset[0].count) throw new Error(`Refusing to initialize nonempty audit database ${DATABASE}`);
     const root = path.resolve(__dirname, "../../../..");
-    const legacySchema = path.join(root, "database/dbsql.sql");
-    const bytes = fs.readFileSync(fs.existsSync(legacySchema) ? legacySchema : path.join(root, "database/ShoegroupDB_FULL_20260929.sql"));
+    const bytes = fs.readFileSync(path.join(__dirname, "../fixtures/legacy-schema.sql"));
     // Import only schema DDL, never USE, DROP, database options, or seed/customer data.
     const source = bytes.toString(bytes[0] === 0xff && bytes[1] === 0xfe ? "utf16le" : "utf8").replace(/^\uFEFF/, "")
       .split(/^\s*GO\s*$/gim)

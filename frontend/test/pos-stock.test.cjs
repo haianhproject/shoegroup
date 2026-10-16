@@ -8,7 +8,7 @@ const vue = require('vue');
 const { transformSync } = require('esbuild');
 const { parse } = require('@vue/compiler-sfc');
 
-function store(fetch) {
+function store(fetch, sessionStorage = {getItem(){return null},setItem(){}}) {
   const module = { exports: {} };
   const mocks = {
     vue,
@@ -23,7 +23,7 @@ function store(fetch) {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/views/admin/adminStore.js'), 'utf8');
   vm.runInNewContext(transformSync(source, { format: 'cjs' }).code, {
     module, exports: module.exports, require: name => { if (!(name in mocks)) throw Error(name); return mocks[name]; },
-    console, fetch, AbortController, setTimeout() {}, clearTimeout() {},
+    console, fetch, AbortController, sessionStorage, setTimeout() {}, clearTimeout() {},
   });
   const state = module.exports;
   state.db.products = [{ id: 1, name: 'Giày', price: 300000, active: true }];
@@ -116,12 +116,16 @@ test('POS checkout sends the reservation revision and never deducts local stock 
   });
   await state.loadPosCart();
   state.activePosOrder.value.customer_id = 2;
+  state.activePosOrder.value.cash_given = 700000;
   await state.checkoutPos();
+  assert.equal(payload,undefined);assert.equal(state.posConfirmModal.open,true);
+  await state.confirmPosCheckout();
   assert.equal(payload.pos_cart_revision, 1);
   assert.equal(payload.products[0].quantity, 2);
   assert.equal(state.db.inventory[0].stock, 1);
   assert.equal(state.activePosOrder.value.cart.length, 0);
   assert.equal(state.posInvoiceModal.orderId, 88);
+  assert.equal(state.posInvoiceModal.change,100000);
 });
 
 test('older stock events cannot overwrite a newer reservation response', () => {
@@ -129,6 +133,29 @@ test('older stock events cannot overwrite a newer reservation response', () => {
   state.applyPosStockUpdates([{ id: 11, stock: 0, version: 4 }]);
   state.applyPosStockUpdates([{ id: 11, stock: 2, version: 3 }]);
   assert.equal(state.posVariants.value[0].stock, 0);
+});
+
+test('POS rejects insufficient or invalid cash and confirmation cancel does not create an order',async()=>{
+  let writes=0;
+  const state=store(async(url,options)=>{if(options?.method==='POST') writes++;return json(snapshot(2,1));});
+  await state.loadPosCart();
+  for(const cash of ['',null,-1,599999,Infinity,700000.5]) {
+    state.activePosOrder.value.cash_given=cash;await state.checkoutPos();assert.equal(state.posConfirmModal.open,false);
+  }
+  state.activePosOrder.value.cash_given=700000;await state.checkoutPos();
+  assert.equal(state.posConfirmModal.open,true);assert.equal(writes,0);
+  state.posConfirmModal.open=false;await state.confirmPosCheckout();assert.equal(writes,0);
+});
+
+test('POS keeps each pending invoice customer and cash draft through switching and reload',async()=>{
+  const values=new Map(),ss={getItem:k=>values.get(k) || null,setItem:(k,v)=>values.set(k,v)};
+  let first=true;
+  const fetch=async url=>json({...snapshot(),cart_id:first?1:Number(new URL(url,'http://localhost').searchParams.get('cart_id') || 2),carts:[{id:1},{id:2}]});
+  const state=store(fetch,ss);await state.loadPosCart();first=false;
+  Object.assign(state.activePosOrder.value,{customer_name:'Khách A',cash_given:500000});await vue.nextTick();
+  await state.switchPosCart(2);Object.assign(state.activePosOrder.value,{customer_name:'Khách B',cash_given:900000});await vue.nextTick();
+  await state.switchPosCart(1);assert.equal(state.activePosOrder.value.customer_name,'Khách A');assert.equal(state.activePosOrder.value.cash_given,500000);
+  await vue.nextTick();const reload=store(fetch,ss);await reload.loadPosCart();assert.equal(reload.activePosOrder.value.customer_name,'Khách B');assert.equal(reload.activePosOrder.value.cash_given,900000);
 });
 
 test('payment list has aligned header/cell counts and customer details remain in order detail', () => {

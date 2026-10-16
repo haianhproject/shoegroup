@@ -14,6 +14,7 @@ async function main() {
     await master.request().query(`CREATE DATABASE [${database}]`); created = true;
     testPool = await new sql.ConnectionPool({ ...config.db, database }).connect();
     await testPool.request().batch(fs.readFileSync(path.join(root, 'backend/src/test/resources/sqlserver-test-schema.sql'), 'utf8'));
+    await testPool.request().batch(fs.readFileSync(path.join(root, 'database/migrations/20261016_catalog_name_uniqueness.sql'), 'utf8'));
     await testPool.close(); testPool = null;
     const host = config.db.server;
     const location = config.db.options.instanceName ? `${host};instanceName=${config.db.options.instanceName}` : `${host}:${config.db.port || 1433}`;

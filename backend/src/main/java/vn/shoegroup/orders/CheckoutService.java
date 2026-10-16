@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import vn.shoegroup.api.*;
 import vn.shoegroup.security.ApiUser;
 import vn.shoegroup.shipping.ShippingService;
+import vn.shoegroup.catalog.CatalogIdentityService;
 
 @Service
 public class CheckoutService {
@@ -27,17 +28,19 @@ public class CheckoutService {
   private final OrderEffects effects;
   private final ObjectMapper mapper;
   private final TransactionTemplate transaction;
+  private final CatalogIdentityService identity;
 
   public CheckoutService(
       OrderSql sql,
       ShippingService shipping,
       OrderEffects effects,
       ObjectMapper mapper,
-      PlatformTransactionManager manager) {
+      PlatformTransactionManager manager, CatalogIdentityService identity) {
     this.sql = sql;
     this.shipping = shipping;
     this.effects = effects;
     this.mapper = mapper;
+    this.identity=identity;
     transaction = new TransactionTemplate(manager);
     transaction.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
   }
@@ -142,11 +145,14 @@ public class CheckoutService {
         throw new ApiException(409, "Giao dich dang duoc xu ly; thu lai voi cung Idempotency-Key.");
       var existing =
           sql.jdbc.queryForList(
-              "SELECT RequestHash,ResponseJson FROM CheckoutRequests WHERE UserID=:uid AND"
+              "SELECT RequestHash,ResponseJson,CreatedAt FROM CheckoutRequests WHERE UserID=:uid AND"
                   + " IdempotencyKey=:key",
               params("uid", user.id(), "key", key));
       if (!existing.isEmpty()) {
-        if (!hash.equals(existing.get(0).get("RequestHash")))
+        boolean matches=hash.equals(existing.get(0).get("RequestHash"));
+        if(!matches && identity.legacyCheckout(existing.get(0).get("CreatedAt")))
+          matches=hash((Map<String,Object>)identity.originalCheckout(b)).equals(existing.get(0).get("RequestHash"));
+        if (!matches)
           throw new ApiException(
               409, "IDEMPOTENCY_CONFLICT", "Idempotency-Key da dung cho noi dung khac.");
         try {
@@ -296,7 +302,7 @@ public class CheckoutService {
       var coupons = sql.rows(OP, 2, params("code", couponCode));
       if (coupons.isEmpty()) throw new ApiException(409, "Ma giam gia khong hop le.");
       var c = coupons.get(0);
-      if (number(c.get("UsageLimit")) > 0
+      if (c.get("UsageLimit") != null
           && number(c.get("UsedCount")) >= number(c.get("UsageLimit")))
         throw new ApiException(409, "Ma giam gia da het luot.");
       if (number(c.get("PerUserLimit")) > 0
@@ -309,7 +315,6 @@ public class CheckoutService {
       couponId = c.get("CouponID");
       couponType = normalize(c.get("DiscountType"));
       BigDecimal value = money(c.get("DiscountValue"));
-      if (value.signum() == 0) value = money(c.get("DiscountPercent"));
       discount =
           switch (couponType) {
             case "co dinh", "fixed" -> value;
@@ -326,6 +331,14 @@ public class CheckoutService {
       }
     }
     BigDecimal total = money(subtotal.add(fee).subtract(discount).max(BigDecimal.ZERO));
+    BigDecimal cashGiven = null;
+    if(user.staff() && method.equals("Tiền mặt") && paid(payment)) {
+      Object tendered = first(b,null,"cash_given","cashGiven");
+      if(tendered==null) throw new ApiException(400,"Vui lòng nhập tiền khách đưa.");
+      cashGiven=money(tendered);
+      if(cashGiven.stripTrailingZeros().scale()>0 || cashGiven.compareTo(total)<0)
+        throw new ApiException(400,"Tiền khách đưa phải là số nguyên và đủ thanh toán.");
+    }
     if (user.staff()
         && paid(payment)
         && submitted.subtract(total).abs().compareTo(new BigDecimal("0.001")) > 0)
@@ -367,6 +380,7 @@ public class CheckoutService {
             "due",
             null);
     int id = ((Number) sql.one(OP, 4, order).get("OrderID")).intValue();
+    sql.jdbc.update("UPDATE Orders SET HandledByUserID=:staff,CashGiven=:cash WHERE OrderID=:id",params("staff",user.staff()?user.id():null,"cash",cashGiven,"id",id));
     if (user.staff() && paid(payment)) {
       sql.update(OP, 5, params("oid", id));
       sql.collect(id, total, bank(method) ? "POS_TRANSFER" : "POS_CASH");
@@ -412,6 +426,10 @@ public class CheckoutService {
             discount,
             "totalAmount",
             total,
+            "cashGiven",cashGiven,
+            "changeAmount",cashGiven==null?null:cashGiven.subtract(total),
+            "handledBy",handled,
+            "createdAt",sql.jdbc.queryForObject("SELECT CONVERT(varchar(33),OrderDate,126) FROM Orders WHERE OrderID=:id",params("id",id),String.class),
             "shippingMethodCode",
             shippingCode,
             "shippingMethodId",

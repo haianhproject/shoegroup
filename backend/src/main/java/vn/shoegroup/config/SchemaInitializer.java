@@ -27,7 +27,10 @@ public class SchemaInitializer {
           "20261004_pos_cart_stock.sql",
           "20261004_revenue_history.sql",
           "20261010_catalog_optimization.sql",
-          "20261010_staff_role.sql");
+          "20261010_staff_role.sql",
+          "20261015_order_coupon_hardening.sql",
+          "20261016_catalog_data_hardening.sql",
+          "20261016_catalog_name_uniqueness.sql");
   private final JdbcTemplate jdbc;
 
   public SchemaInitializer(JdbcTemplate jdbc) {

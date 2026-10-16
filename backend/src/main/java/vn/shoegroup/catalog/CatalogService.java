@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.text.Normalizer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +35,19 @@ public class CatalogService {
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public Map<String, Object> save(String type, String id, Map<String, Object> body) {
         Catalog c = catalog(type);
-        String name = Values.text(body.get("name"), c.max + 1);
-        if (name.isEmpty() || name.length() > c.max) throw new ApiException(400, "Ten khong duoc de trong hoac vuot gioi han.");
+        String name = Normalizer.normalize(Values.string(body.get("name")), Normalizer.Form.NFC)
+            .replaceAll("[\\p{javaWhitespace}\\p{Z}\\u200B\\uFEFF]+", " ").trim();
+        if (name.isEmpty() || name.length() > c.max) throw new ApiException(400, "INVALID_CATALOG_NAME", "Tên không được để trống hoặc vượt quá " + c.max + " ký tự.");
+        if (!type.equals("sizes")) {
+            var duplicates = jdbc.queryForList("SELECT " + c.id + " AS id,IsActive AS active FROM " + c.table
+                + " WITH(UPDLOCK,HOLDLOCK) WHERE CatalogNameKey=dbo.CatalogNameKey(?) COLLATE Vietnamese_100_CI_AS AND " + c.id + "<>?",
+                name,id==null?0:Values.integer(id,1,Integer.MAX_VALUE,null));
+            if (!duplicates.isEmpty()) {
+                var duplicate=duplicates.get(0);
+                throw new ApiException(409,"DUPLICATE_CATALOG_NAME","Tên này đã tồn tại (#" + duplicate.get("id")
+                    + (Boolean.FALSE.equals(duplicate.get("active"))?", không hoạt động":"") + "). Hãy dùng bản ghi hiện có.");
+            }
+        }
         boolean active = Values.bool(body.get("active"), true);
         Map<String, Object> fields = new LinkedHashMap<>(); fields.put(c.name, name);
         switch (type) {
@@ -50,7 +62,7 @@ public class CatalogService {
                 String standard = Values.text(body.get("standard"),20).toUpperCase(java.util.Locale.ROOT);
                 if (!java.util.Set.of("EU","US","UK").contains(standard)) throw new ApiException(400,"Chỉ chấp nhận hệ kích cỡ EU, US hoặc UK.");
                 try {
-                    var size = new java.math.BigDecimal(name);
+                    var size = new java.math.BigDecimal(name.replace(',', '.'));
                     int min = standard.equals("EU") ? 14 : 0, max = standard.equals("EU") ? 60 : 22;
                     if (size.compareTo(java.math.BigDecimal.valueOf(min))<0 || size.compareTo(java.math.BigDecimal.valueOf(max))>0 || size.multiply(java.math.BigDecimal.valueOf(2)).stripTrailingZeros().scale()>0) throw new NumberFormatException();
                     name=size.stripTrailingZeros().toPlainString(); fields.put(c.name,name);
@@ -61,7 +73,7 @@ public class CatalogService {
             }
             default -> { }
         }
-        if (c.extra.contains("SortOrder")) fields.put("SortOrder", Values.integer(body.get("sort_order"), 0, 1000000, 0));
+        if (c.extra.contains("SortOrder") && (id == null || body.containsKey("sort_order"))) fields.put("SortOrder", Values.integer(body.get("sort_order"), 0, 1000000, 0));
         fields.put("IsActive", active);
         List<Object> args = new ArrayList<>(fields.values());
         if (id == null) {

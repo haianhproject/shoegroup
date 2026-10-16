@@ -59,9 +59,11 @@ public class ProductReadService {
                 String color = Values.string(variant.get("color"));
                 if (!color.isEmpty()) colors.computeIfAbsent(color, key -> new LinkedHashMap<>(Map.of("name", color, "hex", variant.get("hex") == null ? "" : variant.get("hex"), "image", "")));
             }
-            for (var image : imagesByProduct.getOrDefault(id, List.of())) {
-                String color = Values.string(image.get("color"));
-                if (!color.isEmpty()) colors.computeIfAbsent(color, key -> new LinkedHashMap<>(Map.of("name", color, "hex", "", "image", "")));
+            if (allVariants) {
+                for (var image : imagesByProduct.getOrDefault(id, List.of())) {
+                    String color = Values.string(image.get("color"));
+                    if (!color.isEmpty()) colors.computeIfAbsent(color, key -> new LinkedHashMap<>(Map.of("name", color, "hex", "", "image", "")));
+                }
             }
             colors.forEach((color, entry) -> { if (imageByColor.containsKey(id + "::" + color)) entry.put("image", imageByColor.get(id + "::" + color)); });
             product.put("colors", new ArrayList<>(colors.values()));
