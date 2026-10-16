@@ -338,3 +338,6 @@ p, span, li, td, th, label, input, select, textarea, button {
 /* Gradient text helper */
 .sg-gradient-text { color: var(--sg-ink); font-weight: 900; }
 
+/* Trang thai khoi dong khi may chu tam thoi khong san sang. */
+.startup-message { max-width: 480px; margin: 80px auto; padding: 24px; font-family: system-ui, sans-serif; text-align: center; }
+.startup-message button { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 6px; background: #171717; color: #fff; cursor: pointer; }

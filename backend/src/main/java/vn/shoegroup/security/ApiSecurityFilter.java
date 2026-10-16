@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.shoegroup.api.ApiErrors;
+import vn.shoegroup.catalog.CatalogIdentityService;
 
 @Component
 public class ApiSecurityFilter extends OncePerRequestFilter {
@@ -20,8 +21,9 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final RateLimits limits;
-    public ApiSecurityFilter(TokenService tokens, JdbcTemplate jdbc, ObjectMapper mapper, RateLimits limits) {
-        this.tokens = tokens; this.jdbc = jdbc; this.mapper = mapper; this.limits = limits;
+    private final CatalogIdentityService identity;
+    public ApiSecurityFilter(TokenService tokens, JdbcTemplate jdbc, ObjectMapper mapper, RateLimits limits, CatalogIdentityService identity) {
+        this.tokens = tokens; this.jdbc = jdbc; this.mapper = mapper; this.limits = limits; this.identity=identity;
     }
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
@@ -61,6 +63,11 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
             deny(res, 403, "Ban khong co quyen thuc hien thao tac nay."); return;
         }
         req.setAttribute("apiUser", user);
+        if(CatalogIdentityService.requiresRevision(method,path) && !identity.revision().isEmpty()
+                && !identity.revision().equals(req.getHeader("X-Catalog-Identity"))) {
+            res.setStatus(409);res.setContentType("application/json;charset=UTF-8");
+            mapper.writeValue(res.getOutputStream(),ApiErrors.body("CATALOG_IDENTITY_CHANGED","Mã dữ liệu đã được cập nhật. Vui lòng tải lại trang trước khi tiếp tục."));return;
+        }
         chain.doFilter(req, res);
         if (login && res.getStatus() < 400) limits.loginSucceeded(req.getRemoteAddr());
     }

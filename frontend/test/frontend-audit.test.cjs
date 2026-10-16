@@ -116,7 +116,7 @@ test('adding to cart is local-only while quantity remains capped by current stoc
 test('HTTP transport never retries a mutation automatically on network failure', async () => {
   let calls = 0;
   const win = { fetch: async () => { calls++; throw new TypeError('Response lost after commit'); } };
-  const interceptor = load('src/services/httpInterceptor.js', { './apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => 'token', clearToken() {} } }, { window: win });
+  const interceptor = load('src/services/httpInterceptor.js', { './apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => 'token', clearToken() {} }, './catalogIdentity': {catalogIdentityRevision:()=>''} }, { window: win });
   interceptor.installHttpInterceptor();
   await assert.rejects(win.fetch('http://localhost:5000/api/orders', { method: 'POST', body: '{}' }));
   assert.equal(calls, 1);
@@ -125,12 +125,13 @@ test('HTTP transport never retries a mutation automatically on network failure',
 test('HTTP interceptor preserves Request method and body', async () => {
   let request;
   const win = { fetch: async (input, init) => { request = new Request(input, init); return { status: 200 }; } };
-  const interceptor = load('src/services/httpInterceptor.js', { './apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => 'token', clearToken() {} } }, { window: win });
+  const interceptor = load('src/services/httpInterceptor.js', { './apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => 'token', clearToken() {} }, './catalogIdentity': {catalogIdentityRevision:()=> 'catalog-v1'} }, { window: win });
   interceptor.installHttpInterceptor();
   await win.fetch(new Request('http://localhost:5000/api/orders', { method: 'POST', body: '{"quantity":1}' }));
   assert.equal(request.method, 'POST');
   assert.equal(await request.text(), '{"quantity":1}');
   assert.equal(request.headers.get('Authorization'), 'Bearer token');
+  assert.equal(request.headers.get('X-Catalog-Identity'),'catalog-v1');
 });
 
 test('order mappings use warehouse state and server item subtotal', () => {
@@ -410,9 +411,11 @@ test('brand search and status filters work together and keep ascending IDs',()=>
   admin.brandSearch.value='no-such-brand';assert.equal(admin.filteredBrands.value.length,0);
 });
 
-test('products sort newest IDs first without renumbering records',()=>{
+test('products sort ascending IDs and edits keep each record in place',()=>{
   const admin=loadAdminImages();admin.db.products=[{id:1,name:'Old'},{id:22,name:'Shoe'},{id:35,name:'New'}];
-  assert.deepEqual(Array.from(admin.filteredProducts.value,p=>p.id),[35,22,1]);
+  assert.deepEqual(Array.from(admin.filteredProducts.value,p=>p.id),[1,22,35]);
+  admin.db.products[0].name='Updated';assert.deepEqual(Array.from(admin.filteredProducts.value,p=>p.id),[1,22,35]);
+  assert.deepEqual(Array.from(admin.db.products,p=>p.id),[1,22,35]);
   admin.productSearch.value='#22';assert.deepEqual(Array.from(admin.filteredProducts.value,p=>p.id),[22]);
 });
 
@@ -500,7 +503,7 @@ test('product eye dialog has no editable controls, parent SKU placeholder or edi
   assert.match(source,/Tồn mỗi biến thể mới/);
 });
 
-test('product list has the requested eight columns and description stays in detail',()=>{
+test('product list displays real IDs and preserves the eight business columns',()=>{
   const source=fs.readFileSync(path.join(root,'src/views/admin/pages/ProductsPage.vue'),'utf8');
   const {descriptor}=parse(source);
   const list=descriptor.template.content.split('<!-- FORM THÊM/SỬA -->')[0];
@@ -508,6 +511,7 @@ test('product list has the requested eight columns and description stays in deta
   assert.deepEqual(headings,['Mã sản phẩm','Ảnh sản phẩm','Tên giày','Thương hiệu','Khoảng giá','Tồn kho','Trạng thái','Thao tác']);
   assert.equal(list.includes('p.description'),false);
   assert.match(list,/colspan="8"/);
+  assert.doesNotMatch(list,/catalog-sequence|index \+ 1/);assert.match(list,/p\.id/);
   assert.match(source,/productDetailModal\.product\.description/);
 });
 
@@ -922,6 +926,7 @@ test('account lock controls preserve an active administrator', () => {
   const accountDb = vue.reactive({ accounts: [] });
   const signedIn = vue.ref({ id_user: 1, role_id: 1 });
   const accounts = load('src/views/admin/pages/AccountsPage.vue', {
+    '../components/ActivityStatus.vue': {},
     '../adminStore': {
       db: accountDb,
       openForm() {},

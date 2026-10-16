@@ -176,6 +176,9 @@ public class ProductWriteService {
       if (!supplied.isEmpty() && !supplied.matches(".*[?\uFFFD].*")) childSku = sku(supplied);
       else {
         childSku = "SKU-" + product + "-C" + v.get("color_id") + "-S" + v.get("size_id");
+        String base=childSku;int suffix=2;
+        while(!jdbc.queryForList("SELECT ProductVariantID FROM ProductVariants WITH(UPDLOCK,HOLDLOCK) WHERE ChildSKU=? AND NOT(ProductID=? AND ColorID=? AND SizeID=?)",childSku,product,v.get("color_id"),v.get("size_id")).isEmpty())
+          childSku=Values.text(base,48)+"-"+suffix++;
       }
       childSku = Values.text(childSku, 60);
       int stock = Values.integer(Values.first(v, 0, "stock", "StockQuantity"), 0, 1000000, 0);

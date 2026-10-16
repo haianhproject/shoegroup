@@ -3,6 +3,7 @@
 <!-- Trang: Quản lý tài khoản -->
 
 <script setup>
+import ActivityStatus from '../components/ActivityStatus.vue';
 import { ref, computed, onBeforeUnmount } from 'vue'
 import {
   db,
@@ -322,29 +323,7 @@ onBeforeUnmount(() => {
 
                 <!-- Trạng thái -->
                 <td>
-                  <span
-                    class="status-badge"
-                    :class="
-                      account.active !== false
-                        ? 'status-active'
-                        : 'status-inactive'
-                    "
-                  >
-                    <span
-                      class="status-dot"
-                      :class="
-                        account.active !== false
-                          ? 'dot-active'
-                          : 'dot-inactive'
-                      "
-                    ></span>
-
-                    {{
-                      account.active !== false
-                        ? 'Hoạt động'
-                        : 'Không hoạt động'
-                    }}
-                  </span>
+                  <ActivityStatus :active="account.active!==false" />
                 </td>
 
                 <!-- Thao tác -->
@@ -732,44 +711,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .role-select { min-width:145px;margin-top:6px; }
-
-/* Trạng thái */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.dot-active {
-  background: #16a34a;
-}
-
-.dot-inactive {
-  background: #dc2626;
-}
 
 /* Các nút thao tác */
 .action-buttons {

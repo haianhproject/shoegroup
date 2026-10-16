@@ -14,8 +14,12 @@ const out=path.join(os.tmpdir(),'shoegroup-catalog-ui');
 async function main() {
   fs.mkdirSync(out,{recursive:true});
   const pool=await new sql.ConnectionPool(config.db).connect();
-  let user;
-  try { user=(await pool.request().query('SELECT TOP 1 UserID,FullName,Email FROM Users WHERE RoleID=1 AND IsActive=1 ORDER BY UserID')).recordset[0]; }
+  let user,identity;
+  try {
+    user=(await pool.request().query('SELECT TOP 1 UserID,FullName,Email FROM Users WHERE RoleID=1 AND IsActive=1 ORDER BY UserID')).recordset[0];
+    const mapping=(await pool.request().query("SELECT CAST(value AS nvarchar(4000)) payload FROM sys.extended_properties WHERE major_id=OBJECT_ID('dbo.AppMigrations') AND name=N'ShoeGroup.CatalogIdentity'")).recordset[0];
+    identity=mapping?JSON.parse(mapping.payload):null;
+  }
   finally { await pool.close(); }
   assert.ok(user,'An active admin is required for UI verification.');
   const token=jwt.sign({sub:user.UserID,email:user.Email,role:'Admin',roleId:1},'10m');
@@ -23,13 +27,19 @@ async function main() {
   const errors=[];
   try {
     const context=await browser.newContext();
-    await context.addInitScript(({user,token})=>{
+    await context.addInitScript(({user,token,identity})=>{
       let h=0;const raw=[navigator.userAgent,navigator.platform,navigator.language,navigator.hardwareConcurrency,navigator.vendor || ''].join('|');
       for(let i=0;i<raw.length;i++) h=(Math.imul(31,h)+raw.charCodeAt(i))|0;
       document.cookie='sg_bsig=b'+(h>>>0).toString(36)+'; path=/';document.cookie='sg_session=1; path=/';
       localStorage.setItem('shoegroup_token',token);
       localStorage.setItem('shoegroup_current_user',JSON.stringify({id:user.UserID,id_user:user.UserID,full_name:user.FullName,email:user.Email,role:'Admin',role_id:1,token}));
-    },{user,token});
+      if(identity && !localStorage.getItem('shoegroup_identity_audit_seeded')) {
+        const [pid]=identity.maps.Products[0],[vid]=identity.maps.ProductVariants[0];
+        localStorage.setItem('shoegroup_carts_v4',JSON.stringify({__guest__:[{id_product:pid,variant_id:vid,id_product_detail:pid+'_variant_'+vid,quantity:2,unitPrice:123456,product:{id_product:pid,product_name:'Identity UI fixture'}}]}));
+        sessionStorage.setItem('shoegroup_checkout_attempt_v1',JSON.stringify({key:'identity-ui-preserved-key',fingerprint:JSON.stringify({items:[{productId:pid,productVariantId:vid,quantity:2}]})}));
+        localStorage.setItem('shoegroup_identity_audit_seeded','1');
+      }
+    },{user,token,identity});
     const page=await context.newPage();
     let storeUrl;
     page.on('request',r=>{if(!storeUrl && /^\/src\/views\/admin\/adminStore(?:\.js)?$/.test(new URL(r.url()).pathname)) storeUrl=r.url();});
@@ -52,10 +62,32 @@ async function main() {
         assert.ok(storeUrl,'The page must load the admin store.');
         await page.evaluate(async url=>{window.auditStore=await import(url);},storeUrl);
         await page.waitForFunction(()=>!window.auditStore.isLoading.value && window.auditStore.db.products.length>0 && window.auditStore.db.colors.length>0);
+        if(identity) {
+          const migrated=await page.evaluate(()=>({cart:JSON.parse(localStorage.getItem('shoegroup_carts_v4')).__guest__[0],attempt:JSON.parse(sessionStorage.getItem('shoegroup_checkout_attempt_v1'))}));
+          assert.equal(migrated.cart.id_product,identity.maps.Products[0][1]);assert.equal(migrated.cart.variant_id,identity.maps.ProductVariants[0][1]);
+          assert.equal(migrated.cart.quantity,2);assert.equal(migrated.cart.unitPrice,123456);assert.equal(migrated.attempt.key,'identity-ui-preserved-key');
+          assert.equal(JSON.parse(migrated.attempt.fingerprint).items[0].productId,identity.maps.Products[0][1]);
+        }
         if(name==='pos') await page.waitForFunction(()=>window.auditStore.posCartReady.value && !window.auditStore.posCartBusy.value && document.querySelector('button[aria-label="Thêm hóa đơn chờ"]')?.disabled===false && !document.querySelector('.admin-loading'));
         await page.waitForTimeout(350);
         console.log('UI',name,width);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,`${name} overflow at ${width}`);
+        if(['sizes','products','brands','categories','colors','materials'].includes(name)) {
+          const table=page.locator('.admin-catalog-table');
+          const ids=await table.locator('tbody tr').evaluateAll(rows=>rows.filter(row=>row.querySelector('input[role="switch"]')).map(row=>Number(row.cells[0].textContent.replace('#','').trim())));
+          assert.deepEqual(ids,[...ids].sort((a,b)=>a-b),`${name} IDs must be ascending`);
+          const badgeStyles=await table.locator('.admin-activity-status').evaluateAll(els=>els.map(el=>{const s=getComputedStyle(el);return {width:s.width,height:s.height,fontSize:s.fontSize,borderRadius:s.borderRadius};}));
+          assert.ok(badgeStyles.length,`${name} needs status labels`);
+          assert.ok(badgeStyles.every(s=>s.width==='136px'&&s.height==='28px'&&s.fontSize==='11px'&&s.borderRadius==='6px'),`${name} inconsistent activity badges`);
+          const switchStyles=await table.locator('input[role="switch"]').evaluateAll(els=>els.map(el=>{const s=getComputedStyle(el);return {width:s.width,height:s.height,appearance:s.appearance};}));
+          assert.ok(switchStyles.every(s=>s.width==='36px'&&s.height==='20px'&&s.appearance==='none'),`${name} inconsistent activity switches`);
+          const actionSizes=await table.locator('.admin-row-actions button,.brand-actions button,.products-actions button,.action-buttons button').evaluateAll(els=>els.map(el=>({width:el.offsetWidth,height:el.offsetHeight})));
+          assert.ok(actionSizes.every(s=>s.width===34&&s.height===34),`${name} inconsistent action buttons`);
+          const fieldHeights=await page.locator('.admin-catalog-page .sg-input,.admin-catalog-page .search-input').evaluateAll(els=>els.map(el=>el.offsetHeight));
+          assert.ok(fieldHeights.every(height=>height===40),`${name} inconsistent filter fields`);
+          const addHeights=await page.locator('.admin-catalog-page > :is(.page-header,.page-heading,.brands-toolbar,.products-page-head) > button').evaluateAll(els=>els.map(el=>el.offsetHeight));
+          assert.deepEqual(addHeights,[40],`${name} inconsistent add button`);
+        }
         await page.screenshot({path:path.join(out,`${name}-${width}.png`),fullPage:true});
         assert.equal(await page.getByText('```',{exact:true}).count(),0,`${name}: stray code fence`);
         if(['categories','brands','materials','colors'].includes(name)) {
@@ -150,7 +182,15 @@ async function main() {
           assert.deepEqual(await page.locator('.products-table thead th').allTextContents(),['Mã sản phẩm','Ảnh sản phẩm','Tên giày','Thương hiệu','Khoảng giá','Tồn kho','Trạng thái','Thao tác']);
           assert.ok((await page.locator('.products-table tbody tr').first().locator('td').count())===8);
           assert.equal(await page.locator('.products-page .products-description').count(),0);
-          const ids=await page.evaluate(()=>window.auditStore.filteredProducts.value.map(p=>p.id));assert.deepEqual(ids,[...ids].sort((a,b)=>b-a));
+          const ids=await page.evaluate(()=>window.auditStore.filteredProducts.value.map(p=>p.id));assert.deepEqual(ids,[...ids].sort((a,b)=>a-b));
+          if(width===1440) {
+            for(const laptopWidth of [1366,1440]) {
+              await page.setViewportSize({width:laptopWidth,height:900});await page.waitForTimeout(350);
+              const fits=await page.locator('.products-table-scroll').evaluate(el=>el.scrollWidth<=el.clientWidth+1);
+              assert.equal(fits,true,`Product actions need horizontal scrolling at ${laptopWidth}`);
+              await page.screenshot({path:path.join(out,`products-fit-${laptopWidth}.png`),fullPage:true});
+            }
+          }
           await page.locator('button[title="Xem chi tiết sản phẩm"]').first().click();
           const detail=page.locator('.product-detail-dialog');
           assert.equal(await detail.locator('input,select,textarea').count(),0);
@@ -158,7 +198,7 @@ async function main() {
           assert.equal(await detail.getByText(/SKU cha/).count(),0);
           await page.screenshot({path:path.join(out,`product-detail-${width}.png`),fullPage:true});
           await page.getByRole('button',{name:'Đóng',exact:true}).click();
-          await page.evaluate(()=>{const s=window.auditStore;s.openProductForm(s.db.products.find(p=>p.id===22) || s.db.products.find(p=>p.variants.length>0));});
+          await page.evaluate(productId=>{const s=window.auditStore;s.openProductForm(s.db.products.find(p=>p.id===productId) || s.db.products.find(p=>p.variants.length>0));},identity?identity.maps.Products[0][1]:22);
           await page.waitForTimeout(150);
           assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,`product form overflow at ${width}`);
           await page.screenshot({path:path.join(out,`product-form-${width}.png`),fullPage:true});

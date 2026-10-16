@@ -2,6 +2,7 @@
 <!-- Trang: Quản Lý Sản Phẩm (danh sách + form thêm/sửa) -->
 <script setup>
 import { canManageProducts } from '../../../stores/authStore';
+import ActivityStatus from '../components/ActivityStatus.vue';
 import { computed } from "vue";
 import {
   productSearch,
@@ -59,7 +60,7 @@ function onProductImageError(event) {
 
 <template>
   <!-- DANH SÁCH -->
-  <div v-if="!productFormOpen" class="fade-in products-page">
+  <div v-if="!productFormOpen" class="fade-in products-page admin-catalog-page">
     <header class="products-page-head">
       <div>
         <p class="products-eyebrow">DANH MỤC CỬA HÀNG</p>
@@ -91,7 +92,7 @@ function onProductImageError(event) {
         <p class="products-result-count" role="status"><strong>{{ filteredProducts.length }}</strong> sản phẩm</p>
       </div>
       <div class="table-responsive products-table-scroll" tabindex="0" role="region" aria-label="Bảng sản phẩm, có thể cuộn ngang">
-        <table class="table align-middle mb-0 products-table" :class="{ 'is-empty': !filteredProducts.length }">
+        <table class="table align-middle mb-0 products-table admin-catalog-table" :class="{ 'is-empty': !filteredProducts.length }">
           <thead v-if="filteredProducts.length">
             <tr>
               <th scope="col">Mã sản phẩm</th>
@@ -127,7 +128,7 @@ function onProductImageError(event) {
                 <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
               </td>
               <td>
-                <span class="products-status" :class="{ 'is-active': p.active }"><span aria-hidden="true"></span>{{ p.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
+                <ActivityStatus :active="p.active" />
               </td>
               <td>
                 <div class="products-actions">
@@ -488,15 +489,7 @@ function onProductImageError(event) {
         <div class="product-form-panel">
           <div class="flex justify-between items-center mb-3">
             <h2 class="product-panel-title mb-0">Xuất bản</h2>
-            <span
-              class="badge rounded-1"
-              :class="
-                productForm.active
-                  ? 'badge-active'
-                  : 'bg-secondary-subtle text-gray-600'
-              "
-              v-text="productForm.active ? 'Hoạt động' : 'Không hoạt động'"
-            ></span>
+            <ActivityStatus :active="productForm.active" />
           </div>
           <div class="flex items-center gap-2 flex items-center mb-2">
             <input
@@ -504,6 +497,7 @@ function onProductImageError(event) {
               class="accent-black"
               type="checkbox"
               id="activeSwitch"
+              role="switch"
             /><label class="text-sm text-sm" for="activeSwitch"
               >Hoạt động</label
             >
@@ -558,7 +552,7 @@ function onProductImageError(event) {
                 <span>#{{ productDetailModal.product.id }}</span>
               </div>
               <div class="product-detail-badges">
-                <span class="products-status" :class="{ 'is-active': productDetailModal.product.active }"><span aria-hidden="true"></span>{{ productDetailModal.product.active ? 'Hoạt động' : 'Không hoạt động' }}</span>
+                <ActivityStatus :active="productDetailModal.product.active" />
                 <span v-if="productDetailModal.product.is_featured" class="product-detail-featured"><i class="icon icon-star-fill" aria-hidden="true"></i>Nổi bật</span>
               </div>
             </div>
@@ -830,7 +824,7 @@ function onProductImageError(event) {
   background: #f7f7f8;
 }
 
-.products-item-info { min-width: 170px; max-width: 250px; }
+.products-item-info { min-width: 110px; max-width: 250px; overflow-wrap: anywhere; }
 .products-name {
   display: block;
   padding: 0;
@@ -846,27 +840,12 @@ function onProductImageError(event) {
 .products-name:hover { color: #d4001a; }
 .products-featured { display:block;margin-top:4px;color:#b90016;font-size:9px; }
 .products-brand { display: block; color: #343439; font-size: 12px; }
-.products-price { white-space: nowrap; }
+.products-price { white-space: normal; }
 .products-price strong { display: block; font-size: 12px; font-weight: 650; }
 .products-price del { display: block; margin-top: 5px; color: #95959b; font-size: 10px; }
 .products-stock { display: block; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .products-stock.is-low { color: #c00019; }
 .products-stock-note { display: block; margin-top: 4px; color: #b80017; font-size: 9px; white-space: nowrap; }
-.products-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
-  border: 1px solid #e9e9ec;
-  border-radius: 6px;
-  background: #f7f7f8;
-  color: #777780;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.products-status > span { width: 5px; height: 5px; border-radius: 50%; background: #9c9ca3; }
-.products-status.is-active { background: #f0f7f2; border-color: #e0eee5; color: #36744c; }
-.products-status.is-active > span { background: #438259; }
 .products-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .products-action {
   display: inline-flex;

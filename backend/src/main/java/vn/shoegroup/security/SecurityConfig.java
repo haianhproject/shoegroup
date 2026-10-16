@@ -31,7 +31,7 @@ public class SecurityConfig {
         var config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.stream(env.getProperty("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173").split(",")).map(String::trim).toList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "x-access-token", "Idempotency-Key"));
+        config.setAllowedHeaders(List.of("Content-Type", "Authorization", "x-access-token", "Idempotency-Key", "X-Catalog-Identity"));
         config.setAllowCredentials(true);
         var source = new UrlBasedCorsConfigurationSource(); source.registerCorsConfiguration("/**", config); return source;
     }

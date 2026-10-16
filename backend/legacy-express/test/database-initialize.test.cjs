@@ -11,6 +11,14 @@ const {
   verifyRequiredSchema,
 } = require("../src/database/initialize");
 
+test("legacy migration fixture contains schema only and needs no old full dump", () => {
+  const source = fs.readFileSync(path.join(__dirname, "fixtures/legacy-schema.sql"), "utf8");
+  assert.equal((source.match(/^CREATE TABLE /gm) || []).length, 47);
+  assert.doesNotMatch(source, /^\s*(?:USE\b|DROP\b|CREATE DATABASE\b|INSERT\b|UPDATE\b|DELETE\b|SET IDENTITY_INSERT\b)/gim);
+  assert.match(source, /CREATE TABLE \[dbo\]\.\[ProductVariants\]/);
+  assert.match(source, /CREATE TABLE \[dbo\]\.\[Orders\]/);
+});
+
 test("danh sách khởi tạo luôn chứa migration tạo ApplyScope", () => {
   assert.ok(migrationFiles.includes("20260923_variant_discount_scope.sql"));
   for (const filename of migrationFiles) {

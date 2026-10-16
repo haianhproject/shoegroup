@@ -2527,7 +2527,7 @@ export function variantFieldError(variant,key) {
 }
 export const filteredProducts = computed(() => {
   const q = productSearch.value.trim().toLowerCase().replace(/^#/, '');
-  return db.products.slice().sort((a,b)=>Number(b.id)-Number(a.id)).filter(
+  return db.products.slice().sort((a,b)=>Number(a.id)-Number(b.id)).filter(
     (p) =>
       (!q || (p.name || "").toLowerCase().includes(q) || String(p.id).includes(q)) &&
       (!filterCategory.value ||

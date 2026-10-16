@@ -68,6 +68,15 @@
 .admin-shell :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--admin-ink); }
 .admin-shell .form-check-input { width: 16px; height: 16px; vertical-align: middle; }
 .admin-shell .form-check-input:checked { background-color: var(--admin-ink); border-color: var(--admin-ink); }
+.admin-shell input[type="checkbox"][role="switch"] { appearance: none; position: relative; display: inline-block; flex: 0 0 36px; width: 36px; min-width: 36px; height: 20px; min-height: 20px; margin: 0; padding: 0; border: 1px solid #b8b8bd; border-radius: 10px; background: #d7d7db; box-shadow: none; vertical-align: middle; cursor: pointer; transition: background-color .16s ease, border-color .16s ease; }
+.admin-shell input[type="checkbox"][role="switch"]::before { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 15%); transition: transform .16s ease; }
+.admin-shell input[type="checkbox"][role="switch"]:checked { background: #287047; border-color: #287047; }
+.admin-shell input[type="checkbox"][role="switch"]:checked::before { transform: translateX(16px); }
+.admin-shell input[type="checkbox"][role="switch"]:indeterminate { background: #707078; border-color: #707078; }
+.admin-shell input[type="checkbox"][role="switch"]:indeterminate::before { transform: translateX(8px); }
+.admin-shell .admin-activity-status { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 136px; height: 28px; padding: 4px 8px; border: 1px solid #e2e2e6; border-radius: 6px; background: #f4f4f6; color: #63636b; font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: 0; white-space: nowrap; vertical-align: middle; }
+.admin-shell .admin-activity-status.is-active { border-color: #d4e8db; background: #eef7f1; color: #23623f; }
+.admin-shell .admin-activity-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .admin-shell .input-group { display: flex; align-items: stretch; }
 .admin-shell .input-group > :is(.sg-input, .form-select) { flex: 1 1 auto; width: 1%; }
 .admin-shell .input-group-text { display: flex; align-items: center; padding: 0 12px; }

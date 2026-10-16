@@ -527,6 +527,7 @@ onUnmounted(() => {
                 v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
                 class="accent-black"
                 type="checkbox"
+                :role="f.key === 'active' ? 'switch' : undefined"
               />
             </div>
             <textarea

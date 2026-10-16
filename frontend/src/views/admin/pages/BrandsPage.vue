@@ -1,11 +1,12 @@
 <!-- Mục đích: Danh sách thương hiệu, logo, số sản phẩm và trạng thái hoạt động. -->
 <script setup>
+import ActivityStatus from '../components/ActivityStatus.vue';
 import { openForm, filteredBrands, brandSearch, brandStatusFilter, getBrandProductCount, toggleCatalogStatus } from '../adminStore';
 import { genericBrandLogo, resolveBrandLogo } from '../../../utils/brandLogos';
 function fallback(event) { event.target.onerror=null; event.target.src=genericBrandLogo; }
 </script>
 <template>
-  <div class="brands-page fade-in">
+  <div class="brands-page fade-in admin-catalog-page">
     <div class="brands-toolbar">
       <h5>Quản lý thương hiệu</h5>
       <button type="button" class="btn btn-dark" @click="openForm('brands')"><i class="icon icon-plus-lg"></i> Thêm thương hiệu</button>
@@ -19,7 +20,7 @@ function fallback(event) { event.target.onerror=null; event.target.src=genericBr
       </select>
     </div>
     <div class="table-responsive">
-      <table class="table align-middle mb-0">
+      <table class="table align-middle mb-0 admin-catalog-table">
         <thead><tr><th>ID</th><th>Logo</th><th>Thương hiệu</th><th>Số sản phẩm</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead>
         <tbody>
           <tr v-for="b in filteredBrands" :key="b.id">
@@ -27,7 +28,7 @@ function fallback(event) { event.target.onerror=null; event.target.src=genericBr
             <td><img :src="resolveBrandLogo(b)" :alt="b.name" class="brand-logo" @error="fallback"></td>
             <td class="brand-name">{{ b.name }}</td>
             <td>{{ getBrandProductCount(b.id) }}</td>
-            <td><span class="badge" :class="b.active?'badge-active':'bg-light text-secondary'">{{ b.active?'Hoạt động':'Không hoạt động' }}</span></td>
+            <td><ActivityStatus :active="b.active" /></td>
             <td class="text-end"><div class="brand-actions">
               <button type="button" class="btn btn-sm btn-light border" @click="openForm('brands',b)" title="Sửa thương hiệu" :aria-label="'Sửa thương hiệu '+b.name"><i class="icon icon-pencil"></i></button>
               <input type="checkbox" role="switch" :checked="b.active" @change="toggleCatalogStatus('brands',b,$event)" :aria-label="'Trạng thái thương hiệu '+b.name" :title="b.active?'Ngừng hoạt động':'Bật hoạt động'">

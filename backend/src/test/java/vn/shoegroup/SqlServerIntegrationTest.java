@@ -99,6 +99,16 @@ class SqlServerIntegrationTest {
         products.delete(String.valueOf(product), true);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM Products WHERE ProductID=?", Integer.class, product)).isZero();
     }
+    @Test void automaticSkuAvoidsPreservedCodesFromBeforeIdRenumbering() {
+        var dimensions=jdbc.queryForMap("SELECT ColorID,SizeID FROM ProductVariants WHERE ProductVariantID=?",variant);
+        int next=jdbc.queryForObject("SELECT CONVERT(int,IDENT_CURRENT('Products')+IDENT_INCR('Products'))",Integer.class);
+        String oldSku="SKU-"+next+"-C"+dimensions.get("ColorID")+"-S"+dimensions.get("SizeID");
+        jdbc.update("UPDATE ProductVariants SET ChildSKU=? WHERE ProductVariantID=?",oldSku,variant);
+        var result=products.save(null,Map.of("name","Next shoe","variants",List.of(Map.of("color_id",dimensions.get("ColorID"),"size_id",dimensions.get("SizeID"),"price",100000,"stock",0))));
+        assertThat(((Number)result.get("ProductID")).intValue()).isEqualTo(next);
+        assertThat(jdbc.queryForObject("SELECT ChildSKU FROM ProductVariants WHERE ProductID=?",String.class,next)).isEqualTo(oldSku+"-2");
+        assertThat(jdbc.queryForObject("SELECT ChildSKU FROM ProductVariants WHERE ProductVariantID=?",String.class,variant)).isEqualTo(oldSku);
+    }
     @Test void nativeLoginUpgradesLegacyPasswordAndReturnsOriginalShape() throws Exception {
         mvc.perform(post("/api/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"customer@example.com\",\"password\":\"legacy-password\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true)).andExpect(jsonPath("$.user.id_user").value(customer))
