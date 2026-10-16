@@ -78,6 +78,17 @@
       "pk": 0
     },
     {
+      "tbl": "Brands",
+      "col": "CatalogNameKey",
+      "typ": "nvarchar",
+      "max_length": 200,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
       "tbl": "CartItems",
       "col": "CartItemID",
       "typ": "int",
@@ -221,6 +232,17 @@
       "pk": 0
     },
     {
+      "tbl": "Categories",
+      "col": "CatalogNameKey",
+      "typ": "nvarchar",
+      "max_length": 200,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
       "tbl": "CheckoutRequests",
       "col": "UserID",
       "typ": "int",
@@ -342,6 +364,17 @@
       "pk": 0
     },
     {
+      "tbl": "Colors",
+      "col": "CatalogNameKey",
+      "typ": "nvarchar",
+      "max_length": 200,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
       "tbl": "CouponRedemptions",
       "col": "RedemptionID",
       "typ": "int",
@@ -442,23 +475,12 @@
     },
     {
       "tbl": "Coupons",
-      "col": "DiscountPercent",
-      "typ": "int",
-      "max_length": 4,
-      "precision": 10,
-      "scale": 0,
-      "is_nullable": false,
-      "is_identity": false,
-      "pk": 0
-    },
-    {
-      "tbl": "Coupons",
       "col": "UsageLimit",
       "typ": "int",
       "max_length": 4,
       "precision": 10,
       "scale": 0,
-      "is_nullable": false,
+      "is_nullable": true,
       "is_identity": false,
       "pk": 0
     },
@@ -613,6 +635,17 @@
       "precision": 1,
       "scale": 0,
       "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "Materials",
+      "col": "CatalogNameKey",
+      "typ": "nvarchar",
+      "max_length": 200,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
       "is_identity": false,
       "pk": 0
     },
@@ -1229,6 +1262,28 @@
       "precision": 18,
       "scale": 2,
       "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "Orders",
+      "col": "HandledByUserID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "Orders",
+      "col": "CashGiven",
+      "typ": "decimal",
+      "max_length": 9,
+      "precision": 18,
+      "scale": 0,
+      "is_nullable": true,
       "is_identity": false,
       "pk": 0
     },
@@ -2585,6 +2640,12 @@
       "parent": "ProductVariants"
     },
     {
+      "name": "FK_Orders_HandledByUser",
+      "child": "Orders",
+      "col": "HandledByUserID",
+      "parent": "Users"
+    },
+    {
       "name": "FK_Orders_ShippingMethods",
       "child": "Orders",
       "col": "ShippingMethodID",
@@ -2601,6 +2662,12 @@
       "child": "OrderStatusHistory",
       "col": "OrderID",
       "parent": "Orders"
+    },
+    {
+      "name": "FK_OrderStatusHistory_Users",
+      "child": "OrderStatusHistory",
+      "col": "ChangedBy",
+      "parent": "Users"
     },
     {
       "name": "FK_PosCartItems_Cart",

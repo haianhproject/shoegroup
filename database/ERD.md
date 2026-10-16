@@ -14,6 +14,7 @@ erDiagram
     bit IsActive
     varchar LogoURL
     int SortOrder
+    nvarchar CatalogNameKey
   }
   CartItems {
     int CartItemID PK
@@ -33,6 +34,7 @@ erDiagram
     nvarchar CategoryName
     bit IsActive
     nvarchar Sport
+    nvarchar CatalogNameKey
   }
   CheckoutRequests {
     int UserID PK
@@ -48,6 +50,7 @@ erDiagram
     varchar ColorHex
     bit IsActive
     int SortOrder
+    nvarchar CatalogNameKey
   }
   CouponRedemptions {
     int RedemptionID PK
@@ -61,7 +64,6 @@ erDiagram
   Coupons {
     int CouponID PK
     varchar CouponCode
-    int DiscountPercent
     int UsageLimit
     int UsedCount
     datetime ExpiryDate
@@ -79,6 +81,7 @@ erDiagram
     int MaterialID PK
     nvarchar MaterialName
     bit IsActive
+    nvarchar CatalogNameKey
   }
   Notifications {
     int NotificationID PK
@@ -141,6 +144,8 @@ erDiagram
     datetime StockDeductedAt
     datetime VariantDiscountRestoredAt
     decimal HistoricalRefundAmount
+    int HandledByUserID FK
+    decimal CashGiven
   }
   OrderStatusHistory {
     int HistoryID PK
@@ -148,7 +153,7 @@ erDiagram
     nvarchar OldStatus
     nvarchar NewStatus
     nvarchar Note
-    int ChangedBy
+    int ChangedBy FK
     datetime ChangedAt
   }
   PaymentTransactions {
@@ -300,9 +305,11 @@ erDiagram
   Users ||--o{ Carts : "UserID"
   Users ||--o{ Notifications : "UserID"
   ProductVariants |o--o{ OrderDetails : "ProductVariantID"
+  Users |o--o{ Orders : "HandledByUserID"
   ShippingMethods |o--o{ Orders : "ShippingMethodID"
   UserAddresses |o--o{ Orders : "AddressID"
   Orders ||--o{ OrderStatusHistory : "OrderID"
+  Users |o--o{ OrderStatusHistory : "ChangedBy"
   PosCarts ||--o{ PosCartItems : "PosCartID"
   ProductVariants ||--o{ PosCartItems : "ProductVariantID"
   Users ||--o{ PosCarts : "UserID"

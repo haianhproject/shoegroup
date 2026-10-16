@@ -638,6 +638,7 @@ function transitionMessage() {
                   v-text="p.name"
                 ></p>
                 <p class="text-gray-600 mb-0" style="font-size: 0.78rem">
+                  Mã SP: #{{ p.product_id }} · SKU: {{ p.sku || '—' }}<br>
                   <span v-text="p.color"></span> / Size
                   <span v-text="p.size"></span> · SL:
                   <span v-text="p.quantity"></span>
@@ -654,6 +655,10 @@ function transitionMessage() {
                 class="font-extrabold text-lg text-gray-900"
                 v-text="formatPrice(orderDetail.order.total)"
               ></span>
+            </div>
+            <div v-if="orderDetail.order.cash_given!=null" class="pt-3 text-sm">
+              <div class="flex justify-between"><span>Tiền khách đưa</span><strong>{{ formatPrice(orderDetail.order.cash_given) }}</strong></div>
+              <div class="flex justify-between"><span>Trả lại khách</span><strong>{{ formatPrice(orderDetail.order.cash_given-orderDetail.order.total) }}</strong></div>
             </div>
           </div>
         </div>

@@ -97,13 +97,13 @@ public class DiscountService {
     BigDecimal value = amount(field(b, 0, "DiscountValue", "value")),
         minimum = amount(field(b, 0, "MinOrderAmount", "min_order")),
         maximum = amount(field(b, 0, "MaxDiscountAmount", "max_discount"));
-    Values.integer(
-        field(b, kind.equals("percent") ? value : 0, "DiscountPercent", "percent"), 0, 100, 0);
     if ((!kind.equals("freeship") && value.signum() <= 0)
         || (kind.equals("percent") && value.compareTo(BigDecimal.valueOf(100)) > 0))
       throw new ApiException(400, "Gia tri khuyen mai khong hop le.");
-    int limit =
-        Values.integer(field(b, 0, "UsageLimit", "limit", "quantity"), 0, Integer.MAX_VALUE, 0);
+    Object rawLimit = field(b, null, "UsageLimit", "limit", "quantity");
+    Integer limit = rawLimit == null ? null : Values.integer(rawLimit, 0, Integer.MAX_VALUE, null);
+    if(routeId!=null && limit!=null && jdbc.queryForObject("SELECT ISNULL(UsedCount,0) FROM Coupons WHERE CouponID=?",Integer.class,Values.integer(routeId,1,Integer.MAX_VALUE,null))>limit)
+      throw new ApiException(400,"Tổng số lượt không được nhỏ hơn số lượt đã dùng.");
     Timestamp start = date(field(b, null, "StartDate", "start_date"), false, false),
         expiry = date(field(b, null, "ExpiryDate", "expiry"), true, true);
     if (start != null && !expiry.after(start))
@@ -119,7 +119,6 @@ public class DiscountService {
                     ? "Phần trăm"
                     : kind.equals("fixed") ? "Cố định" : "freeship",
                 value,
-                kind.equals("percent") ? value : 0,
                 minimum,
                 maximum,
                 limit,
@@ -130,14 +129,14 @@ public class DiscountService {
     if (routeId == null)
       jdbc.update(
           "INSERT"
-              + " Coupons(CouponCode,CouponName,DiscountType,DiscountValue,DiscountPercent,MinOrderAmount,MaxDiscountAmount,UsageLimit,StartDate,ExpiryDate,Description,IsActive)"
-              + " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+              + " Coupons(CouponCode,CouponName,DiscountType,DiscountValue,MinOrderAmount,MaxDiscountAmount,UsageLimit,StartDate,ExpiryDate,Description,IsActive)"
+              + " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
           args.toArray());
     else {
       args.add(Values.integer(routeId, 1, Integer.MAX_VALUE, null));
       if (jdbc.update(
               "UPDATE Coupons SET"
-                  + " CouponCode=?,CouponName=?,DiscountType=?,DiscountValue=?,DiscountPercent=?,MinOrderAmount=?,MaxDiscountAmount=?,UsageLimit=?,StartDate=?,ExpiryDate=?,Description=?,IsActive=?"
+                  + " CouponCode=?,CouponName=?,DiscountType=?,DiscountValue=?,MinOrderAmount=?,MaxDiscountAmount=?,UsageLimit=?,StartDate=?,ExpiryDate=?,Description=?,IsActive=?"
                   + " WHERE CouponID=?",
               args.toArray())
           != 1) throw new ApiException(404, "Khong tim thay ma giam gia.");

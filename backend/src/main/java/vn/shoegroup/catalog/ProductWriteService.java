@@ -209,10 +209,14 @@ public class ProductWriteService {
         vid = ((Number) rows.get(0).get("ProductVariantID")).intValue();
         var current =
             jdbc.queryForMap(
-                "SELECT StockQuantity,ISNULL(Version,0) AS Version FROM ProductVariants"
+                "SELECT StockQuantity,ColorID,SizeID,ISNULL(Version,0) AS Version FROM ProductVariants"
                     + " WITH(UPDLOCK,HOLDLOCK) WHERE ProductVariantID=?",
                 vid);
         Object version = Values.first(v, null, "version", "Version");
+        boolean dimensionsChanged=colorId!=((Number)current.get("ColorID")).intValue() || sizeId!=((Number)current.get("SizeID")).intValue();
+        if(dimensionsChanged && (!jdbc.queryForList("SELECT TOP 1 ProductVariantID FROM PosCartItems WHERE ProductVariantID=?",vid).isEmpty()
+            || !jdbc.queryForList("SELECT TOP 1 d.OrderDetailID FROM OrderDetails d JOIN Orders o ON o.OrderID=d.OrderID WHERE d.ProductVariantID=? AND o.Status IN (N'Chờ xác nhận',N'Đã xác nhận',N'Đang vận chuyển',N'Giao hàng thất bại',N'Về kho')",vid).isEmpty()))
+          throw new ApiException(409,"VARIANT_IN_USE","Biến thể đang trong giỏ tại quầy hoặc đơn chưa hoàn tất. Không thể đổi màu/kích cỡ lúc này.");
         if ((version == null && stock != ((Number) current.get("StockQuantity")).intValue())
             || (version != null
                 && Values.integer(version, 0, Integer.MAX_VALUE, null)

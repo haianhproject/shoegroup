@@ -14,7 +14,7 @@
  * chung một nguồn dữ liệu duy nhất (giống hệt file gốc AdminDashboard.vue).
  * ------------------------------------------------------------------
  */
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, watch } from "vue";
 import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAttempt';
 import { recognizedOrderRevenue } from '@/services/revenue';
 import { buildPosPaymentQrUrl, buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '@/services/vietQr';
@@ -342,7 +342,7 @@ export function formatDate(d) {
 export const getDisplayName = computed(() => {
   const u = currentUser && currentUser.value;
   return (
-    (u && (u.name || u.fullName || u.username || u.email)) || "Quản trị viên"
+    (u && (u.name || u.full_name || u.fullName || u.username || u.email)) || "Nhân viên"
   );
 });
 export function handleLogout() {
@@ -350,9 +350,14 @@ export function handleLogout() {
     notify("Vui lòng chờ cập nhật giỏ tại quầy hoàn tất trước khi đăng xuất.", "info");
     return false;
   }
+  rememberPosDrafts();
+  posCartId.value=null;
+  posPendingCarts.value=[];
+  posDrafts.clear();
   clearPosOrderLocally();
   posCartReady.value = false;
   posPayModal.open = false;
+  posConfirmModal.open = false;
   if (typeof logout === "function") logout();
   notify("Đã đăng xuất", "info");
   return true;
@@ -1619,6 +1624,7 @@ export function printInvoice(o) {
         "</td>" +
         "<td>" +
         escHtml(p.name) +
+        "<div class='muted'>Mã SP: " + escHtml(p.product_id ?? p.ProductID ?? '—') + " / SKU: " + escHtml(p.sku || p.SKUSnapshot || '—') + "</div>" +
         sub +
         "</td>" +
         "<td class='c'>" +
@@ -1691,6 +1697,7 @@ export function printInvoice(o) {
     escHtml(formatDate(o.date)) +
     "<br><b>Thanh toán:</b> " +
     escHtml(o.payment_method || "—") +
+    "<br><b>Nhân viên:</b> " + escHtml(o.handled_by || '—') +
     "</div></div>" +
     "<table><thead><tr><th class='c'>STT</th><th>Tên sản phẩm</th><th class='c'>SL</th><th class='r'>Đơn giá</th><th class='r'>Thành tiền</th></tr></thead><tbody>" +
     (rows ||
@@ -1709,6 +1716,7 @@ export function printInvoice(o) {
     "<tr class='grand'><td>Tổng cần thanh toán</td><td class='r'>" +
     formatPrice(grand) +
     "</td></tr>" +
+    (o.cash_given==null?"":"<tr><td>Tiền khách đưa</td><td class='r'>"+formatPrice(o.cash_given)+"</td></tr><tr><td>Trả lại khách</td><td class='r'>"+formatPrice(Number(o.cash_given)-grand)+"</td></tr>") +
     "</tbody></table>" +
     "<div class='thanks'>Cảm ơn quý khách! Hẹn gặp lại tại " +
     escHtml(SHOP_INFO.name) +
@@ -1735,11 +1743,7 @@ export function printInvoice(o) {
   notify("Đã mở hóa đơn " + code, "success");
 }
 
-/* ---------------- POS ----------------
- * Đã BỚ hoàn toàn cơ chế "đơn chờ" (nhiều đơn tạm song song).
- * Bán hàng tại quầy chỉ làm việc trên MỘT đơn duy nhất; thanh toán xong
- * thì làm mới đơn để bán tiếp.
- */
+/* POS: moi hoa don cho co gio va ban nhap khach hang rieng. */
 // Mã đơn quầy sinh theo thời gian thực (không còn số đếm cứng 186)
 function newPosCode() {
   const d = new Date();
@@ -1758,6 +1762,7 @@ function newPosCode() {
 function newPosOrder() {
   return reactive({
     code: newPosCode(),
+    created_at: new Date().toISOString(),
     customer_type: "Khách lẻ",
     customer_name: "",
     customer_phone: "",
@@ -1769,7 +1774,6 @@ function newPosOrder() {
     cash_given: 0,
   });
 }
-// Chỉ còn MỘT đơn đang bán tại quầy
 const posOrder = ref(newPosOrder());
 export const activePosOrder = computed(() => posOrder.value);
 export const posCartBusy = ref(false);
@@ -1778,6 +1782,21 @@ const posCartRevision = ref(0);
 export const posPendingCarts = ref([]);
 export const posCartId = ref(null);
 const posDrafts = new Map();
+const draftStorageKey = () => 'shoegroup_pos_drafts_' + (currentUser.value?.id_user || currentUser.value?.id || 'guest');
+function rememberPosDrafts() {
+  try {
+    if(posCartId.value) posDrafts.set(String(posCartId.value),JSON.parse(JSON.stringify(posOrder.value)));
+    sessionStorage.setItem(draftStorageKey(),JSON.stringify({day:new Date().toLocaleDateString('en-CA'),drafts:[...posDrafts]}));
+  } catch {}
+}
+function restorePosDraft(id) {
+  try {
+    const saved=JSON.parse(sessionStorage.getItem(draftStorageKey()) || 'null');
+    if(saved?.day===new Date().toLocaleDateString('en-CA')) for(const [key,draft] of saved.drafts) posDrafts.set(key,draft);
+  } catch {}
+  return posDrafts.get(String(id)) || newPosOrder();
+}
+watch(posOrder,rememberPosDrafts,{deep:true});
 
 function clearPosOrderLocally() {
   posOrder.value = newPosOrder();
@@ -1795,9 +1814,10 @@ export function applyPosStockUpdates(updates = []) {
 }
 
 function applyPosCart(data) {
-  if(data.cart_id && String(data.cart_id)!==String(posCartId.value)) posOrder.value=posDrafts.get(String(data.cart_id)) || newPosOrder();
+  if(data.cart_id && String(data.cart_id)!==String(posCartId.value)) posOrder.value=restorePosDraft(data.cart_id);
   posCartId.value = data.cart_id ?? posCartId.value;
   posPendingCarts.value = data.carts || posPendingCarts.value;
+  if(data.carts) for(const id of posDrafts.keys()) if(!data.carts.some(c=>String(c.id)===id)) posDrafts.delete(id);
   posCartRevision.value = data.revision;
   activePosOrder.value.cart = data.items.map((item) => {
     const product = db.products.find((p) => String(p.id) === String(item.product_id));
@@ -1866,9 +1886,9 @@ export async function resetPosOrder() {
 }
 export async function switchPosCart(id) {
   if(posCartBusy.value || posSubmitting.value || posPayModal.open || String(id)===String(posCartId.value)) return;
-  posDrafts.set(String(posCartId.value),JSON.parse(JSON.stringify(posOrder.value)));
+  rememberPosDrafts();
   posCartId.value=id;
-  posOrder.value=posDrafts.get(String(id)) || newPosOrder();
+  posOrder.value=restorePosDraft(id);
   posCartReady.value=false;
   await loadPosCart();
 }
@@ -1878,7 +1898,7 @@ export async function addPendingPosCart() {
   try {
     const result=await apiWrite("/pos/carts",{method:"POST"});
     if(!result.ok) { notify(result.data?.message || "Không tạo được hóa đơn chờ.","error"); return; }
-    posDrafts.set(String(posCartId.value),JSON.parse(JSON.stringify(posOrder.value)));
+    rememberPosDrafts();
     posOrder.value=newPosOrder(); applyPosCart(result.data);
   } finally { posCartBusy.value=false; }
 }
@@ -1929,6 +1949,8 @@ export const posInvoiceModal = reactive({
   total: 0,
   handled_by: "",
   created_at: null,
+  cash_given: null,
+  change: null,
 });
 export function closePosInvoice() {
   posInvoiceModal.open = false;
@@ -1953,6 +1975,7 @@ export function printPosInvoice() {
     created_at: posInvoiceModal.created_at,
     date: posInvoiceModal.created_at,
     status: 'Đã nhận hàng',
+    cash_given: posInvoiceModal.cash_given,
   });
 }
 export const posSearch = ref("");
@@ -2092,15 +2115,16 @@ export const posSubtotal = computed(() =>
   ),
 );
 export const posCouponList = computed(() =>
-  db.discounts.filter((d) => d.active && !isExpired(d.expiry)),
+  db.discounts.filter((d) => getDiscountStatus(d).label === 'Đang diễn ra'),
 );
 export const posDiscountAmount = computed(() => {
   const code = activePosOrder.value.coupon_code;
   if (!code) return 0;
   const d = db.discounts.find((x) => String(x.code) === String(code));
-  if (!d) return 0;
+  if (!d || getDiscountStatus(d).label !== 'Đang diễn ra') return 0;
   const sub = posSubtotal.value;
   if (Number(d.min_order) > 0 && sub < Number(d.min_order)) return 0;
+  if(d.discount_type==='freeship') return 0;
   let amt =
     d.discount_type === "Cố định"
       ? Number(d.value) || 0
@@ -2123,8 +2147,8 @@ export function applyPosCoupon() {
     return;
   }
   const d = db.discounts.find((x) => String(x.code) === String(code));
-  if (!d) {
-    notify("Không tìm thấy mã", "error");
+  if (!d || getDiscountStatus(d).label !== 'Đang diễn ra') {
+    notify("Mã chưa diễn ra, đã hết lượt hoặc không hoạt động.", "error");
     return;
   }
   if (Number(d.min_order) > 0 && posSubtotal.value < Number(d.min_order)) {
@@ -2284,8 +2308,26 @@ export async function savePosCustomer() {
   }
 }
 export const posSubmitting = ref(false);
+export const posConfirmModal = reactive({open:false});
+function validPosPayment() {
+  const o=activePosOrder.value;
+  if(!o.cart.length) { notify('Chưa có sản phẩm trong đơn','error');return false; }
+  if(!ensurePosCustomerReady()) return false;
+  if(!['Tiền mặt','Chuyển khoản'].includes(o.payment_method)) { notify('Chọn phương thức thanh toán hợp lệ.','error');return false; }
+  if(o.coupon_code && !posCouponList.value.some(d=>d.code===o.coupon_code)) { notify('Mã giảm giá không còn sử dụng được. Vui lòng bỏ mã hoặc chọn mã khác.','error');return false; }
+  if(o.payment_method==='Tiền mặt' && (o.cash_given==='' || o.cash_given==null || !Number.isSafeInteger(Number(o.cash_given)) || Number(o.cash_given)<posGrandTotal.value || Number(o.cash_given)>1000000000000)) {
+    notify('Tiền khách đưa phải là số nguyên và đủ thanh toán.','error');return false;
+  }
+  return true;
+}
 export async function checkoutPos() {
-  if (posSubmitting.value || posCartBusy.value || !posCartReady.value) return;
+  if (posSubmitting.value || posCartBusy.value || !posCartReady.value || posPayModal.open || posConfirmModal.open) return;
+  if(validPosPayment()) posConfirmModal.open=true;
+}
+export async function confirmPosCheckout() {
+  if(!posConfirmModal.open || posSubmitting.value || posCartBusy.value || !posCartReady.value) return;
+  if(!validPosPayment()) { posConfirmModal.open=false;return; }
+  posConfirmModal.open=false;
   const o = activePosOrder.value;
   if (o.cart.length === 0) {
     notify("Chưa có sản phẩm trong đơn", "error");
@@ -2332,7 +2374,7 @@ export async function checkoutPos() {
 }
 async function finalizePosOrder() {
   if (posSubmitting.value || posCartBusy.value || !posCartReady.value) return false;
-  if (!ensurePosCustomerReady()) return false;
+  if (!validPosPayment()) return false;
   posSubmitting.value = true;
   try {
   const o = activePosOrder.value;
@@ -2354,6 +2396,7 @@ async function finalizePosOrder() {
     coupon_code: o.coupon_code || null,
     discount_amount: posDiscountAmount.value,
     total: posGrandTotal.value,
+    cash_given: o.payment_method==='Tiền mặt'?Number(o.cash_given):null,
     products: o.cart.map((c) => ({
       product_variant_id: c.variant_id,
       product_id: c.product_id,
@@ -2362,6 +2405,7 @@ async function finalizePosOrder() {
       size: c.size,
       quantity: c.quantity,
       price: c.price,
+      sku:c.sku,
     })),
   };
   const attempt = getCheckoutAttempt(payload);
@@ -2385,18 +2429,13 @@ async function finalizePosOrder() {
   clearCheckoutAttempt();
 
   // Kho đã trừ khi thêm vào giỏ, không trừ lại sau thanh toán.
-  // Lưu khách vãng lai (không có tài khoản) vào danh sách khách hàng
-  if (!o.customer_id && (o.customer_name || o.customer_phone)) {
-    try {
-      await ensureWalkInCustomer(o.customer_name, o.customer_phone);
-    } catch (e) {}
-  }
+  // Khach le da duoc luu trong Orders; khong tao them tai khoan/yeu cau quan tri.
   // Hiển thị đơn NGAY trên trang Xác nhận thanh toán (tab Offline) kể cả khi
   // API danh sách chưa kịp cập nhật -> tránh tình trạng "tạo đơn xong không thấy đâu".
   const newId =
     (created && (created.OrderID || created.id || created.order_id || created.orderId)) ||
     "POS-" + Date.now();
-  const nowIso = new Date().toISOString();
+  const nowIso = created.createdAt || new Date().toISOString();
   db.orders.unshift({
     id: newId,
     date: nowIso,
@@ -2408,7 +2447,8 @@ async function finalizePosOrder() {
     cancel_reason: "",
     payment_status: "Đã thanh toán",
     payment_method: payload.payment_method,
-    handled_by: getDisplayName.value || "Quầy",
+    handled_by: created.handledBy || getDisplayName.value || "Quầy",
+    cash_given: created.cashGiven ?? null,
     // Danh dau ro rang la don BAN TAI QUAY de hien ngay o tab Offline
     channel: "Offline",
     tracking_code: "",
@@ -2419,13 +2459,15 @@ async function finalizePosOrder() {
       quantity: p.quantity,
       price: p.price,
       image: "",
+      product_id:p.product_id,
+      sku:p.sku,
     })),
     isExpanded: false,
     _history: [
       { status: "Đã nhận hàng", date: nowIso, note: "Bán tại quầy" },
     ],
   });
-  notify("Thanh toán thành công!", "success");
+  notify(payload.payment_method==='Tiền mặt'?'Thanh toán thành công! Trả khách '+formatPrice(created.changeAmount ?? posChange.value):'Thanh toán thành công!', "success");
   // Mo man hinh hoa don ngay sau khi thanh toan thanh cong tai quay
   Object.assign(posInvoiceModal, {
     open: true,
@@ -2440,11 +2482,15 @@ async function finalizePosOrder() {
       size: p.size,
       quantity: p.quantity,
       price: p.price,
+      product_id:p.product_id,
+      sku:p.sku,
     })),
     subtotal: posSubtotal.value,
     discount: posDiscountAmount.value,
-    total: posGrandTotal.value,
-    handled_by: getDisplayName.value || "Quầy",
+    total: created.totalAmount ?? posGrandTotal.value,
+    cash_given: created.cashGiven ?? payload.cash_given,
+    change: created.changeAmount ?? (payload.cash_given==null?null:payload.cash_given-posGrandTotal.value),
+    handled_by: created.handledBy || getDisplayName.value || "Quầy",
     created_at: nowIso,
   });
   clearPosOrderLocally();
@@ -2462,11 +2508,28 @@ export const productSearch = ref("");
 export const filterCategory = ref("");
 export const productFormOpen = ref(false);
 export const productSaving = ref(false);
+export const productDirty = ref(false);
+export const productValidationAttempted = ref(false);
+export const productTouched = reactive({});
+export function productFieldError(key) {
+  if(!productValidationAttempted.value && !productTouched[key]) return '';
+  if(key==='name' && !productForm.name.trim()) return 'Vui lòng nhập tên sản phẩm.';
+  if(key==='category_id' && !(Number(productForm.category_id)>0)) return 'Vui lòng chọn danh mục.';
+  return '';
+}
+export function variantFieldError(variant,key) {
+  if(key==='size') return variant.size_error || '';
+  if(!productValidationAttempted.value && !variant.touched?.[key]) return '';
+  const raw=variant[key],n=Number(raw);
+  if(key==='price' && (!Number.isFinite(n) || n<=0 || n>1e12)) return 'Nhập giá bán lớn hơn 0, tối đa 1.000 tỷ đồng.';
+  if(key==='stock' && (raw==='' || raw==null || !Number.isSafeInteger(n) || n<0 || n>1e6)) return 'Tồn kho phải là số nguyên từ 0 đến 1.000.000.';
+  return '';
+}
 export const filteredProducts = computed(() => {
-  const q = productSearch.value.trim().toLowerCase();
-  return db.products.slice().sort((a,b)=>Number(a.id)-Number(b.id)).filter(
+  const q = productSearch.value.trim().toLowerCase().replace(/^#/, '');
+  return db.products.slice().sort((a,b)=>Number(b.id)-Number(a.id)).filter(
     (p) =>
-      (!q || (p.name || "").toLowerCase().includes(q)) &&
+      (!q || (p.name || "").toLowerCase().includes(q) || String(p.id).includes(q)) &&
       (!filterCategory.value ||
         String(p.category_id) === String(filterCategory.value)),
   );
@@ -2480,8 +2543,6 @@ function emptyProduct() {
     brand_id: "",
     material_id: "",
     price: 0,
-    same_price: false,
-    common_price: 0,
     image_url: "",
     is_featured: false,
     active: true,
@@ -2539,10 +2600,13 @@ export function colorStockTotal(c) {
     : 0;
 }
 export function openProductForm(p) {
+  productFormOpen.value=false;
+  productValidationAttempted.value=false;
+  for(const key of Object.keys(productTouched)) delete productTouched[key];
   Object.assign(productForm, emptyProduct());
   if (p) {
     Object.assign(productForm, JSON.parse(JSON.stringify(p)));
-    const loadedVariants = productForm.variants || [];
+    const loadedVariants = productVariants(p.id).length ? productVariants(p.id) : productForm.variants || [];
     let colors = Array.isArray(productForm.colors) ? [...productForm.colors] : [];
 
     // Nếu sản phẩm có variants nhưng colors bị trống, tự khôi phục từ variants
@@ -2595,27 +2659,77 @@ export function openProductForm(p) {
       productForm.sizes && productForm.sizes.length
         ? productForm.sizes
         : Array.from(new Set(loadedVariants.map((v) => String(v.size))));
-    const _stocks = loadedVariants
-      .map((v) => Number(v.stock) || 0)
-      .filter((n) => n > 0);
-    productForm.default_stock = _stocks.length ? Math.max(..._stocks) : 0;
+    productForm.default_stock = 0;
     productForm.variants = productForm.variants || [];
   }
+  for(const color of productForm.colors) color.addition=emptyVariantAddition(color.variants);
   productFormOpen.value = true;
+  productDirty.value=false;
 }
+watch(productForm,()=>{if(productFormOpen.value) productDirty.value=true;},{deep:true,flush:'sync'});
 export function closeProductForm() {
   productFormOpen.value = false;
 }
 export const availableVariantSizes = computed(() => db.sizes.filter(s=>s.active).slice().sort((a,b)=>a.standard.localeCompare(b.standard)||Number(a.name)-Number(b.name)));
-export function setAllColorSizes(index,standard='EU') {
-  const c=productForm.colors[index]; if(!c) return;
-  if(!Array.isArray(c.variants)) c.variants=[];
-  for(const s of availableVariantSizes.value.filter(s=>s.standard===standard)) if(!c.variants.some(v=>String(v.size_id)===String(s.id)))
-    c.variants.push({size_id:s.id,size:s.name,standard:s.standard,stock:Number(productForm.default_stock)||0,price:productForm.same_price?Number(productForm.common_price):0,active:true});
+function emptyVariantAddition(variants=[]) {
+  const prices=[...new Set(variants.map(v=>Number(v.price)))];
+  return {standard:variants[0]?.standard || 'EU',size_ids:[],price:prices.length===1 && Number.isFinite(prices[0]) && prices[0]>0?prices[0]:'',stock:0,attempted:false,touched:{},selection_error:''};
 }
-export function applyCommonVariantPrice() {
-  if(!productForm.same_price) return;
-  for(const c of productForm.colors) for(const v of c.variants || []) v.price=Number(productForm.common_price);
+export function variantAddition(color) {
+  return color.addition ||= emptyVariantAddition(color.variants);
+}
+export function availableSizesForColor(color) {
+  return availableVariantSizes.value.filter(size=>size.standard===variantAddition(color).standard && !(color.variants || []).some(v=>
+    String(v.size_id)===String(size.id) || ((v.standard || 'EU')===size.standard && Number(v.size)===Number(size.name))));
+}
+export function variantAdditionFieldError(color,key) {
+  const addition=variantAddition(color);
+  if(key==='sizes' && addition.selection_error) return addition.selection_error;
+  if(!addition.attempted && !addition.touched[key]) return '';
+  if(key==='sizes') return addition.size_ids.length?'':'Vui lòng chọn ít nhất một kích cỡ chưa có.';
+  return variantFieldError({[key]:addition[key],touched:{[key]:true}},key);
+}
+export function addPendingVariants(index) {
+  const color=productForm.colors[index];if(!color) return false;
+  const addition=variantAddition(color);addition.attempted=true;addition.selection_error='';
+  if(['sizes','price','stock'].some(key=>variantAdditionFieldError(color,key))) return false;
+  const available=availableSizesForColor(color),ids=[...new Set(addition.size_ids.map(String))];
+  const sizes=ids.map(id=>available.find(s=>String(s.id)===id));
+  if(sizes.some(s=>!s)) {
+    addition.size_ids=addition.size_ids.filter(id=>available.some(s=>String(s.id)===String(id)));
+    addition.selection_error='Kích cỡ đã có hoặc không còn hoạt động. Vui lòng chọn lại.';return false;
+  }
+  if(!Array.isArray(color.variants)) color.variants=[];
+  color.variants.push(...sizes.map(size=>({size_id:size.id,size:size.name,standard:size.standard,price:Number(addition.price),stock:Number(addition.stock),active:productForm.active!==false})));
+  addition.size_ids=[];addition.attempted=false;addition.touched={};
+  return true;
+}
+export function removeDraftVariant(index,variant) {
+  const color=productForm.colors[index];
+  if(!color || variant.id) return false;
+  const row=color.variants?.indexOf(variant);
+  if(row==null || row<0) return false;
+  color.variants.splice(row,1);return true;
+}
+function hasPendingVariantAdditions() {
+  let pending=false;
+  for(const color of productForm.colors) if(variantAddition(color).size_ids.length) {
+    color.addition.selection_error='Bấm “Thêm biến thể” để đưa các kích cỡ đã chọn vào bản nháp.';pending=true;
+  }
+  return pending;
+}
+export function changeVariantSize(index,variant,sizeId,event) {
+  const c=productForm.colors[index],s=availableVariantSizes.value.find(s=>String(s.id)===String(sizeId));
+  if(!s || c.variants.some(v=>v!==variant && String(v.size_id)===String(s.id))) {
+    if(event) event.target.value=variant.size_id;
+    variant.size_error='Kích cỡ đã có trong màu này hoặc không hoạt động.';return;
+  }
+  variant.size_error='';
+  Object.assign(variant,{size_id:s.id,size:s.name,standard:s.standard});
+}
+export function setColorActive(index,active) {
+  if(active && !productForm.active) return;
+  for(const v of productForm.colors[index]?.variants || []) v.active=active;
 }
 export function changeColor(index, newColorId) {
   const c = productForm.colors[index];
@@ -2647,6 +2761,8 @@ export function addColor() {
     name: c.name,
     hex: c.hex,
     image: colorImageDraft.value || "",
+    variants: [],
+    addition: emptyVariantAddition(),
   });
   if (productForm.colors.length === 1 && colorImageDraft.value) {
     productForm.image_url = colorImageDraft.value;
@@ -2721,24 +2837,9 @@ export async function onFormImageFile(e, key) {
 export function removeColor(i) {
   const c=productForm.colors[i];
   if((c?.variants || []).some(v=>v.id)) { for(const v of c.variants) v.active=false; }
-  else productForm.colors.splice(i, 1);
-}
-// Chon/bo size cho RIENG tung mau + nhap so luong
-export function toggleColorSize(colorIndex, size) {
-  const c = productForm.colors[colorIndex];
-  if (!c) return;
-  if (!Array.isArray(c.variants)) c.variants = [];
-  const s = typeof size==='object'?size:db.sizes.find(x=>x.name===String(size)&&x.standard==='EU') || {name:String(size),standard:'EU'};
-  const idx = c.variants.findIndex(v=>s.id ? String(v.size_id)===String(s.id):String(v.size)===s.name);
-  if (idx >= 0) { if(c.variants[idx].id) c.variants[idx].active=!c.variants[idx].active; else c.variants.splice(idx, 1); }
-  else c.variants.push({ size:s.name,size_id:s.id,standard:s.standard,stock:Number(productForm.default_stock)||0,price:productForm.same_price?Number(productForm.common_price):0,active:true });
-}
-export function colorHasSize(c, size) {
-  return (
-    !!c &&
-    Array.isArray(c.variants) &&
-    c.variants.some((v) => (typeof size==='object'?String(v.size_id)===String(size.id):String(v.size)===String(size)) && v.active!==false)
-  );
+  else {
+    productForm.colors.splice(i, 1);
+  }
 }
 export function addSize() {
   const s = db.sizes.find((x) => String(x.id) === String(sizeDraft.value));
@@ -2800,6 +2901,7 @@ export function getMaterialName(id) {
 }
 export async function saveProduct() {
   if(productSaving.value) return;
+  if(hasPendingVariantAdditions()) return;
   if (!productForm.name.trim()) {
     notify("Vui lòng nhập tên sản phẩm", "error");
     return;
@@ -2807,26 +2909,9 @@ export async function saveProduct() {
   if(!Number.isSafeInteger(Number(productForm.category_id)) || Number(productForm.category_id)<=0) {
     notify("Vui lòng chọn danh mục sản phẩm.","error"); return;
   }
-  applyCommonVariantPrice();
   const isEdit = !!productForm.id;
   const payload = JSON.parse(JSON.stringify(productForm));
   payload.sale_price = 0;
-  /* BẢO VỆ BIẾN THỂ: nếu người dùng chỉ chọn màu + chọn size ở danh sách chung
-     mà chưa bấm size cho từng màu thì trước đây sản phẩm lưu ra 0 biến thể
-     (lỗi "sản phẩm không có biến thể / số lượng = 0").
-     Ở đây tự sinh biến thể từ (màu × size) với số lượng mặc định. */
-  const anyColorVariant = (productForm.colors || []).some(
-    (c) => (c.variants || []).length,
-  );
-  if (!anyColorVariant && (productForm.sizes || []).length) {
-    const fallbackStock = Math.max(0, Number(productForm.default_stock) || 0);
-    (productForm.colors || []).forEach((c) => {
-      c.variants = (productForm.sizes || []).map((s) => ({
-        size: String(s),
-        stock: fallbackStock,
-      }));
-    });
-  }
   const flatVariants = [];
   // Moi mau co danh sach size + so luong rieng (c.variants).
   // Lay dung so luong nguoi dung nhap cho tung bien the -> luu len CSDL.
@@ -2850,6 +2935,7 @@ export async function saveProduct() {
     });
   });
   payload.variants = flatVariants;
+  payload.colors=productForm.colors.map(({id,name,hex,image})=>({id,name,hex,image}));
   delete payload.price;
   if(flatVariants.some(v=>!Number.isFinite(v.price)||v.price<=0||!Number.isSafeInteger(v.stock)||v.stock<0)) {
     notify("Mỗi biến thể cần giá bán lớn hơn 0 và tồn kho nguyên không âm.","error"); return;
@@ -2896,11 +2982,14 @@ export async function saveProduct() {
   } finally { productSaving.value=false; }
 }
 export function requestSaveProduct() {
+  productValidationAttempted.value=true;
+  if(hasPendingVariantAdditions()) return;
+  if(['name','category_id'].some(key=>productFieldError(key))) return;
   if(!Number.isSafeInteger(Number(productForm.category_id)) || Number(productForm.category_id)<=0) {
     notify("Vui lòng chọn danh mục sản phẩm.","error"); return;
   }
   const variants=productForm.colors.flatMap(c=>c.variants || []);
-  if(!productForm.name.trim() || !variants.length || variants.some(v=>!Number.isFinite(Number(productForm.same_price?productForm.common_price:v.price)) || Number(productForm.same_price?productForm.common_price:v.price)<=0 || v.stock==='' || v.stock==null || !Number.isSafeInteger(Number(v.stock)) || Number(v.stock)<0)) {
+  if(!productForm.name.trim() || !variants.length || variants.some(v=>variantFieldError(v,'price') || variantFieldError(v,'stock') || variantFieldError(v,'size'))) {
     notify('Nhập tên sản phẩm, giá và tồn kho hợp lệ trước khi lưu.','error'); return;
   }
   Object.assign(confirmModal,{open:true,mode:'save-product',title:'Xác nhận lưu sản phẩm',message:productForm.active?'Lưu thông tin và các biến thể của sản phẩm này?':'Lưu sản phẩm ở trạng thái không hoạt động và ngừng toàn bộ biến thể?',confirmLabel:'Lưu',danger:false});
@@ -2944,6 +3033,15 @@ export function productVariants(productId) {
     color_id:v.color_id ?? v.ColorID,
   }));
 }
+export function productPriceLabel(product) {
+  const variants=productVariants(product.id);
+  const active=variants.filter(v=>v.active!==false);
+  const prices=(active.length?active:variants).map(v=>Number(v.price)).filter(n=>Number.isFinite(n)&&n>0);
+  const min=prices.length?Math.min(...prices):Number(product.min_price || product.price);
+  const max=prices.length?Math.max(...prices):Number(product.max_price || min);
+  if(!Number.isFinite(min)||min<=0) return 'Chưa có giá';
+  return formatPrice(min)+(max>min?' - '+formatPrice(max):'');
+}
 export function productVariantCount(productId) {
   const n = productVariants(productId).length;
   if (n) return n;
@@ -2980,7 +3078,14 @@ export function getProductCount(catId) {
     .length;
 }
 export const brandSearch = ref("");
-export const filteredBrands = computed(() => db.brands.filter(b => String(b.name).toLowerCase().includes(brandSearch.value.trim().toLowerCase()) || String(b.id).includes(brandSearch.value.trim())).slice().sort((a,b)=>Number(a.id)-Number(b.id)));
+export const brandStatusFilter = ref("");
+export const filteredBrands = computed(() => {
+  const query = brandSearch.value.trim().toLowerCase().replace(/^#/, "");
+  return db.brands.filter(b =>
+    (!query || String(b.name || "").toLowerCase().includes(query) || String(b.id).includes(query)) &&
+    (!brandStatusFilter.value || b.active === (brandStatusFilter.value === "active"))
+  ).slice().sort((a,b) => Number(a.id) - Number(b.id));
+});
 export function getBrandProductCount(id) {
   return db.products.filter((p) => String(p.brand_id) === String(id)).length;
 }
@@ -3067,20 +3172,24 @@ export function getProductName(id) {
  * giảm tối đa, số lượng, thời gian chạy, tìm kiếm + lọc trạng thái)
  * ================================================================ */
 export const discountTypes = ["Phần trăm", "Cố định"];
-export const discountStatuses = ["Tất cả", "Sắp diễn ra", "Hoạt động", "Không hoạt động", "Hết mã", "Đã kết thúc"];
+export const discountStatuses = ["Tất cả", "Sắp diễn ra", "Đang diễn ra", "Không hoạt động", "Hết mã", "Đã kết thúc"];
 export const discountSearch = ref("");
 export const discountStatusFilter = ref("Tất cả");
 
 export function getDiscountStatus(d) {
   if (couponFinished(d)) return {label:"Đã kết thúc",cls:"bg-light text-secondary border"};
-  if (Number(d.quantity)>0 && Number(d.used)>=Number(d.quantity)) return {label:"Hết mã",cls:"bg-light text-danger border"};
-  if (d.active && d.start_date && new Date(d.start_date)>new Date()) return {label:"Sắp diễn ra",cls:"bg-light text-secondary border"};
+  if (d.quantity!=null && Number(d.used)>=Number(d.quantity)) return {label:"Hết mã",cls:"bg-light text-danger border"};
+  const start=String(d.start_date || '').length>10?new Date(d.start_date):localDateBoundary(d.start_date);
+  if (d.active && start>new Date()) return {label:"Sắp diễn ra",cls:"bg-light text-secondary border"};
   return d.active
-    ? { label: "Hoạt động", cls: "bg-dark text-white" }
+    ? { label: "Đang diễn ra", cls: "bg-dark text-white" }
     : { label: "Không hoạt động", cls: "bg-light text-secondary border" };
 }
 export function couponFinished(d) {
-  return !!d.expiry && Number.isFinite(new Date(d.expiry).getTime()) && new Date(d.expiry)<new Date();
+  const expiry=localDateBoundary(d.expiry,true);
+  // Timestamp values retain the actual time; date-only input lasts through the day.
+  const date=String(d.expiry || '').length>10?new Date(d.expiry):expiry;
+  return !!date && Number.isFinite(date.getTime()) && date<new Date();
 }
 export const discountDetail = reactive({open:false,item:null});
 export function openDiscountDetail(item) { discountDetail.item=item; discountDetail.open=true; }
@@ -3118,7 +3227,7 @@ function emptyDiscount() {
     value: 0,
     min_order: 0,
     max_discount: 0,
-    quantity: 0,
+    quantity: 1,
     start_date: "",
     expiry: "",
     description: "",
@@ -3145,7 +3254,7 @@ export async function saveDiscount() {
   const val = Number(d.value);
   const minOrder = Number(d.min_order || 0);
   const maxDiscount = Number(d.max_discount || 0);
-  const usageLimit = Number(d.quantity || 0);
+  const usageLimit = d.quantity==null?null:Number(d.quantity);
   if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
     notify("Mã khuyến mại phải gồm 2-50 ký tự chữ/số/-/_", "error");
     return;
@@ -3154,7 +3263,7 @@ export async function saveDiscount() {
     notify("Tên hoặc giá trị mã khuyến mại không hợp lệ", "error");
     return;
   }
-  if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || !Number.isSafeInteger(usageLimit) || usageLimit < 0) {
+  if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || (usageLimit!=null && (!Number.isSafeInteger(usageLimit) || usageLimit < 0))) {
     notify("Điều kiện mã khuyến mại không hợp lệ", "error");
     return;
   }
@@ -3609,9 +3718,8 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   sizes: [
-    { key: "name", label: "Kích cỡ *", type:"number", step:0.5, min:0, required:true },
+    { key: "name", label: "Kích cỡ *", type:"text", inputmode:"decimal", required:true },
     { key: "standard", label: "Hệ kích cỡ *", type:"select", required:true },
-    { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
   /* Khớp đúng cột của bảng Coupons trong dbnew
@@ -3646,7 +3754,55 @@ export const formModal = reactive({
   type: "",
   title: "",
   data: {},
+  touched:{}, submitted:false, saving:false, serverErrors:{}, error:'', initial:'', discardConfirm:false,
 });
+export function normalizeCatalogName(value) {
+  return String(value ?? '').normalize('NFC').replace(/[\s\u200B]+/g,' ').trim();
+}
+export function catalogNameKey(value) {
+  return normalizeCatalogName(value).replace(/ /g,'').toLowerCase();
+}
+export const formValidation = computed(()=>{
+  const errors={},data=formModal.data,type=formModal.type;
+  for(const field of formFields.value) if(field.required && !field.disabled && (data[field.key]==null || String(data[field.key]).trim()==='')) errors[field.key]='Vui lòng nhập '+field.label.replace(/\s*\*$/,'').toLowerCase()+'.';
+  if(['categories','brands','materials','colors'].includes(type)) {
+    const name=normalizeCatalogName(data.name),key=catalogNameKey(name),max=type==='colors'?50:100;
+    if(!key) errors.name='Vui lòng nhập tên, không chỉ gồm khoảng trắng.';
+    else if(name.length>max) errors.name=`Tên không được vượt quá ${max} ký tự.`;
+    else {
+      const duplicate=db[type].find(row=>String(row.id)!==String(data.id) && catalogNameKey(row.name)===key);
+      if(duplicate) errors.name=`Tên này đã tồn tại (#${duplicate.id}${duplicate.active?'':', không hoạt động'}). Hãy dùng bản ghi hiện có.`;
+    }
+  }
+  if(type==='sizes') {
+    const standard=String(data.standard || '').trim().toUpperCase(),raw=String(data.name ?? '').trim().replace(',','.');
+    const n=Number(raw);
+    if(!['EU','US','UK'].includes(standard)) errors.standard='Chọn hệ kích cỡ EU, US hoặc UK.';
+    if(raw && (!/^\d+(?:\.\d+)?$/.test(raw) || !Number.isFinite(n) || !Number.isInteger(n*2) || n<(standard==='EU'?14:0) || n>(standard==='EU'?60:22))) errors.name=standard==='EU'?'Kích cỡ EU phải từ 14 đến 60, bước 0,5.':'Kích cỡ US/UK phải từ 0 đến 22, bước 0,5.';
+    if(raw && !errors.name) {
+      const duplicate=db.sizes.find(s=>String(s.id)!==String(data.id) && s.standard===standard && Number(s.name)===n);
+      if(duplicate) errors.name=`Kích cỡ ${standard} ${n} đã tồn tại (#${duplicate.id}${duplicate.active?'':', không hoạt động'}). Hãy dùng bản ghi hiện có.`;
+    }
+  }
+  if(type==='accounts') {
+    if(data.username && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.username).trim())) errors.username='Địa chỉ email chưa hợp lệ.';
+    if(data.password && String(data.password).length<6) errors.password='Mật khẩu phải có ít nhất 6 ký tự.';
+  }
+  if(type==='discounts' && !(Number(data.value)>0)) errors.value='Giá trị giảm phải lớn hơn 0.';
+  return errors;
+});
+export function formFieldError(key) {
+  return formModal.serverErrors[key] || ((formModal.submitted || formModal.touched[key])?formValidation.value[key]:'') || '';
+}
+export function touchFormField(key) {
+  formModal.touched[key]=true;
+  formModal.serverErrors={};formModal.error='';formModal.discardConfirm=false;
+}
+export function requestCloseForm() {
+  if(formModal.saving) return;
+  if(JSON.stringify(formModal.data)!==formModal.initial) formModal.discardConfirm=true;
+  else formModal.open=false;
+}
 export const formFields = computed(() => {
   const defs = fieldDefs[formModal.type] || [];
   return defs.map((f) => {
@@ -3707,11 +3863,15 @@ export function openForm(type, item) {
   formModal.data = item
     ? { ...base, ...JSON.parse(JSON.stringify(item)) }
     : base;
+  Object.assign(formModal,{touched:{},submitted:false,saving:false,serverErrors:{},error:'',discardConfirm:false,initial:JSON.stringify(formModal.data)});
   formModal.open = true;
 }
 export async function saveForm() {
+  if(formModal.saving) return;
   const type = formModal.type;
   const data = formModal.data;
+  formModal.submitted=true;formModal.error='';formModal.serverErrors={};
+  if(Object.keys(formValidation.value).length) return;
   // Kiểm tra toàn bộ trường bắt buộc trước khi gửi dữ liệu lên máy chủ.
   const requiredFields = (fieldDefs[type] || []).filter((field) => field.required);
   for (const field of requiredFields) {
@@ -3746,10 +3906,14 @@ export async function saveForm() {
   }
   const isEdit = !!data.id;
   const payload = { ...data };
+  if(['categories','brands','materials','colors'].includes(type)) payload.name=normalizeCatalogName(data.name);
+  if(type==='sizes') { payload.name=String(Number(String(data.name).trim().replace(',','.')));payload.standard=String(data.standard).toUpperCase();delete payload.sort_order; }
   if (type === "accounts" && isEdit) {
     delete payload.username;
     delete payload.email;
   }
+  formModal.saving=true;
+  try {
   const res = isEdit
     ? await apiWrite("/" + type + "/" + data.id, {
         method: "PUT",
@@ -3762,12 +3926,9 @@ export async function saveForm() {
         body: JSON.stringify(payload),
       });
   if (!res.ok) {
-    notify(
-      res.data?.message || "Lưu thất bại (mã " +
-        res.status +
-        "). Kiểm tra kết nối máy chủ / cơ sở dữ liệu.",
-      "error",
-    );
+    const message=res.data?.message || 'Chưa lưu được dữ liệu. Vui lòng thử lại.';
+    if((['categories','brands','materials','colors','sizes'].includes(type) && res.status===409) || res.data?.code==='INVALID_CATALOG_NAME' || (type==='sizes' && res.status===400)) formModal.serverErrors.name=message;
+    else formModal.error=message;
     return;
   }
   formModal.open = false;
@@ -3776,6 +3937,7 @@ export async function saveForm() {
     "success",
   );
   fetchAllData();
+  } finally { formModal.saving=false; }
 }
 
 /* ---------------- DELETE CONFIRM ---------------- */
@@ -3901,7 +4063,7 @@ export function toggleProductStatus(p,event) {
     confirmModal.title='Bật hoạt động sản phẩm'; confirmModal.confirmLabel='Bật hoạt động';
     confirmModal.message='Bật sản phẩm này? Các biến thể sẽ giữ trạng thái hiện tại để bạn chọn bật riêng.';
   } else {
-    Object.assign(confirmModal,{open:true,type:'products',id:p.id,mode:'product-status',danger:false,confirmLabel:'Ngừng hoạt động',title:'Ngừng hoạt động sản phẩm',message:'Bạn có muốn ngừng hoạt động toàn bộ biến thể của sản phẩm '+p.name+' không?'});
+    Object.assign(confirmModal,{open:true,type:'products',id:p.id,mode:'product-status',danger:false,confirmLabel:'Ngừng hoạt động',title:'Ngừng hoạt động '+p.name,message:'Bạn có muốn ngừng hoạt động toàn bộ biến thể của sản phẩm này không?'});
   }
 }
 export async function executeConfirm() {
@@ -3969,6 +4131,8 @@ export async function executeConfirm() {
 /* ---------------- DATA LOADING ---------------- */
 export function mapOrder(o) {
   return {
+    cash_given:o.CashGiven ?? o.cash_given ?? null,
+    handled_by_user_id:o.HandledByUserID ?? o.handled_by_user_id ?? null,
     id: o.OrderID ?? o.id,
     // Backend tra `created_at` theo ISO. Uu tien gia tri nay de JavaScript
     // khong hieu nham chuoi dd/MM/yyyy thanh MM/dd/yyyy tren trang thong ke.
@@ -4005,6 +4169,7 @@ export function mapOrder(o) {
       order_detail_id: d.OrderDetailID ?? d.order_detail_id ?? d.id ?? null,
       product_id: d.ProductID ?? d.product_id ?? null,
       variant_id: d.ProductVariantID ?? d.variant_id ?? d.product_variant_id ?? null,
+      sku:d.SKUSnapshot ?? d.sku ?? '',
       name: d.ProductName ?? d.name ?? "",
       color: d.ColorName ?? d.color ?? "",
       size: d.Size ?? d.size ?? "",
@@ -4197,7 +4362,7 @@ async function loadAllData(isBackground) {
       percent: d.DiscountPercent ?? d.percent ?? 0,
       min_order: d.MinOrderAmount ?? d.min_order ?? 0,
       max_discount: d.MaxDiscountAmount ?? d.max_discount ?? 0,
-      quantity: d.UsageLimit ?? d.quantity ?? d.limit ?? 0,
+      quantity: Object.hasOwn(d,'UsageLimit')?d.UsageLimit:Object.hasOwn(d,'quantity')?d.quantity:d.limit ?? null,
       limit: d.UsageLimit ?? d.limit,
       used: d.UsedCount ?? d.used ?? 0,
       start_date: d.StartDate ?? d.start_date ?? null,

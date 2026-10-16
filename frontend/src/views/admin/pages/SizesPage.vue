@@ -16,7 +16,7 @@ import { openForm, filteredSizes, toggleCatalogStatus, sizeSearch, sizeStandardF
       <select v-model="sizeStatusFilter" class="sg-input" style="width:180px" aria-label="Lọc trạng thái"><option value="">Tất cả trạng thái</option><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select>
     </div>
     <div class="bg-white overflow-hidden"><div class="table-responsive"><table class="table align-middle mb-0">
-      <thead><tr class="text-gray-600 text-sm uppercase"><th class="pl-4">ID</th><th>Tên Size</th><th>Chuẩn</th><th>Trạng Thái</th><th class="text-end pr-4">Hành Động</th></tr></thead>
+      <thead><tr class="text-gray-600 text-sm uppercase"><th class="pl-4">ID</th><th>Kích cỡ</th><th>Hệ kích cỡ</th><th>Trạng Thái</th><th class="text-end pr-4">Thao tác</th></tr></thead>
       <tbody>
         <tr v-for="s in filteredSizes" :key="s.id">
           <td class="pl-4 text-gray-600 text-sm" v-text="'#' + s.id"></td>
@@ -28,7 +28,7 @@ import { openForm, filteredSizes, toggleCatalogStatus, sizeSearch, sizeStandardF
             <input type="checkbox" role="switch" :checked="s.active" @change="toggleCatalogStatus('sizes',s,$event)" :aria-label="'Trạng thái kích cỡ '+s.name" :title="s.active?'Ngừng hoạt động':'Bật hoạt động'">
           </td>
         </tr>
-        <tr v-if="!filteredSizes.length"><td colspan="5" class="text-center text-gray-600 py-4">Chưa có size nào.</td></tr>
+        <tr v-if="!filteredSizes.length"><td colspan="5" class="text-center text-gray-600 py-4">Chưa có kích cỡ nào.</td></tr>
       </tbody>
     </table></div></div>
   </div>
