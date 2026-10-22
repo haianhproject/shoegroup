@@ -50,12 +50,23 @@ export function migrateCatalogStorage(store,metadata,kind) {
   store.setItem(MARKER,metadata.revision);store.removeItem(JOURNAL);
 }
 export async function initializeCatalogIdentity(base) {
-  const response=await fetch(base+'/health',{cache:'no-store',signal:AbortSignal.timeout(12000)});
-  if(!response.ok) throw Error('Không thể kết nối máy chủ.');
-  const metadata=(await response.json()).catalogIdentity || {};
-  if(metadata.revision) {
-    migrateCatalogStorage(localStorage,metadata,'local');
-    migrateCatalogStorage(sessionStorage,metadata,'session');
+  try {
+    // Dùng AbortSignal.timeout nếu browser hỗ trợ (Chrome 103+), fallback về setTimeout
+    let signal;
+    try { signal = AbortSignal.timeout(12000); } catch { /* browser cũ không hỗ trợ */ }
+    const response = await fetch(base + '/health', { cache: 'no-store', ...(signal ? { signal } : {}) });
+    if (!response.ok) {
+      console.warn('[CatalogIdentity] /health trả về', response.status, '– bỏ qua migration, app vẫn chạy.');
+      return;
+    }
+    const metadata = (await response.json()).catalogIdentity || {};
+    if (metadata.revision) {
+      try { migrateCatalogStorage(localStorage, metadata, 'local'); } catch (e) { console.warn('[CatalogIdentity] Lỗi migrate localStorage:', e); }
+      try { migrateCatalogStorage(sessionStorage, metadata, 'session'); } catch (e) { console.warn('[CatalogIdentity] Lỗi migrate sessionStorage:', e); }
+    }
+    revision = metadata.revision || '';
+  } catch (e) {
+    // Mạng lỗi, backend chưa sẵn sàng, hay AbortError – KHÔNG crash app
+    console.warn('[CatalogIdentity] Không thể kết nối /health, bỏ qua migration:', e.message || e);
   }
-  revision=metadata.revision || '';
 }
