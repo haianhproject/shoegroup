@@ -3,14 +3,15 @@
 <!-- Trang: Quản lý tài khoản -->
 
 <script setup>
+import ActivityStatus from '../components/ActivityStatus.vue';
 import { ref, computed, onBeforeUnmount } from 'vue'
 import {
   db,
   openForm,
-  getRoleBadgeClass,
   roleName,
   toggleAccountLock,
   apiWrite,
+  ROLE_OPTIONS,
 } from '../adminStore'
 import { currentUser } from '../../../stores/authStore'
 
@@ -22,7 +23,7 @@ const savingId = ref(null)
 let messageTimer = null
 
 const activeAdminCount = computed(() => {
-  return (db.accounts || []).filter((account) => {
+  return (db.accounts || []).slice().sort((a,b)=>Number(a.id)-Number(b.id)).filter((account) => {
     return Number(account.role_id) === 1 && account.active !== false
   }).length
 })
@@ -52,7 +53,7 @@ function canToggleAccountLock(account) {
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
 
-  return (db.accounts || []).filter((account) => {
+  return (db.accounts || []).slice().sort((a,b)=>Number(a.id)-Number(b.id)).filter((account) => {
     return (
       !q ||
       (account.name || '').toLowerCase().includes(q) ||
@@ -117,7 +118,7 @@ const sections = computed(() => {
 async function changeRole(account, value) {
   const newRole = Number(value)
 
-  if (!account || Number(account.role_id) === newRole) return
+  if (!account || savingId.value !== null || Number(account.role_id) === newRole) return
   if (![1, 2, 3].includes(newRole)) return
 
   const previousRole = account.role_id
@@ -153,7 +154,7 @@ async function changeRole(account, value) {
     // Khôi phục vai trò cũ nếu cập nhật thất bại.
     account.role_id = previousRole
     roleMsgOk.value = false
-    roleMsg.value = 'Không thể cập nhật vai trò. Vui lòng thử lại.'
+    roleMsg.value = error.message || 'Không thể cập nhật vai trò. Vui lòng thử lại.'
   } finally {
     savingId.value = null
 
@@ -315,39 +316,14 @@ onBeforeUnmount(() => {
 
                 <!-- Vai trò -->
                 <td>
-                  <span
-                    class="role-badge"
-                    :class="getRoleBadgeClass(account.role_id)"
-                  >
-                    {{ roleName(account.role_id) }}
-                  </span>
+                  <select class="sg-input role-select" :value="account.role_id" :disabled="savingId!==null || Number(account.id)===currentUserId || (Number(account.role_id)===1 && account.active!==false && activeAdminCount<2)" @change="changeRole(account,$event.target.value)" :aria-label="'Vai trò '+(account.name || account.username)">
+                    <option v-for="role in ROLE_OPTIONS" :key="role.value" :value="role.value">{{ role.label }}</option>
+                  </select>
                 </td>
 
                 <!-- Trạng thái -->
                 <td>
-                  <span
-                    class="status-badge"
-                    :class="
-                      account.active !== false
-                        ? 'status-active'
-                        : 'status-inactive'
-                    "
-                  >
-                    <span
-                      class="status-dot"
-                      :class="
-                        account.active !== false
-                          ? 'dot-active'
-                          : 'dot-inactive'
-                      "
-                    ></span>
-
-                    {{
-                      account.active !== false
-                        ? 'Hoạt động'
-                        : 'Không hoạt động'
-                    }}
-                  </span>
+                  <ActivityStatus :active="account.active!==false" />
                 </td>
 
                 <!-- Thao tác -->
@@ -734,44 +710,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   white-space: nowrap;
 }
-
-/* Trạng thái */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.dot-active {
-  background: #16a34a;
-}
-
-.dot-inactive {
-  background: #dc2626;
-}
+.role-select { min-width:145px;margin-top:6px; }
 
 /* Các nút thao tác */
 .action-buttons {

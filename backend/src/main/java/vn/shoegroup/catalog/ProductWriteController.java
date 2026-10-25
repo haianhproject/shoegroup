@@ -27,11 +27,22 @@ public class ProductWriteController {
   @DeleteMapping("/{id}")
   public Map<String, Object> delete(
       @PathVariable String id, @RequestParam(defaultValue = "false") String hard) {
-    return service.delete(id, hard.equals("1") || hard.equals("true"));
+    if(hard.equals("1") || hard.equalsIgnoreCase("true")) throw new vn.shoegroup.api.ApiException(409,"Không được xóa sản phẩm. Hãy chuyển sang không hoạt động.");
+    return service.delete(id, false);
   }
 
   @PutMapping("/{id}/restore")
   public Map<String, Object> restore(@PathVariable String id) {
     return service.restore(id);
+  }
+
+  @PutMapping("/{id}/status")
+  public Map<String,Object> productStatus(@PathVariable String id,@RequestBody Map<String,Object> body) {
+    return vn.shoegroup.api.Values.bool(body.get("active"),false) ? service.restore(id) : service.delete(id,false);
+  }
+
+  @PutMapping("/{id}/variants/{variantId}/status")
+  public Map<String,Object> status(@PathVariable String id,@PathVariable String variantId,@RequestBody Map<String,Object> body) {
+    return service.variantStatus(id,variantId,body);
   }
 }

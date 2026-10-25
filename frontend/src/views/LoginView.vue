@@ -2,7 +2,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '../stores/authStore'
+import { login, canUseStaffWorkspace } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import BrandLogo from '../components/BrandLogo.vue'
 
@@ -18,7 +18,7 @@ const submit = async () => {
   const r = await login({ email: form.email, password: form.password })
   loading.value = false
   if (!r.ok) { notify({ type: 'error', title: 'Đăng nhập thất bại', message: r.message }); return }
-  if (r.user?.role === 'Admin' || r.user?.role_id === 1 || r.user?.RoleID === 1) {
+  if (canUseStaffWorkspace.value) {
     router.push('/admin')
   } else {
     notify({ type: 'success', title: 'Chào mừng trở lại!', message: r.user?.full_name || '' })

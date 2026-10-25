@@ -88,13 +88,13 @@ const adminRoutes = [
         path: "discounts",
         name: "admin-discounts",
         component: () => import("./pages/DiscountsPage.vue"),
-        meta: { title: "Mã Khuyến Mãi" },
+        meta: { title: "Mã Giảm Giá" },
       },
       {
         path: "variant-discounts",
         name: "admin-variant-discounts",
         component: () => import("./pages/VariantDiscountsPage.vue"),
-        meta: { title: "Giảm Giá Biến Thể" },
+        meta: { title: "Khuyến Mại Sản Phẩm" },
       },
       {
         path: "customers",

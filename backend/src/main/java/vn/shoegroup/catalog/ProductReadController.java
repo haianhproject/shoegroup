@@ -9,7 +9,10 @@ import org.springframework.web.bind.annotation.*;
 public class ProductReadController {
     private final ProductReadService service;
     public ProductReadController(ProductReadService service) { this.service = service; }
-    @GetMapping("/api/products") public List<Map<String, Object>> products() { return service.products(); }
+    @GetMapping("/api/products") public List<Map<String, Object>> products(jakarta.servlet.http.HttpServletRequest req) {
+        var user=(vn.shoegroup.security.ApiUser)req.getAttribute("apiUser");
+        return service.products(user!=null && user.staff());
+    }
     @GetMapping("/api/v2/products") public Map<String, Object> paginated(@RequestParam Map<String, String> params) { return service.paginated(params); }
     @GetMapping("/api/v2/products/featured") public Map<String, Object> featured(@RequestParam(required = false) String limit) { return service.featured(limit); }
     @GetMapping("/api/inventory") public List<Map<String, Object>> inventory() { return service.inventory(); }

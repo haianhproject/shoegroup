@@ -3,19 +3,20 @@
 <!-- Trang: Quản Lý Chất Liệu -->
 
 <script setup>
+import ActivityStatus from '../components/ActivityStatus.vue';
 import {
   openForm,
-  restoreItem,
+  toggleCatalogStatus,
   filteredMaterials,
   getMaterialProductCount,
 } from '../adminStore'
 </script>
 
 <template>
-  <div class="fade-in materials-page">
+  <div class="fade-in materials-page admin-catalog-page">
     <!-- Tiêu đề và nút thêm -->
     <div class="page-header">
-      <h5 class="page-title">Quản Lý Chất Liệu</h5>
+      <h5 class="page-title">Quản lý chất liệu</h5>
 
       <button
         type="button"
@@ -41,25 +42,25 @@ import {
       </div>
 
       <div class="table-responsive">
-        <table class="table align-middle mb-0 materials-table">
+        <table class="table align-middle mb-0 materials-table admin-catalog-table">
           <thead>
             <tr>
-              <th class="pl-3">STT</th>
+              <th class="pl-3">ID</th>
               <th>Tên chất liệu</th>
               <th class="text-center">Số sản phẩm</th>
               <th class="text-center">Trạng thái</th>
-              <th class="text-end pr-3">Hành động</th>
+              <th class="text-end pr-3">Thao tác</th>
             </tr>
           </thead>
 
           <tbody>
             <tr
-              v-for="(m, index) in filteredMaterials"
+              v-for="m in filteredMaterials"
               :key="m.id"
             >
               <!-- STT -->
               <td class="pl-3 text-gray-600">
-                {{ index + 1 }}
+                #{{ m.id }}
               </td>
 
               <!-- Tên chất liệu -->
@@ -78,46 +79,12 @@ import {
 
               <!-- Trạng thái -->
               <td class="text-center">
-                <span
-                  class="status-badge"
-                  :class="
-                    m.active === false
-                      ? 'status-inactive'
-                      : 'status-active'
-                  "
-                >
-                  <i
-                    class="status-dot"
-                    :class="
-                      m.active === false
-                        ? 'dot-inactive'
-                        : 'dot-active'
-                    "
-                  ></i>
-
-                  {{
-                    m.active === false
-                      ? 'Không hoạt động'
-                      : 'Hoạt động'
-                  }}
-                </span>
+                <ActivityStatus :active="m.active" />
               </td>
 
               <!-- Hành động -->
               <td class="text-end pr-3">
                 <div class="action-buttons">
-                  <!-- Kích hoạt lại chất liệu -->
-                  <button
-                    v-if="m.active === false"
-                    type="button"
-                    @click="restoreItem('materials', m)"
-                    class="btn btn-sm btn-light border border-success restore-button"
-                    title="Kích hoạt lại"
-                  >
-                    <i class="icon icon-arrow-counterclockwise"></i>
-                    <span>Kích hoạt lại</span>
-                  </button>
-
                   <!-- Chỉnh sửa chất liệu -->
                   <button
                     type="button"
@@ -127,8 +94,8 @@ import {
                     aria-label="Chỉnh sửa chất liệu"
                   >
                     <i class="icon icon-pencil"></i>
-                    <span>Chỉnh sửa</span>
                   </button>
+                  <input type="checkbox" role="switch" :checked="m.active" @change="toggleCatalogStatus('materials',m,$event)" :aria-label="'Trạng thái chất liệu '+m.name" :title="m.active?'Ngừng hoạt động':'Bật hoạt động'">
                 </div>
               </td>
             </tr>
@@ -297,44 +264,6 @@ import {
   color: #374151;
   font-size: 0.875rem;
   font-weight: 600;
-}
-
-/* Trạng thái */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.dot-active {
-  background: #16a34a;
-}
-
-.dot-inactive {
-  background: #dc2626;
 }
 
 /* Các nút thao tác */

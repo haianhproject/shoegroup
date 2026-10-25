@@ -23,7 +23,7 @@ public class CartService {
         Integer variant = null;
         try { variant = Values.integer(rawVariant, 1, Integer.MAX_VALUE, null); } catch (ApiException ignored) { }
         if (variant == null) {
-            var rows = jdbc.queryForList("SELECT TOP 1 ProductVariantID FROM ProductVariants WITH (UPDLOCK,HOLDLOCK) WHERE ProductID=? AND ISNULL(IsActive,1)=1 AND ISNULL(Size,N'')=? AND ISNULL(ColorName,N'')=? ORDER BY ProductVariantID", productId, Values.text(body.get("size"), 10), Values.text(body.get("color"), 50));
+            var rows = jdbc.queryForList("SELECT TOP 1 ProductVariantID FROM ProductVariantRead WITH (UPDLOCK,HOLDLOCK) WHERE ProductID=? AND ISNULL(IsActive,1)=1 AND ISNULL(Size,N'')=? AND ISNULL(ColorName,N'')=? ORDER BY ProductVariantID", productId, Values.text(body.get("size"), 10), Values.text(body.get("color"), 50));
             if (rows.isEmpty()) throw new ApiException(409, "Khong tim thay bien the san pham da chon.");
             variant = ((Number)rows.get(0).get("ProductVariantID")).intValue();
         }

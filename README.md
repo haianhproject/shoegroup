@@ -14,7 +14,7 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 | Nghiệp vụ frontend | `frontend/src/services/`, `frontend/src/stores/`, `frontend/src/views/admin/adminStore.js` |
 | Điểm khởi động Spring | `backend/src/main/java/vn/shoegroup/ShoeGroupApplication.java` |
 | Đăng nhập, mật khẩu, phân quyền | `backend/src/main/java/vn/shoegroup/auth/`, `security/` |
-| Sản phẩm, thuộc tính, khuyến mãi | `backend/src/main/java/vn/shoegroup/catalog/` |
+| Sản phẩm, thuộc tính, khuyến mại | `backend/src/main/java/vn/shoegroup/catalog/` |
 | Đặt đơn, thanh toán, tồn kho đơn hàng | `backend/src/main/java/vn/shoegroup/orders/` |
 | Giỏ tại quầy | `backend/src/main/java/vn/shoegroup/pos/` |
 | Tài khoản, địa chỉ, giỏ online | `backend/src/main/java/vn/shoegroup/customer/` |
@@ -37,11 +37,36 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 | `read-queries.json`, `order-queries.json` trong resources | Truy vấn SQL dùng bởi các API Java |
 | `order-rules.json`, `shipping-distances.json` trong resources | Quy tắc trạng thái đơn và khoảng cách tính phí giao hàng |
 | `backend/API-INVENTORY.json` | Danh sách 76 API dùng trong kiểm thử controller Java |
-| `database/ShoegroupDB_FULL_20260929.sql` | Bản SQL để cài database và tạo schema kiểm thử; giữ nguyên mã hóa gốc |
-| `database/migrations/` | Các bản cập nhật SQL; script ghi thủ công không tự chạy lúc khởi động |
+| `database/ShoegroupDB_FULL_20261016.sql` | DB đầy đủ mới nhất, có lệnh xóa/tạo lại DB; dùng cho cả nhóm cập nhật |
+| `backend/legacy-express/test/fixtures/legacy-schema.sql` | Chỉ cấu trúc gốc để kiểm thử migration; không chứa dữ liệu, không dùng cài DB |
+| `database/migrations/` | Các bản cập nhật SQL; Spring chạy những bản đã đăng ký trong SchemaInitializer |
+| `database/ERD.drawio`, `database/ERD.md`, `database/schema-current.json` | Sơ đồ và cấu trúc DB thực tế, xuất tự động từ SQL Server |
+| `database/catalog-id-map-20261016.json` | Bảng đổi ID cũ sang mới và đường dẫn backup trước khi đổi |
 | `.vscode/settings.json`, `.gitignore` | Ẩn/bỏ qua thư viện, build và dữ liệu cục bộ |
 
 ## Chạy Và Kiểm Tra
+
+### Thay Database Cho Cả Nhóm
+
+1. Lấy code mới từ `main`, dừng ứng dụng và sao lưu database riêng trước khi thay.
+2. Mở `database/ShoegroupDB_FULL_20261016.sql` trong SSMS, kết nối SQL Server của mình rồi chạy toàn bộ file (F5). File **xóa hoàn toàn ShoegroupDB cũ**, tạo lại và nhập đủ cấu trúc/dữ liệu ngày 16/10/2026; không cần đổi đường dẫn MDF/LDF.
+3. Cấu hình `backend/.env` theo máy mình, để `DB_NAME=ShoegroupDB`; lần đầu chạy `npm run setup`, sau đó `npm run dev`. Spring tự kiểm tra các migration đã áp dụng.
+
+Bản full có dữ liệu tài khoản/đơn hàng; chỉ chia sẻ với thành viên được phép. Không có mật khẩu kết nối SQL/JWT/SMTP từ `.env`.
+Thư mục `database` chỉ giữ một bản full mới nhất để tránh nhập nhầm; các bản cũ nằm trong lịch sử Git. Đã thử phục hồi trên SQL Server 2022. Giữ `migrations`, ERD và bảng đối chiếu ID; không cần chạy các migration thủ công sau khi nhập full.
+Đã đánh lại ID thật của sản phẩm, biến thể và danh mục từ 1, giữ toàn bộ dữ liệu và liên kết. Dùng bản full ngày 16/10 cùng code mới; frontend tự chuyển giỏ/fingerprint lưu trên trình duyệt sang phiên ID mới. Không trộn code cũ với DB mới.
+`npm run db:verify` thử phục hồi bản full mới nhất vào DB riêng, đối chiếu rồi dọn DB thử; không thay DB đang dùng.
+`npm run db:export` sao lưu `.bak` và xuất lại SQL theo ngày hiện tại; máy xuất cần công cụ SMO 16 của SQL Server 2022 và quyền sao lưu DB. Dừng ứng dụng trước khi xuất để dữ liệu không thay đổi giữa các bảng.
+
+### Nâng Cấp Không Xóa Dữ Liệu
+
+Đổi ID là thao tác một lần: `node backend/scripts/renumber-catalog-ids.cjs` chỉ kiểm tra; `--rehearse` thử trên bản DB riêng; `--apply` yêu cầu dừng Spring/Vue, tự backup, rehearsal và đối chiếu toàn bộ dữ liệu trước commit. DB hiện tại đã áp dụng, chạy lại không đổi mã. Không sử dụng công cụ này để tự động lấp các khoảng trống ID phát sinh về sau.
+
+Dừng ứng dụng, chạy `node backend/scripts/order-migration.cjs --apply` để sao lưu, nâng cấp đơn hàng/voucher ngày 15/10 và cập nhật ERD. Không chạy bản full nếu cần giữ dữ liệu riêng của mình. Voucher cũ giới hạn 0 được chuyển thành NULL (không giới hạn); bản mới dùng 0 cho hết mã. Các bản full cũ đã bỏ khỏi thư mục làm việc, vẫn có thể tra cứu trong lịch sử Git.
+
+Trước khi chạy bản tối ưu 2026-10-10 trên DB có dữ liệu, dùng
+`node backend/scripts/catalog-migration.cjs --apply --erd` để sao lưu, cập nhật DB và đồng bộ ERD.
+Chi tiết thay đổi và kiểm thử nằm trong `MIGRATION.md`.
 
 Cần Node.js 22+, JDK 17+ và SQL Server. Lần đầu dùng `npm run setup`,
 cấu hình `backend/.env` theo file mẫu. Maven được chuẩn bị trong `tools/.cache/`.

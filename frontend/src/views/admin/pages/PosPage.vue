@@ -1,21 +1,23 @@
 <!-- Mục đích: Màn hình bán hàng tại quầy, lập đơn và thanh toán trực tiếp. -->
 <!-- Trang: Bán Hàng Tại Quầy (POS) -->
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   activePosOrder, resetPosOrder,
   posPayModal, confirmPosPaid, cancelPosPay, markPosQrFailed,
   posSearch, posVariants, addToCart, removeCartItem,
-  posSubtotal, posDiscountAmount, posGrandTotal,
+  posSubtotal, posDiscountAmount, posGrandTotal, posChange, getDisplayName,
   posCouponList, applyPosCoupon, clearPosCoupon,
   posCustomerSearch, posCustomerResults, pickPosCustomer,
-  checkoutPos, formatPrice, formatDate, validateCartItemQty, posSubmitting,
+  checkoutPos, confirmPosCheckout, posConfirmModal, formatPrice, formatDate, validateCartItemQty, posSubmitting,
   posInvoiceModal, closePosInvoice, openLastPosInvoice, printPosInvoice,
   posCartBusy, posCartReady, loadPosCart, posCartItemMax, fetchAllData,
+  posPendingCarts, posCartId, switchPosCart, addPendingPosCart,
 } from '../adminStore'
 
 const qtyInputs = ref({})
-const posControlsLocked = computed(() => posCartBusy.value || posSubmitting.value || posPayModal.open || !posCartReady.value)
+const posInitialized = ref(false)
+const posControlsLocked = computed(() => !posInitialized.value || posCartBusy.value || posSubmitting.value || posPayModal.open || posConfirmModal.open || !posCartReady.value)
 const productPlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="240" height="160" fill="#f4f4f5"/><text x="120" y="85" text-anchor="middle" fill="#71717a" font-size="14">ShoeGroup</text></svg>')}`
 function clampQuantity(value, max) {
   return Math.min(max, Math.max(1, Math.floor(Number(value) || 1)))
@@ -46,14 +48,22 @@ watch(posVariants, variants => {
     if (qtyInputs.value[v.id] !== undefined) qtyInputs.value[v.id] = clampQuantity(qtyInputs.value[v.id], v.stock)
   }
 })
+let cartRefresh;
 onMounted(async () => {
-  await fetchAllData()
+  await fetchAllData(true)
   await loadPosCart()
+  posInitialized.value=true
+  cartRefresh=setInterval(()=>{if(!posControlsLocked.value) loadPosCart()},60000)
 })
+onUnmounted(()=>clearInterval(cartRefresh))
 </script>
 
 <template>
   <div class="fade-in pos-page">
+    <div class="flex gap-2 mb-3 items-center" style="max-width:100%;overflow-x:auto;padding-bottom:6px" role="tablist" aria-label="Hóa đơn chờ">
+      <button v-for="cart in posPendingCarts" :key="cart.id" type="button" role="tab" :aria-selected="cart.id===posCartId" :disabled="posControlsLocked" @click="switchPosCart(cart.id)" class="btn btn-sm border" :class="cart.id===posCartId?'btn-dark':'btn-light'" style="white-space:nowrap">Hóa đơn #{{ cart.id }}</button>
+      <button type="button" class="btn btn-sm btn-light border" title="Thêm hóa đơn chờ" aria-label="Thêm hóa đơn chờ" :disabled="posControlsLocked" @click="addPendingPosCart"><i class="icon icon-plus-lg"></i></button>
+    </div>
     <div v-if="!posCartReady" class="pos-sync-notice" role="status">
       <span>{{ posCartBusy ? 'Đang tải giỏ tại quầy...' : 'Giỏ chưa được đồng bộ. Tải lại để tiếp tục bán hàng.' }}</span>
       <button type="button" class="btn btn-sm btn-light border" :disabled="posCartBusy" @click="loadPosCart()">Tải lại giỏ</button>
@@ -131,14 +141,9 @@ onMounted(async () => {
                 <h3 class="pos-product-name">{{ v.product_name }}</h3>
                 <div class="pos-product-attributes">
                   <span><i class="pos-color-dot" :style="{ background: v.color_hex || '#d1d5db' }"></i>Màu: {{ v.color || 'Chưa cập nhật' }}</span>
-                  <span>Size <strong>{{ v.size || '—' }}</strong></span>
+                  <span>Cỡ <strong>{{ v.standard }} {{ v.size || '—' }}</strong></span>
                 </div>
-                <dl class="pos-product-details">
-                  <div><dt>Thương hiệu</dt><dd>{{ v.brand || 'Chưa cập nhật' }}</dd></div>
-                  <div><dt>Danh mục</dt><dd>{{ v.category || 'Chưa cập nhật' }}</dd></div>
-                  <div><dt>Chất liệu</dt><dd>{{ v.material || 'Chưa cập nhật' }}</dd></div>
-                  <div v-if="v.description"><dt>Mô tả</dt><dd class="pos-product-description">{{ v.description }}</dd></div>
-                </dl>
+                <p class="text-xs text-gray-600">Mã SP: #{{ v.product_id }} · SKU: {{ v.sku || '—' }}</p>
               </div>
               <div class="pos-product-footer">
               <div class="pos-product-price-row">
@@ -182,6 +187,7 @@ onMounted(async () => {
               <span>Hóa đơn #{{ posInvoiceModal.orderId }}</span>
             </button>
           </div>
+          <p class="text-sm text-gray-600">Nhân viên: {{ getDisplayName }} · Ngày lập: {{ formatDate(activePosOrder.created_at) }}</p>
           <div class="grid grid-cols-12 gap-2 mb-3">
             <div class="col-span-4"><div class="bg-light-gray rounded-2 p-2"><div class="text-gray-600 uppercase" style="font-size:0.62rem;">Khách hàng</div><div class="text-sm font-medium text-truncate" v-text="activePosOrder.customer_name || 'Khách lẻ'"></div></div></div>
             <div class="col-span-4"><div class="bg-light-gray rounded-2 p-2"><div class="text-gray-600 uppercase" style="font-size:0.62rem;">SĐT</div><div class="text-sm font-medium text-truncate" v-text="activePosOrder.customer_phone || '—'"></div></div></div>
@@ -195,7 +201,8 @@ onMounted(async () => {
               <img :src="c.image || productPlaceholder" class="pos-cart-image" :alt="c.name" @error="imageError">
               <div class="pos-cart-description">
                 <p class="pos-cart-name">{{ c.name }}</p>
-                <p class="pos-cart-variant">{{ c.color }} · Size {{ c.size }}</p>
+                <p class="text-xs text-gray-600">Mã SP: #{{ c.product_id }} · SKU: {{ c.sku || '—' }}</p>
+                <p class="pos-cart-variant">{{ c.color }} · {{ c.standard || 'EU' }} {{ c.size }}</p>
                 <strong>{{ formatPrice(c.price) }}</strong>
               </div>
               <button @click="removeCartItem(i)" :disabled="posControlsLocked" class="btn pos-remove-button" :aria-label="'Xóa ' + c.name + ' khỏi giỏ và hoàn kho'"><i class="icon icon-trash"></i></button>
@@ -234,8 +241,23 @@ onMounted(async () => {
           </div>
 
           <p v-if="posCartBusy" class="text-gray-600 text-xs mb-2" role="status">Đang cập nhật giỏ và tồn kho...</p>
+          <div v-if="activePosOrder.payment_method==='Tiền mặt'" class="mb-3">
+            <label for="pos-cash-given" class="block text-sm font-medium">Tiền khách đưa *</label>
+            <input id="pos-cash-given" v-model.number="activePosOrder.cash_given" type="number" min="0" max="1000000000000" step="1" required inputmode="numeric" class="sg-input" :disabled="posControlsLocked">
+            <p class="text-sm mt-2" role="status">{{ posChange>=0?'Trả lại khách:':'Còn thiếu:' }} {{ formatPrice(Math.abs(posChange)) }}</p>
+          </div>
           <button @click="checkoutPos()" :disabled="posControlsLocked || activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="posConfirmModal.open" class="custom-modal-overlay" @click.self="posConfirmModal.open=false">
+      <div class="custom-modal-box p-4" role="dialog" aria-modal="true" aria-label="Xác nhận thanh toán" style="max-width:420px">
+        <h6 class="font-bold mb-3">Xác nhận thanh toán</h6>
+        <p>Bạn có muốn thanh toán hóa đơn #{{ posCartId }} không?</p>
+        <p class="font-bold">{{ formatPrice(posGrandTotal) }} · {{ activePosOrder.payment_method }}</p>
+        <p v-if="activePosOrder.payment_method==='Tiền mặt'">Khách đưa {{ formatPrice(activePosOrder.cash_given) }} · Trả lại {{ formatPrice(posChange) }}</p>
+        <div class="flex justify-end gap-2 mt-3"><button type="button" class="btn btn-light border" @click="posConfirmModal.open=false">Quay lại</button><button type="button" class="btn btn-dark" @click="confirmPosCheckout" :disabled="posSubmitting">Xác nhận</button></div>
       </div>
     </div>
 
@@ -339,6 +361,7 @@ onMounted(async () => {
                   <tr v-for="(item, i) in posInvoiceModal.items" :key="i" class="border-b last:border-b-0">
                     <td class="py-2 px-3">
                       <div class="font-medium text-gray-900 leading-snug">{{ item.name }}</div>
+                      <div class="text-xs text-gray-600">Mã SP: #{{ item.product_id }} · SKU: {{ item.sku || '—' }}</div>
                       <div class="text-gray-600" style="font-size:0.72rem;">{{ [item.color, item.size ? 'Size ' + item.size : ''].filter(Boolean).join(' · ') }}</div>
                     </td>
                     <td class="py-2 px-2 text-center text-gray-700">{{ item.quantity }}</td>
@@ -363,6 +386,10 @@ onMounted(async () => {
                 <span class="font-bold text-gray-900 text-base">Tổng thanh toán:</span>
                 <h4 class="font-extrabold text-gray-900 mb-0">{{ formatPrice(posInvoiceModal.total) }}</h4>
               </div>
+              <template v-if="posInvoiceModal.cash_given!=null">
+                <div class="flex justify-between"><span>Tiền khách đưa:</span><strong>{{ formatPrice(posInvoiceModal.cash_given) }}</strong></div>
+                <div class="flex justify-between"><span>Trả lại khách:</span><strong>{{ formatPrice(posInvoiceModal.change) }}</strong></div>
+              </template>
             </div>
 
             <p class="text-center text-gray-600 text-xs fst-italic mt-4 mb-0">Cảm ơn quý khách đã mua hàng tại ShoeGroup!</p>

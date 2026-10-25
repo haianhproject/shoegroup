@@ -232,7 +232,8 @@ export const isEmployee = computed(() => {
     role === "nhân viên" ||
     role === "employee" ||
     role === "staff" ||
-    roleId === 2
+    roleId === 3
   );
 });
 
+export const canUseStaffWorkspace = computed(() => canManageProducts.value || isEmployee.value);

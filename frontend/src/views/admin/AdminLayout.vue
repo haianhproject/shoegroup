@@ -13,6 +13,7 @@ import { useRoute, useRouter } from "vue-router";
 import AdminIcon from "./components/AdminIcon.vue";
 import AdminLogoutModal from "./components/AdminLogoutModal.vue";
 import brandMark from "../../../img/logogiay.png";
+import { isEmployee } from '../../stores/authStore';
 import { genericBrandLogo, resolveBrandLogo } from "../../utils/brandLogos";
 import {
   isNavOpen,
@@ -35,6 +36,7 @@ import {
   formModal,
   formFields,
   saveForm,
+  formFieldError, touchFormField, requestCloseForm,
   onFormImageFile,
   customerModal,
   confirmModal,
@@ -75,8 +77,8 @@ const sections = [
     { to: '/admin/panel/sizes', icon: 'ruler', label: 'Kích thước' },
   ] },
   { title: 'Kinh doanh', items: [
-    { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã khuyến mãi' },
-    { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Giảm giá biến thể' },
+    { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã giảm giá' },
+    { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Khuyến mại sản phẩm' },
     { to: '/admin/panel/customers', icon: 'people', label: 'Khách hàng' },
   ] },
   { title: 'Hệ thống', items: [
@@ -86,11 +88,11 @@ const sections = [
 const normalizeSearch = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
 const visibleSections = computed(() => sections.map(section => ({
   ...section,
-  items: section.items.filter(item => normalizeSearch(item.label).includes(normalizeSearch(navSearch.value.trim()))),
+  items: section.items.filter(item => (!isEmployee.value || ['payments','pos','products'].includes(item.to.split('/').pop())) && normalizeSearch(item.label).includes(normalizeSearch(navSearch.value.trim()))),
 })).filter(section => section.items.length));
 const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
 const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
-const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products'].includes(route.name));
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-discounts'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
@@ -311,7 +313,7 @@ onUnmounted(() => {
         <p v-if="!visibleSections.length" class="admin-nav-empty">Không tìm thấy mục phù hợp.</p>
       </nav>
       <div class="admin-sidebar-footer">
-        <div class="admin-profile"><span class="admin-avatar">{{ initials }}</span><span class="admin-profile-info"><strong>{{ getDisplayName }}</strong><small>Quản trị viên</small></span></div>
+        <div class="admin-profile"><span class="admin-avatar">{{ initials }}</span><span class="admin-profile-info"><strong>{{ getDisplayName }}</strong><small>{{ isEmployee ? 'Nhân viên' : 'Quản trị viên' }}</small></span></div>
         <button type="button" class="admin-icon-button admin-logout" aria-label="Đăng xuất" title="Đăng xuất" @click="onLogout"><AdminIcon name="logout" /></button>
       </div>
     </aside>
@@ -485,7 +487,7 @@ onUnmounted(() => {
     <div
       v-if="formModal.open"
       class="custom-modal-overlay"
-      @click.self="formModal.open = false"
+      @keydown.esc.prevent="requestCloseForm"
     >
       <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" :aria-label="formModal.title">
         <div
@@ -493,19 +495,21 @@ onUnmounted(() => {
         >
           <h6 class="font-bold mb-0 text-gray-900" v-text="formModal.title"></h6>
           <button
-            @click="formModal.open = false"
+            @click="requestCloseForm"
+            :disabled="formModal.saving"
             class="btn btn-sm btn-light border-0" type="button" aria-label="Đóng hộp thoại"
           >
             <i class="icon icon-x-lg"></i>
           </button>
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
-          <div v-for="f in formFields" :key="f.key" class="mb-3">
+          <div v-for="f in formFields" :key="f.key" class="mb-3" @focusout="touchFormField(f.key)" @input="touchFormField(f.key)" @change="touchFormField(f.key)">
             <label :for="'admin-field-' + f.key" class="block text-sm font-medium text-sm font-medium" v-text="f.label"></label>
             <select
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :disabled="f.disabled"
+              :aria-invalid="!!formFieldError(f.key)" :aria-describedby="formFieldError(f.key)?'admin-error-'+f.key:undefined" :required="f.required"
               class="sg-input rounded-2"
             >
               <option
@@ -523,6 +527,7 @@ onUnmounted(() => {
                 v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
                 class="accent-black"
                 type="checkbox"
+                :role="f.key === 'active' ? 'switch' : undefined"
               />
             </div>
             <textarea
@@ -575,19 +580,28 @@ onUnmounted(() => {
               v-else
               v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
               :type="f.type || 'text'"
+              :inputmode="f.inputmode" :aria-invalid="!!formFieldError(f.key)" :aria-describedby="formFieldError(f.key)?'admin-error-'+f.key:undefined"
+              :step="f.step" :min="f.min" :required="f.required"
               :disabled="f.disabled"
               class="sg-input rounded-2"
             />
+            <p v-if="formFieldError(f.key)" :id="'admin-error-'+f.key" class="text-xs text-red-600 mt-1 mb-0" role="alert">{{ formFieldError(f.key) }}</p>
           </div>
+          <p v-if="formModal.error" class="text-sm text-red-600" role="alert">{{ formModal.error }}</p>
         </div>
-        <div class="p-4 border-t flex justify-end gap-2">
+        <div v-if="formModal.discardConfirm" class="p-4 border-t flex flex-wrap items-center justify-end gap-2">
+          <span class="text-sm mr-auto">Bỏ các thay đổi chưa lưu?</span>
+          <button type="button" @click="formModal.discardConfirm=false" class="btn btn-dark rounded-2">Tiếp tục nhập</button>
+          <button type="button" @click="formModal.open=false" class="btn btn-light border rounded-2">Bỏ thay đổi</button>
+        </div>
+        <div v-else class="p-4 border-t flex justify-end gap-2">
           <button
-            @click="formModal.open = false"
+            @click="requestCloseForm" :disabled="formModal.saving"
             class="btn btn-light border rounded-2"
           >
             Hủy</button
-          ><button @click="saveForm" class="btn btn-dark rounded-2 font-bold">
-            Lưu
+          ><button @click="saveForm" :disabled="formModal.saving" class="btn btn-dark rounded-2 font-bold">
+            {{ formModal.saving?'Đang lưu...':'Lưu' }}
           </button>
         </div>
       </div>

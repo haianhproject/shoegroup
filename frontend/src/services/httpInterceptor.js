@@ -17,6 +17,7 @@
  * => KHONG file cu nao bi sua, moi thu chay nhu truoc, chi an toan hon.
  * ============================================================ */
 import { API_BASE_URL, getToken, clearToken } from "./apiClient";
+import { catalogIdentityRevision } from './catalogIdentity';
 
 const LEGACY_BASES = [
   "http://localhost:5000/api",
@@ -60,6 +61,8 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
       );
       if (token && !headers.has("Authorization"))
         headers.set("Authorization", `Bearer ${token}`);
+      const revision=catalogIdentityRevision();
+      if(revision) headers.set('X-Catalog-Identity',revision);
 
       const target = input instanceof Request
         ? new Request(url, input)
@@ -72,6 +75,10 @@ export function installHttpInterceptor({ onUnauthorized } = {}) {
       if (res.status === 401) {
         clearToken();
         if (typeof onUnauthorized === "function") onUnauthorized();
+      }
+      if(res.status===409 && typeof res.clone==='function') {
+        const body=await res.clone().json().catch(()=>null);
+        if(body?.code==='CATALOG_IDENTITY_CHANGED') window.location.reload();
       }
       return res;
   };

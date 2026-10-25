@@ -58,7 +58,8 @@ public class AuthService {
         } catch (DuplicateKeyException ex) { throw new ApiException(400, "Email nay da duoc su dung."); }
     }
     private Map<String, Object> session(Map<String, Object> user, String message) {
-        user.put("role", ((Number)user.get("role_id")).intValue() == 1 ? "Admin" : "Customer");
+        int role = ((Number)user.get("role_id")).intValue();
+        user.put("role", role == 1 ? "Admin" : role == 3 ? "Employee" : "Customer");
         String token = tokens.issue(user); user.put("token", token);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true); response.put("user", user); response.put("token", token);

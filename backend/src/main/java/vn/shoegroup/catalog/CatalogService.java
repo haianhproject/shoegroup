@@ -5,8 +5,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.text.Normalizer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import vn.shoegroup.api.ApiException;
 import vn.shoegroup.api.Values;
 
@@ -29,10 +32,22 @@ public class CatalogService {
         Catalog c = catalog(type);
         return jdbc.queryForList("SELECT " + c.id + " as id," + c.name + " as name," + (c.columns.isEmpty() ? "" : c.columns + ",") + "IsActive as active FROM " + c.table + " ORDER BY " + c.order);
     }
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public Map<String, Object> save(String type, String id, Map<String, Object> body) {
         Catalog c = catalog(type);
-        String name = Values.text(body.get("name"), c.max + 1);
-        if (name.isEmpty() || name.length() > c.max) throw new ApiException(400, "Ten khong duoc de trong hoac vuot gioi han.");
+        String name = Normalizer.normalize(Values.string(body.get("name")), Normalizer.Form.NFC)
+            .replaceAll("[\\p{javaWhitespace}\\p{Z}\\u200B\\uFEFF]+", " ").trim();
+        if (name.isEmpty() || name.length() > c.max) throw new ApiException(400, "INVALID_CATALOG_NAME", "Tên không được để trống hoặc vượt quá " + c.max + " ký tự.");
+        if (!type.equals("sizes")) {
+            var duplicates = jdbc.queryForList("SELECT " + c.id + " AS id,IsActive AS active FROM " + c.table
+                + " WITH(UPDLOCK,HOLDLOCK) WHERE CatalogNameKey=dbo.CatalogNameKey(?) COLLATE Vietnamese_100_CI_AS AND " + c.id + "<>?",
+                name,id==null?0:Values.integer(id,1,Integer.MAX_VALUE,null));
+            if (!duplicates.isEmpty()) {
+                var duplicate=duplicates.get(0);
+                throw new ApiException(409,"DUPLICATE_CATALOG_NAME","Tên này đã tồn tại (#" + duplicate.get("id")
+                    + (Boolean.FALSE.equals(duplicate.get("active"))?", không hoạt động":"") + "). Hãy dùng bản ghi hiện có.");
+            }
+        }
         boolean active = Values.bool(body.get("active"), true);
         Map<String, Object> fields = new LinkedHashMap<>(); fields.put(c.name, name);
         switch (type) {
@@ -43,10 +58,22 @@ public class CatalogService {
                 if (!hex.matches("(?i)#[0-9a-f]{3,8}")) throw new ApiException(400, "Ma mau HEX khong hop le.");
                 fields.put("ColorHex", hex);
             }
-            case "sizes" -> fields.put("SizeStandard", Values.text(body.get("standard"), 20));
+            case "sizes" -> {
+                String standard = Values.text(body.get("standard"),20).toUpperCase(java.util.Locale.ROOT);
+                if (!java.util.Set.of("EU","US","UK").contains(standard)) throw new ApiException(400,"Chỉ chấp nhận hệ kích cỡ EU, US hoặc UK.");
+                try {
+                    var size = new java.math.BigDecimal(name.replace(',', '.'));
+                    int min = standard.equals("EU") ? 14 : 0, max = standard.equals("EU") ? 60 : 22;
+                    if (size.compareTo(java.math.BigDecimal.valueOf(min))<0 || size.compareTo(java.math.BigDecimal.valueOf(max))>0 || size.multiply(java.math.BigDecimal.valueOf(2)).stripTrailingZeros().scale()>0) throw new NumberFormatException();
+                    name=size.stripTrailingZeros().toPlainString(); fields.put(c.name,name);
+                } catch(NumberFormatException ex) { throw new ApiException(400,"Kích cỡ phải là số hợp lệ, bước 0,5; EU từ 14–60, US/UK từ 0–22."); }
+                if (!jdbc.queryForList("SELECT SizeID FROM Sizes WITH(UPDLOCK,HOLDLOCK) WHERE SizeName=? AND SizeStandard=? AND SizeID<>?",name,standard,id==null?0:Values.integer(id,1,Integer.MAX_VALUE,null)).isEmpty())
+                    throw new ApiException(409,"Kích cỡ đã tồn tại trong cùng hệ. Hãy sửa trạng thái bản ghi hiện có.");
+                fields.put("SizeStandard",standard);
+            }
             default -> { }
         }
-        if (c.extra.contains("SortOrder")) fields.put("SortOrder", Values.integer(body.get("sort_order"), 0, 1000000, 0));
+        if (c.extra.contains("SortOrder") && (id == null || body.containsKey("sort_order"))) fields.put("SortOrder", Values.integer(body.get("sort_order"), 0, 1000000, 0));
         fields.put("IsActive", active);
         List<Object> args = new ArrayList<>(fields.values());
         if (id == null) {
@@ -60,7 +87,7 @@ public class CatalogService {
     }
     public Map<String, Object> delete(String type, String id) {
         Catalog c = catalog(type); int value = Values.integer(id, 1, Integer.MAX_VALUE, null);
-        int count = jdbc.update((type.equals("categories") ? "DELETE FROM " + c.table : "UPDATE " + c.table + " SET IsActive=0") + " WHERE " + c.id + "=?", value);
+        int count = jdbc.update("UPDATE " + c.table + " SET IsActive=0 WHERE " + c.id + "=?", value);
         if (count != 1) throw new ApiException(404, "Khong tim thay du lieu danh muc.");
         return Values.success();
     }

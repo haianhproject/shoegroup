@@ -1,11 +1,13 @@
-```vue
+<!-- Mục đích: Danh sách danh mục, tìm kiếm và bật/tắt trạng thái không xóa dữ liệu. -->
 <!-- Trang quản lý danh mục / bộ môn -->
 <script setup>
 import { computed, ref } from "vue";
+import ActivityStatus from '../components/ActivityStatus.vue';
 import {
   openForm,
   db,
   getProductCount,
+  toggleCatalogStatus,
 } from "../adminStore";
 
 const searchText = ref("");
@@ -32,14 +34,6 @@ const categories = computed(() => {
     });
 });
 
-const getStatusText = (category) =>
-  category.active === false ? "Không hoạt động" : "Hoạt động";
-
-const getStatusClass = (category) =>
-  category.active === false
-    ? "status-inactive"
-    : "status-active";
-
 /**
  * Chỉ mở biểu mẫu khi thêm mới hoặc chỉnh sửa.
  * Việc kiểm tra bắt buộc khi lưu cần được thực hiện
@@ -55,7 +49,7 @@ function editCategory(category) {
 </script>
 
 <template>
-  <div class="categories-page">
+  <div class="categories-page admin-catalog-page">
     <!-- Tiêu đề -->
     <div class="page-heading">
       <div>
@@ -65,15 +59,15 @@ function editCategory(category) {
         </p>
       </div>
 
-      <button class="btn-primary-custom" @click="addCategory">
-        <span class="button-icon">＋</span>
+      <button type="button" class="btn btn-dark btn-primary-custom" @click="addCategory">
+        <i class="icon icon-plus-lg" aria-hidden="true"></i>
         Thêm danh mục
       </button>
     </div>
 
     <!-- Thống kê -->
     <div class="summary-card">
-      <div class="summary-icon">▤</div>
+      <i class="icon icon-collection summary-icon" aria-hidden="true"></i>
       <div>
         <div class="summary-label">Tổng số danh mục</div>
         <div class="summary-value">
@@ -87,9 +81,6 @@ function editCategory(category) {
       <div class="table-toolbar">
         <div>
           <h3 class="section-title">Danh sách danh mục</h3>
-          <p class="section-description">
-            Danh mục được sắp xếp theo ID tăng dần.
-          </p>
         </div>
 
         <input
@@ -102,15 +93,15 @@ function editCategory(category) {
       </div>
 
       <div class="table-responsive">
-        <table class="category-table">
+        <table class="category-table admin-catalog-table">
           <thead>
             <tr>
               <th class="id-column">ID</th>
-              <th>Tên danh mục <span class="required-mark">*</span></th>
-              <th>Bộ môn <span class="required-mark">*</span></th>
+              <th>Tên danh mục</th>
+              <th>Bộ môn</th>
               <th class="center-column">Số sản phẩm</th>
               <th>Trạng thái</th>
-              <th class="action-column">Hành động</th>
+              <th class="action-column">Thao tác</th>
             </tr>
           </thead>
 
@@ -135,31 +126,28 @@ function editCategory(category) {
               </td>
 
               <td>
-                <span
-                  class="status-badge"
-                  :class="getStatusClass(category)"
-                >
-                  <span class="status-dot"></span>
-                  {{ getStatusText(category) }}
-                </span>
+                <ActivityStatus :active="category.active" />
               </td>
 
               <td class="action-column">
+                <div class="admin-row-actions">
                 <button
                   type="button"
                   class="btn-edit"
                   title="Chỉnh sửa danh mục"
+                  :aria-label="'Chỉnh sửa danh mục '+category.name"
                   @click="editCategory(category)"
                 >
-                  <span>✎</span>
-                  Chỉnh sửa
+                  <i class="icon icon-pencil" aria-hidden="true"></i>
                 </button>
+                <input type="checkbox" role="switch" :checked="category.active" @change="toggleCatalogStatus('categories',category,$event)" :aria-label="'Trạng thái danh mục '+category.name" :title="category.active?'Ngừng hoạt động':'Bật hoạt động'">
+                </div>
               </td>
             </tr>
 
             <tr v-if="categories.length === 0">
               <td colspan="6" class="empty-cell">
-                <div class="empty-icon">▤</div>
+                <i class="icon icon-collection empty-icon" aria-hidden="true"></i>
                 <p>
                   {{
                     searchText.trim()
@@ -179,23 +167,13 @@ function editCategory(category) {
       </div>
     </div>
 
-    <!-- Ghi chú -->
-    <div class="notice">
-      <span class="notice-icon">ⓘ</span>
-      <p>
-        Để bảo toàn dữ liệu, trang này không cung cấp chức năng xóa trực tiếp.
-        Danh mục không còn sử dụng nên được chuyển sang trạng thái
-        <strong>Không hoạt động</strong> bằng chức năng cập nhật trạng thái
-        nếu hệ thống hỗ trợ.
-      </p>
-    </div>
   </div>
 </template>
 
 <style scoped>
 .categories-page {
   width: 100%;
-  padding: 24px;
+  padding: 0;
   color: #1f2937;
   font-size: 15px;
 }
@@ -210,7 +188,7 @@ function editCategory(category) {
 
 .page-title {
   margin: 0 0 8px;
-  font-size: 27px;
+  font-size: 20px;
   line-height: 1.3;
   font-weight: 750;
   color: #111827;
@@ -287,8 +265,7 @@ function editCategory(category) {
 
 .content-card {
   overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 0;
   background: #fff;
 }
 
@@ -378,11 +355,6 @@ function editCategory(category) {
   font-weight: 650;
 }
 
-.required-mark {
-  color: #dc2626;
-  font-weight: 800;
-}
-
 .sport-tag {
   display: inline-block;
   padding: 5px 9px;
@@ -395,34 +367,6 @@ function editCategory(category) {
 
 .center-column {
   text-align: center !important;
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.status-active {
-  background: #ecfdf3;
-  color: #166534;
-}
-
-.status-inactive {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .action-column {
@@ -502,7 +446,7 @@ function editCategory(category) {
 
 @media (max-width: 768px) {
   .categories-page {
-    padding: 14px;
+    padding: 0;
   }
 
   .page-heading,
@@ -520,4 +464,3 @@ function editCategory(category) {
   }
 }
 </style>
-```

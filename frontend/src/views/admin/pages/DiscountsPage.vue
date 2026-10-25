@@ -1,5 +1,5 @@
 
-<!-- Trang quản lý mã khuyến mại -->
+<!-- Mục đích: Mã giảm giá theo đơn hàng, thời gian, lượt sử dụng và trạng thái. -->
 <script setup>
 import {
   filteredDiscountsList,
@@ -15,7 +15,7 @@ import {
   formatDiscountValue,
   formatDate,
   formatPrice,
-  restoreItem,
+  couponFinished, toggleDiscountStatus, discountDetail, openDiscountDetail,
 } from '../adminStore'
 </script>
 
@@ -24,9 +24,9 @@ import {
     <div class="bg-white p-4 discount-page">
       <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
         <div>
-          <h5 class="font-bold mb-1 text-gray-900">Quản lý mã khuyến mại</h5>
+          <h5 class="font-bold mb-1 text-gray-900">Quản lý mã giảm giá</h5>
           <p class="text-gray-600 text-sm mb-0">
-            Tạo, chỉnh sửa và theo dõi mã khuyến mại
+            Tạo, chỉnh sửa và theo dõi mã giảm giá
           </p>
         </div>
 
@@ -35,7 +35,7 @@ import {
           class="btn btn-dark font-medium px-3"
         >
           <i class="icon icon-plus-lg mr-1"></i>
-          Thêm mã khuyến mại
+          Thêm mã giảm giá
         </button>
       </div>
 
@@ -65,14 +65,13 @@ import {
         </select>
       </div>
 
-      <!-- Danh sách mã khuyến mại -->
+      <!-- Danh sách mã giảm giá -->
       <div class="table-responsive">
         <table class="table align-middle mb-0">
           <thead>
             <tr class="text-gray-600 text-sm uppercase">
               <th>Mã</th>
               <th>Tên chương trình</th>
-              <th>Loại</th>
               <th class="text-center">Giá trị</th>
               <th class="text-end">Đơn tối thiểu</th>
               <th class="text-end">Giảm tối đa</th>
@@ -86,11 +85,11 @@ import {
           <tbody>
             <tr v-if="filteredDiscountsList.length === 0">
               <td
-                colspan="10"
+                colspan="9"
                 class="text-center text-gray-600 py-5"
               >
                 <i class="icon icon-ticket-perforated text-4xl block mb-2 opacity-50"></i>
-                Không có mã khuyến mại nào.
+                Không có mã giảm giá nào.
               </td>
             </tr>
 
@@ -106,11 +105,6 @@ import {
                 {{ d.name || '—' }}
               </td>
 
-              <td>
-                <span class="badge bg-gray-100 text-gray-600 border">
-                  {{ d.discount_type }}
-                </span>
-              </td>
 
               <td class="text-center font-bold text-gray-900">
                 {{ formatDiscountValue(d) }}
@@ -131,7 +125,7 @@ import {
               </td>
 
               <td class="text-center text-sm">
-                {{ Number(d.quantity) > 0 ? d.quantity : '∞' }}
+                {{ d.quantity!=null ? Math.max(0,Number(d.quantity)-Number(d.used)) : 'Không giới hạn' }}
               </td>
 
               <td>
@@ -144,24 +138,17 @@ import {
               </td>
 
               <td class="text-end action-cell">
-                <button
-                  v-if="d.active === false"
-                  @click="restoreItem('discounts', d)"
-                  class="btn btn-sm btn-light border"
-                  title="Kích hoạt lại"
-                >
-                  <i class="icon icon-arrow-counterclockwise"></i>
-                  <span>Kích hoạt lại</span>
-                </button>
+                <button type="button" @click="openDiscountDetail(d)" class="btn btn-sm btn-light border" title="Xem chi tiết" :aria-label="'Xem mã '+d.code"><i class="icon icon-eye"></i></button>
 
                 <button
                   @click="openDiscountForm(d)"
+                  :disabled="couponFinished(d)"
                   class="btn btn-sm btn-light border"
                   title="Chỉnh sửa"
                 >
                   <i class="icon icon-pencil"></i>
-                  <span>Chỉnh sửa</span>
                 </button>
+                <input type="checkbox" role="switch" :checked="d.active" :disabled="couponFinished(d)" @change="toggleDiscountStatus(d,$event)" :aria-label="'Trạng thái mã '+d.code" :title="d.active?'Ngừng hoạt động':'Bật hoạt động'">
               </td>
             </tr>
           </tbody>
@@ -170,6 +157,19 @@ import {
     </div>
 
     <!-- Form thêm / chỉnh sửa -->
+    <div v-if="discountDetail.open" class="custom-modal-overlay" @click.self="discountDetail.open=false">
+      <div class="custom-modal-box discount-modal" role="dialog" aria-modal="true" aria-label="Chi tiết mã giảm giá">
+        <div class="p-4 border-b flex justify-between items-center"><h6 class="font-bold">{{ discountDetail.item.code }}</h6><button type="button" class="btn btn-light" @click="discountDetail.open=false" aria-label="Đóng chi tiết"><i class="icon icon-x-lg"></i></button></div>
+        <dl class="p-4 grid grid-cols-2 gap-3">
+          <dt>Chương trình</dt><dd>{{ discountDetail.item.name }}</dd>
+          <dt>Giảm giá</dt><dd>{{ formatDiscountValue(discountDetail.item) }}</dd>
+          <dt>Tổng số lượt</dt><dd>{{ discountDetail.item.quantity ?? 'Không giới hạn' }}</dd>
+          <dt>Đã sử dụng</dt><dd>{{ discountDetail.item.used }}</dd>
+          <dt>Còn lại</dt><dd>{{ discountDetail.item.quantity!=null?Math.max(0,discountDetail.item.quantity-discountDetail.item.used):'Không giới hạn' }}</dd>
+          <dt>Trạng thái</dt><dd>{{ getDiscountStatus(discountDetail.item).label }}</dd>
+        </dl>
+      </div>
+    </div>
     <div
       v-if="discountModal.open"
       class="custom-modal-overlay"
@@ -178,7 +178,7 @@ import {
       <div class="custom-modal-box fade-in-scale discount-modal">
         <div class="p-4 border-b flex justify-between items-center">
           <h6 class="font-bold mb-0 text-gray-900">
-            {{ discountModal.data.id ? 'Chỉnh sửa mã khuyến mại' : 'Thêm mã khuyến mại' }}
+            {{ discountModal.data.id ? 'Chỉnh sửa mã giảm giá' : 'Thêm mã giảm giá' }}
           </h6>
 
           <button
@@ -195,7 +195,7 @@ import {
             <div class="grid grid-cols-12 gap-3">
               <div class="md:col-span-6 col-span-12">
                 <label class="discount-label">
-                  Mã khuyến mại <span class="required">*</span>
+                  Mã giảm giá <span class="required">*</span>
                 </label>
                 <input
                   v-model="discountModal.data.code"
@@ -282,9 +282,12 @@ import {
               </div>
 
               <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">Số lượng</label>
+                <label class="discount-label">Tổng số lượt <span class="required" v-if="discountModal.data.quantity!=null">*</span></label>
+                <label class="flex gap-2 items-center mb-2"><input type="checkbox" :checked="discountModal.data.quantity==null" @change="discountModal.data.quantity=$event.target.checked?null:1">Không giới hạn</label>
                 <input
                   v-model.number="discountModal.data.quantity"
+                  :disabled="discountModal.data.quantity==null"
+                  :required="discountModal.data.quantity!=null"
                   type="number"
                   min="0"
                   step="1"
@@ -397,6 +400,8 @@ import {
 .action-cell {
   white-space: nowrap;
 }
+.action-cell input { margin-left:12px; }
+.discount-page .table { min-width:1080px; }
 
 .action-cell button {
   margin-left: 4px;

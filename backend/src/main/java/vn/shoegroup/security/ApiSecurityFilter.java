@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import vn.shoegroup.api.ApiErrors;
+import vn.shoegroup.catalog.CatalogIdentityService;
 
 @Component
 public class ApiSecurityFilter extends OncePerRequestFilter {
@@ -20,8 +21,9 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final RateLimits limits;
-    public ApiSecurityFilter(TokenService tokens, JdbcTemplate jdbc, ObjectMapper mapper, RateLimits limits) {
-        this.tokens = tokens; this.jdbc = jdbc; this.mapper = mapper; this.limits = limits;
+    private final CatalogIdentityService identity;
+    public ApiSecurityFilter(TokenService tokens, JdbcTemplate jdbc, ObjectMapper mapper, RateLimits limits, CatalogIdentityService identity) {
+        this.tokens = tokens; this.jdbc = jdbc; this.mapper = mapper; this.limits = limits; this.identity=identity;
     }
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
@@ -47,17 +49,25 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
                 if (rows.isEmpty() || !Boolean.TRUE.equals(rows.get(0).get("IsActive"))) {
                     deny(res, 401, "Tai khoan khong con hoat dong."); return;
                 }
-                user = new ApiUser(id, ((Number)rows.get(0).get("RoleID")).intValue() == 1);
+                int role = ((Number)rows.get(0).get("RoleID")).intValue();
+                user = new ApiUser(id, role == 1, role == 3);
             } catch (RuntimeException ex) { deny(res, 503, "Khong the kiem tra phien dang nhap luc nay."); return; }
         }
         ApiPolicy.Level level = ApiPolicy.resolve(method, path);
         if (level != ApiPolicy.Level.PUBLIC && user == null) {
             deny(res, 401, "Ban chua dang nhap hoac phien da het han."); return;
         }
-        if (user != null && ((level == ApiPolicy.Level.ADMIN && !user.admin()) || !ApiPolicy.owns(path, user.id(), user.admin()))) {
+        if (user != null && ((level == ApiPolicy.Level.ADMIN && !user.admin())
+                || (level == ApiPolicy.Level.STAFF && !user.staff())
+                || !ApiPolicy.owns(path, user.id(), user.admin()))) {
             deny(res, 403, "Ban khong co quyen thuc hien thao tac nay."); return;
         }
         req.setAttribute("apiUser", user);
+        if(CatalogIdentityService.requiresRevision(method,path) && !identity.revision().isEmpty()
+                && !identity.revision().equals(req.getHeader("X-Catalog-Identity"))) {
+            res.setStatus(409);res.setContentType("application/json;charset=UTF-8");
+            mapper.writeValue(res.getOutputStream(),ApiErrors.body("CATALOG_IDENTITY_CHANGED","Mã dữ liệu đã được cập nhật. Vui lòng tải lại trang trước khi tiếp tục."));return;
+        }
         chain.doFilter(req, res);
         if (login && res.getStatus() < 400) limits.loginSucceeded(req.getRemoteAddr());
     }

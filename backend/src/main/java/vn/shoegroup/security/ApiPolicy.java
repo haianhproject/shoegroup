@@ -5,11 +5,13 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public final class ApiPolicy {
-    public enum Level { PUBLIC, CUSTOMER, ADMIN }
+    public enum Level { PUBLIC, CUSTOMER, STAFF, ADMIN }
     private record Rule(String method, Pattern path, Level level) {
         Rule(String method, String path, Level level) { this(method, Pattern.compile(path), level); }
     }
     private static final List<Rule> RULES = List.of(
+        new Rule("*", "^/api/pos(/|$)", Level.STAFF),
+        new Rule("GET", "^/api/(orders|customers|inventory|variantDiscounts|admin/events)$", Level.STAFF),
         new Rule("POST", "^/api/(login|register|auth/forgot-password|auth/reset-password|log-error)$", Level.PUBLIC),
         new Rule("GET", "^/api/health$", Level.PUBLIC),
         new Rule("GET", "^/api/v2/products(/|$)", Level.PUBLIC),

@@ -1,326 +1,57 @@
-```vue
-<!-- Mục đích: Trang thêm, sửa, ngừng sử dụng và thống kê sản phẩm theo thương hiệu. -->
-<!-- Trang: Thương Hiệu -->
-
+<!-- Mục đích: Danh sách thương hiệu, logo, số sản phẩm và trạng thái hoạt động. -->
 <script setup>
-import {
-  openForm,
-  filteredBrands,
-  getBrandProductCount,
-  restoreItem,
-} from '../adminStore'
-
-import {
-  genericBrandLogo,
-  resolveBrandLogo,
-} from '../../../utils/brandLogos'
-
-const useFallbackLogo = (event) => {
-  event.target.onerror = null
-  event.target.src = genericBrandLogo
-}
+import ActivityStatus from '../components/ActivityStatus.vue';
+import { openForm, filteredBrands, brandSearch, brandStatusFilter, getBrandProductCount, toggleCatalogStatus } from '../adminStore';
+import { genericBrandLogo, resolveBrandLogo } from '../../../utils/brandLogos';
+function fallback(event) { event.target.onerror=null; event.target.src=genericBrandLogo; }
 </script>
-
 <template>
-  <div class="fade-in brands-page">
-    <!-- Thanh công cụ -->
+  <div class="brands-page fade-in admin-catalog-page">
     <div class="brands-toolbar">
-      <button
-        type="button"
-        @click="openForm('brands')"
-        class="btn btn-dark btn-sm rounded-2 font-bold shadow-sm px-3"
-      >
-        <i class="icon icon-plus-lg mr-1"></i>
-        Thêm thương hiệu
-      </button>
+      <h5>Quản lý thương hiệu</h5>
+      <button type="button" class="btn btn-dark" @click="openForm('brands')"><i class="icon icon-plus-lg"></i> Thêm thương hiệu</button>
     </div>
-
-    <!-- Danh sách thương hiệu -->
-    <div v-if="filteredBrands.length" class="brand-grid">
-      <div
-        v-for="b in filteredBrands"
-        :key="b.id"
-        class="brand-grid-item"
-      >
-        <article
-          class="brand-card bg-white rounded-1 border h-full text-center"
-          :class="{ 'brand-card-inactive': b.active === false }"
-        >
-          <!-- Logo -->
-          <div class="brand-logo-stage">
-            <img
-              :src="resolveBrandLogo(b)"
-              :alt="`Logo ${b.name}`"
-              class="brand-logo"
-              @error="useFallbackLogo"
-            />
-          </div>
-
-          <!-- Tên thương hiệu -->
-          <h6 class="brand-name font-bold mb-1 text-gray-900">
-            {{ b.name || 'Chưa có tên' }}
-          </h6>
-
-          <!-- Trạng thái -->
-          <span
-            class="brand-status"
-            :class="b.active === false ? 'status-inactive' : 'status-active'"
-          >
-            <span class="status-dot"></span>
-            {{ b.active === false ? 'Không hoạt động' : 'Hoạt động' }}
-          </span>
-
-          <!-- Số sản phẩm -->
-          <p class="brand-count text-gray-600 text-sm">
-            {{ getBrandProductCount(b.id) }} sản phẩm
-          </p>
-
-          <!-- Thao tác -->
-          <div class="brand-actions flex gap-2 justify-center">
-            <button
-              v-if="b.active === false"
-              type="button"
-              @click="restoreItem('brands', b)"
-              class="btn btn-sm btn-light border border-success text-green-600 rounded-2"
-              title="Kích hoạt lại thương hiệu"
-              aria-label="Kích hoạt lại thương hiệu"
-            >
-              <i class="icon icon-arrow-counterclockwise"></i>
-              <span>Kích hoạt lại</span>
-            </button>
-
-            <button
-              type="button"
-              @click="openForm('brands', b)"
-              class="btn btn-sm btn-light border rounded-2"
-              title="Sửa thương hiệu"
-              aria-label="Sửa thương hiệu"
-            >
-              <i class="icon icon-pencil"></i>
-              <span>Chỉnh Sửa</span>
-            </button>
-          </div>
-        </article>
-      </div>
+    <div class="brands-filters">
+      <input v-model="brandSearch" type="search" class="sg-input brands-search" placeholder="Tìm theo mã (#ID) hoặc tên thương hiệu" aria-label="Tìm thương hiệu">
+      <select v-model="brandStatusFilter" class="sg-input brands-status" aria-label="Lọc trạng thái thương hiệu">
+        <option value="">Tất cả trạng thái</option>
+        <option value="active">Hoạt động</option>
+        <option value="inactive">Không hoạt động</option>
+      </select>
     </div>
-
-    <!-- Trạng thái danh sách trống -->
-    <div v-else class="brand-empty">
-      <i class="icon icon-tags"></i>
-      <h3>Chưa có thương hiệu</h3>
-      <p>Thêm thương hiệu để quản lý và theo dõi sản phẩm.</p>
-      <button
-        type="button"
-        @click="openForm('brands')"
-        class="btn btn-dark rounded-2"
-      >
-        <i class="icon icon-plus-lg mr-1"></i>
-        Thêm thương hiệu
-      </button>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0 admin-catalog-table">
+        <thead><tr><th>ID</th><th>Logo</th><th>Thương hiệu</th><th>Số sản phẩm</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead>
+        <tbody>
+          <tr v-for="b in filteredBrands" :key="b.id">
+            <td>#{{ b.id }}</td>
+            <td><img :src="resolveBrandLogo(b)" :alt="b.name" class="brand-logo" @error="fallback"></td>
+            <td class="brand-name">{{ b.name }}</td>
+            <td>{{ getBrandProductCount(b.id) }}</td>
+            <td><ActivityStatus :active="b.active" /></td>
+            <td class="text-end"><div class="brand-actions">
+              <button type="button" class="btn btn-sm btn-light border" @click="openForm('brands',b)" title="Sửa thương hiệu" :aria-label="'Sửa thương hiệu '+b.name"><i class="icon icon-pencil"></i></button>
+              <input type="checkbox" role="switch" :checked="b.active" @change="toggleCatalogStatus('brands',b,$event)" :aria-label="'Trạng thái thương hiệu '+b.name" :title="b.active?'Ngừng hoạt động':'Bật hoạt động'">
+            </div></td>
+          </tr>
+          <tr v-if="!filteredBrands.length"><td colspan="6" class="text-center py-4 text-gray-600">Không có thương hiệu phù hợp.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>
-
 <style scoped>
-.brands-page {
-  width: 100%;
-  min-width: 0;
-}
-
-.brands-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 20px;
-}
-
-.brands-toolbar button {
-  min-height: 40px;
-  font-size: 14px;
-}
-
-.brand-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.brand-grid-item {
-  min-width: 0;
-}
-
-.brand-card {
-  display: flex;
-  min-height: 275px;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px;
-  border-color: #e5e7eb;
-  border-radius: 12px;
-  transition:
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.brand-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 7%);
-}
-
-.brand-card-inactive {
-  background: #fafafa;
-}
-
-.brand-logo-stage {
-  display: flex;
-  width: 100%;
-  height: 116px;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
-  overflow: hidden;
-  border: 1px solid #ededee;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.brand-logo {
-  display: block;
-  width: min(160px, 78%);
-  height: 82px;
-  object-fit: contain;
-}
-
-.brand-name {
-  display: block;
-  width: 100%;
-  min-height: 28px;
-  margin: 0 0 8px;
-  overflow-wrap: anywhere;
-  font-size: 16px;
-  line-height: 1.5;
-}
-
-.brand-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-active {
-  color: #15803d;
-  background: #dcfce7;
-}
-
-.status-inactive {
-  color: #6b7280;
-  background: #f3f4f6;
-}
-
-.brand-count {
-  margin: 12px 0 16px;
-  font-size: 13px;
-}
-
-.brand-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.brand-actions button {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.brand-actions button i {
-  font-size: 14px;
-}
-
-.brand-empty {
-  display: flex;
-  min-height: 260px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-  border: 1px dashed #d1d5db;
-  border-radius: 12px;
-  background: #fff;
-  text-align: center;
-}
-
-.brand-empty > i {
-  margin-bottom: 12px;
-  color: #9ca3af;
-  font-size: 36px;
-}
-
-.brand-empty h3 {
-  margin: 0 0 8px;
-  color: #111827;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.brand-empty p {
-  margin: 0 0 18px;
-  color: #6b7280;
-  font-size: 14px;
-}
-
-@media (max-width: 1199px) {
-  .brand-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .brand-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .brand-card {
-    min-height: 250px;
-    padding: 12px;
-  }
-
-  .brand-logo-stage {
-    height: 98px;
-  }
-
-  .brand-logo {
-    height: 70px;
-  }
-
-  .brand-actions button {
-    padding: 6px 8px;
-  }
-}
-
-@media (max-width: 479px) {
-  .brand-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.brands-page { min-width:0; }
+.brands-toolbar { display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px; }
+.brands-toolbar h5 { margin:0;font-size:20px;font-weight:700; }
+.brands-filters { display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px; }
+.brands-search { flex:1;min-width:0;max-width:420px; }
+.brands-status { width:190px; }
+.brand-logo { width:64px;height:42px;object-fit:contain;background:white; }
+.brand-name { min-width:130px;overflow-wrap:anywhere; }
+.brand-actions { display:flex;justify-content:flex-end;align-items:center;gap:12px; }
+.table-responsive { background:white; }
+.table { min-width:620px; }
+th { white-space:nowrap; }
+@media(max-width:480px) { .brands-toolbar { align-items:stretch; } .brands-toolbar button { width:100%; } .brands-search { flex-basis:100%; } .brands-status { width:100%; } }
 </style>
-```

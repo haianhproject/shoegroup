@@ -60,6 +60,25 @@
 .admin-shell .table td[colspan] { line-height: 1.7; }
 .admin-shell .table .sg-input { min-height: 34px; padding: 6px 8px; }
 
+/* Catalog pages share the same table rhythm, state labels and actions. */
+.admin-shell .admin-catalog-page :is(.page-header, .page-heading, .brands-toolbar, .products-page-head) :is(h1, h2, h5) { font-size: 22px; font-weight: 700; letter-spacing: 0; }
+.admin-shell .admin-catalog-page :is(.page-header, .page-heading, .brands-toolbar, .products-page-head) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.admin-shell .admin-catalog-page :is(.page-header, .page-heading, .brands-toolbar, .products-page-head) > button { height: 40px; min-height: 40px; padding: 9px 15px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+.admin-shell .admin-catalog-page :is(.sg-input, .search-input) { height: 40px; min-height: 40px; padding: 9px 12px; border-radius: 8px; font-size: 13px; }
+.admin-shell .admin-catalog-page .admin-catalog-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.admin-shell .admin-catalog-page .admin-catalog-table th { padding: 12px; border-bottom: 1px solid var(--admin-line); background: #fafafa; color: #737373; font-size: 11px; font-weight: 600; line-height: 1.5; letter-spacing: 0; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.admin-shell .admin-catalog-page .admin-catalog-table td { height: 72px; padding: 12px; border-bottom: 1px solid var(--admin-line); font-size: 13px; vertical-align: middle; }
+.admin-shell .admin-catalog-page .products-table th { white-space: normal; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.color-name, .material-name, .brand-name, .products-name, .products-brand, .products-price strong, .products-stock, .name-cell, .hex-text, .product-count) { font-size: 13px; font-weight: 500; }
+.admin-shell .admin-catalog-page .products-thumbnail { width: 48px; height: 48px; }
+.admin-shell .admin-catalog-page .admin-catalog-table tbody tr:last-child td { border-bottom: 0; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.text-center, .center-column) { text-align: center; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.text-end, .action-column) { text-align: right; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.admin-row-actions, .brand-actions, .products-actions, .action-buttons) { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: 10px; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.admin-row-actions, .brand-actions, .products-actions, .action-buttons) button { display: inline-flex; flex: 0 0 34px; align-items: center; justify-content: center; width: 34px; min-width: 34px; height: 34px; min-height: 34px; margin: 0; padding: 0; border: 1px solid var(--admin-line); border-radius: 6px !important; background: #fff; color: #52525b; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.admin-row-actions, .brand-actions, .products-actions, .action-buttons) button:hover { border-color: #9999a1; background: #f4f4f6; color: #0e0e0e; }
+.admin-shell .admin-catalog-page .admin-catalog-table :is(.admin-row-actions, .brand-actions, .products-actions, .action-buttons) .icon { font-size: 14px; }
+
 .admin-shell .admin-page-wrapper .alert { padding: 14px 16px; border: 1px solid var(--admin-page-line); border-radius: 8px; background: #fff; color: #626266; font-size: .8125rem; line-height: 1.6; }
 .admin-shell .admin-page-wrapper .alert-warning { background: #fff9ee !important; border-color: #eee0c4 !important; color: #7e602a !important; }
 .admin-shell .admin-page-wrapper .alert-danger { background: var(--admin-page-accent-soft) !important; border-color: #ffd2d8 !important; color: var(--admin-page-accent-dark) !important; }

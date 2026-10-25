@@ -423,6 +423,7 @@ const refreshCartStockFromServer = async () => {
       item.hasInsufficientStock = hasInsufficientStock;
       item.stockAvailability = nextStatus;
       item.stockCheckedAt = checkedAt;
+      if (variant?.standard && typeof item.size === 'object') item.size.standard = variant.standard;
 
       // Đồng bộ ảnh biến thể và màu mới nhất từ server nếu admin vừa cập nhật
       if (product) {
@@ -771,6 +772,7 @@ export const addToCart = async (payload) => {
     existingItem.hasInsufficientStock = false;
     existingItem.stockAvailability = "available";
     existingItem.stockCheckedAt = Date.now();
+    if (size.standard) existingItem.size.standard = size.standard;
 
     existingItem.unitPrice =
       productPrice;
@@ -847,6 +849,7 @@ export const addToCart = async (payload) => {
 
     // Size
     size: {
+      standard: size.standard,
       size_name:
         String(sizeName),
     },

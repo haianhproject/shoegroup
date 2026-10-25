@@ -18,14 +18,15 @@ public class PosController {
     private final AdminEvents events;
     private final Environment env;
     public PosController(PosCartService carts, AdminEvents events, Environment env) { this.carts = carts; this.events = events; this.env = env; }
-    @GetMapping("/api/pos/cart") public Map<String, Object> cart(HttpServletRequest req) { return handle(req, null, null, Map.of()); }
+    @GetMapping("/api/pos/cart") public Map<String, Object> cart(HttpServletRequest req,@RequestParam(required=false) Integer cart_id) { return handle(req, null, null, cart_id==null?Map.of():Map.of("cart_id",cart_id)); }
+    @PostMapping("/api/pos/carts") public Map<String,Object> create(HttpServletRequest req) { return handle(req,"create",null,Map.of()); }
     @PutMapping("/api/pos/cart/items/{variantId}") public Map<String, Object> change(HttpServletRequest req, @PathVariable String variantId, @RequestBody Map<String, Object> body) {
         return handle(req, "item", Values.integer(variantId, 1, Integer.MAX_VALUE, null), body);
     }
     @DeleteMapping("/api/pos/cart") public Map<String, Object> clear(HttpServletRequest req, @RequestBody Map<String, Object> body) { return handle(req, "clear", null, body); }
     private Map<String, Object> handle(HttpServletRequest req, String action, Integer variantId, Map<String, Object> body) {
         ApiUser user = (ApiUser)req.getAttribute("apiUser");
-        if (user == null || !user.admin()) throw new ApiException(403, "Chi nhan vien duoc su dung gio tai quay.");
+        if (user == null || !user.staff()) throw new ApiException(403, "Chi nhan vien duoc su dung gio tai quay.");
         Map<String, Object> response = carts.handle(user.id(), action, variantId, body);
         if (action != null) events.publish("inventory.updated", Map.of("source", "pos", "userId", user.id(), "stockUpdates", response.get("stockUpdates")));
         return response;

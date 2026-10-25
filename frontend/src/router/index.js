@@ -1,7 +1,7 @@
 // Mục đích: Khai báo toàn bộ route và kiểm soát quyền truy cập trang khách/admin.
 import { createRouter, createWebHistory } from "vue-router";
 import adminRoutes from "../views/admin/adminRoutes.js";
-import { isAuthenticated, currentUser } from "../stores/authStore";
+import { isAuthenticated, currentUser, canUseStaffWorkspace, isEmployee } from "../stores/authStore";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -56,13 +56,15 @@ router.beforeEach((to) => {
 
   if (adminArea) {
     if (!isAuthenticated.value) return { path: "/login", query: { redirect: path } };
-    if (!isAdmin()) return { path: "/" };
+    if (!canUseStaffWorkspace.value) return { path: "/" };
+    if (isEmployee.value && !['/admin/panel/products','/admin/panel/payments','/admin/panel/pos'].includes(path))
+      return { path: '/admin/panel/pos' };
     return true;
   }
 
   // Admin đã đăng nhập thì không được thao tác như khách hàng (đặt hàng, giỏ hàng...)
   // Kể cả trang chào mừng cũng không được quay về trang chủ khách.
-  if (isAuthenticated.value && isAdmin()) {
+  if (isAuthenticated.value && canUseStaffWorkspace.value) {
     // Chặn toàn bộ khu khách hàng khi đang là admin
     return { path: "/admin" };
   }

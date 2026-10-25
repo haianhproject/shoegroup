@@ -47,6 +47,11 @@ class ApiErrorsTest {
         .andExpect(jsonPath("$.success").value(false));
   }
 
+  @Test void unsupportedDeleteReturns405InsteadOfServerFailure() throws Exception {
+    mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/test/failure"))
+        .andExpect(status().isMethodNotAllowed()).andExpect(jsonPath("$.success").value(false));
+  }
+
   @RestController static class ErrorsController {
     @GetMapping("/test/disconnect") void disconnect(HttpServletResponse response) throws IOException {
       response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);

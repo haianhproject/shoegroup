@@ -2,22 +2,9 @@
 /* [TOI UU] Tu dong gan JWT vao moi request API + doc dia chi may chu tu .env */
 import { installHttpInterceptor } from './services/httpInterceptor'
 import { API_BASE_URL } from './services/apiClient'
-import { logout } from './stores/authStore'
-
-installHttpInterceptor({
-  onUnauthorized: () => {
-    // Xoa ca user, token va cookie. Neu chi xoa token rieng, apiClient se lay
-    // lai JWT het han tu shoegroup_current_user va cac bang Admin se bi rong.
-    logout()
-    if (!window.location.pathname.startsWith('/login')) {
-      window.location.href = '/login'
-    }
-  },
-})
+import { initializeCatalogIdentity } from './services/catalogIdentity'
 
 import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
 
 import './assets/main.css'
 import './assets/icons.css'
@@ -28,21 +15,33 @@ window.addEventListener('vite:preloadError', () => {
   window.location.reload()
 })
 
-const app = createApp(App)
+async function bootstrap() {
+  await initializeCatalogIdentity(API_BASE_URL)
+  const [{default:App},{default:router},{logout}]=await Promise.all([import('./App.vue'),import('./router'),import('./stores/authStore')])
+  installHttpInterceptor({onUnauthorized:()=>{
+    logout()
+    if(!window.location.pathname.startsWith('/login')) window.location.href='/login'
+  }})
+  const app = createApp(App)
+  app.use(router)
+  app.config.errorHandler = (err, vm, info) => {
+    console.error('[VUE ERROR]', err, info);
+    fetch(`${API_BASE_URL}/log-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: err.message, stack: err.stack, info })
+    });
+  };
 
-app.use(router)
-app.config.errorHandler = (err, vm, info) => {
-  console.error('[VUE ERROR]', err, info);
-  fetch(`${API_BASE_URL}/log-error`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: err.message, stack: err.stack, info })
-  });
-};
-
-// Cho router xu ly xong dieu huong/redirect ban dau (vi du guard dang nhap)
-// truoc khi mount app, tranh tinh trang nhap nhay / trang trang khi vao lai.
-router.isReady().then(() => {
+  // Nap store sau khi doi ID trinh duyet, roi cho dieu huong ban dau hoan tat.
+  await router.isReady()
   app.mount('#root')
+}
+bootstrap().catch(error=>{
+  console.error('Không thể khởi động ứng dụng:',error.message)
+  const panel=document.createElement('div');panel.className='startup-message'
+  const message=document.createElement('p');message.textContent='Không thể tải dữ liệu mới nhất. Vui lòng thử lại.'
+  const retry=document.createElement('button');retry.textContent='Thử lại';retry.onclick=()=>window.location.reload()
+  panel.append(message,retry);document.querySelector('#root')?.replaceChildren(panel)
 })
 

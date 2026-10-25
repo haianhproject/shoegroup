@@ -12,6 +12,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.util.DisconnectedClientHelper;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -36,10 +37,22 @@ public class ApiErrors {
         .body(body(null, "Du lieu gui len khong hop le."));
   }
 
+  @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)
+  ResponseEntity<?> duplicate() {
+    return ResponseEntity.status(409).contentType(MediaType.APPLICATION_JSON)
+        .body(body("DUPLICATE_DATA", "Dữ liệu đã tồn tại. Vui lòng kiểm tra tên danh mục, kích cỡ hoặc SKU."));
+  }
+
   @ExceptionHandler(NoResourceFoundException.class)
   ResponseEntity<?> notFound() {
     return ResponseEntity.status(404).contentType(MediaType.APPLICATION_JSON)
         .body(body(null, "API khong ton tai."));
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  ResponseEntity<?> methodNotAllowed() {
+    return ResponseEntity.status(405).contentType(MediaType.APPLICATION_JSON)
+        .body(body(null,"Thao tác này không được hỗ trợ."));
   }
 
   @ExceptionHandler(Exception.class)
