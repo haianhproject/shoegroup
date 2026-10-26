@@ -1,4 +1,5 @@
-﻿/*
+﻿
+/*
  * Mục đích: Kho trạng thái và nghiệp vụ dùng chung cho các trang quản trị.
  * adminStore.js
  * ------------------------------------------------------------------
@@ -3683,12 +3684,169 @@ export const SPORTS = [
   "Tập Luyện",
 ];
 
+
+
+export function getColorName(hex) {
+  if (!hex) return "";
+
+  let value = String(hex).trim().toUpperCase();
+
+  // Chấp nhận cả dạng #RGB và #RRGGBB.
+  if (/^#[0-9A-F]{3}$/.test(value)) {
+    value =
+      "#" +
+      value[1] + value[1] +
+      value[2] + value[2] +
+      value[3] + value[3];
+  }
+
+  if (!/^#[0-9A-F]{6}$/.test(value)) return "";
+
+  // Các màu phổ biến.
+  const colors = {
+    "#000000": "Đen",
+    "#FFFFFF": "Trắng",
+    "#FF0000": "Đỏ",
+    "#00FF00": "Xanh lá",
+    "#008000": "Xanh lá đậm",
+    "#0000FF": "Xanh dương",
+    "#FFFF00": "Vàng",
+    "#FFA500": "Cam",
+    "#800080": "Tím",
+    "#FFC0CB": "Hồng",
+    "#A52A2A": "Nâu",
+    "#808080": "Xám",
+    "#C0C0C0": "Bạc",
+    "#FFD700": "Vàng kim",
+    "#000080": "Xanh navy",
+    "#40E0D0": "Xanh ngọc",
+    "#964B00": "Nâu đậm",
+    "#F5F5DC": "Be",
+    "#F5F5F5": "Trắng khói",
+    "#D3D3D3": "Xám nhạt",
+    "#A9A9A9": "Xám đậm",
+    "#ADD8E6": "Xanh dương nhạt",
+    "#87CEEB": "Xanh da trời",
+    "#90EE90": "Xanh lá nhạt",
+    "#006400": "Xanh lá đậm",
+    "#DC143C": "Đỏ thẫm",
+    "#8B0000": "Đỏ đậm",
+    "#FF69B4": "Hồng đậm",
+    "#EE82EE": "Tím hồng",
+    "#4B0082": "Chàm",
+    "#D2691E": "Nâu cam",
+    "#DEB887": "Nâu be",
+    "#F0E68C": "Vàng kaki",
+    "#808000": "Xanh ô liu",
+    "#008080": "Xanh cổ vịt",
+    "#00FFFF": "Xanh cyan",
+    "#7FFFD4": "Xanh ngọc nhạt",
+    "#F0F8FF": "Xanh trắng",
+    "#FA8072": "Hồng san hô",
+    "#FF7F50": "Cam san hô",
+    "#E6E6FA": "Tím lavender",
+    "#B0C4DE": "Xanh thép nhạt",
+    "#708090": "Xám xanh",
+    "#2F4F4F": "Xám xanh đậm",
+    "#F4A460": "Nâu cát",
+    "#CD853F": "Nâu đất",
+    "#BC8F8F": "Hồng nâu",
+    "#DA70D6": "Tím lan",
+    "#BA55D3": "Tím đậm",
+    "#6A5ACD": "Xanh tím",
+    "#483D8B": "Xanh tím đậm",
+    "#5F9EA0": "Xanh xám",
+    "#4682B4": "Xanh thép",
+    "#1E90FF": "Xanh dương sáng",
+    "#4169E1": "Xanh hoàng gia",
+    "#32CD32": "Xanh chanh",
+    "#ADFF2F": "Xanh vàng",
+    "#BDB76B": "Vàng ô liu",
+    "#FF6347": "Đỏ cà chua",
+    "#FA8072": "Hồng cá hồi",
+    "#FFE4C4": "Be sáng",
+    "#FFF8DC": "Kem",
+  };
+
+  if (colors[value]) return colors[value];
+
+  // Phân tích màu RGB để gợi ý tên cho mã HEX chưa có trong danh sách.
+  const r = parseInt(value.slice(1, 3), 16);
+  const g = parseInt(value.slice(3, 5), 16);
+  const b = parseInt(value.slice(5, 7), 16);
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const brightness = (r + g + b) / 3;
+
+  // Màu gần trắng, đen hoặc xám.
+  if (brightness >= 245) return "Trắng nhạt";
+  if (brightness <= 25) return "Đen";
+  if (delta <= 18) {
+    if (brightness >= 190) return "Xám nhạt";
+    if (brightness <= 75) return "Xám đậm";
+    return "Xám";
+  }
+
+  // Màu gần đỏ, cam, vàng, xanh lá, xanh dương hoặc tím.
+  if (r === max && g > 70 && b < 100) {
+    return g > r * 0.65 ? "Cam" : "Đỏ";
+  }
+
+  if (r === max && g === max && b < max * 0.65) {
+    return "Vàng";
+  }
+
+  if (r === max && g > b * 1.3 && g > 70) {
+    return "Cam";
+  }
+
+  if (g === max && r < g * 0.75 && b < g * 0.75) {
+    return "Xanh lá";
+  }
+
+  if (b === max && r < b * 0.75 && g < b * 0.85) {
+    return "Xanh dương";
+  }
+
+  if (r > 100 && b > 100 && g < Math.min(r, b) * 0.8) {
+    return "Tím";
+  }
+
+  if (r > 180 && g > 100 && b > 100) {
+    return "Hồng";
+  }
+
+  if (r > g && g > b) return "Nâu";
+
+  if (g > r && g > b) return "Xanh lá";
+
+  if (b > r && b > g) return "Xanh dương";
+
+  return "Màu tùy chỉnh";
+}
+export function handleColorHexChange(hex) {
+  if (formModal.type !== "colors") return;
+
+  const normalizedHex = String(hex || "").trim().toUpperCase();
+  formModal.data.hex = normalizedHex;
+
+  const colorName = getColorName(normalizedHex);
+  if (colorName) formModal.data.name = colorName;
+}
 const fieldDefs = {
   categories: [
     { key: "name", label: "Tên danh mục *", required: true },
-    { key: "sport", label: "Bộ môn thể thao *", type: "select", required: true },
+    {
+      key: "sport",
+      label: "Bộ môn thể thao *",
+      type: "select",
+      required: true,
+    },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   brands: [
     { key: "name", label: "Tên thương hiệu *", required: true },
     {
@@ -3699,48 +3857,92 @@ const fieldDefs = {
     { key: "sort_order", label: "Thứ tự", type: "number" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   materials: [
     { key: "name", label: "Tên chất liệu *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   soles: [
     { key: "name", label: "Tên đế giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   cushionings: [
     { key: "name", label: "Tên đệm giày *", required: true },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   colors: [
     { key: "name", label: "Tên màu *", required: true },
-    { key: "hex", label: "Mã màu *", type: "color", required: true },
-    { key: "sort_order", label: "Thứ tự", type: "number" },
+    {
+      key: "hex",
+      label: "Mã màu *",
+      type: "color",
+      required: true,
+    },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   sizes: [
-    { key: "name", label: "Kích cỡ *", type:"text", inputmode:"decimal", required:true },
-    { key: "standard", label: "Hệ kích cỡ *", type:"select", required:true },
+    {
+      key: "name",
+      label: "Kích cỡ *",
+      type: "text",
+      inputmode: "decimal",
+      required: true,
+    },
+    {
+      key: "standard",
+      label: "Hệ kích cỡ *",
+      type: "select",
+      required: true,
+    },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
-  /* Khớp đúng cột của bảng Coupons trong dbnew
-     (trước đây dùng percent/limit -> gửi lên CSDL không có cột tương ứng nên lưu lỗi) */
+
   discounts: [
     { key: "code", label: "Mã khuyến mại *", required: true },
     { key: "name", label: "Tên chương trình *", required: true },
-    { key: "discount_type", label: "Kiểu giảm *", type: "select", required: true },
-    { key: "value", label: "Giá trị giảm *", type: "number", required: true },
+    {
+      key: "discount_type",
+      label: "Kiểu giảm *",
+      type: "select",
+      required: true,
+    },
+    {
+      key: "value",
+      label: "Giá trị giảm *",
+      type: "number",
+      required: true,
+    },
     { key: "min_order", label: "Đơn tối thiểu", type: "number" },
     { key: "max_discount", label: "Giảm tối đa", type: "number" },
     { key: "start_date", label: "Ngày bắt đầu", type: "date" },
     { key: "expiry", label: "Ngày hết hạn", type: "date" },
-    { key: "quantity", label: "Giới hạn lượt (UsageLimit)", type: "number" },
+    {
+      key: "quantity",
+      label: "Giới hạn lượt (UsageLimit)",
+      type: "number",
+    },
     { key: "description", label: "Mô tả", type: "textarea" },
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
+
   accounts: [
-    { key: "username", label: "Email đăng nhập *", type: "email", required: true },
+    {
+      key: "username",
+      label: "Email đăng nhập *",
+      type: "email",
+      required: true,
+    },
     { key: "name", label: "Họ tên *", required: true },
-    { key: "role_id", label: "Phân quyền *", type: "select", required: true },
+    {
+      key: "role_id",
+      label: "Phân quyền *",
+      type: "select",
+      required: true,
+    },
     {
       key: "password",
       label: "Mật khẩu (để trống nếu không đổi)",
@@ -3749,6 +3951,7 @@ const fieldDefs = {
     { key: "active", label: "Hoạt động", type: "checkbox" },
   ],
 };
+
 export const formModal = reactive({
   open: false,
   type: "",
@@ -3756,6 +3959,17 @@ export const formModal = reactive({
   data: {},
   touched:{}, submitted:false, saving:false, serverErrors:{}, error:'', initial:'', discardConfirm:false,
 });
+
+// Tự đồng bộ tên màu khi mã HEX thay đổi trong form dùng chung.
+watch(
+  () => formModal.type === "colors" ? formModal.data.hex : undefined,
+  (hex) => {
+    if (formModal.type !== "colors" || !hex) return;
+    const colorName = getColorName(hex);
+    if (colorName) formModal.data.name = colorName;
+  },
+);
+
 export function normalizeCatalogName(value) {
   return String(value ?? '').normalize('NFC').replace(/[\s\u200B]+/g,' ').trim();
 }
@@ -3773,6 +3987,9 @@ export const formValidation = computed(()=>{
       const duplicate=db[type].find(row=>String(row.id)!==String(data.id) && catalogNameKey(row.name)===key);
       if(duplicate) errors.name=`Tên này đã tồn tại (#${duplicate.id}${duplicate.active?'':', không hoạt động'}). Hãy dùng bản ghi hiện có.`;
     }
+  }
+  if (type === "colors" && data.hex && !/^#[0-9A-Fa-f]{6}$/.test(String(data.hex).trim())) {
+    errors.hex = "Mã màu phải có dạng #RRGGBB, ví dụ #FF0000.";
   }
   if(type==='sizes') {
     const standard=String(data.standard || '').trim().toUpperCase(),raw=String(data.name ?? '').trim().replace(',','.');
@@ -3840,6 +4057,7 @@ export const formFields = computed(() => {
     return f;
   });
 });
+
 const formTitles = {
   categories: "Danh Mục",
   brands: "Thương Hiệu",
@@ -3849,23 +4067,55 @@ const formTitles = {
   discounts: "Mã Khuyến Mại",
   accounts: "Tài Khoản",
 };
+
 export function openForm(type, item) {
   formModal.type = type;
   formModal.title = (item ? "Chỉnh Sửa " : "Thêm ") + (formTitles[type] || "");
+
   const base = {};
+
   (fieldDefs[type] || []).forEach((f) => {
     base[f.key] = f.type === "checkbox" ? true : "";
   });
-  // Tài khoản tạo mới mặc định không có quyền quản trị.
+
+  // Mặc định tài khoản mới không có quyền quản trị.
   if (type === "accounts" && !item) base.role_id = 2;
-  if (type === "sizes" && !item) { base.standard='EU'; base.sort_order=0; }
-  if (type === "colors" && !item) { base.hex='#000000'; base.sort_order=0; }
+
+  if (type === "sizes" && !item) {
+    base.standard = "EU";
+    base.sort_order = 0;
+  }
+
+  if (type === "colors" && !item) {
+    base.hex = "#000000";
+    base.name = getColorName(base.hex);
+  }
+
   formModal.data = item
     ? { ...base, ...JSON.parse(JSON.stringify(item)) }
     : base;
-  Object.assign(formModal,{touched:{},submitted:false,saving:false,serverErrors:{},error:'',discardConfirm:false,initial:JSON.stringify(formModal.data)});
+
+  // Nếu màu cũ chưa có tên thì tự nhận diện theo HEX.
+  if (type === "colors" && !String(formModal.data.hex || "").trim()) {
+    formModal.data.hex = "#000000";
+  }
+  if (type === "colors" && !String(formModal.data.name || "").trim()) {
+    formModal.data.name = getColorName(formModal.data.hex);
+  }
+
+  Object.assign(formModal, {
+    touched: {},
+    submitted: false,
+    saving: false,
+    serverErrors: {},
+    error: "",
+    discardConfirm: false,
+    initial: JSON.stringify(formModal.data),
+  });
+
   formModal.open = true;
 }
+
 export async function saveForm() {
   if(formModal.saving) return;
   const type = formModal.type;
@@ -3907,6 +4157,10 @@ export async function saveForm() {
   const isEdit = !!data.id;
   const payload = { ...data };
   if(['categories','brands','materials','colors'].includes(type)) payload.name=normalizeCatalogName(data.name);
+  if (type === "colors") {
+    payload.hex = String(data.hex || "").trim().toUpperCase();
+    delete payload.sort_order;
+  }
   if(type==='sizes') { payload.name=String(Number(String(data.name).trim().replace(',','.')));payload.standard=String(data.standard).toUpperCase();delete payload.sort_order; }
   if (type === "accounts" && isEdit) {
     delete payload.username;

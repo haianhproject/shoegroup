@@ -1,4 +1,3 @@
-
 <!-- Mục đích: Trang quản lý tên, mã màu và trạng thái sử dụng màu sản phẩm. -->
 <!-- Trang: Quản Lý Màu Sắc -->
 
@@ -44,7 +43,6 @@ import {
         <table class="table align-middle mb-0 colors-table admin-catalog-table">
           <thead>
             <tr>
-              <th class="pl-4">ID</th>
               <th>Tên màu</th>
               <th>Mã màu</th>
               <th>Trạng thái</th>
@@ -54,11 +52,6 @@ import {
 
           <tbody>
             <tr v-for="c in filteredColors" :key="c.id">
-              <!-- ID -->
-              <td class="pl-4 text-gray-600">
-                #{{ c.id }}
-              </td>
-
               <!-- Tên màu -->
               <td>
                 <span class="color-name">
@@ -105,7 +98,7 @@ import {
 
             <!-- Danh sách trống -->
             <tr v-if="!filteredColors.length">
-              <td colspan="5" class="empty-state">
+              <td colspan="4" class="empty-state">
                 <div class="empty-content">
                   <i class="icon icon-palette empty-icon"></i>
 
