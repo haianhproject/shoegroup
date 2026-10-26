@@ -1,7 +1,7 @@
 <!-- Mục đích: Trang đơn hàng của tôi: xem tiến độ, hủy đơn, đổi địa chỉ và xác nhận nhận hàng. -->
 ﻿<script setup>
 // Mục đích: Trang theo dõi lịch sử, trạng thái và thao tác trên đơn hàng của khách.
-import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
@@ -76,30 +76,57 @@ const scrollExpandedIntoView = () => {
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null })
+const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null, submitting: false, error: '' })
+const cancelReasonInput = ref(null)
+let cancelTrigger = null
 
 const handleCancel = (order) => {
+  if (cancelModal.submitting) return
+  cancelTrigger = document.activeElement
   cancelModal.orderId = order.id
   cancelModal.serverId = order.serverId
   cancelModal.reason = ''
+  cancelModal.error = ''
   cancelModal.open = true
+  nextTick(() => cancelReasonInput.value?.focus())
 }
 
-const closeCancelModal = () => { cancelModal.open = false }
+const closeCancelModal = () => {
+  if (cancelModal.submitting) return
+  cancelModal.open = false
+  nextTick(() => cancelTrigger?.focus())
+}
+
+const trapCancelFocus = (event) => {
+  const controls = [...event.currentTarget.querySelectorAll('textarea:not(:disabled), button:not(:disabled)')]
+  const first = controls[0], last = controls.at(-1)
+  if (!first) { event.preventDefault(); return }
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+}
 
 const submitCancel = async () => {
+  if (!cancelModal.open || cancelModal.submitting) return
+  cancelModal.submitting = true
+  cancelModal.error = ''
+  const orderId = cancelModal.orderId
   const reason = cancelModal.reason.trim() || 'Khách hàng hủy đơn.'
-  if (cancelModal.serverId) {
-    try {
-      await api.put(`/orders/${cancelModal.serverId}/status`, { status: 'Đã hủy', reason })
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Không thể hủy đơn ở trạng thái hiện tại.' })
-      return
+  try {
+    let response
+    if (cancelModal.serverId) {
+      response = await api.put(`/orders/${cancelModal.serverId}/status`, { status: 'Đã hủy', reason })
     }
+    cancelOrder(orderId, reason, response?.payment_status)
+    cancelModal.submitting = false
+    closeCancelModal()
+    notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${orderId} đã được hủy.` })
+  } catch (error) {
+    cancelModal.error = error.message || 'Không thể hủy đơn ở trạng thái hiện tại.'
+    notify({ type: 'error', message: cancelModal.error })
+    if ([400, 403, 409].includes(error.status)) await loadOrders()
+  } finally {
+    cancelModal.submitting = false
   }
-  cancelOrder(cancelModal.orderId, reason)
-  notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${cancelModal.orderId} đã được hủy.` })
-  closeCancelModal()
 }
 
 const isBankTransfer = (o) => {
@@ -537,7 +564,7 @@ onUnmounted(() => {
 
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><i class="icon icon-x-circle mr-1"></i>Hủy đơn</button>
+            <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><OrderStatusIcon name="cancelled" :size="16" />Hủy đơn</button>
             <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
             <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
               <span class="delivery-success-pill">
@@ -690,15 +717,16 @@ onUnmounted(() => {
     <!-- Cancel Order Modal -->
     <transition name="suc">
       <div v-if="cancelModal.open" class="modal-overlay" @click.self="closeCancelModal">
-        <div class="sg-card modal-box">
-          <h5 class="font-bold mb-3">Lý do hủy đơn</h5>
-          <p class="text-gray-600 mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
-          <textarea v-model="cancelModal.reason" class="sg-input w-full" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
+        <form class="sg-card modal-box" role="dialog" aria-modal="true" aria-labelledby="cancel-title" aria-describedby="cancel-description" :aria-busy="cancelModal.submitting" @submit.prevent="submitCancel" @keydown.esc.stop.prevent="closeCancelModal" @keydown.tab="trapCancelFocus">
+          <h5 id="cancel-title" class="font-bold mb-3">Lý do hủy đơn</h5>
+          <p id="cancel-description" class="text-gray-600 mb-3">Vui lòng cho chúng tôi biết lý do bạn muốn hủy đơn hàng này (không bắt buộc).</p>
+          <textarea ref="cancelReasonInput" v-model="cancelModal.reason" aria-label="Lý do hủy đơn" maxlength="500" :readonly="cancelModal.submitting" class="sg-input w-full" rows="3" placeholder="Nhập lý do hủy đơn..."></textarea>
+          <p v-if="cancelModal.error" class="text-red-600 mt-2" role="alert">{{ cancelModal.error }}</p>
           <div class="flex gap-2 mt-4 justify-end">
-            <button class="btn-sg-outline" @click="closeCancelModal">Đóng</button>
-            <button class="btn-sg" style="background: #ef4444; box-shadow: 0 10px 24px rgba(239, 68, 68, 0.3);" @click="submitCancel">Xác nhận hủy</button>
+            <button type="button" class="btn-sg-outline" :disabled="cancelModal.submitting" @click="closeCancelModal">Đóng</button>
+            <button type="submit" class="btn-sg" :disabled="cancelModal.submitting" style="background: #ef4444; box-shadow: 0 10px 24px rgba(239, 68, 68, 0.3);">{{ cancelModal.submitting ? 'Đang hủy…' : 'Xác nhận hủy' }}</button>
           </div>
-        </div>
+        </form>
       </div>
     </transition>
 
@@ -761,7 +789,7 @@ onUnmounted(() => {
 .oc-meta span { display: block; font-size: .72rem; color: var(--sg-muted); }
 .oc-meta strong { font-size: .85rem; }
 .oc-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-.btn-cancel-outline { color: #b91c1c; border-color: #fecaca; }
+.btn-cancel-outline { display: inline-flex; align-items: center; gap: 6px; color: #b91c1c; border-color: #fecaca; }
 .btn-cancel-outline:hover { background: #fff5f5; color: #b91c1c; border-color: #ef4444; }
 
 .co-label { font-weight: 700; font-size: 0.82rem; color: #333; }

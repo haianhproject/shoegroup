@@ -63,6 +63,7 @@ export const formatCurrency = (value) =>
 export const orderState = reactive({
   orders: readOrdersFromStorage(),
 });
+let ordersMutationVersion = 0;
 
 /* Nạp lại đơn hàng (dùng ở onMounted của trang đơn hàng) */
 export const loadOrders = async () => {
@@ -224,6 +225,7 @@ const orderWasPaid = (order) => {
 };
 
 export const cancelOrder = (orderId, reason, paymentStatus) => {
+  ordersMutationVersion++;
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
   o.status = "CANCELLED";
@@ -456,6 +458,7 @@ export const ordersLikelySame = (localOrder, serverOrder) => {
 
 /* Đồng bộ trạng thái từ server (Admin cập nhật) về đơn của khách */
 export const syncFromServer = async () => {
+  const version = ordersMutationVersion;
   const user = getCurrentUser();
   if (!user) return;
 
@@ -470,6 +473,8 @@ export const syncFromServer = async () => {
     console.warn("Lỗi syncFromServer:", err);
     return;
   }
+  // Bỏ phản hồi polling bắt đầu trước khi khách vừa hủy thành công.
+  if (version !== ordersMutationVersion) return;
   return reconcileOrdersFromServer(list);
 };
 

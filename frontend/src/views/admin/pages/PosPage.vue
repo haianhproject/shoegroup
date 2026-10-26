@@ -6,6 +6,7 @@ import {
   activePosOrder, resetPosOrder,
   posPayModal, confirmPosPaid, cancelPosPay, markPosQrFailed,
   posSearch, posVariants, addToCart, removeCartItem,
+  posSizeFilter, posColorFilter, posSizeOptions, posColorOptions,
   posSubtotal, posDiscountAmount, posGrandTotal, posChange, getDisplayName,
   posCouponList, applyPosCoupon, clearPosCoupon,
   posCustomerSearch, posCustomerResults, pickPosCustomer,
@@ -132,6 +133,21 @@ onUnmounted(()=>clearInterval(cartRefresh))
             <i class="icon icon-search absolute text-gray-600" style="left:12px;top:50%;transform:translateY(-50%);"></i>
             <input v-model="posSearch" type="text" class="sg-input rounded-2 pl-5" placeholder="Tìm tên, màu, size, thương hiệu, chất liệu...">
           </div>
+          <div class="pos-catalog-filters">
+            <label for="pos-size-filter">Kích cỡ
+              <select id="pos-size-filter" v-model="posSizeFilter" class="sg-input">
+                <option value="">Tất cả kích cỡ</option>
+                <option v-for="size in posSizeOptions" :key="size.value" :value="size.value">{{ size.label }}</option>
+              </select>
+            </label>
+            <label for="pos-color-filter">Màu sắc
+              <select id="pos-color-filter" v-model="posColorFilter" class="sg-input">
+                <option value="">Tất cả màu sắc</option>
+                <option v-for="color in posColorOptions" :key="color" :value="color">{{ color }}</option>
+              </select>
+            </label>
+            <button v-if="posSizeFilter || posColorFilter || posSearch" type="button" class="btn-sg-outline" @click="posSizeFilter = ''; posColorFilter = ''; posSearch = ''">Xóa bộ lọc</button>
+          </div>
           <p class="pos-stock-hint">Thêm vào giỏ sẽ trừ kho ngay. Xóa sản phẩm hoặc làm mới đơn sẽ hoàn kho.</p>
           <div class="pos-products-grid">
             <div v-if="posVariants.length === 0" class="pos-products-empty">Không tìm thấy sản phẩm.</div>
@@ -143,7 +159,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
                   <span><i class="pos-color-dot" :style="{ background: v.color_hex || '#d1d5db' }"></i>Màu: {{ v.color || 'Chưa cập nhật' }}</span>
                   <span>Cỡ <strong>{{ v.standard }} {{ v.size || '—' }}</strong></span>
                 </div>
-                <p class="text-xs text-gray-600">Mã SP: #{{ v.product_id }} · SKU: {{ v.sku || '—' }}</p>
+                <p class="text-xs text-gray-600" aria-label="Mã biến thể">{{ v.sku || '—' }}</p>
               </div>
               <div class="pos-product-footer">
               <div class="pos-product-price-row">
@@ -201,7 +217,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
               <img :src="c.image || productPlaceholder" class="pos-cart-image" :alt="c.name" @error="imageError">
               <div class="pos-cart-description">
                 <p class="pos-cart-name">{{ c.name }}</p>
-                <p class="text-xs text-gray-600">Mã SP: #{{ c.product_id }} · SKU: {{ c.sku || '—' }}</p>
+                <p class="text-xs text-gray-600" aria-label="Mã biến thể">{{ c.sku || '—' }}</p>
                 <p class="pos-cart-variant">{{ c.color }} · {{ c.standard || 'EU' }} {{ c.size }}</p>
                 <strong>{{ formatPrice(c.price) }}</strong>
               </div>
@@ -361,7 +377,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
                   <tr v-for="(item, i) in posInvoiceModal.items" :key="i" class="border-b last:border-b-0">
                     <td class="py-2 px-3">
                       <div class="font-medium text-gray-900 leading-snug">{{ item.name }}</div>
-                      <div class="text-xs text-gray-600">Mã SP: #{{ item.product_id }} · SKU: {{ item.sku || '—' }}</div>
+                      <div class="text-xs text-gray-600" aria-label="Mã biến thể">{{ item.sku || '—' }}</div>
                       <div class="text-gray-600" style="font-size:0.72rem;">{{ [item.color, item.size ? 'Size ' + item.size : ''].filter(Boolean).join(' · ') }}</div>
                     </td>
                     <td class="py-2 px-2 text-center text-gray-700">{{ item.quantity }}</td>
@@ -410,6 +426,9 @@ onUnmounted(()=>clearInterval(cartRefresh))
 </template>
 
 <style scoped>
+.pos-catalog-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.pos-catalog-filters label { flex: 1; min-width: 140px; font-size: 12px; color: #52525b; }
+.pos-catalog-filters select { display: block; width: 100%; margin-top: 5px; }
 .pos-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .pos-catalog, .pos-checkout { min-width: 0; }
 .pos-sync-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border: 1px solid #ddd; border-radius: 10px; background: #fff; font-size: 13px; }

@@ -423,8 +423,8 @@ function rangeBounds() {
   if (dateRange.value === "year")
     return [new Date(now.getFullYear(), 0, 1), now];
   if (dateRange.value === "custom") {
-    const f = customRange.from ? new Date(customRange.from) : new Date(0);
-    const t = customRange.to ? new Date(customRange.to + "T23:59:59") : now;
+    const f = customRange.from ? new Date(customRange.from + "T00:00:00") : new Date(0);
+    const t = customRange.to ? new Date(customRange.to + "T23:59:59.999") : now;
     return [f, t];
   }
   return [new Date(0), now];
@@ -445,8 +445,26 @@ export const ordersInRange = computed(() => {
 export const statAccounts = computed(() => db.accounts.length);
 export const statProducts = computed(() => db.products.length);
 export const statOrders = computed(() => ordersInRange.value.length);
+export function localDateKey(value) {
+  const date = new Date(value);
+  if (isNaN(date)) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+export function revenueDate(order) {
+  // POS ghi nhận lúc thu tiền; Online ghi nhận khi hết thời gian chờ trả hàng.
+  return getOrderChannel(order) === "Offline"
+    ? order.payment_confirmed_at || order.received_confirmed_at || order.date
+    : order.revenue_eligible_at || order.received_confirmed_at || order.date;
+}
+export const revenueOrdersInRange = computed(() => {
+  const [from, to] = rangeBounds();
+  return db.orders.filter(order => {
+    const date = new Date(revenueDate(order));
+    return recognizedOrderRevenue(order) > 0 && date >= from && date <= to;
+  });
+});
 export const statRevenue = computed(
-  () => ordersInRange.value.reduce((sum,order)=>sum+recognizedOrderRevenue(order),0),
+  () => revenueOrdersInRange.value.reduce((sum,order)=>sum+recognizedOrderRevenue(order),0),
 );
 
 export function exportReport() {
@@ -494,7 +512,7 @@ export const recentOrdersByDate = computed(() => {
   ordersInRange.value.forEach((o) => {
     const d = new Date(o.date);
     if (isNaN(d)) return;
-    const key = d.toISOString().slice(0, 10);
+    const key = localDateKey(d);
     map[key] = (map[key] || 0) + 1;
   });
   return Object.entries(map)
@@ -540,9 +558,11 @@ export const paymentRevenueSummary = computed(() => {
     posTransfer: 0,
     webCod: 0,
     webTransfer: 0,
+    pos: 0,
+    online: 0,
     total: 0,
   };
-  validOrdersInRange.value.forEach((o) => {
+  revenueOrdersInRange.value.forEach((o) => {
     const channel = getOrderChannel(o);
     const pm = (o.payment_method || "").toLowerCase();
     const isTransfer =
@@ -552,30 +572,56 @@ export const paymentRevenueSummary = computed(() => {
     summary.total += amt;
 
     if (channel === "Offline") {
+      summary.pos += amt;
       if (isTransfer) summary.posTransfer += amt;
       else summary.posCash += amt;
     } else {
+      summary.online += amt;
       if (isTransfer) summary.webTransfer += amt;
       else summary.webCod += amt;
     }
   });
   return summary;
 });
+export const revenuePeriod = ref("day");
+export const revenueByPeriod = computed(() => {
+  const groups = new Map();
+  revenueOrdersInRange.value.forEach(order => {
+    const key = localDateKey(revenueDate(order)).slice(0, revenuePeriod.value === "year" ? 4 : revenuePeriod.value === "month" ? 7 : 10);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, { period: key, pos: 0, online: 0, total: 0 });
+    const row = groups.get(key), amount = recognizedOrderRevenue(order);
+    row[getOrderChannel(order) === "Offline" ? "pos" : "online"] += amount;
+    row.total += amount;
+  });
+  return [...groups.values()].sort((a, b) => b.period.localeCompare(a.period));
+});
+
+export const topProductsPeriod = ref("month");
+export const topProductsDate = ref(localDateKey(new Date()));
+export const topProductsMonth = ref(localDateKey(new Date()).slice(0, 7));
+export const topProductsYear = ref(new Date().getFullYear());
 export const topProductsList = computed(() => {
-  const prodQty = {};
-  validOrdersInRange.value.forEach((o) => {
-    (o.products || []).forEach((d) => {
-      const name = d.name || "-";
-      prodQty[name] = (prodQty[name] || 0) + (Number(d.quantity) || 0);
+  const mode = topProductsPeriod.value;
+  const selected = String(mode === "day" ? topProductsDate.value : mode === "month" ? topProductsMonth.value : topProductsYear.value);
+  if (!selected) return [];
+  const products = new Map();
+  db.orders.forEach(order => {
+    if (!["Đã giao hàng thành công", "Đã nhận hàng"].includes(order.status)) return;
+    const key = localDateKey(order.date).slice(0, mode === "year" ? 4 : mode === "month" ? 7 : 10);
+    if (key !== selected) return;
+    (order.products || []).forEach(detail => {
+      const quantity = Math.max(0, (Number(detail.quantity) || 0) - (Number(detail.historical_returned_quantity) || 0));
+      if (!quantity) return;
+      const id = detail.product_id != null ? `id:${detail.product_id}` : `name:${detail.name}`;
+      if (!products.has(id)) {
+        const product = db.products.find(p => detail.product_id != null ? String(p.id) === String(detail.product_id) : p.name === detail.name);
+        products.set(id, { id, name: detail.name || product?.name || "-", quantity: 0, brand: product?.brand || "-" });
+      }
+      products.get(id).quantity += quantity;
     });
   });
-  return Object.entries(prodQty)
-    .map(([name, quantity]) => {
-      const prod = db.products.find((p) => p.name === name);
-      return { name, quantity, brand: prod ? prod.brand || "-" : "-" };
-    })
-    .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 10);
+  return [...products.values()].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "vi")).slice(0, 10);
 });
 export const inventoryByColor = computed(() => {
   const map = {};
@@ -657,7 +703,7 @@ export function buildTrendData() {
     const key =
       trendMode.value === "month"
         ? d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
-        : d.toISOString().slice(0, 10);
+        : localDateKey(d);
     buckets[key] = (buckets[key] || 0) + 1;
   });
   const labels = Object.keys(buckets).sort();
@@ -1884,6 +1930,8 @@ export function printPosInvoice() {
   });
 }
 export const posSearch = ref("");
+export const posSizeFilter = ref("");
+export const posColorFilter = ref("");
 
 function activeVariantDiscount(productId, color, variantId) {
   const now = Date.now();
@@ -1928,8 +1976,7 @@ function posProductAttributes(product) {
   };
 }
 
-export const posVariants = computed(() => {
-  const q = plainText(posSearch.value);
+export const posCatalogVariants = computed(() => {
   const list = [];
   const covered = new Set();
   db.inventory.forEach((v) => {
@@ -1973,12 +2020,23 @@ export const posVariants = computed(() => {
       price: Number(p.price) || 0,
     });
   });
-  return list.filter(
-    (v) =>
-      !q ||
+  return list;
+});
+const posSizeKey = variant => `${variant.standard || 'EU'}|${variant.size}`;
+export const posSizeOptions = computed(() => [...new Map(posCatalogVariants.value
+  .filter(v => v.size).map(v => [posSizeKey(v), { value: posSizeKey(v), label: `${v.standard || 'EU'} ${v.size}` }])).values()]
+  .sort((a, b) => a.label.localeCompare(b.label, 'vi', { numeric: true })));
+export const posColorOptions = computed(() => [...new Set(posCatalogVariants.value.map(v => v.color).filter(Boolean))]
+  .sort((a, b) => a.localeCompare(b, 'vi')));
+export const posVariants = computed(() => {
+  const q = plainText(posSearch.value);
+  return posCatalogVariants.value.filter(v =>
+    (!posSizeFilter.value || posSizeKey(v) === posSizeFilter.value) &&
+    (!posColorFilter.value || v.color === posColorFilter.value) &&
+    (!q ||
       [v.product_name, v.color, v.size, v.standard, v.sku, v.brand, v.category, v.material]
-        .some(value => plainText(value).includes(q)),
-  );
+        .some(value => plainText(value).includes(q)))
+  ).sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0));
 });
 export async function addToCart(v, qty) {
   const order = activePosOrder.value;
@@ -4218,7 +4276,7 @@ export function mapOrder(o) {
     delivered_at: o.DeliveredDate ?? o.delivered_date ?? null,
     received_confirmed_at: o.ReceivedConfirmedDate ?? o.received_confirmed_date ?? null,
     revenue_eligible_at: o.RevenueEligibleDate ?? o.revenue_eligible_date ?? null,
-    is_counted_as_revenue: Boolean(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
+    is_counted_as_revenue: [true, 1, "1"].includes(o.IsCountedAsRevenue ?? o.is_counted_as_revenue),
     stock_issue_status: o.StockIssueStatus ?? o.stock_issue_status ?? null,
     stock_issue_reason: o.StockIssueReason ?? o.stock_issue_reason ?? "",
     stock_deducted_at: o.StockDeductedAt ?? o.stock_deducted_at ?? null,
@@ -4237,6 +4295,7 @@ export function mapOrder(o) {
       color: d.ColorName ?? d.color ?? "",
       size: d.Size ?? d.size ?? "",
       quantity: d.Quantity ?? d.quantity ?? 1,
+      historical_returned_quantity: d.HistoricalReturnedQuantity ?? d.historical_returned_quantity ?? 0,
       price: d.UnitPrice ?? d.price ?? 0,
       image: d.ImageURL ?? d.image ?? "",
     })),
@@ -4291,14 +4350,27 @@ function applyOrdersResponse(orders, isBackground) {
 }
 
 let refreshOrdersInFlight = null;
+export const ordersLoadError = ref("");
+let ordersRequestVersion = 0;
+let appliedOrdersVersion = 0;
+
+async function loadAdminOrders(isBackground) {
+  const version = ++ordersRequestVersion;
+  const orders = await api("/orders", { cache: "no-store" });
+  if (version < appliedOrdersVersion) return orders;
+  if (!Array.isArray(orders)) {
+    ordersLoadError.value = "Chưa tải được đơn hàng mới nhất. Số liệu đang giữ lần tải thành công trước đó.";
+    return null;
+  }
+  appliedOrdersVersion = version;
+  applyOrdersResponse(orders, isBackground);
+  ordersLoadError.value = "";
+  return orders;
+}
 
 export function refreshOrders() {
   if (refreshOrdersInFlight) return refreshOrdersInFlight;
-  refreshOrdersInFlight = (async () => {
-    const orders = await api("/orders", { cache: "no-store" });
-    if (!Array.isArray(orders)) return null;
-    return applyOrdersResponse(orders, true);
-  })().finally(() => {
+  refreshOrdersInFlight = loadAdminOrders(true).then(orders => orders ? db.orders : null).finally(() => {
     refreshOrdersInFlight = null;
   });
   return refreshOrdersInFlight;
@@ -4332,7 +4404,7 @@ async function loadAllData(isBackground) {
       sizes,
       materials,
     ] = await Promise.all([
-      api("/orders"),
+      loadAdminOrders(isBackground),
       api("/products"),
       api("/categories"),
       api("/discounts"),
@@ -4365,7 +4437,6 @@ async function loadAllData(isBackground) {
         "Khong tai duoc du lieu quan tri" + (failed ? ": " + failed : "."),
       );
     }
-    applyOrdersResponse(orders, isBackground);
     db.products = (products || []).map((p) => ({
       id: p.ProductID ?? p.id,
       name: p.ProductName ?? p.name,
@@ -4539,6 +4610,8 @@ async function loadAllData(isBackground) {
       "error",
     );
   } finally {
-    if (!isBackground) isLoading.value = false;
+    // Trang con POS có thể tải nền trước onMounted của layout. Cả hai dùng
+    // chung request nên lượt hoàn tất luôn phải giải phóng lớp chờ ban đầu.
+    isLoading.value = false;
   }
 }

@@ -1802,7 +1802,7 @@ app.post("/api/orders", async (req, res) => {
       if (status === 'Đã nhận hàng' && paymentStatus === 'Đã thanh toán') {
         await new sql.Request(transaction).input('oid',sql.Int,orderId).query(`
           UPDATE Orders SET DeliveredDate=GETDATE(),ReceivedConfirmedDate=GETDATE(),PaymentConfirmedAt=GETDATE(),
-            RevenueEligibleDate=DATEADD(day,14,GETDATE()),AutoCancelDeadline=NULL WHERE OrderID=@oid;`);
+            RevenueEligibleDate=GETDATE(),IsCountedAsRevenue=1,AutoCancelDeadline=NULL WHERE OrderID=@oid;`);
       }
 
       // B2: Luu tung san pham vao bang OrderDetails (ho tro ca ProductID lan bien the)
@@ -2187,7 +2187,8 @@ app.get("/api/orders", async (req, res) => {
           SELECT od.OrderID, od.OrderDetailID as order_detail_id, od.ProductID as product_id, od.ProductVariantID as variant_id,
                  COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                  COALESCE(NULLIF(od.ImageURLSnapshot, ''), variantImage.ImageURL, NULLIF(p.ImageURL, ''), '') as image,
-                 od.Quantity as quantity, od.UnitPrice as price,
+                 od.Quantity as quantity,
+                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, od.UnitPrice as price,
                  ISNULL(od.Size, '') as size, ISNULL(od.Color, N'') as color
           FROM OrderDetails od LEFT JOIN Products p ON od.ProductID = p.ProductID
           LEFT JOIN ProductVariants v
@@ -3713,6 +3714,7 @@ app.get("/api/variantDiscounts", async (req, res) => {
                   THEN N'Theo phần trăm' ELSE N'Cố định' END as discount_type,
              vd.DiscountValue as value, vd.DiscountPercent as [percent],
              vd.MaxDiscountAmount as max_discount, vd.Quantity as quantity,
+                 ISNULL(d.HistoricalReturnedQuantity,0) as historical_returned_quantity,
              vd.UsedCount as used,
              CONVERT(varchar(10), vd.StartDate, 23) as start_date,
              CONVERT(varchar(10), vd.EndDate, 23) as end_date,
@@ -4187,7 +4189,8 @@ app.get("/api/customers/:id/orders", async (req, res) => {
           `SELECT od.OrderID, od.OrderDetailID as order_detail_id, od.ProductID as product_id, od.ProductVariantID as variant_id,
                   COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                   COALESCE(NULLIF(od.ImageURLSnapshot, ''), variantImage.ImageURL, NULLIF(p.ImageURL, ''), '') as image,
-                  od.Quantity as quantity, od.UnitPrice as price,
+                  od.Quantity as quantity,
+                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, od.UnitPrice as price,
                   ISNULL(od.Size, '') as size, ISNULL(od.Color, N'') as color
            FROM OrderDetails od LEFT JOIN Products p ON od.ProductID = p.ProductID
            LEFT JOIN ProductVariants v
@@ -4686,10 +4689,15 @@ async function runAutoCancelJob() {
     }
 
     await pool.request().query(`
-      UPDATE Orders SET IsCountedAsRevenue = 1
-      WHERE RevenueEligibleDate IS NOT NULL AND RevenueEligibleDate <= GETDATE()
-        AND Status IN (N'Đã nhận hàng', N'Da nhan hang') AND ISNULL(IsCountedAsRevenue, 0) = 0
+
+      UPDATE Orders SET IsCountedAsRevenue = 1,
+        RevenueEligibleDate = CASE WHEN NULLIF(LTRIM(RTRIM(HandledBy)),N'') IS NOT NULL AND UPPER(LTRIM(RTRIM(HandledBy))) NOT IN (N'ONLINE',N'WEB',N'WEBSITE')
+          THEN COALESCE(PaymentConfirmedAt,ReceivedConfirmedDate,OrderDate) ELSE RevenueEligibleDate END,
+        UpdatedAt=GETDATE()
+      WHERE ISNULL(IsCountedAsRevenue,0)=0
+        AND Status IN (N'Đã nhận hàng',N'Da nhan hang')
         AND PaymentStatus IN (N'Đã thanh toán',N'Da thanh toan')
+        AND ((NULLIF(LTRIM(RTRIM(HandledBy)),N'') IS NOT NULL AND UPPER(LTRIM(RTRIM(HandledBy))) NOT IN (N'ONLINE',N'WEB',N'WEBSITE')) OR (RevenueEligibleDate IS NOT NULL AND RevenueEligibleDate<=GETDATE()))
     `);
   } catch (e) {
     console.log("AutoCancel job:", e.message);
