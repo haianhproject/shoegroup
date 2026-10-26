@@ -35,7 +35,6 @@ import {
   productVariantCount,
   productStockTotal,
   getMaterialName,
-  getBrandName,
   LOW_STOCK_THRESHOLD,
   productFormVariantCount,
   productFormStockTotal,
@@ -96,12 +95,11 @@ function onProductImageError(event) {
           <thead v-if="filteredProducts.length">
             <tr>
               <th scope="col">Mã sản phẩm</th>
-              <th scope="col">Ảnh sản phẩm</th>
+              <th scope="col">Hình ảnh</th>
               <th scope="col">Tên giày</th>
-              <th scope="col">Thương hiệu</th>
               <th scope="col">Khoảng giá</th>
               <th scope="col" class="text-center">Tồn kho</th>
-              <th scope="col">Trạng thái</th>
+              <th scope="col" class="text-center">Trạng thái</th>
               <th scope="col" class="text-end">Thao tác</th>
             </tr>
           </thead>
@@ -117,9 +115,6 @@ function onProductImageError(event) {
                   <span v-if="p.is_featured" class="products-featured">Nổi bật</span>
                 </div>
               </td>
-              <td>
-                <span class="products-brand" v-text="p.brand || getBrandName(p.brand_id)"></span>
-              </td>
               <td class="products-price">
                 <strong>{{ productPriceLabel(p) }}</strong>
               </td>
@@ -127,7 +122,7 @@ function onProductImageError(event) {
                 <strong class="products-stock" :class="{ 'is-low': productStockTotal(p.id) <= LOW_STOCK_THRESHOLD }">{{ productStockTotal(p.id) }}</strong>
                 <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
               </td>
-              <td>
+              <td class="text-center">
                 <ActivityStatus :active="p.active" />
               </td>
               <td>
@@ -139,7 +134,7 @@ function onProductImageError(event) {
               </td>
             </tr>
             <tr v-if="!filteredProducts.length">
-              <td colspan="8">
+              <td colspan="7">
                 <div class="products-empty">
                   <span class="products-empty-icon"><i class="icon icon-box-seam" aria-hidden="true"></i></span>
                   <h2>{{ productSearch || filterCategory ? 'Không tìm thấy sản phẩm' : 'Danh mục đang trống' }}</h2>
@@ -572,7 +567,7 @@ function onProductImageError(event) {
               <h3 id="product-information-title">Thông tin sản phẩm</h3>
               <dl class="product-detail-attributes">
                 <div><dt>Danh mục</dt><dd>{{ productDetailModal.product.category || '—' }}</dd></div>
-                <div><dt>Thương hiệu</dt><dd>{{ productDetailModal.product.brand || getBrandName(productDetailModal.product.brand_id) }}</dd></div>
+                <div><dt>Thương hiệu</dt><dd>{{ productDetailModal.product.brand || '—' }}</dd></div>
                 <div><dt>Chất liệu</dt><dd>{{ getMaterialName(productDetailModal.product.material_id) }}</dd></div>
               </dl>
             </div>
@@ -782,11 +777,11 @@ function onProductImageError(event) {
 
 .products-result-count strong { color: #252529; }
 .products-table-scroll { width: 100%; overflow-x: auto; }
-.products-table { min-width: 1010px; width: 100%; }
+.products-table { min-width: 900px; width: 100%; }
 .products-table.is-empty { min-width: 0; }
 
 .products-table thead th {
-  padding: 13px 16px;
+  padding: 12px 14px;
   border-top: 1px solid #ededee;
   border-bottom: 1px solid #ededee;
   background: #fafafa;
@@ -799,25 +794,28 @@ function onProductImageError(event) {
 }
 
 .products-table tbody td {
-  padding: 18px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid #f0f0f1;
   font-size: 12px;
   vertical-align: middle;
 }
 
 .products-table th:first-child,
-.products-table td:first-child { padding-left: 22px; }
+.products-table td:first-child { padding-left: 20px; }
 .products-table th:last-child,
-.products-table td:last-child { padding-right: 22px; }
+.products-table td:last-child { padding-right: 20px; }
 .products-table tbody tr:last-child td { border-bottom: 0; }
 .products-table tbody tr:hover { background: #fcfcfc; }
+
+/* Cột trạng thái căn giữa */
+.products-table td.text-center > * { display: inline-flex; align-items: center; justify-content: center; }
 
 .products-id { white-space:nowrap;font-variant-numeric:tabular-nums;color:#67676f; }
 
 .products-thumbnail {
-  flex: 0 0 56px;
-  width: 56px;
-  height: 56px;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
   border: 1px solid #ededee;
   border-radius: 8px;
   object-fit: cover;
@@ -839,7 +837,6 @@ function onProductImageError(event) {
 }
 .products-name:hover { color: #d4001a; }
 .products-featured { display:block;margin-top:4px;color:#b90016;font-size:9px; }
-.products-brand { display: block; color: #343439; font-size: 12px; }
 .products-price { white-space: normal; }
 .products-price strong { display: block; font-size: 12px; font-weight: 650; }
 .products-price del { display: block; margin-top: 5px; color: #95959b; font-size: 10px; }

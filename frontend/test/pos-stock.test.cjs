@@ -36,6 +36,27 @@ const snapshot = (quantity = 0, revision = 0) => ({ success: true, revision, ite
   stock: 3 - quantity, version: revision,
 }] : [], stockUpdates: [{ id: 11, stock: 3 - quantity, version: revision }] });
 
+test('POS combines size/color/search, preserves size standards, and moves sold-out variants last', () => {
+  const state = store(async () => json([]));
+  state.db.inventory = [
+    { id: 11, product_id: 1, product_name: 'Giày', color: 'Đen', standard: 'EU', size: '40', sku: 'EU40-DEN', stock: 0 },
+    { id: 12, product_id: 1, product_name: 'Giày', color: 'Trắng', standard: 'EU', size: '40', sku: 'EU40-TRANG', stock: 3 },
+    { id: 13, product_id: 1, product_name: 'Giày', color: 'Đen', standard: 'US', size: '40', sku: 'US40-DEN', stock: 1 },
+    { id: 14, product_id: 1, product_name: 'Giày', color: 'Đen', standard: 'EU', size: '40', sku: 'EU40-DEN2', stock: 2 },
+    { id: 15, product_id: 1, color: 'Đỏ', size: '50', active: false, stock: 10 },
+  ];
+  assert.equal(state.posVariants.value.map(v => v.id).join(','), '12,13,14,11');
+  assert.equal(state.posSizeOptions.value.map(v => v.value).join(','), 'EU|40,US|40');
+  state.posColorFilter.value = 'Đen'; state.posSizeFilter.value = 'EU|40';
+  assert.equal(state.posVariants.value.map(v => v.id).join(','), '14,11');
+  state.posSearch.value = 'den2';
+  assert.equal(state.posVariants.value[0].id, 14);
+  assert.equal(state.posColorOptions.value.length, 2);
+  state.db.inventory.find(v => v.id === 14).stock = 0;
+  state.posSearch.value = '';
+  assert.equal(state.posVariants.value.every(v => v.stock === 0), true);
+});
+
 test('POS waits for server reservation and blocks a double add; available stock is not subtracted twice', async () => {
   let complete, writes = 0;
   const state = store(async (url, options) => {

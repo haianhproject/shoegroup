@@ -5,13 +5,21 @@ import Chart from 'chart.js/auto'
 import AdminIcon from '../components/AdminIcon.vue'
 import {
   rangeOptions, dateRange, setRange, customRange, rangeLabel, exportReport,
-  statAccounts, statProducts, statOrders, statRevenue, formatPrice,
+  statOrders, statRevenue, formatPrice,
   trendMode, setTrendMode, buildTrendData, isLoading, ordersInRange,
   avgOrderValue, recentOrdersByDate, buildOrderStatusData, paymentRevenueSummary,
-  topProductsList, lowStockList, lowStockCount
+  topProductsList, topProductsPeriod, topProductsDate, topProductsMonth, topProductsYear,
+  revenuePeriod, revenueByPeriod, ordersLoadError, refreshOrders, lowStockList, lowStockCount
 } from '../adminStore'
 
 const trendCanvas = ref(null)
+const refreshing = ref(false)
+async function reloadOrders() {
+  refreshing.value = true
+  try { await refreshOrders() } finally { refreshing.value = false }
+}
+const periodOptions = [{ value: 'day', label: 'Ngày' }, { value: 'month', label: 'Tháng' }, { value: 'year', label: 'Năm' }]
+const periodLabel = value => value.split('-').reverse().join('/')
 const statusCanvas = ref(null)
 let trendChart = null, statusChart = null
 const chartFont = { family: "'Be Vietnam Pro', sans-serif", size: 11 }
@@ -92,18 +100,9 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
       <div><label for="overview-date-to">Đến ngày</label><input id="overview-date-to" v-model="customRange.to" type="date"></div>
     </div>
     <p v-if="isLoading" class="overview-loading" role="status">Đang cập nhật dữ liệu báo cáo…</p>
+    <p v-if="ordersLoadError" class="overview-data-error" role="alert">{{ ordersLoadError }} <button type="button" :disabled="refreshing" @click="reloadOrders">{{ refreshing ? 'Đang tải…' : 'Thử tải lại' }}</button></p>
 
     <section class="overview-stats" aria-label="Chỉ số tổng quan">
-      <article class="overview-stat">
-        <div class="overview-stat-heading"><span>Tổng tài khoản</span><span class="overview-stat-icon"><AdminIcon name="people" /></span></div>
-        <strong class="overview-stat-value">{{ statAccounts }}</strong>
-        <p>Tài khoản trên hệ thống</p>
-      </article>
-      <article class="overview-stat">
-        <div class="overview-stat-heading"><span>Tổng sản phẩm</span><span class="overview-stat-icon"><AdminIcon name="box" /></span></div>
-        <strong class="overview-stat-value">{{ statProducts }}</strong>
-        <p>Sản phẩm trong danh mục</p>
-      </article>
       <article class="overview-stat">
         <div class="overview-stat-heading"><span>Tổng đơn hàng</span><span class="overview-stat-icon"><AdminIcon name="collection" /></span></div>
         <strong class="overview-stat-value">{{ statOrders }}</strong>
@@ -112,7 +111,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
       <article class="overview-stat overview-stat-revenue">
         <div class="overview-stat-heading"><span>Doanh thu ghi nhận</span><span class="overview-stat-icon"><AdminIcon name="payment" /></span></div>
         <strong class="overview-stat-value overview-currency">{{ formatPrice(statRevenue) }}</strong>
-        <p>Trong khoảng thời gian đã chọn</p>
+        <p>Theo ngày ghi nhận; đã trừ tiền hoàn. Online chờ 14 ngày sau khi nhận hàng.</p>
       </article>
     </section>
 
@@ -160,25 +159,53 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
         <div class="overview-payment-channels">
           <div class="overview-payment-channel">
             <h3><AdminIcon name="shop" />Tại cửa hàng</h3>
+            <strong class="overview-channel-total">{{ formatPrice(paymentRevenueSummary.pos) }}</strong>
             <dl><div><dt>Tiền mặt</dt><dd>{{ formatPrice(paymentRevenueSummary.posCash) }}</dd></div><div><dt>Chuyển khoản</dt><dd>{{ formatPrice(paymentRevenueSummary.posTransfer) }}</dd></div></dl>
           </div>
           <div class="overview-payment-channel">
             <h3><AdminIcon name="globe" />Trên website</h3>
+            <strong class="overview-channel-total">{{ formatPrice(paymentRevenueSummary.online) }}</strong>
             <dl><div><dt>Thu hộ (COD)</dt><dd>{{ formatPrice(paymentRevenueSummary.webCod) }}</dd></div><div><dt>Chuyển khoản</dt><dd>{{ formatPrice(paymentRevenueSummary.webTransfer) }}</dd></div></dl>
           </div>
         </div>
       </section>
     </div>
 
+    <section class="overview-panel overview-channel-revenue">
+      <div class="overview-panel-heading">
+        <div><h2>Doanh thu POS và Online theo thời gian</h2><p>Theo ngày ghi nhận doanh thu trong phạm vi báo cáo đã chọn</p></div>
+        <div class="overview-segments overview-segments-small" role="group" aria-label="Đơn vị doanh thu">
+          <button v-for="period in periodOptions" :key="period.value" type="button" :class="{ 'is-active': revenuePeriod === period.value }" :aria-pressed="revenuePeriod === period.value" @click="revenuePeriod = period.value">{{ period.label }}</button>
+        </div>
+      </div>
+      <div class="overview-table-wrap overview-table-scroll">
+        <table class="overview-table">
+          <thead><tr><th scope="col">Kỳ ghi nhận</th><th scope="col" class="overview-align-right">Tại cửa hàng (POS)</th><th scope="col" class="overview-align-right">Website (Online)</th><th scope="col" class="overview-align-right">Tổng doanh thu</th></tr></thead>
+          <tbody>
+            <tr v-if="!revenueByPeriod.length"><td colspan="4"><div class="overview-empty"><strong>{{ isLoading ? 'Đang tải doanh thu…' : 'Chưa có doanh thu được ghi nhận trong kỳ' }}</strong></div></td></tr>
+            <tr v-for="row in revenueByPeriod" :key="row.period"><td>{{ periodLabel(row.period) }}</td><td class="overview-align-right">{{ formatPrice(row.pos) }}</td><td class="overview-align-right">{{ formatPrice(row.online) }}</td><td class="overview-align-right overview-quantity">{{ formatPrice(row.total) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <div class="overview-products-grid">
       <section class="overview-panel overview-products">
-        <div class="overview-panel-heading"><div><h2>Sản phẩm bán chạy</h2><p>Xếp hạng theo số lượng bán trong kỳ</p></div><span class="overview-neutral-tag">Top 10</span></div>
+        <div class="overview-panel-heading"><div><h2>Sản phẩm bán chạy</h2><p>Đơn đã giao / đã nhận theo ngày đặt; trừ số lượng đã trả</p></div><span class="overview-neutral-tag">Top 10</span></div>
+        <div class="overview-product-filters">
+          <label for="top-products-period">Xem theo
+            <select id="top-products-period" v-model="topProductsPeriod"><option v-for="period in periodOptions" :key="period.value" :value="period.value">{{ period.label }}</option></select>
+          </label>
+          <label v-if="topProductsPeriod === 'day'" for="top-products-date">Ngày bán<input id="top-products-date" v-model="topProductsDate" type="date"></label>
+          <label v-else-if="topProductsPeriod === 'month'" for="top-products-month">Tháng bán<input id="top-products-month" v-model="topProductsMonth" type="month"></label>
+          <label v-else for="top-products-year">Năm bán<input id="top-products-year" v-model="topProductsYear" type="number" min="2000" max="9999" step="1"></label>
+        </div>
         <div class="overview-table-wrap overview-table-scroll">
           <table class="overview-table">
             <thead><tr><th scope="col">Hạng</th><th scope="col">Sản phẩm</th><th scope="col">Thương hiệu</th><th scope="col" class="overview-align-right">Đã bán</th></tr></thead>
             <tbody>
               <tr v-if="!topProductsList?.length"><td colspan="4"><div class="overview-empty"><AdminIcon name="box" /><strong>{{ isLoading ? 'Đang tải sản phẩm…' : 'Chưa có sản phẩm bán ra' }}</strong><p>Dữ liệu bán hàng sẽ được cập nhật tại đây.</p></div></td></tr>
-              <tr v-for="(product, index) in topProductsList" :key="product.name"><td><span class="overview-rank" :class="{ 'is-first': index === 0 }">{{ String(index + 1).padStart(2, '0') }}</span></td><td class="overview-product-name" :title="product.name">{{ product.name }}</td><td class="overview-muted">{{ product.brand }}</td><td class="overview-align-right overview-quantity">{{ product.quantity }}</td></tr>
+              <tr v-for="(product, index) in topProductsList" :key="product.id"><td><span class="overview-rank" :class="{ 'is-first': index === 0 }">{{ String(index + 1).padStart(2, '0') }}</span></td><td class="overview-product-name" :title="product.name">{{ product.name }}</td><td class="overview-muted">{{ product.brand }}</td><td class="overview-align-right overview-quantity">{{ product.quantity }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -201,7 +228,13 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 
 <style scoped>
 .overview { display: flex; flex-direction: column; gap: 24px; color: #0e0e0e; font-family: 'Be Vietnam Pro', sans-serif; }
-.overview button, .overview input { font: inherit; }
+.overview button, .overview input, .overview select { font: inherit; }
+.overview-data-error { padding: 12px; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: 12px; }
+.overview-data-error button { margin-left: 8px; text-decoration: underline; }
+.overview-channel-total { display: block; margin: -5px 0 18px; font-size: 20px; font-variant-numeric: tabular-nums; }
+.overview-product-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 20px; }
+.overview-product-filters label { display: flex; flex-direction: column; gap: 6px; color: #61616b; font-size: 11px; }
+.overview-product-filters input, .overview-product-filters select { min-width: 120px; padding: 8px 10px; border: 1px solid #dedee3; border-radius: 6px; background: #fff; }
 .overview :deep(svg) { width: 18px; height: 18px; flex-shrink: 0; }
 .overview button { cursor: pointer; }
 .overview button:focus-visible, .overview input:focus-visible { outline: 3px solid #d4001a40; outline-offset: 3px; }
@@ -223,7 +256,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 .overview-custom-range input { min-width: 170px; padding: 9px 12px; border: 1px solid #dedee3; border-radius: 6px; background: white; color: #222; font-size: 12px; }
 .overview-date-divider { padding-bottom: 9px; color: #999; }
 .overview-loading { margin: -10px 0; color: #777780; font-size: 12px; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.overview-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .overview-stat { min-width: 0; padding: 22px; border: 1px solid #e7e7eb; border-radius: 12px; background: #fff; }
 .overview-stat-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #64646e; font-size: 11px; font-weight: 500; }
 .overview-stat-icon { display: inline-flex; flex-shrink: 0; width: 34px; height: 34px; align-items: center; justify-content: center; border-radius: 8px; background: #f5f5f7; color: #393940; font-size: 15px; }

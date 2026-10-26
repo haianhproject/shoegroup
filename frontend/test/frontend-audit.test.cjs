@@ -503,14 +503,14 @@ test('product eye dialog has no editable controls, parent SKU placeholder or edi
   assert.match(source,/Tồn mỗi biến thể mới/);
 });
 
-test('product list displays real IDs and preserves the eight business columns',()=>{
+test('product list displays real IDs and preserves the current vietdo catalog columns',()=>{
   const source=fs.readFileSync(path.join(root,'src/views/admin/pages/ProductsPage.vue'),'utf8');
   const {descriptor}=parse(source);
   const list=descriptor.template.content.split('<!-- FORM THÊM/SỬA -->')[0];
   const headings=Array.from(list.matchAll(/<th\b[^>]*>([^<]+)<\/th>/g),m=>m[1].trim());
-  assert.deepEqual(headings,['Mã sản phẩm','Ảnh sản phẩm','Tên giày','Thương hiệu','Khoảng giá','Tồn kho','Trạng thái','Thao tác']);
+  assert.deepEqual(headings,['Mã sản phẩm','Hình ảnh','Tên giày','Khoảng giá','Tồn kho','Trạng thái','Thao tác']);
   assert.equal(list.includes('p.description'),false);
-  assert.match(list,/colspan="8"/);
+  assert.match(list,/colspan="7"/);
   assert.doesNotMatch(list,/catalog-sequence|index \+ 1/);assert.match(list,/p\.id/);
   assert.match(source,/productDetailModal\.product\.description/);
 });
@@ -521,10 +521,112 @@ test('POS displays the individual variant price and omits inactive variants',()=
   assert.equal(admin.posVariants.value.length,1);assert.equal(admin.posVariants.value[0].price,250000);
 });
 
-function loadAdminRealtime(globals = {}, getToken = () => 'admin-token') {
+test('revenue uses recognition dates, local whole-day bounds, all orders, and consistent channel totals', () => {
+  const admin = loadAdminRealtime({}, undefined, load('src/services/revenue.js'));
+  const paid = { status: 'Đã nhận hàng', payment_status: 'Đã thanh toán', is_counted_as_revenue: 1, total: 100000, date: '2026-09-01T12:00:00' };
+  admin.db.orders = Array.from({ length: 125 }, (_, id) => admin.mapOrder({ ...paid, id, channel: 'Offline', payment_confirmed_at: '2026-10-01T00:15:00' }));
+  admin.db.orders.push(admin.mapOrder({ ...paid, id: 126, channel: 'Online', revenue_eligible_date: '2026-10-01T23:59:59.999', historical_refund_amount: 20000 }));
+  admin.db.orders.push(admin.mapOrder({ ...paid, id: 127, channel: 'Online', revenue_eligible_date: '2026-10-02T00:00:00' }));
+  admin.db.orders.push(admin.mapOrder({ ...paid, id: 128, channel: 'Offline', payment_confirmed_at: '2026-10-01T12:00:00', is_counted_as_revenue: '0' }));
+  admin.db.orders.push(admin.mapOrder({ ...paid, id: 129, channel: 'Offline', payment_confirmed_at: '2026-10-01T12:00:00', status: 'Đã hủy' }));
+  admin.dateRange.value = 'custom';
+  admin.customRange.from = admin.customRange.to = '2026-10-01';
+  assert.equal(admin.ordersInRange.value.length, 0);
+  assert.equal(admin.statRevenue.value, 12580000);
+  assert.equal(admin.paymentRevenueSummary.value.pos, 12500000);
+  assert.equal(admin.paymentRevenueSummary.value.online, 80000);
+  assert.equal(admin.paymentRevenueSummary.value.total, admin.statRevenue.value);
+  for (const [mode, key] of [['day', '2026-10-01'], ['month', '2026-10'], ['year', '2026']]) {
+    admin.revenuePeriod.value = mode;
+    assert.equal(admin.revenueByPeriod.value[0].period, key);
+    assert.equal(admin.revenueByPeriod.value[0].total, admin.statRevenue.value);
+  }
+  assert.equal(admin.localDateKey(new Date(2026, 9, 1, 0, 15)), '2026-10-01');
+});
+
+test('best sellers have independent day/month/year filters, product IDs and net fulfilled quantities', () => {
+  const admin = loadAdminRealtime();
+  admin.db.products = [{ id: 1, name: 'Cùng tên', brand: 'Nike' }, { id: 2, name: 'Cùng tên', brand: 'Adidas' }];
+  const order = (id, date, status, productId, quantity, returned = 0) => admin.mapOrder({ id, date, status, products: [{ product_id: productId, name: 'Cùng tên', quantity, historical_returned_quantity: returned }] });
+  admin.db.orders = [order(1, '2026-10-01T09:00:00', 'Đã nhận hàng', 1, 6, 2), order(2, '2026-10-02T09:00:00', 'Đã giao hàng thành công', 2, 3), order(3, '2026-09-01T09:00:00', 'Đã nhận hàng', 1, 2), order(4, '2026-10-01T09:00:00', 'Chờ xác nhận', 1, 99), order(5, '2026-10-01T09:00:00', 'Đã hủy', 1, 99)];
+  admin.dateRange.value = 'custom';
+  admin.customRange.from = admin.customRange.to = '2020-01-01';
+  admin.topProductsPeriod.value = 'day'; admin.topProductsDate.value = '2026-10-01';
+  assert.equal(admin.topProductsList.value.length, 1); assert.equal(admin.topProductsList.value[0].quantity, 4);
+  admin.topProductsPeriod.value = 'month'; admin.topProductsMonth.value = '2026-10';
+  assert.equal(admin.topProductsList.value.length, 2);
+  assert.equal(admin.topProductsList.value[0].brand, 'Nike'); assert.equal(admin.topProductsList.value[1].brand, 'Adidas');
+  admin.topProductsPeriod.value = 'year'; admin.topProductsYear.value = 2026;
+  assert.equal(admin.topProductsList.value[0].quantity, 6);
+});
+
+test('fresh orders update revenue even when a catalog API fails; failed order reads keep the previous snapshot', async () => {
+  let failOrders = false;
+  const admin = loadAdminRealtime({ fetch: async url => ({
+    ok: !String(url).endsWith('/brands') && !(failOrders && String(url).endsWith('/orders')),
+    status: 503, headers: { get: () => 'application/json' },
+    json: async () => String(url).endsWith('/orders') && !failOrders ? [{ id: 1, date: '2026-10-01T10:00:00', status: 'Đã nhận hàng', payment_status: 'Đã thanh toán', channel: 'Offline', is_counted_as_revenue: 1, total: 200000 }] : [],
+  }) }, undefined, load('src/services/revenue.js'));
+  await admin.fetchAllData();
+  assert.equal(admin.statRevenue.value, 200000);
+  assert.equal(admin.ordersLoadError.value, '');
+  const old = admin.db.orders;
+  failOrders = true; await admin.refreshOrders();
+  assert.equal(admin.db.orders, old);
+  assert.ok(admin.ordersLoadError.value);
+});
+
+test('direct POS entry releases the shared initial loading overlay even when its background load starts first', async () => {
+  const admin = loadAdminRealtime({ fetch: async () => ({ ok: true, headers: { get: () => 'application/json' }, json: async () => [] }) });
+  const background = admin.fetchAllData(true);
+  const layout = admin.fetchAllData();
+  assert.equal(background, layout);
+  await layout;
+  assert.equal(admin.isLoading.value, false);
+});
+
+test('an older full refresh cannot overwrite orders from a newer event refresh', async () => {
+  const pending = [];
+  const admin = loadAdminRealtime({ fetch: async url => String(url).endsWith('/orders')
+    ? new Promise(resolve => pending.push(resolve))
+    : { ok: true, headers: { get: () => 'application/json' }, json: async () => [] } });
+  const response = total => ({ ok: true, headers: { get: () => 'application/json' }, json: async () => [{ id: 1, date: '2026-10-01T10:00:00', total }] });
+  const old = admin.fetchAllData(true);
+  const recent = admin.refreshOrders();
+  pending[1](response(500000)); await recent;
+  pending[0](response(100000)); await old;
+  assert.equal(admin.db.orders[0].total, 500000);
+});
+
+test('customer cancellation blocks repeated submits, updates immediately after success, and retains failed drafts', async () => {
+  const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: '/api' } });
+  orders.orderState.orders = [{ id: 'SV1', serverId: 1, userId: 1, status: 'CONFIRMED', payment_status: 'Đã thanh toán' }];
+  let finish, requests = 0, reject = false;
+  const page = load('src/views/MyOrders.vue', {
+    'vue-router': { useRouter: () => ({ currentRoute: vue.ref({ query: {} }) }) },
+    '../stores/orderStore': { ...orders, loadOrders: async () => [] },
+    '../stores/uiStore': { notify() {} },
+    '../services/apiClient': { api: { put: () => { requests++; return reject ? Promise.reject(new Error('Đơn đã chuyển sang giao hàng')) : new Promise(resolve => { finish = resolve; }); } } },
+    '../services/addressService': { addressBookApi: {}, vietnamAddressApi: {} },
+    '../components/OrderStatusIcon.vue': {},
+  }, { document: { activeElement: { focus() {} } } }, ['handleCancel', 'submitCancel', 'closeCancelModal', 'cancelModal']);
+  page.handleCancel(orders.orderState.orders[0]); page.cancelModal.reason = 'Đổi kích cỡ';
+  const pending = page.submitCancel(); await page.submitCancel(); page.closeCancelModal();
+  assert.equal(requests, 1); assert.equal(page.cancelModal.open, true); assert.equal(orders.orderState.orders[0].status, 'CONFIRMED');
+  finish({ success: true }); await pending;
+  assert.equal(page.cancelModal.open, false); assert.equal(orders.orderState.orders[0].status, 'CANCELLED');
+  assert.equal(orders.orderState.orders[0].payment_status, 'Chờ hoàn tiền');
+  orders.orderState.orders[0].status = 'CONFIRMED'; reject = true;
+  page.handleCancel(orders.orderState.orders[0]); page.cancelModal.reason = 'Giữ lý do này'; await page.submitCancel();
+  assert.equal(page.cancelModal.open, true); assert.equal(page.cancelModal.submitting, false);
+  assert.equal(page.cancelModal.reason, 'Giữ lý do này'); assert.ok(page.cancelModal.error);
+  assert.equal(orders.orderState.orders[0].status, 'CONFIRMED');
+});
+
+function loadAdminRealtime(globals = {}, getToken = () => 'admin-token', revenue = { recognizedOrderRevenue: () => 0 }) {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
-    '@/services/revenue': { recognizedOrderRevenue: () => 0 },
+    '@/services/revenue': revenue,
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
     '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:vue.ref(false), logout() {} },
