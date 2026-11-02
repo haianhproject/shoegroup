@@ -82,6 +82,9 @@ p, span, li, td, th, label, input, select, textarea, button {
   font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
 }
 
+/* Dấu bắt buộc dùng thống nhất cho label ở cả trang khách hàng và quản trị. */
+.form-required { color: #ef4444 !important; font-weight: 700; }
+
 /* ---------- Utilities ---------- */
 .cursor-pointer { cursor: pointer; }
 .object-fit-cover { object-fit: cover; }

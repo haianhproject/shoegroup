@@ -5,7 +5,6 @@ defineProps({ active: { type: Boolean, default: true } });
 
 <template>
   <span class="admin-activity-status" :class="{ 'is-active': active }">
-    <span class="admin-activity-dot" aria-hidden="true"></span>
-    {{ active ? 'Hoạt động' : 'Không hoạt động' }}
+    {{ active ? 'Hoạt động' : 'Ngừng hoạt động' }}
   </span>
 </template>

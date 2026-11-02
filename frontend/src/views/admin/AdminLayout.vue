@@ -37,7 +37,7 @@ import {
   formFields,
   saveForm,
   formFieldError, touchFormField, requestCloseForm,
-  onFormImageFile,
+  onFormImageFile, handleColorHexChange,
   customerModal,
   confirmModal,
   executeConfirm,
@@ -92,7 +92,7 @@ const visibleSections = computed(() => sections.map(section => ({
 })).filter(section => section.items.length));
 const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
 const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
-const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-discounts'].includes(route.name));
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-discounts','admin-variant-discounts'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
@@ -504,7 +504,7 @@ onUnmounted(() => {
         </div>
         <div class="p-4" style="max-height: 60vh; overflow: auto">
           <div v-for="f in formFields" :key="f.key" class="mb-3" @focusout="touchFormField(f.key)" @input="touchFormField(f.key)" @change="touchFormField(f.key)">
-            <label :for="'admin-field-' + f.key" class="block text-sm font-medium text-sm font-medium" v-text="f.label"></label>
+            <label :for="'admin-field-' + f.key" class="block text-sm font-medium">{{ f.label.replace(/\s*\*$/, '') }} <span v-if="f.required" class="form-required" aria-hidden="true">*</span></label>
             <select
               v-if="f.type === 'select'"
               v-model="formModal.data[f.key]" :id="'admin-field-' + f.key"
@@ -559,6 +559,10 @@ onUnmounted(() => {
                 /></label>
               </div>
               <p class="mb-0 text-xs text-gray-600">Ảnh được chọn từ máy và lưu cùng dữ liệu thương hiệu; không tải từ website ngoài.</p>
+            </div>
+            <div v-else-if="f.type === 'color'" class="catalog-color-input">
+              <input :value="/^#[0-9a-f]{6}$/i.test(formModal.data.hex || '') ? formModal.data.hex : '#000000'" type="color" @input="handleColorHexChange($event.target.value)" aria-label="Chọn màu trên bảng màu">
+              <input :id="'admin-field-' + f.key" :value="formModal.data.hex" @input="handleColorHexChange($event.target.value)" @change="handleColorHexChange($event.target.value, true)" type="text" class="sg-input" placeholder="#RRGGBB" maxlength="7" :required="f.required" :aria-invalid="!!formFieldError(f.key)" :aria-describedby="formFieldError(f.key)?'admin-error-'+f.key:undefined">
             </div>
             <div v-else-if="f.type === 'password'" class="flex">
               <input

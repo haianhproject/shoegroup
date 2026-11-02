@@ -16,7 +16,7 @@ function fallback(event) { event.target.onerror=null; event.target.src=genericBr
       <select v-model="brandStatusFilter" class="sg-input brands-status" aria-label="Lọc trạng thái thương hiệu">
         <option value="">Tất cả trạng thái</option>
         <option value="active">Hoạt động</option>
-        <option value="inactive">Không hoạt động</option>
+        <option value="inactive">Ngừng hoạt động</option>
       </select>
     </div>
     <div class="table-responsive">

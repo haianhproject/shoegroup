@@ -14,7 +14,7 @@ import { openForm, filteredSizes, toggleCatalogStatus, sizeSearch, sizeStandardF
     <div class="flex flex-wrap gap-2 mb-3">
       <input v-model="sizeSearch" type="search" class="sg-input" style="flex:1;min-width:160px" placeholder="Tìm kích cỡ..." aria-label="Tìm kích cỡ">
       <select v-model="sizeStandardFilter" class="sg-input" style="width:150px" aria-label="Lọc hệ kích cỡ"><option value="">Tất cả hệ</option><option>EU</option><option>US</option><option>UK</option></select>
-      <select v-model="sizeStatusFilter" class="sg-input" style="width:180px" aria-label="Lọc trạng thái"><option value="">Tất cả trạng thái</option><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select>
+      <select v-model="sizeStatusFilter" class="sg-input" style="width:180px" aria-label="Lọc trạng thái"><option value="">Tất cả trạng thái</option><option value="active">Hoạt động</option><option value="inactive">Ngừng hoạt động</option></select>
     </div>
     <div class="bg-white overflow-hidden"><div class="table-responsive"><table class="table align-middle mb-0 admin-catalog-table">
       <thead><tr class="text-gray-600 text-sm uppercase"><th class="pl-4">ID</th><th>Kích cỡ</th><th>Hệ kích cỡ</th><th>Trạng thái</th><th class="text-end pr-4">Thao tác</th></tr></thead>

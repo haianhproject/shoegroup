@@ -1,5 +1,14 @@
 # Tiến Độ ShoeGroup
 
+## Hoàn Thiện Sản Phẩm Và Khuyến Mại - 2026-11-02
+
+- Đối chiếu `vietdo` tại `4c1aa49`: thay đổi sản phẩm/màu đã có trong `main`. Đối chiếu `shop` tại `8ac1f29`: đưa yêu cầu bảng gọn và Drawer vào cấu trúc `frontend/` hiện tại; bổ sung những phần chưa hoạt động hoàn chỉnh.
+- Màu sắc nhập được HEX hoặc chọn trên bảng màu, tự điền tên; giữ nguyên tên tùy chỉnh khi mở bản ghi cũ. Bảng màu không có STT. Khoảng giá sản phẩm sắp min–max đúng cả khi API trả giới hạn ngược; giữ bảng gọn, tiêu đề Hình ảnh, không có cột thương hiệu và dấu chấm trạng thái.
+- Hai trang khuyến mại dùng panel bên phải có chế độ xem riêng, phần nội dung cuộn và nút thao tác cố định. Bỏ các cột yêu cầu, hiển thị đủ ngày/giờ; điều kiện đơn tối thiểu, giảm tối đa và lượt dùng vẫn xem được trong chi tiết. Form mã giảm giá giữ nguyên giờ/phút/giây, chặn lưu trùng và báo lỗi ngay trong panel.
+- Khuyến mại sản phẩm mới chọn sản phẩm/màu, áp dụng mọi size. Chương trình cũ theo size giữ nguyên phạm vi; không tự chuyển phạm vi hoặc xóa lịch sử. Đồng bộ nhãn Ngừng hoạt động và dấu sao đỏ trên form.
+- Phần Hải Anh đã có từ `9380862`: rà lại lọc size/màu POS, hàng hết xuống cuối, mã biến thể, hai thẻ thống kê, nạp đủ đơn, lọc bán chạy theo thời gian và doanh thu POS/Online theo ngày/tháng/năm. Không thay quy tắc ghi nhận doanh thu hoặc dữ liệu thật.
+- Kiểm chứng: 95 frontend và 30 Node đạt; Spring/SQL 41/41 không bỏ qua; catalog/POS 19/19 tình huống trên DB thử riêng. Kiểm tra Chrome desktop/mobile cho màu, sản phẩm, Drawer, POS, Dashboard và hủy đơn không có lỗi JavaScript; build Vue và Spring đạt.
+
 ## Dọn Database Và Chuẩn Bị Bàn Giao - 2026-10-16
 
 - Thư mục `database` chỉ còn một bản cài đầy đủ: `ShoegroupDB_FULL_20261016.sql`. Bỏ ba bản full 29/09, 10/10 và 15/10; tra cứu bản cũ qua lịch sử Git, không giữ nhiều bản dễ nhập nhầm.
