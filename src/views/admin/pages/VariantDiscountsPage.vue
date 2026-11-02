@@ -1,41 +1,46 @@
-<!-- Trang: Giảm Giá Biến Thể Màu -->
+<!-- Mục đích: Trang quản lý khuyến mại theo toàn bộ màu hoặc đúng biến thể màu + size. -->
+<!-- Trang: Khuyến Mại Sản Phẩm theo màu hoặc màu + size -->
 <script setup>
 import {
   filteredVariantDiscounts, variantDiscountSearch, variantStatusFilter, variantReasonFilter,
-  variantColorOptions, variantDiscountTypes, variantReasons,
+  variantDiscountScopes, variantDiscountOptionsForScope, variantDiscountTypes, variantReasons,
   variantDiscountModal, openVariantDiscountForm, closeVariantDiscountForm, saveVariantDiscount,
+  resetVariantDiscountSelection,
   getVariantInfo, formatVariantDiscountValue, getVariantDiscountStatus, variantAlreadyDiscounted,
-  formatDate, deleteItem,
+  formatDateOnly, toggleVariantDiscount,
 } from '../adminStore'
+import fallbackProductImage from '../../../../img/hero-sneakers.jpg'
 </script>
 
 <template>
   <div class="fade-in">
     <div class="bg-white rounded-1 shadow-sm p-4">
       <!-- Tiêu đề -->
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+      <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
         <div>
-          <h5 class="fw-bold mb-1 text-dark">Quản Lý Giảm Giá Biến Thể Màu</h5>
-          <p class="text-secondary small mb-0">Cập nhật giảm giá cho những biến thể màu sản phẩm bán ế và còn tồn kho</p>
+          <h5 class="font-bold mb-1 text-gray-900">Quản Lý Khuyến Mại Sản Phẩm</h5>
+          <p class="text-gray-600 text-sm mb-0">Áp dụng ưu đãi cho mọi size của một màu hoặc riêng một màu + size cụ thể</p>
         </div>
-        <button @click="openVariantDiscountForm()" class="btn btn-dark rounded-2 fw-bold shadow-sm px-3"><i class="bi bi-plus-lg me-1"></i> Thêm Giảm Giá</button>
+        <button @click="openVariantDiscountForm()" class="btn btn-dark rounded-2 font-bold shadow-sm px-3"><i class="icon icon-plus-lg mr-1"></i> Thêm khuyến mại</button>
       </div>
 
       <!-- Bộ lọc -->
-      <div class="d-flex flex-wrap gap-2 mb-3">
-        <div class="position-relative flex-grow-1" style="min-width:220px;max-width:360px;">
-          <i class="bi bi-search position-absolute text-secondary" style="left:12px;top:50%;transform:translateY(-50%);"></i>
-          <input v-model="variantDiscountSearch" type="text" class="form-control rounded-2 ps-4" placeholder="Tìm theo sản phẩm / màu">
+      <div class="flex flex-wrap gap-2 mb-3">
+        <div class="relative grow" style="min-width:220px;max-width:360px;">
+          <i class="icon icon-search absolute text-gray-600" style="left:12px;top:50%;transform:translateY(-50%);"></i>
+          <input v-model="variantDiscountSearch" type="search" class="sg-input rounded-2 pl-4" placeholder="Tìm theo sản phẩm / màu / size" aria-label="Tìm khuyến mại theo sản phẩm, màu hoặc size">
         </div>
-        <select v-model="variantReasonFilter" class="form-select rounded-2" style="max-width:200px;">
+        <select v-model="variantReasonFilter" class="sg-input rounded-2" style="max-width:200px;">
           <option value="Tất cả">Lọc theo lý do</option>
           <option v-for="r in variantReasons" :key="r" :value="r" v-text="r"></option>
         </select>
-        <select v-model="variantStatusFilter" class="form-select rounded-2" style="max-width:200px;">
+        <select v-model="variantStatusFilter" class="sg-input rounded-2" style="max-width:200px;">
           <option value="Tất cả">Lọc theo trạng thái</option>
           <option value="Hoạt động">Hoạt động</option>
+          <option value="Sắp diễn ra">Sắp diễn ra</option>
+          <option value="Đã dùng hết">Đã dùng hết</option>
           <option value="Hết hạn">Hết hạn</option>
-          <option value="Tạm dừng">Tạm dừng</option>
+          <option value="Không hoạt động">Không hoạt động</option>
         </select>
       </div>
 
@@ -43,38 +48,60 @@ import {
       <div class="table-responsive">
         <table class="table align-middle mb-0">
           <thead>
-            <tr class="text-secondary small text-uppercase">
-              <th>Hình ảnh</th><th>Sản phẩm</th><th>Biến thể</th><th>Loại giảm</th>
-              <th class="text-end">Giá trị</th><th class="text-center">Số lượng</th><th class="text-center">Đã dùng</th>
-              <th>Ngày bắt đầu</th><th>Ngày kết thúc</th><th>Trạng thái</th><th class="text-end">Hành động</th>
+            <tr class="text-gray-600 text-sm uppercase">
+              <th>Hình ảnh</th>
+              <th>Sản phẩm</th>
+              <th>Biến thể</th>
+              <th class="text-end">Giá trị</th>
+              <th class="w-72">Thời gian</th>
+              <th>Trạng thái</th>
+              <th class="text-end text-center w-24">Hành động</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="filteredVariantDiscounts.length === 0"><td colspan="11" class="text-center text-secondary py-5"><i class="bi bi-palette fs-1 d-block mb-2 opacity-50"></i>Chưa có giảm giá biến thể nào.</td></tr>
+            <tr v-if="filteredVariantDiscounts.length === 0"><td colspan="7" class="text-center text-gray-600 py-5"><i class="icon icon-palette text-4xl block mb-2 opacity-50"></i>Không có khuyến mại sản phẩm phù hợp.</td></tr>
             <tr v-for="vd in filteredVariantDiscounts" :key="vd.id">
-              <td><img :src="getVariantInfo(vd).image || 'https://via.placeholder.com/44'" class="rounded-2 border" style="width:44px;height:44px;object-fit:cover;" @error="$event.target.src='https://via.placeholder.com/44'"></td>
+              <td><img :src="getVariantInfo(vd).image || fallbackProductImage" :alt="getVariantInfo(vd).product_name" class="rounded-2 border" style="width:44px;height:44px;object-fit:cover;" @error="$event.target.src=fallbackProductImage"></td>
               <td>
-                <div class="fw-medium text-dark small" v-text="getVariantInfo(vd).product_name"></div>
-                <div class="text-secondary" style="font-size:0.75rem;">
+                <div class="font-medium text-gray-900 text-sm" v-text="getVariantInfo(vd).product_name"></div>
+                <div class="text-gray-600" style="font-size:0.75rem;">
                   <span v-text="'- ' + getVariantInfo(vd).color"></span>
                   <span v-if="getVariantInfo(vd).color_hex" v-text="' (' + getVariantInfo(vd).color_hex + ')'"></span>
                 </div>
-                <span v-if="vd.reason" class="badge rounded-1 bg-light text-secondary border mt-1" style="font-size:0.68rem;" v-text="vd.reason"></span>
+                <span v-if="vd.reason" class="badge rounded-1 bg-gray-100 text-gray-600 border mt-1" style="font-size:0.68rem;" v-text="vd.reason"></span>
               </td>
-              <td><span class="rounded-circle border d-inline-block align-middle" :style="{ width:'16px', height:'16px', background: getVariantInfo(vd).color_hex || '#d1d5db' }" :title="getVariantInfo(vd).color"></span></td>
-              <td><span class="badge rounded-1" :class="vd.discount_type === 'Cố định' ? 'bg-light text-dark' : 'bg-light text-dark'" v-text="vd.discount_type"></span></td>
-              <td class="text-end fw-bold text-dark small" v-text="formatVariantDiscountValue(vd)"></td>
-              <td class="text-center small" v-text="Number(vd.quantity) > 0 ? vd.quantity : '∞'"></td>
-              <td class="text-center small">
-                <span v-text="vd.used || 0"></span>
-                <div class="text-secondary" style="font-size:0.7rem;" v-text="(Number(vd.quantity) > 0 ? Math.round((Number(vd.used || 0) / Number(vd.quantity)) * 100) : 0) + '%'"></div>
+              <td>
+                <div class="flex items-center gap-2">
+                  <span class="rounded-full border inline-block shrink-0" :style="{ width:'16px', height:'16px', background: getVariantInfo(vd).color_hex || '#d1d5db' }" :title="getVariantInfo(vd).color"></span>
+                  <div>
+                    <div class="text-sm font-medium" v-text="getVariantInfo(vd).scope_label"></div>
+                    <div v-if="getVariantInfo(vd).size" class="text-gray-600" style="font-size:0.72rem;" v-text="'Size ' + getVariantInfo(vd).size"></div>
+                  </div>
+                </div>
               </td>
-              <td class="small text-secondary" v-text="vd.start_date ? formatDate(vd.start_date) : '—'"></td>
-              <td class="small text-secondary" v-text="vd.end_date ? formatDate(vd.end_date) : '—'"></td>
-              <td><span class="badge rounded-1" :class="getVariantDiscountStatus(vd).cls" v-text="getVariantDiscountStatus(vd).label"></span></td>
-              <td class="text-end">
-                <button @click="openVariantDiscountForm(vd)" class="btn btn-sm btn-light border rounded-2 me-1"><i class="bi bi-pencil"></i></button>
-                <button @click="deleteItem('variantDiscounts', vd.id, getVariantInfo(vd).product_name)" class="btn btn-sm btn-light border rounded-2 text-danger"><i class="bi bi-trash"></i></button>
+              <td class="text-end font-bold text-gray-900 text-sm" v-text="formatVariantDiscountValue(vd)"></td>
+              
+              <!-- Cột Thời gian kéo dài -->
+              <td class="text-sm text-gray-600 w-72">
+                  <span>{{ formatDateOnly(vd.start_date) }}</span>
+                  <span class="mx-1">→</span>
+                  <span>{{ formatDateOnly(vd.end_date) }}</span>
+              </td>
+
+              <!-- Sửa text trạng thái -->
+              <td>
+                  <span class="badge rounded-1" :class="getVariantDiscountStatus(vd).cls">
+                      {{ getVariantDiscountStatus(vd).label === 'Không hoạt động' ? 'Ngừng hoạt động' : getVariantDiscountStatus(vd).label }}
+                  </span>
+              </td>
+              
+              <td class="text-end action-cell w-24 text-center">
+                  <!-- Thêm icon xem chi tiết -->
+                <button type="button" @click="openVariantDiscountForm(vd)" class="btn btn-sm btn-light border text-blue-500 hover:text-blue-700 mr-1" title="Xem chi tiết" :aria-label="'Xem khuyến mại'">
+                  <i class="icon icon-eye"></i>
+                </button>
+                <button @click="openVariantDiscountForm(vd)" :disabled="getVariantDiscountStatus(vd).label==='Hết hạn'" class="btn btn-sm btn-light border rounded-2 mr-1" type="button" title="Chỉnh sửa khuyến mại" aria-label="Chỉnh sửa khuyến mại"><i class="icon icon-pencil"></i></button>
+                <input type="checkbox" role="switch" :checked="vd.active" :disabled="getVariantDiscountStatus(vd).label==='Hết hạn'" @change="toggleVariantDiscount(vd,$event)" aria-label="Trạng thái khuyến mại" :title="vd.active?'Ngừng hoạt động':'Bật hoạt động'">
               </td>
             </tr>
           </tbody>
@@ -82,42 +109,133 @@ import {
       </div>
     </div>
 
-    <!-- MODAL Thêm / Sửa -->
+    <!-- Cập nhật: MODAL -> DRAWER (Slide Panel) -->
     <div v-if="variantDiscountModal.open" class="custom-modal-overlay" @click.self="closeVariantDiscountForm()">
-      <div class="custom-modal-box fade-in-scale" style="max-width:640px;">
-        <div class="p-4 border-bottom d-flex justify-content-between align-items-center">
-          <h6 class="fw-bold mb-0 text-dark" v-text="variantDiscountModal.data.id ? 'Chỉnh sửa giảm giá biến thể màu' : 'Thêm giảm giá biến thể màu'"></h6>
-          <button @click="closeVariantDiscountForm()" class="btn btn-sm btn-light border-0"><i class="bi bi-x-lg"></i></button>
+      <div class="custom-drawer slide-in-right discount-modal">
+        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+          <h6 class="font-bold mb-0 text-gray-900" v-text="variantDiscountModal.data.id ? 'Chỉnh sửa khuyến mại sản phẩm' : 'Thêm khuyến mại sản phẩm'"></h6>
+          <button @click="closeVariantDiscountForm()" class="btn btn-sm btn-light border-0 hover:bg-gray-200" type="button" aria-label="Đóng"><i class="icon icon-x-lg"></i></button>
         </div>
-        <div class="p-4" style="max-height:65vh;overflow:auto;">
-          <!-- Chọn biến thể -->
-          <div class="mb-3">
-            <label class="form-label small fw-medium">Chọn biến thể màu sản phẩm</label>
-            <select v-model="variantDiscountModal.data.variant_id" class="form-select rounded-2">
-              <option value="">-- Chọn biến thể màu --</option>
-              <option v-for="o in variantColorOptions" :key="o.variant_id" :value="o.variant_id" v-text="o.product_name + ' — ' + o.color + ' (tồn: ' + o.stock + ')'"></option>
+        
+        <div class="p-4 overflow-y-auto flex-grow h-[calc(100vh-65px)]">
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Phạm vi áp dụng <span class="text-red-500 font-bold">*</span></label>
+            <select v-model="variantDiscountModal.data.apply_scope" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" @change="resetVariantDiscountSelection">
+              <option v-for="scope in variantDiscountScopes" :key="scope.value" :value="scope.value" v-text="scope.label"></option>
             </select>
-          </div>
-          <!-- Cảnh báo trùng -->
-          <div v-if="variantAlreadyDiscounted(variantDiscountModal.data.variant_id) && !variantDiscountModal.data.id" class="alert alert-warning py-2 px-3 small rounded-2 d-flex align-items-start gap-2">
-            <i class="bi bi-exclamation-triangle-fill mt-1"></i>
-            <span>Biến thể này đã có chương trình giảm giá đang chạy. Vui lòng chọn biến thể khác hoặc chỉnh sửa chương trình hiện tại.</span>
+            <small class="text-gray-600 mt-1 block" style="font-size:0.75rem;">Chọn “mọi size” để cùng một ưu đãi áp dụng cho toàn bộ size của màu đó.</small>
           </div>
 
-          <div class="row g-3">
-            <div class="col-md-6"><label class="form-label small fw-medium">Loại giảm giá</label><select v-model="variantDiscountModal.data.discount_type" class="form-select rounded-2"><option v-for="t in variantDiscountTypes" :key="t" :value="t" v-text="t"></option></select></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Giá trị giảm</label><input v-model.number="variantDiscountModal.data.value" type="number" class="form-control rounded-2" placeholder="Nhập số tiền (VNĐ) hoặc %"><small class="text-secondary" style="font-size:0.72rem;">Cố định: nhập số tiền · Phần trăm: nhập %</small></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Giảm tối đa (nếu %)</label><input v-model.number="variantDiscountModal.data.max_discount" type="number" class="form-control rounded-2" placeholder="0"></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Số lượng</label><input v-model.number="variantDiscountModal.data.quantity" type="number" class="form-control rounded-2" placeholder="Phải lớn hơn 0"></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Ngày bắt đầu</label><input v-model="variantDiscountModal.data.start_date" type="date" class="form-control rounded-2"></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Ngày kết thúc</label><input v-model="variantDiscountModal.data.end_date" type="date" class="form-control rounded-2"></div>
-            <div class="col-md-6"><label class="form-label small fw-medium">Lý do giảm giá</label><select v-model="variantDiscountModal.data.reason" class="form-select rounded-2"><option v-for="r in variantReasons" :key="r" :value="r" v-text="r"></option></select></div>
-            <div class="col-md-6 d-flex align-items-end"><div class="form-check form-switch"><input v-model="variantDiscountModal.data.active" class="form-check-input" type="checkbox" id="vdActive"><label class="form-check-label small" for="vdActive">Kích hoạt</label></div></div>
-            <div class="col-12"><label class="form-label small fw-medium">Mô tả (tùy chọn)</label><textarea v-model="variantDiscountModal.data.description" rows="2" class="form-control rounded-2"></textarea></div>
+          <!-- ĐÃ BỎ PHẦN CHỌN BIẾN THỂ TẠI ĐÂY -->
+          
+          <!-- Cảnh báo trùng -->
+          <div v-if="variantDiscountModal.data.active && variantAlreadyDiscounted(variantDiscountModal.data.variant_id, variantDiscountModal.data.id, variantDiscountModal.data.start_date, variantDiscountModal.data.end_date, variantDiscountModal.data.apply_scope)" class="alert alert-warning py-2 px-3 text-sm rounded-md flex items-start gap-2 mb-4 bg-yellow-50 text-yellow-800 border border-yellow-200">
+            <i class="icon icon-exclamation-triangle-fill mt-1"></i>
+            <span>Phạm vi này đã có chương trình khuyến mại trùng thời gian. Hãy đổi phạm vi, thời gian hoặc tạm dừng chương trình cũ.</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" v-text="variantDiscountModal.data.discount_type === 'Cố định' ? 'Giá bán mới (VNĐ)' : 'Phần trăm giảm (%)'"><span class="text-red-500 font-bold ml-1">*</span></label>
+                <input v-model.number="variantDiscountModal.data.value" type="number" min="1" :max="variantDiscountModal.data.discount_type === 'Theo phần trăm' ? 99 : undefined" :step="variantDiscountModal.data.discount_type === 'Theo phần trăm' ? 1 : 1000" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" :placeholder="variantDiscountModal.data.discount_type === 'Cố định' ? 'Ví dụ: 499000' : 'Từ 1 đến 99'">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Số lượng được giảm</label>
+                <input v-model.number="variantDiscountModal.data.quantity" type="number" min="0" step="1" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="0 = không giới hạn">
+                <small class="text-gray-600 mt-1 block" style="font-size:0.75rem;">Nhập 0 nếu không giới hạn số lượng.</small>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ngày bắt đầu</label>
+                <input v-model="variantDiscountModal.data.start_date" type="date" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" :max="variantDiscountModal.data.end_date || undefined">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ngày kết thúc</label>
+                <input v-model="variantDiscountModal.data.end_date" type="date" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" :min="variantDiscountModal.data.start_date || undefined">
+                <small class="text-gray-600 mt-1 block" style="font-size:0.75rem;">Ưu đãi có hiệu lực đến hết ngày đã chọn.</small>
+            </div>
+            
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Lý do khuyến mại</label>
+                <select v-model="variantDiscountModal.data.reason" class="sg-input rounded-md w-full border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option v-for="r in variantReasons" :key="r" :value="r" v-text="r"></option>
+                </select>
+            </div>
+            
+            <div class="md:col-span-2 flex items-center mt-2">
+                <label class="status-toggle flex items-center cursor-pointer">
+                  <div class="relative">
+                    <input v-model="variantDiscountModal.data.active" type="checkbox" class="sr-only" id="vdActive" />
+                    <div class="block bg-gray-300 w-10 h-6 rounded-full transition-colors" :class="{'bg-blue-500': variantDiscountModal.data.active}"></div>
+                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform" :class="{'transform translate-x-4': variantDiscountModal.data.active}"></div>
+                  </div>
+                  <span class="ml-3 text-sm font-medium text-gray-700">Kích hoạt</span>
+                </label>
+            </div>
           </div>
         </div>
-        <div class="p-4 border-top d-flex justify-content-end gap-2"><button @click="closeVariantDiscountForm()" class="btn btn-light border rounded-2">Hủy</button><button @click="saveVariantDiscount" class="btn btn-dark rounded-2 fw-bold">Lưu</button></div>
+        
+        <div class="p-4 border-t flex justify-end gap-3 bg-gray-50 mt-auto">
+            <button @click="closeVariantDiscountForm()" class="btn btn-light border border-gray-300 rounded-md shadow-sm px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" type="button" :disabled="variantDiscountModal.saving">Hủy</button>
+            <button @click="saveVariantDiscount" class="btn btn-dark rounded-md shadow-sm px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" type="button" :disabled="variantDiscountModal.saving" v-text="variantDiscountModal.saving ? 'Đang lưu…' : 'Lưu'"></button>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Custom Drawer Styles */
+.custom-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 500px;
+    max-width: 100vw;
+    background-color: white;
+    box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+}
+
+.slide-in-right {
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+.custom-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+    display: flex;
+    justify-content: flex-end; 
+}
+
+/* Custom toggle switch styling */
+input:checked ~ .dot {
+  transform: translateX(100%);
+  background-color: white;
+}
+
+@media (max-width: 768px) {
+  .custom-drawer {
+      width: 100vw;
+  }
+}
+</style>
