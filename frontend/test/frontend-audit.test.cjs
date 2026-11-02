@@ -302,6 +302,81 @@ function loadAdminImages() {
   });
 }
 
+test('color edit preserves the saved name until a HEX is explicitly entered or picked', async () => {
+  const admin=loadAdminImages();
+  admin.openForm('colors',{id:7,name:'Đen tuyền',hex:'#000000',active:true});
+  await vue.nextTick();
+  assert.equal(admin.formModal.data.name,'Đen tuyền');
+  assert.equal(admin.formFields.value.some(f=>f.key==='sort_order'),false);
+  admin.handleColorHexChange('#00ff00');
+  assert.equal(admin.formModal.data.name,'Xanh lá');
+  assert.equal(admin.formModal.data.hex,'#00FF00');
+  admin.handleColorHexChange('#abc');
+  assert.equal(admin.formModal.data.hex,'#ABC'); // Allow typing the rest of a six-digit value.
+  admin.handleColorHexChange('#abc',true);
+  assert.equal(admin.formModal.data.hex,'#AABBCC');
+  const inferred=admin.formModal.data.name;
+  admin.handleColorHexChange('#QQQQQQ');
+  assert.equal(admin.formModal.data.name,inferred);
+  admin.formModal.submitted=true;
+  assert.ok(admin.formFieldError('hex'));
+});
+
+test('product price ranges sort valid variant prices and also normalize reversed API bounds', () => {
+  const admin=loadAdminImages();
+  admin.db.products=[{id:1,active:true,variants:[{id:11,price:500000,active:true},{id:12,price:200000,active:true},{id:13,price:'bad',active:true}]}];
+  assert.equal(admin.productPriceLabel(admin.db.products[0]),admin.formatPrice(200000)+' - '+admin.formatPrice(500000));
+  assert.equal(admin.productPriceLabel({id:2,min_price:500000,max_price:200000}),admin.formatPrice(200000)+' - '+admin.formatPrice(500000));
+  assert.equal(admin.productPriceLabel({id:3,min_price:0,max_price:0,price:0}),'Chưa có giá');
+});
+
+test('coupon editor preserves time precision, prevents duplicate writes, and unlocks after a failed save', async () => {
+  let writes=0,finish;
+  const admin=loadAdminRealtime({fetch:async(url,options)=>{
+    if(options?.method==='POST'){
+      writes++;
+      return await new Promise(resolve=>{finish=resolve;});
+    }
+    return {ok:true,headers:{get:()=> 'application/json'},json:async()=>[]};
+  }});
+  admin.openDiscountForm({code:'TIME10',name:'Theo giờ',discount_type:'Phần trăm',value:10,quantity:null,min_order:0,max_discount:0,start_date:'2040-11-02T09:15:32',expiry:'2040-11-02T18:45:10.123',active:true});
+  assert.equal(admin.discountModal.data.start_date,'2040-11-02T09:15:32');
+  assert.equal(admin.discountModal.data.expiry,'2040-11-02T18:45:10.123');
+  const pending=admin.saveDiscount();
+  await admin.saveDiscount();
+  admin.closeDiscountForm();
+  assert.equal(writes,1); assert.equal(admin.discountModal.open,true); assert.equal(admin.discountModal.saving,true);
+  finish({ok:false,status:409,headers:{get:()=> 'application/json'},json:async()=>({message:'Mã đã tồn tại'})});
+  await pending;
+  assert.equal(admin.discountModal.saving,false); assert.equal(admin.discountModal.open,true);
+  assert.equal(admin.discountModal.error,'Mã đã tồn tại');
+  admin.discountModal.data.expiry='invalid';
+  await admin.saveDiscount();assert.equal(writes,1);
+  assert.equal(admin.promotionDateInput('2040-11-02',true),'2040-11-02T23:59:59.997');
+});
+
+test('new product promotions use every size of a color while detail mode cannot write or broaden old scopes', async () => {
+  const writes=[];
+  const admin=loadAdminRealtime({fetch:async(url,options)=>{
+    if(options?.method==='POST') writes.push(JSON.parse(options.body));
+    return {ok:true,headers:{get:()=> 'application/json'},json:async()=>options?.method ? {success:true} : []};
+  }});
+  admin.db.products=[{id:1,name:'Giày',active:true}];
+  admin.db.inventory=[{id:11,product_id:1,color_id:2,color:'Đen',size:'40',price:300000,active:true},{id:12,product_id:1,color_id:2,color:'Đen',size:'41',price:400000,active:true}];
+  admin.openVariantDiscountForm();
+  assert.equal(admin.variantDiscountModal.data.apply_scope,'color');
+  Object.assign(admin.variantDiscountModal.data,{variant_id:11,product_id:1,color_id:2,value:10});
+  await admin.saveVariantDiscount();
+  assert.equal(writes.length,1);assert.equal(writes[0].ApplyScope,'color');assert.equal(writes[0].ColorID,2);
+  const old={id:5,variant_id:11,product_id:1,apply_scope:'variant',value:10,end_date:'2040-11-02'};
+  admin.openVariantDiscountDetail(old);
+  await admin.saveVariantDiscount();
+  assert.equal(writes.length,1);assert.equal(admin.variantDiscountModal.mode,'view');
+  admin.openVariantDiscountForm(old);
+  assert.equal(admin.variantDiscountModal.data.apply_scope,'variant');
+  assert.equal(old.apply_scope,'variant');
+});
+
 test('employee role is 3 and customers cannot enter the staff workspace',()=>{
   const auth=load('src/stores/authStore.js',{'../services/apiClient':{api:{},setToken(){},clearToken(){}}});
   auth.authState.currentUser={role_id:2,role:'Customer'};
@@ -318,12 +393,12 @@ test('coupon lifecycle separates scheduled, exhausted, inactive and ended',()=>{
   assert.equal(admin.getDiscountStatus(coupon).label,'Đang diễn ra');
   assert.equal(admin.getDiscountStatus({...coupon,start_date:future}).label,'Sắp diễn ra');
   assert.equal(admin.getDiscountStatus({...coupon,used:5}).label,'Hết mã');
-  assert.equal(admin.getDiscountStatus({...coupon,active:false}).label,'Không hoạt động');
+  assert.equal(admin.getDiscountStatus({...coupon,active:false}).label,'Ngừng hoạt động');
   assert.equal(admin.getDiscountStatus({...coupon,expiry:past}).label,'Đã kết thúc');
   assert.equal(admin.getDiscountStatus({...coupon,quantity:0,used:0}).label,'Hết mã');
   assert.equal(admin.getDiscountStatus({...coupon,quantity:null,used:10}).label,'Đang diễn ra');
   admin.openDiscountForm({...coupon,expiry:past});assert.equal(admin.discountModal.open,false);
-  admin.openDiscountForm(coupon);assert.match(admin.discountModal.data.expiry,/^\d{4}-\d{2}-\d{2}$/);
+  admin.openDiscountForm(coupon);assert.equal(new Date(admin.discountModal.data.expiry).getTime(),new Date(coupon.expiry).getTime());
 });
 
 test('product status uses a dedicated update without resending variants or stock',async()=>{

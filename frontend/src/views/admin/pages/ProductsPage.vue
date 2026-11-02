@@ -169,7 +169,7 @@ function onProductImageError(event) {
         <div class="product-form-panel mb-4">
           <h2 class="product-panel-title">Thông tin cơ bản</h2>
           <div class="mb-3">
-            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm *</label
+            <label for="product-name" class="block text-sm font-medium">Tên sản phẩm <span class="form-required" aria-hidden="true">*</span></label
             ><input
               id="product-name"
               v-model="productForm.name"
@@ -193,7 +193,7 @@ function onProductImageError(event) {
           </div>
           <div class="grid grid-cols-12 gap-3">
             <div class="col-span-12 md:col-span-6">
-            <label for="product-category" class="block text-sm font-medium">Danh mục *</label
+            <label for="product-category" class="block text-sm font-medium">Danh mục <span class="form-required" aria-hidden="true">*</span></label
               ><select
                 id="product-category"
                 v-model="productForm.category_id"
@@ -309,7 +309,7 @@ function onProductImageError(event) {
                 </div>
                 <label v-if="c.variants?.length" class="color-status flex items-center gap-2 text-xs">
                   <input type="checkbox" role="switch" :checked="productForm.active && c.variants.every(v=>v.active!==false)" :indeterminate="productForm.active && c.variants.some(v=>v.active!==false) && !c.variants.every(v=>v.active!==false)" :disabled="!productForm.active" @change="setColorActive(i,$event.target.checked)" :aria-label="'Hoạt động màu '+c.name">
-                  {{ !productForm.active || c.variants.every(v=>v.active===false)?'Không hoạt động':c.variants.every(v=>v.active!==false)?'Hoạt động':'Hoạt động một phần' }}
+                  {{ !productForm.active || c.variants.every(v=>v.active===false)?'Ngừng hoạt động':c.variants.every(v=>v.active!==false)?'Hoạt động':'Hoạt động một phần' }}
                 </label>
                 <button v-if="!(c.variants || []).some(v=>v.id)"
                   type="button"
@@ -371,8 +371,8 @@ function onProductImageError(event) {
                   <summary class="text-sm font-medium cursor-pointer py-2">Thêm kích cỡ</summary>
                   <div class="variant-add-fields">
                     <label>Hệ kích cỡ<select v-model="c.addition.standard" @change="c.addition.size_ids=[];c.addition.selection_error=''" class="sg-input" :aria-label="'Hệ kích cỡ thêm cho '+c.name"><option>EU</option><option>US</option><option>UK</option></select></label>
-                    <label>Giá mỗi biến thể mới (VNĐ) *<input v-model.number="c.addition.price" @blur="c.addition.touched.price=true" type="number" min="1" max="1000000000000" step="1" class="sg-input" :aria-label="'Giá biến thể thêm mới '+c.name" :aria-invalid="!!variantAdditionFieldError(c,'price')" :aria-describedby="'variant-add-price-error-'+i"><span v-if="variantAdditionFieldError(c,'price')" :id="'variant-add-price-error-'+i" class="variant-field-error" role="alert">{{ variantAdditionFieldError(c,'price') }}</span></label>
-                    <label>Tồn mỗi biến thể mới *<input v-model.number="c.addition.stock" @blur="c.addition.touched.stock=true" type="number" min="0" max="1000000" step="1" class="sg-input" :aria-label="'Tồn biến thể thêm mới '+c.name" :aria-invalid="!!variantAdditionFieldError(c,'stock')" :aria-describedby="'variant-add-stock-error-'+i"><span v-if="variantAdditionFieldError(c,'stock')" :id="'variant-add-stock-error-'+i" class="variant-field-error" role="alert">{{ variantAdditionFieldError(c,'stock') }}</span></label>
+                    <label>Giá mỗi biến thể mới (VNĐ) <span class="form-required" aria-hidden="true">*</span><input v-model.number="c.addition.price" @blur="c.addition.touched.price=true" type="number" min="1" max="1000000000000" step="1" class="sg-input" :aria-label="'Giá biến thể thêm mới '+c.name" :aria-invalid="!!variantAdditionFieldError(c,'price')" :aria-describedby="'variant-add-price-error-'+i"><span v-if="variantAdditionFieldError(c,'price')" :id="'variant-add-price-error-'+i" class="variant-field-error" role="alert">{{ variantAdditionFieldError(c,'price') }}</span></label>
+                    <label>Tồn mỗi biến thể mới <span class="form-required" aria-hidden="true">*</span><input v-model.number="c.addition.stock" @blur="c.addition.touched.stock=true" type="number" min="0" max="1000000" step="1" class="sg-input" :aria-label="'Tồn biến thể thêm mới '+c.name" :aria-invalid="!!variantAdditionFieldError(c,'stock')" :aria-describedby="'variant-add-stock-error-'+i"><span v-if="variantAdditionFieldError(c,'stock')" :id="'variant-add-stock-error-'+i" class="variant-field-error" role="alert">{{ variantAdditionFieldError(c,'stock') }}</span></label>
                   </div>
                   <div class="variant-add-sizes" role="group" :aria-label="'Kích cỡ chưa có của '+c.name">
                     <label v-for="size in availableSizesForColor(c)" :key="size.id" class="variant-size-choice" :class="{ 'is-selected':c.addition.size_ids.includes(size.id) }">
@@ -388,7 +388,7 @@ function onProductImageError(event) {
                 </details>
                   <table v-if="c.variants?.length" class="variant-editor-table">
                     <colgroup><col class="variant-col-sku"><col class="variant-col-size"><col class="variant-col-price"><col class="variant-col-stock"><col class="variant-col-state"><col class="variant-col-remove"></colgroup>
-                    <thead><tr><th scope="col">SKU</th><th scope="col">Kích cỡ</th><th scope="col">Giá bán (VNĐ) *</th><th scope="col">Tồn kho *</th><th scope="col">Trạng thái</th><th scope="col"><span class="sr-only">Bỏ dòng mới</span></th></tr></thead>
+                    <thead><tr><th scope="col">SKU</th><th scope="col">Kích cỡ</th><th scope="col">Giá bán (VNĐ) <span class="form-required" aria-hidden="true">*</span></th><th scope="col">Tồn kho <span class="form-required" aria-hidden="true">*</span></th><th scope="col">Trạng thái</th><th scope="col"><span class="sr-only">Bỏ dòng mới</span></th></tr></thead>
                     <tbody><tr v-for="sv in c.variants" :key="sv.id || sv.size_id || sv.size">
                       <td data-label="SKU" class="variant-sku-cell"><span>{{ sv.sku || (productForm.id ? 'SKU-'+productForm.id+'-C'+c.id+'-S'+sv.size_id : 'Tự sinh khi lưu') }}</span><span v-if="!sv.id" class="variant-new-badge">Mới</span></td>
                       <td data-label="Kích cỡ"><select :value="sv.size_id" @change="changeVariantSize(i,sv,$event.target.value,$event)" class="sg-input" :aria-label="'Kích cỡ '+(sv.sku || c.name+' '+sv.size)">
@@ -397,7 +397,7 @@ function onProductImageError(event) {
                       </select><p v-if="variantFieldError(sv,'size')" class="text-xs text-red-600 mt-1 mb-0" role="alert">{{ variantFieldError(sv,'size') }}</p></td>
                       <td data-label="Giá bán (VNĐ) *"><input v-model.number="sv.price" @blur="sv.touched={...sv.touched,price:true}" :aria-invalid="!!variantFieldError(sv,'price')" type="number" min="1" max="1000000000000" step="1" required class="sg-input" :aria-label="'Giá '+c.name+' '+sv.size"><p v-if="variantFieldError(sv,'price')" class="text-xs text-red-600 mt-1 mb-0" role="alert">{{ variantFieldError(sv,'price') }}</p></td>
                       <td data-label="Tồn kho *"><input v-model.number="sv.stock" @blur="sv.touched={...sv.touched,stock:true}" :aria-invalid="!!variantFieldError(sv,'stock')" type="number" min="0" max="1000000" step="1" required class="sg-input" :aria-label="'Tồn kho '+c.name+' '+sv.size"><p v-if="variantFieldError(sv,'stock')" class="text-xs text-red-600 mt-1 mb-0" role="alert">{{ variantFieldError(sv,'stock') }}</p></td>
-                      <td data-label="Trạng thái" class="variant-state-cell"><label><input v-model="sv.active" :disabled="!productForm.active" type="checkbox" role="switch" :aria-label="'Hoạt động biến thể '+(sv.sku || c.name+' '+sv.size)"><span>{{ !productForm.active || sv.active === false ? 'Không hoạt động' : 'Hoạt động' }}</span></label><span v-if="Number(sv.stock) === 0" class="variant-stock-note">Hết hàng</span></td>
+                      <td data-label="Trạng thái" class="variant-state-cell"><label><input v-model="sv.active" :disabled="!productForm.active" type="checkbox" role="switch" :aria-label="'Hoạt động biến thể '+(sv.sku || c.name+' '+sv.size)"><span>{{ !productForm.active || sv.active === false ? 'Ngừng hoạt động' : 'Hoạt động' }}</span></label><span v-if="Number(sv.stock) === 0" class="variant-stock-note">Hết hàng</span></td>
                       <td class="variant-remove-cell"><button v-if="!sv.id" type="button" @click="removeDraftVariant(i,sv)" class="products-action variant-remove" :aria-label="'Bỏ biến thể mới '+c.name+' '+sv.standard+' '+sv.size" title="Bỏ biến thể chưa lưu"><i class="icon icon-x-lg" aria-hidden="true"></i></button></td>
                     </tr></tbody>
                   </table>
@@ -609,7 +609,7 @@ function onProductImageError(event) {
                 </td>
                 <td>{{ v.standard || 'EU' }} {{ v.size }}</td>
                 <td class="product-detail-variant-price">{{ formatPrice(v.price ?? productDetailModal.product.price) }}</td>
-                <td class="text-end"><span class="product-detail-stock" :class="{ 'is-empty': Number(v.stock) <= 0, 'is-low': Number(v.stock) > 0 && Number(v.stock) <= LOW_STOCK_THRESHOLD }">{{ v.stock }}</span></td><td>{{ !productDetailModal.product.active || !v.active ? 'Không hoạt động' : Number(v.stock)===0 ? 'Hết hàng' : 'Hoạt động' }}</td>
+                <td class="text-end"><span class="product-detail-stock" :class="{ 'is-empty': Number(v.stock) <= 0, 'is-low': Number(v.stock) > 0 && Number(v.stock) <= LOW_STOCK_THRESHOLD }">{{ v.stock }}</span></td><td>{{ !productDetailModal.product.active || !v.active ? 'Ngừng hoạt động' : Number(v.stock)===0 ? 'Hết hàng' : 'Hoạt động' }}</td>
               </tr>
               <tr v-if="!productVariants(productDetailModal.product.id).length">
                 <td colspan="7"><div class="product-detail-empty"><i class="icon icon-box-seam" aria-hidden="true"></i><strong>Chưa có biến thể</strong><span>Chỉnh sửa sản phẩm để thêm màu sắc, kích cỡ và số lượng.</span></div></td>

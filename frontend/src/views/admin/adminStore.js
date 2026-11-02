@@ -2107,7 +2107,7 @@ export function applyPosCoupon() {
   }
   const d = db.discounts.find((x) => String(x.code) === String(code));
   if (!d || getDiscountStatus(d).label !== 'Đang diễn ra') {
-    notify("Mã chưa diễn ra, đã hết lượt hoặc không hoạt động.", "error");
+    notify("Mã chưa diễn ra, đã hết lượt hoặc ngừng hoạt động.", "error");
     return;
   }
   if (Number(d.min_order) > 0 && posSubtotal.value < Number(d.min_order)) {
@@ -2643,7 +2643,7 @@ export function changeVariantSize(index,variant,sizeId,event) {
   const c=productForm.colors[index],s=availableVariantSizes.value.find(s=>String(s.id)===String(sizeId));
   if(!s || c.variants.some(v=>v!==variant && String(v.size_id)===String(s.id))) {
     if(event) event.target.value=variant.size_id;
-    variant.size_error='Kích cỡ đã có trong màu này hoặc không hoạt động.';return;
+    variant.size_error='Kích cỡ đã có trong màu này hoặc ngừng hoạt động.';return;
   }
   variant.size_error='';
   Object.assign(variant,{size_id:s.id,size:s.name,standard:s.standard});
@@ -2903,7 +2903,7 @@ export function requestSaveProduct() {
   if(!productForm.name.trim() || !variants.length || variants.some(v=>variantFieldError(v,'price') || variantFieldError(v,'stock') || variantFieldError(v,'size'))) {
     notify('Nhập tên sản phẩm, giá và tồn kho hợp lệ trước khi lưu.','error'); return;
   }
-  Object.assign(confirmModal,{open:true,mode:'save-product',title:'Xác nhận lưu sản phẩm',message:productForm.active?'Lưu thông tin và các biến thể của sản phẩm này?':'Lưu sản phẩm ở trạng thái không hoạt động và ngừng toàn bộ biến thể?',confirmLabel:'Lưu',danger:false});
+  Object.assign(confirmModal,{open:true,mode:'save-product',title:'Xác nhận lưu sản phẩm',message:productForm.active?'Lưu thông tin và các biến thể của sản phẩm này?':'Lưu sản phẩm ở trạng thái ngừng hoạt động và ngừng toàn bộ biến thể?',confirmLabel:'Lưu',danger:false});
 }
 
 /* ---- Modal chi tiết sản phẩm ---- */
@@ -2952,6 +2952,7 @@ export function productPriceLabel(product) {
   // Fallback về product.price khi min/max chưa hợp lệ
   if (!Number.isFinite(min) || min <= 0) min = Number(product.price) || 0;
   if (!Number.isFinite(max) || max <= 0) max = min;
+  if (max < min) [min,max]=[max,min];
   if (!Number.isFinite(min) || min <= 0) return 'Chưa có giá';
   return formatPrice(min) + (max > min ? ' - ' + formatPrice(max) : '');
 }
@@ -3068,6 +3069,21 @@ function dateInputValue(value) {
   return match ? match[1] : "";
 }
 
+export function promotionDateInput(value, endOfDay = false) {
+  if (!value) return '';
+  const raw=String(value).trim();
+  // Cùng mốc cuối ngày với DiscountService và độ chính xác DATETIME của SQL Server.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw+(endOfDay?'T23:59:59.997':'T00:00:00');
+  const date=new Date(raw);
+  if (!Number.isFinite(date.getTime())) return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`+(date.getMilliseconds()?'.'+String(date.getMilliseconds()).padStart(3,'0'):'');
+}
+export function formatPromotionDate(value, endOfDay = false) {
+  const raw=promotionDateInput(value,endOfDay);
+  return raw ? new Date(raw).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) : '—';
+}
+
 export function isExpired(date) {
   const boundary = localDateBoundary(date, true);
   return boundary ? boundary < new Date() : false;
@@ -3079,7 +3095,7 @@ export function getProductName(id) {
 
 /* ---- MÃ KHUYẾN MÃI ---- */
 export const discountTypes = ["Phần trăm", "Cố định"];
-export const discountStatuses = ["Tất cả", "Sắp diễn ra", "Đang diễn ra", "Không hoạt động", "Hết mã", "Đã kết thúc"];
+export const discountStatuses = ["Tất cả", "Sắp diễn ra", "Đang diễn ra", "Ngừng hoạt động", "Hết mã", "Đã kết thúc"];
 export const discountSearch = ref("");
 export const discountStatusFilter = ref("Tất cả");
 
@@ -3090,7 +3106,7 @@ export function getDiscountStatus(d) {
   if (d.active && start>new Date()) return {label:"Sắp diễn ra",cls:"bg-light text-secondary border"};
   return d.active
     ? { label: "Đang diễn ra", cls: "bg-dark text-white" }
-    : { label: "Không hoạt động", cls: "bg-light text-secondary border" };
+    : { label: "Ngừng hoạt động", cls: "bg-light text-secondary border" };
 }
 export function couponFinished(d) {
   const expiry=localDateBoundary(d.expiry,true);
@@ -3140,21 +3156,26 @@ function emptyDiscount() {
     active: true,
   };
 }
-export const discountModal = reactive({ open: false, data: emptyDiscount() });
+export const discountModal = reactive({ open: false, saving: false, error: '', data: emptyDiscount() });
+function promotionError(state,message) { state.error=message; notify(message,'error'); }
 export function openDiscountForm(item) {
+  if (discountModal.saving) return;
   if(item && couponFinished(item)) { notify("Mã giảm giá đã kết thúc, không được sửa.","error"); return; }
+  discountModal.error='';
   Object.assign(discountModal.data, emptyDiscount());
   if (item) Object.assign(discountModal.data, JSON.parse(JSON.stringify(item)));
-  discountModal.data.start_date=dateInputValue(discountModal.data.start_date);
-  discountModal.data.expiry=dateInputValue(discountModal.data.expiry);
+  discountModal.data.start_date=promotionDateInput(discountModal.data.start_date);
+  discountModal.data.expiry=promotionDateInput(discountModal.data.expiry,true);
   discountModal.open = true;
 }
 export function closeDiscountForm() {
-  discountModal.open = false;
+  if (!discountModal.saving) discountModal.open = false;
 }
 export async function saveDiscount() {
+  if (discountModal.saving) return;
+  discountModal.error='';
   const d = discountModal.data;
-  if(d.id && couponFinished(db.discounts.find(x=>x.id===d.id) || d)) { notify("Mã giảm giá đã kết thúc, không được sửa.","error"); return; }
+  if(d.id && couponFinished(db.discounts.find(x=>x.id===d.id) || d)) { promotionError(discountModal,"Mã giảm giá đã kết thúc, không được sửa."); return; }
   const code = String(d.code || "").trim().toUpperCase();
   const name = String(d.name || "").trim();
   const val = Number(d.value);
@@ -3162,20 +3183,21 @@ export async function saveDiscount() {
   const maxDiscount = Number(d.max_discount || 0);
   const usageLimit = d.quantity==null?null:Number(d.quantity);
   if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(code)) {
-    notify("Mã khuyến mại phải gồm 2-50 ký tự chữ/số/-/_", "error");
+    promotionError(discountModal,"Mã khuyến mại phải gồm 2-50 ký tự chữ/số/-/_");
     return;
   }
   if (!name || name.length > 200 || !Number.isFinite(val) || val <= 0 || (d.discount_type === "Phần trăm" && val > 100)) {
-    notify("Tên hoặc giá trị mã khuyến mại không hợp lệ", "error");
+    promotionError(discountModal,"Tên hoặc giá trị mã khuyến mại không hợp lệ");
     return;
   }
   if (![minOrder, maxDiscount].every((n) => Number.isFinite(n) && n >= 0) || (usageLimit!=null && (!Number.isSafeInteger(usageLimit) || usageLimit < 0))) {
-    notify("Điều kiện mã khuyến mại không hợp lệ", "error");
+    promotionError(discountModal,"Điều kiện mã khuyến mại không hợp lệ");
     return;
   }
-  if (!discountTypes.includes(d.discount_type)) { notify("Vui lòng chọn loại giảm giá hợp lệ.", "error"); return; }
-  if (!d.start_date || !d.expiry || !localDateBoundary(d.start_date) || !localDateBoundary(d.expiry) || new Date(d.expiry) < new Date(d.start_date)) {
-    notify("Vui lòng chọn thời gian hợp lệ; ngày kết thúc không được trước ngày bắt đầu.", "error"); return;
+  if (!discountTypes.includes(d.discount_type)) { promotionError(discountModal,"Vui lòng chọn loại giảm giá hợp lệ."); return; }
+  const startsAt=new Date(d.start_date), endsAt=new Date(d.expiry);
+  if (!d.start_date || !d.expiry || !Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt < startsAt) {
+    promotionError(discountModal,"Vui lòng chọn thời gian hợp lệ; ngày kết thúc không được trước ngày bắt đầu."); return;
   }
   const payload = {
     CouponCode: code,
@@ -3192,23 +3214,25 @@ export async function saveDiscount() {
     IsActive: !!d.active,
   };
   const isEdit = !!d.id;
+  discountModal.saving = true;
+  try {
   const res = await apiWrite(isEdit ? "/discounts/" + d.id : "/discounts", {
     method: isEdit ? "PUT" : "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    notify(
+    promotionError(discountModal,
       res.data?.message || "Lưu mã giảm giá thất bại (máy chủ " +
         (res.status || "không phản hồi") +
         "). Kiểm tra API /discounts.",
-      "error",
     );
     return;
   }
   discountModal.open = false;
   notify(isEdit ? "Đã cập nhật mã khuyến mại" : "Đã thêm mã khuyến mại", "success");
-  fetchAllData();
+  await fetchAllData(true);
+  } finally { discountModal.saving = false; }
 }
 
 /* ---- GIẢM GIÁ BIẾN THỂ ---- */
@@ -3311,7 +3335,7 @@ export function getVariantDiscountStatus(vd) {
   if (isExpired(vd.end_date))
     return { label: "Hết hạn", cls: "bg-danger-subtle text-danger-emphasis" };
   if (!vd.active)
-    return { label: "Không hoạt động", cls: "bg-secondary-subtle text-secondary" };
+    return { label: "Ngừng hoạt động", cls: "bg-secondary-subtle text-secondary" };
   if (Number(vd.quantity) > 0 && Number(vd.used || 0) >= Number(vd.quantity))
     return { label: "Đã dùng hết", cls: "bg-warning-subtle text-warning-emphasis" };
   const startsAt = localDateBoundary(vd.start_date);
@@ -3366,7 +3390,7 @@ export const filteredVariantDiscounts = computed(() => {
 function emptyVariantDiscount() {
   return {
     id: null,
-    apply_scope: "variant",
+    apply_scope: "color",
     variant_id: "",
     product_id: "",
     color: "",
@@ -3385,9 +3409,15 @@ function emptyVariantDiscount() {
 export const variantDiscountModal = reactive({
   open: false,
   saving: false,
+  mode: 'edit',
+  error: '',
   data: emptyVariantDiscount(),
 });
-export function openVariantDiscountForm(item) {
+export function openVariantDiscountForm(item, mode = 'edit') {
+  if (variantDiscountModal.saving) return;
+  if (item && mode !== 'view' && isExpired(item.end_date)) { notify('Khuyến mại đã hết hạn, chỉ được xem chi tiết.','error'); return; }
+  variantDiscountModal.mode = mode;
+  variantDiscountModal.error = '';
   Object.assign(variantDiscountModal.data, emptyVariantDiscount());
   if (item)
     Object.assign(variantDiscountModal.data, JSON.parse(JSON.stringify(item)));
@@ -3398,8 +3428,9 @@ export function openVariantDiscountForm(item) {
   variantDiscountModal.open = true;
 }
 export function closeVariantDiscountForm() {
-  variantDiscountModal.open = false;
+  if (!variantDiscountModal.saving) variantDiscountModal.open = false;
 }
+export function openVariantDiscountDetail(item) { openVariantDiscountForm(item, 'view'); }
 export function resetVariantDiscountSelection() {
   variantDiscountModal.data.variant_id = "";
   variantDiscountModal.data.product_id = "";
@@ -3407,7 +3438,8 @@ export function resetVariantDiscountSelection() {
   variantDiscountModal.data.color_hex = "";
 }
 export async function saveVariantDiscount() {
-  if (variantDiscountModal.saving) return;
+  if (variantDiscountModal.saving || variantDiscountModal.mode === 'view') return;
+  variantDiscountModal.error='';
   const d = variantDiscountModal.data;
   const variantId = Number(d.variant_id);
   const scope = d.apply_scope === "variant" ? "variant" : "color";
@@ -3418,23 +3450,23 @@ export async function saveVariantDiscount() {
   const val = Number(d.value);
   const quantity = Number(d.quantity || 0);
   if (!Number.isSafeInteger(variantId) || variantId <= 0 || !Number.isSafeInteger(productId) || productId <= 0) {
-    notify(scope === "variant" ? "Vui lòng chọn màu và size sản phẩm" : "Vui lòng chọn màu sản phẩm", "error");
+    promotionError(variantDiscountModal,scope === "variant" ? "Vui lòng chọn màu và size sản phẩm" : "Vui lòng chọn màu sản phẩm");
     return;
   }
   if (!Number.isFinite(val) || val <= 0 || (d.discount_type === "Theo phần trăm" && (!Number.isSafeInteger(val) || val >= 100)) || !Number.isSafeInteger(quantity) || quantity < 0) {
-    notify("Giá trị giảm hoặc số lượng không hợp lệ", "error");
+    promotionError(variantDiscountModal,"Giá trị giảm hoặc số lượng không hợp lệ");
     return;
   }
   if (d.start_date && d.end_date && d.end_date < d.start_date) {
-    notify("Ngày kết thúc không được trước ngày bắt đầu", "error");
+    promotionError(variantDiscountModal,"Ngày kết thúc không được trước ngày bắt đầu");
     return;
   }
   if (d.discount_type === "Cố định" && val >= Number(info?.base_price || 0)) {
-    notify("Giá bán mới phải nhỏ hơn giá gốc trong phạm vi đã chọn", "error");
+    promotionError(variantDiscountModal,"Giá bán mới phải nhỏ hơn giá gốc trong phạm vi đã chọn");
     return;
   }
   if (d.active && variantAlreadyDiscounted(d.variant_id, d.id, d.start_date, d.end_date, scope)) {
-    notify("Phạm vi này đã có chương trình khuyến mại trùng thời gian", "error");
+    promotionError(variantDiscountModal,"Phạm vi này đã có chương trình khuyến mại trùng thời gian");
     return;
   }
   const payload = {
@@ -3463,15 +3495,15 @@ export async function saveVariantDiscount() {
       const msg = res.data && (res.data.message || res.data.error)
         ? (res.data.message || res.data.error)
         : "Có lỗi xảy ra khi lưu giảm giá.";
-      notify(msg, "error");
+      promotionError(variantDiscountModal,msg);
       return;
     }
     variantDiscountModal.open = false;
     notify(
-      isEdit ? "Đã cập nhật khuyến mại biến thể" : "Đã thêm khuyến mại biến thể",
+      isEdit ? "Đã cập nhật khuyến mại sản phẩm" : "Đã thêm khuyến mại sản phẩm",
       "success",
     );
-    fetchAllData();
+    await fetchAllData(true);
   } finally {
     variantDiscountModal.saving = false;
   }
@@ -3708,10 +3740,11 @@ export function getColorName(hex) {
   if (b > r && b > g) return "Xanh dương";
   return "Màu tùy chỉnh";
 }
-export function handleColorHexChange(hex) {
+export function handleColorHexChange(hex, commit = false) {
   if (formModal.type !== "colors") return;
 
-  const normalizedHex = String(hex || "").trim().toUpperCase();
+  let normalizedHex = String(hex || "").trim().toUpperCase();
+  if (commit && /^#[0-9A-F]{3}$/.test(normalizedHex)) normalizedHex='#'+[...normalizedHex.slice(1)].map(c=>c+c).join('');
   formModal.data.hex = normalizedHex;
 
   const colorName = getColorName(normalizedHex);
@@ -3842,15 +3875,7 @@ export const formModal = reactive({
   touched:{}, submitted:false, saving:false, serverErrors:{}, error:'', initial:'', discardConfirm:false,
 });
 
-/* ✅ watch tự đồng bộ tên màu khi hex thay đổi */
-watch(
-  () => formModal.type === "colors" ? formModal.data.hex : undefined,
-  (hex) => {
-    if (formModal.type !== "colors" || !hex) return;
-    const colorName = getColorName(hex);
-    if (colorName) formModal.data.name = colorName;
-  },
-);
+// Tên chỉ tự đổi khi người dùng nhập/chọn HEX, không ghi đè tên đã lưu lúc mở form.
 
 export function normalizeCatalogName(value) {
   return String(value ?? '').normalize('NFC').replace(/[\s\u200B]+/g,' ').trim();
@@ -3867,7 +3892,7 @@ export const formValidation = computed(()=>{
     else if(name.length>max) errors.name=`Tên không được vượt quá ${max} ký tự.`;
     else {
       const duplicate=db[type].find(row=>String(row.id)!==String(data.id) && catalogNameKey(row.name)===key);
-      if(duplicate) errors.name=`Tên này đã tồn tại (#${duplicate.id}${duplicate.active?'':', không hoạt động'}). Hãy dùng bản ghi hiện có.`;
+      if(duplicate) errors.name=`Tên này đã tồn tại (#${duplicate.id}${duplicate.active?'':', ngừng hoạt động'}). Hãy dùng bản ghi hiện có.`;
     }
   }
   if (type === "colors" && data.hex && !/^#[0-9A-Fa-f]{6}$/.test(String(data.hex).trim())) {
@@ -3880,7 +3905,7 @@ export const formValidation = computed(()=>{
     if(raw && (!/^\d+(?:\.\d+)?$/.test(raw) || !Number.isFinite(n) || !Number.isInteger(n*2) || n<(standard==='EU'?14:0) || n>(standard==='EU'?60:22))) errors.name=standard==='EU'?'Kích cỡ EU phải từ 14 đến 60, bước 0,5.':'Kích cỡ US/UK phải từ 0 đến 22, bước 0,5.';
     if(raw && !errors.name) {
       const duplicate=db.sizes.find(s=>String(s.id)!==String(data.id) && s.standard===standard && Number(s.name)===n);
-      if(duplicate) errors.name=`Kích cỡ ${standard} ${n} đã tồn tại (#${duplicate.id}${duplicate.active?'':', không hoạt động'}). Hãy dùng bản ghi hiện có.`;
+      if(duplicate) errors.name=`Kích cỡ ${standard} ${n} đã tồn tại (#${duplicate.id}${duplicate.active?'':', ngừng hoạt động'}). Hãy dùng bản ghi hiện có.`;
     }
   }
   if(type==='accounts') {
@@ -4094,7 +4119,7 @@ export function deleteItem(type, id, name) {
   confirmModal.title = "Ngừng hoạt động bản ghi?";
   confirmModal.message =
     'Chuyển "' + (name || "#" + id) +
-    '" sang trạng thái Không hoạt động? Dữ liệu vẫn được giữ lại và có thể khôi phục sau.';
+    '" sang trạng thái Ngừng hoạt động? Dữ liệu vẫn được giữ lại và có thể khôi phục sau.';
   confirmModal.open = true;
 }
 
@@ -4180,7 +4205,7 @@ export function deleteProduct(p) {
   confirmModal.title = "Ngừng hoạt động sản phẩm?";
   confirmModal.message =
     'Chuyển sản phẩm "' + (p.name || "#" + p.id) +
-    '" sang trạng thái Không hoạt động? Dữ liệu sản phẩm, biến thể và lịch sử đơn hàng sẽ được giữ nguyên.';
+    '" sang trạng thái Ngừng hoạt động? Dữ liệu sản phẩm, biến thể và lịch sử đơn hàng sẽ được giữ nguyên.';
   confirmModal.open = true;
 }
 export function toggleProductStatus(p,event) {
@@ -4248,7 +4273,7 @@ export async function executeConfirm() {
   }
   confirmModal.open = false;
   confirmModal.payload = null;
-  notify("Đã chuyển sang trạng thái Không hoạt động. Dữ liệu vẫn được giữ lại.", "success");
+  notify("Đã chuyển sang trạng thái Ngừng hoạt động. Dữ liệu vẫn được giữ lại.", "success");
   fetchAllData();
 }
 

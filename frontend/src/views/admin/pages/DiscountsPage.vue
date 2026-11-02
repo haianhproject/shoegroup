@@ -1,455 +1,87 @@
-
-<!-- Mục đích: Mã giảm giá theo đơn hàng, thời gian, lượt sử dụng và trạng thái. -->
+<!-- Mục đích: Quản lý mã giảm giá theo đơn hàng với bảng gọn và panel xem/thêm/sửa bên phải. -->
 <script setup>
+import { nextTick } from 'vue'
+import AdminDrawer from '../components/AdminDrawer.vue'
 import {
-  filteredDiscountsList,
-  discountSearch,
-  discountStatusFilter,
-  discountStatuses,
-  discountTypes,
-  discountModal,
-  openDiscountForm,
-  closeDiscountForm,
-  saveDiscount,
-  getDiscountStatus,
-  formatDiscountValue,
-  formatDate,
-  formatPrice,
+  filteredDiscountsList, discountSearch, discountStatusFilter, discountStatuses, discountTypes,
+  discountModal, openDiscountForm, closeDiscountForm, saveDiscount,
+  getDiscountStatus, formatDiscountValue, formatPromotionDate, formatPrice,
   couponFinished, toggleDiscountStatus, discountDetail, openDiscountDetail,
 } from '../adminStore'
+
+async function editDetail() {
+  const item=discountDetail.item
+  discountDetail.open=false
+  await nextTick()
+  openDiscountForm(item)
+}
 </script>
 
 <template>
-  <div class="fade-in">
-    <div class="bg-white p-4 discount-page">
-      <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
-        <div>
-          <h5 class="font-bold mb-1 text-gray-900">Quản lý mã giảm giá</h5>
-          <p class="text-gray-600 text-sm mb-0">
-            Tạo, chỉnh sửa và theo dõi mã giảm giá
-          </p>
-        </div>
-
-        <button
-          @click="openDiscountForm()"
-          class="btn btn-dark font-medium px-3"
-        >
-          <i class="icon icon-plus-lg mr-1"></i>
-          Thêm mã giảm giá
-        </button>
-      </div>
-
-      <!-- Tìm kiếm và lọc -->
+  <div class="fade-in discount-page promotion-page">
+    <section class="bg-white p-4 rounded-2 border">
+      <header class="flex flex-wrap justify-between items-start gap-2 mb-4">
+        <div><h1 class="text-xl font-bold mb-1">Quản lý mã giảm giá</h1><p class="text-gray-600 text-sm mb-0">Tạo, chỉnh sửa và theo dõi mã giảm giá theo đơn hàng.</p></div>
+        <button type="button" class="btn btn-dark" @click="openDiscountForm()"><i class="icon icon-plus-lg" aria-hidden="true"></i>Thêm mã giảm giá</button>
+      </header>
       <div class="flex flex-wrap gap-2 mb-3">
-        <div class="relative grow search-box">
-          <i class="icon icon-search search-icon"></i>
-          <input
-            v-model="discountSearch"
-            type="text"
-            class="sg-input rounded-2 pl-4"
-            placeholder="Tìm theo mã hoặc tên chương trình"
-          />
-        </div>
-
-        <select
-          v-model="discountStatusFilter"
-          class="sg-input rounded-2 status-filter"
-        >
-          <option
-            v-for="s in discountStatuses"
-            :key="s"
-            :value="s"
-          >
-            {{ s === 'Tất cả' ? 'Lọc trạng thái' : s }}
-          </option>
-        </select>
+        <input v-model="discountSearch" type="search" class="sg-input promotion-search" placeholder="Tìm mã hoặc tên chương trình" aria-label="Tìm mã giảm giá">
+        <select v-model="discountStatusFilter" class="sg-input promotion-filter" aria-label="Lọc trạng thái mã giảm giá"><option v-for="s in discountStatuses" :key="s" :value="s">{{ s === 'Tất cả' ? 'Tất cả trạng thái' : s }}</option></select>
       </div>
-
-      <!-- Danh sách mã giảm giá -->
-      <div class="table-responsive">
-        <table class="table align-middle mb-0">
-          <thead>
-            <tr class="text-gray-600 text-sm uppercase">
-              <th>Mã</th>
-              <th>Tên chương trình</th>
-              <th class="text-center">Giá trị</th>
-              <th class="text-end">Đơn tối thiểu</th>
-              <th class="text-end">Giảm tối đa</th>
-              <th>Thời gian</th>
-              <th class="text-center">Số lượng</th>
-              <th>Trạng thái</th>
-              <th class="text-end">Thao tác</th>
-            </tr>
-          </thead>
-
+      <div class="table-responsive" tabindex="0" role="region" aria-label="Danh sách mã giảm giá, có thể cuộn ngang">
+        <table class="table align-middle mb-0 promotion-table">
+          <thead><tr><th scope="col">Mã</th><th scope="col">Tên chương trình</th><th scope="col">Giá trị</th><th scope="col" class="promotion-time">Thời gian</th><th scope="col">Trạng thái</th><th scope="col" class="text-end">Thao tác</th></tr></thead>
           <tbody>
-            <tr v-if="filteredDiscountsList.length === 0">
-              <td
-                colspan="9"
-                class="text-center text-gray-600 py-5"
-              >
-                <i class="icon icon-ticket-perforated text-4xl block mb-2 opacity-50"></i>
-                Không có mã giảm giá nào.
-              </td>
-            </tr>
-
-            <tr
-              v-for="d in filteredDiscountsList"
-              :key="d.id"
-            >
-              <td class="font-bold text-gray-900">
-                {{ d.code }}
-              </td>
-
-              <td class="text-sm">
-                {{ d.name || '—' }}
-              </td>
-
-
-              <td class="text-center font-bold text-gray-900">
-                {{ formatDiscountValue(d) }}
-              </td>
-
-              <td class="text-end text-sm">
-                {{ Number(d.min_order) > 0 ? formatPrice(d.min_order) : '—' }}
-              </td>
-
-              <td class="text-end text-sm">
-                {{ Number(d.max_discount) > 0 ? formatPrice(d.max_discount) : '—' }}
-              </td>
-
-              <td class="text-sm text-gray-600">
-                <span>{{ d.start_date ? formatDate(d.start_date) : '—' }}</span>
-                <span class="mx-1">→</span>
-                <span>{{ d.expiry ? formatDate(d.expiry) : '—' }}</span>
-              </td>
-
-              <td class="text-center text-sm">
-                {{ d.quantity!=null ? Math.max(0,Number(d.quantity)-Number(d.used)) : 'Không giới hạn' }}
-              </td>
-
-              <td>
-                <span
-                  class="badge discount-status"
-                  :class="getDiscountStatus(d).cls"
-                >
-                  {{ getDiscountStatus(d).label }}
-                </span>
-              </td>
-
-              <td class="text-end action-cell">
-                <button type="button" @click="openDiscountDetail(d)" class="btn btn-sm btn-light border" title="Xem chi tiết" :aria-label="'Xem mã '+d.code"><i class="icon icon-eye"></i></button>
-
-                <button
-                  @click="openDiscountForm(d)"
-                  :disabled="couponFinished(d)"
-                  class="btn btn-sm btn-light border"
-                  title="Chỉnh sửa"
-                >
-                  <i class="icon icon-pencil"></i>
-                </button>
+            <tr v-if="!filteredDiscountsList.length"><td colspan="6" class="text-center text-gray-600 py-5">Không có mã giảm giá phù hợp.</td></tr>
+            <tr v-for="d in filteredDiscountsList" :key="d.id">
+              <td class="font-bold">{{ d.code }}</td><td>{{ d.name || '—' }}</td><td class="whitespace-nowrap">{{ formatDiscountValue(d) }}</td>
+              <td class="promotion-time"><div class="promotion-period"><span>Từ {{ formatPromotionDate(d.start_date) }}</span><span>Đến {{ formatPromotionDate(d.expiry, true) }}</span></div></td>
+              <td><span class="badge" :class="getDiscountStatus(d).cls">{{ getDiscountStatus(d).label }}</span></td>
+              <td><div class="promotion-actions">
+                <button type="button" class="btn btn-sm btn-light border" @click="openDiscountDetail(d)" :aria-label="'Xem mã '+d.code" title="Xem chi tiết"><i class="icon icon-eye" aria-hidden="true"></i></button>
+                <button type="button" class="btn btn-sm btn-light border" @click="openDiscountForm(d)" :disabled="couponFinished(d)" :aria-label="'Sửa mã '+d.code" title="Chỉnh sửa"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                 <input type="checkbox" role="switch" :checked="d.active" :disabled="couponFinished(d)" @change="toggleDiscountStatus(d,$event)" :aria-label="'Trạng thái mã '+d.code" :title="d.active?'Ngừng hoạt động':'Bật hoạt động'">
-              </td>
+              </div></td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
 
-    <!-- Form thêm / chỉnh sửa -->
-    <div v-if="discountDetail.open" class="custom-modal-overlay" @click.self="discountDetail.open=false">
-      <div class="custom-modal-box discount-modal" role="dialog" aria-modal="true" aria-label="Chi tiết mã giảm giá">
-        <div class="p-4 border-b flex justify-between items-center"><h6 class="font-bold">{{ discountDetail.item.code }}</h6><button type="button" class="btn btn-light" @click="discountDetail.open=false" aria-label="Đóng chi tiết"><i class="icon icon-x-lg"></i></button></div>
-        <dl class="p-4 grid grid-cols-2 gap-3">
-          <dt>Chương trình</dt><dd>{{ discountDetail.item.name }}</dd>
-          <dt>Giảm giá</dt><dd>{{ formatDiscountValue(discountDetail.item) }}</dd>
-          <dt>Tổng số lượt</dt><dd>{{ discountDetail.item.quantity ?? 'Không giới hạn' }}</dd>
-          <dt>Đã sử dụng</dt><dd>{{ discountDetail.item.used }}</dd>
-          <dt>Còn lại</dt><dd>{{ discountDetail.item.quantity!=null?Math.max(0,discountDetail.item.quantity-discountDetail.item.used):'Không giới hạn' }}</dd>
-          <dt>Trạng thái</dt><dd>{{ getDiscountStatus(discountDetail.item).label }}</dd>
-        </dl>
-      </div>
-    </div>
-    <div
-      v-if="discountModal.open"
-      class="custom-modal-overlay"
-      @click.self="closeDiscountForm()"
-    >
-      <div class="custom-modal-box fade-in-scale discount-modal">
-        <div class="p-4 border-b flex justify-between items-center">
-          <h6 class="font-bold mb-0 text-gray-900">
-            {{ discountModal.data.id ? 'Chỉnh sửa mã giảm giá' : 'Thêm mã giảm giá' }}
-          </h6>
-
-          <button
-            @click="closeDiscountForm()"
-            class="btn btn-sm btn-light border-0"
-            aria-label="Đóng"
-          >
-            <i class="icon icon-x-lg"></i>
-          </button>
-        </div>
-
-        <form @submit.prevent="saveDiscount" class="discount-form">
-          <div class="p-4 discount-form-body">
-            <div class="grid grid-cols-12 gap-3">
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Mã giảm giá <span class="required">*</span>
-                </label>
-                <input
-                  v-model="discountModal.data.code"
-                  type="text"
-                  class="sg-input rounded-2"
-                  placeholder="VD: NEW200"
-                  required
-                  maxlength="50"
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Tên chương trình <span class="required">*</span>
-                </label>
-                <input
-                  v-model="discountModal.data.name"
-                  type="text"
-                  class="sg-input rounded-2"
-                  placeholder="Nhập tên chương trình"
-                  required
-                  maxlength="200"
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Loại giảm giá <span class="required">*</span>
-                </label>
-                <select
-                  v-model="discountModal.data.discount_type"
-                  class="sg-input rounded-2"
-                  required
-                >
-                  <option value="" disabled>Chọn loại giảm giá</option>
-                  <option
-                    v-for="t in discountTypes"
-                    :key="t"
-                    :value="t"
-                  >
-                    {{ t }}
-                  </option>
-                </select>
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Giá trị giảm <span class="required">*</span>
-                </label>
-                <input
-                  v-model.number="discountModal.data.value"
-                  type="number"
-                  min="0.01"
-                  :max="discountModal.data.discount_type === 'Phần trăm' ? 100 : undefined"
-                  step="any"
-                  class="sg-input rounded-2"
-                  placeholder="Nhập giá trị giảm"
-                  required
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">Đơn tối thiểu</label>
-                <input
-                  v-model.number="discountModal.data.min_order"
-                  type="number"
-                  min="0"
-                  step="any"
-                  class="sg-input rounded-2"
-                  placeholder="0"
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">Giảm tối đa</label>
-                <input
-                  v-model.number="discountModal.data.max_discount"
-                  type="number"
-                  min="0"
-                  step="any"
-                  class="sg-input rounded-2"
-                  placeholder="0"
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">Tổng số lượt <span class="required" v-if="discountModal.data.quantity!=null">*</span></label>
-                <label class="flex gap-2 items-center mb-2"><input type="checkbox" :checked="discountModal.data.quantity==null" @change="discountModal.data.quantity=$event.target.checked?null:1">Không giới hạn</label>
-                <input
-                  v-model.number="discountModal.data.quantity"
-                  :disabled="discountModal.data.quantity==null"
-                  :required="discountModal.data.quantity!=null"
-                  type="number"
-                  min="0"
-                  step="1"
-                  class="sg-input rounded-2"
-                  placeholder="0"
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Ngày bắt đầu <span class="required">*</span>
-                </label>
-                <input
-                  v-model="discountModal.data.start_date"
-                  type="date"
-                  class="sg-input rounded-2"
-                  required
-                />
-              </div>
-
-              <div class="md:col-span-6 col-span-12">
-                <label class="discount-label">
-                  Ngày kết thúc <span class="required">*</span>
-                </label>
-                <input
-                  v-model="discountModal.data.expiry"
-                  type="date"
-                  class="sg-input rounded-2"
-                  :min="discountModal.data.start_date || undefined"
-                  required
-                />
-              </div>
-
-              <div class="col-span-12">
-                <label class="discount-label">Mô tả (tùy chọn)</label>
-                <textarea
-                  v-model="discountModal.data.description"
-                  rows="2"
-                  class="sg-input rounded-2"
-                  placeholder="Nhập mô tả nếu có"
-                ></textarea>
-              </div>
-
-              <div class="col-span-12">
-                <label class="discount-label">Trạng thái</label>
-                <label class="status-toggle">
-                  <input
-                    v-model="discountModal.data.active"
-                    class="accent-black"
-                    type="checkbox"
-                  />
-                  <span>
-                    {{ discountModal.data.active ? 'Hoạt động' : 'Không hoạt động' }}
-                  </span>
-                </label>
-              </div>
-            </div>
+    <AdminDrawer :open="discountModal.open" :title="discountModal.data.id ? 'Chỉnh sửa mã giảm giá' : 'Thêm mã giảm giá'" :busy="discountModal.saving" @close="closeDiscountForm">
+      <form id="coupon-editor" @submit.prevent="saveDiscount" @input="discountModal.error=''">
+        <fieldset :disabled="discountModal.saving" class="promotion-fields">
+          <div class="promotion-field-wide"><label for="coupon-code">Mã giảm giá <span class="form-required" aria-hidden="true">*</span></label><input id="coupon-code" v-model="discountModal.data.code" type="text" maxlength="50" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{1,49}" required class="sg-input" placeholder="VD: NEW200"></div>
+          <div class="promotion-field-wide"><label for="coupon-name">Tên chương trình <span class="form-required" aria-hidden="true">*</span></label><input id="coupon-name" v-model="discountModal.data.name" type="text" maxlength="200" required class="sg-input"></div>
+          <div><label for="coupon-type">Loại giảm giá <span class="form-required" aria-hidden="true">*</span></label><select id="coupon-type" v-model="discountModal.data.discount_type" required class="sg-input"><option v-for="t in discountTypes" :key="t" :value="t">{{ t }}</option></select></div>
+          <div><label for="coupon-value">Giá trị giảm <span class="form-required" aria-hidden="true">*</span></label><input id="coupon-value" v-model.number="discountModal.data.value" type="number" min="0.01" :max="discountModal.data.discount_type==='Phần trăm'?100:1000000000000" step="any" required class="sg-input"></div>
+          <div><label for="coupon-min">Đơn tối thiểu</label><input id="coupon-min" v-model.number="discountModal.data.min_order" type="number" min="0" max="1000000000000" step="any" class="sg-input"></div>
+          <div><label for="coupon-max">Giảm tối đa</label><input id="coupon-max" v-model.number="discountModal.data.max_discount" type="number" min="0" max="1000000000000" step="any" class="sg-input"></div>
+          <div class="promotion-field-wide">
+            <label for="coupon-quantity">Tổng số lượt <span v-if="discountModal.data.quantity!=null" class="form-required" aria-hidden="true">*</span></label>
+            <label class="promotion-check"><input type="checkbox" :checked="discountModal.data.quantity==null" @change="discountModal.data.quantity=$event.target.checked?null:1">Không giới hạn</label>
+            <input id="coupon-quantity" v-model.number="discountModal.data.quantity" :disabled="discountModal.data.quantity==null" :required="discountModal.data.quantity!=null" type="number" min="0" max="2147483647" step="1" class="sg-input">
           </div>
+          <div><label for="coupon-start">Bắt đầu <span class="form-required" aria-hidden="true">*</span></label><input id="coupon-start" v-model="discountModal.data.start_date" type="datetime-local" step="0.001" required class="sg-input"></div>
+          <div><label for="coupon-end">Kết thúc <span class="form-required" aria-hidden="true">*</span></label><input id="coupon-end" v-model="discountModal.data.expiry" type="datetime-local" step="0.001" :min="discountModal.data.start_date || undefined" required class="sg-input"></div>
+          <div class="promotion-field-wide"><label for="coupon-description">Mô tả</label><textarea id="coupon-description" v-model="discountModal.data.description" rows="2" class="sg-input"></textarea></div>
+          <label class="promotion-check promotion-field-wide"><input v-model="discountModal.data.active" type="checkbox" role="switch">{{ discountModal.data.active ? 'Hoạt động' : 'Ngừng hoạt động' }}</label>
+        </fieldset>
+        <p v-if="discountModal.error" class="text-sm text-red-600 mt-3" role="alert">{{ discountModal.error }}</p>
+      </form>
+      <template #footer><button type="button" class="btn btn-light border" :disabled="discountModal.saving" @click="closeDiscountForm">Hủy</button><button type="submit" form="coupon-editor" class="btn btn-dark" :disabled="discountModal.saving">{{ discountModal.saving ? 'Đang lưu…' : 'Lưu' }}</button></template>
+    </AdminDrawer>
 
-          <div class="p-4 border-t flex justify-end gap-2">
-            <button
-              type="button"
-              @click="closeDiscountForm()"
-              class="btn btn-light border rounded-2"
-            >
-              Hủy
-            </button>
-
-            <button
-              type="submit"
-              class="btn btn-dark rounded-2 font-bold"
-            >
-              Lưu
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <AdminDrawer :open="discountDetail.open" title="Chi tiết mã giảm giá" @close="discountDetail.open=false">
+      <dl v-if="discountDetail.item" class="promotion-detail">
+        <div><dt>Mã giảm giá</dt><dd>{{ discountDetail.item.code }}</dd></div><div><dt>Tên chương trình</dt><dd>{{ discountDetail.item.name || '—' }}</dd></div>
+        <div><dt>Giá trị giảm</dt><dd>{{ formatDiscountValue(discountDetail.item) }}</dd></div>
+        <div><dt>Đơn tối thiểu</dt><dd>{{ formatPrice(discountDetail.item.min_order) }}</dd></div><div><dt>Giảm tối đa</dt><dd>{{ Number(discountDetail.item.max_discount)>0 ? formatPrice(discountDetail.item.max_discount) : 'Không giới hạn' }}</dd></div>
+        <div><dt>Đã dùng / Tổng lượt</dt><dd>{{ discountDetail.item.used || 0 }} / {{ discountDetail.item.quantity ?? 'Không giới hạn' }}</dd></div>
+        <div><dt>Bắt đầu</dt><dd>{{ formatPromotionDate(discountDetail.item.start_date) }}</dd></div><div><dt>Kết thúc</dt><dd>{{ formatPromotionDate(discountDetail.item.expiry,true) }}</dd></div>
+        <div><dt>Trạng thái</dt><dd>{{ getDiscountStatus(discountDetail.item).label }}</dd></div><div><dt>Mô tả</dt><dd class="whitespace-pre-wrap">{{ discountDetail.item.description || '—' }}</dd></div>
+      </dl>
+      <template #footer><button type="button" class="btn btn-light border" @click="discountDetail.open=false">Đóng</button><button v-if="discountDetail.item && !couponFinished(discountDetail.item)" type="button" class="btn btn-dark" @click="editDetail">Chỉnh sửa</button></template>
+    </AdminDrawer>
   </div>
 </template>
-
-<style scoped>
-.discount-page {
-  border-radius: 4px;
-}
-
-.search-box {
-  min-width: 240px;
-  max-width: 420px;
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #6b7280;
-}
-
-.status-filter {
-  max-width: 220px;
-}
-
-.discount-status {
-  border-radius: 2px;
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-
-.action-cell {
-  white-space: nowrap;
-}
-.action-cell input { margin-left:12px; }
-.discount-page .table { min-width:1080px; }
-
-.action-cell button {
-  margin-left: 4px;
-  border-radius: 4px;
-}
-
-.action-cell button span {
-  margin-left: 4px;
-}
-
-.discount-modal {
-  max-width: 640px;
-}
-
-.discount-form-body {
-  max-height: 65vh;
-  overflow-y: auto;
-}
-
-.discount-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-}
-
-.required {
-  color: #dc2626;
-  font-weight: 700;
-}
-
-.status-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-
-@media (max-width: 768px) {
-  .discount-modal {
-    width: calc(100% - 24px);
-    margin: 12px;
-  }
-
-  .action-cell button span {
-    display: none;
-  }
-}
-</style>

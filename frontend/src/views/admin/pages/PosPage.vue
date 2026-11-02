@@ -258,7 +258,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
 
           <p v-if="posCartBusy" class="text-gray-600 text-xs mb-2" role="status">Đang cập nhật giỏ và tồn kho...</p>
           <div v-if="activePosOrder.payment_method==='Tiền mặt'" class="mb-3">
-            <label for="pos-cash-given" class="block text-sm font-medium">Tiền khách đưa *</label>
+            <label for="pos-cash-given" class="block text-sm font-medium">Tiền khách đưa <span class="form-required" aria-hidden="true">*</span></label>
             <input id="pos-cash-given" v-model.number="activePosOrder.cash_given" type="number" min="0" max="1000000000000" step="1" required inputmode="numeric" class="sg-input" :disabled="posControlsLocked">
             <p class="text-sm mt-2" role="status">{{ posChange>=0?'Trả lại khách:':'Còn thiếu:' }} {{ formatPrice(Math.abs(posChange)) }}</p>
           </div>

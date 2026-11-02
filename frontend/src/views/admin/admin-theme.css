@@ -76,7 +76,27 @@
 .admin-shell input[type="checkbox"][role="switch"]:indeterminate::before { transform: translateX(8px); }
 .admin-shell .admin-activity-status { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 136px; height: 28px; padding: 4px 8px; border: 1px solid #e2e2e6; border-radius: 6px; background: #f4f4f6; color: #63636b; font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: 0; white-space: nowrap; vertical-align: middle; }
 .admin-shell .admin-activity-status.is-active { border-color: #d4e8db; background: #eef7f1; color: #23623f; }
-.admin-shell .admin-activity-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.admin-shell .promotion-search { flex: 1 1 240px; max-width: 420px; }
+.admin-shell .promotion-filter { max-width: 210px; }
+.admin-shell .promotion-table { min-width: 1060px; }
+.admin-shell .promotion-table th { white-space: nowrap; }
+.admin-shell .promotion-table td { font-size: .8rem; overflow-wrap: anywhere; }
+.admin-shell .promotion-time { width: 290px; min-width: 290px; }
+.admin-shell .promotion-period { display: grid; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; color: #62626b; }
+.admin-shell .promotion-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; white-space: nowrap; }
+.admin-shell .promotion-image { width: 44px; height: 44px; object-fit: cover; border: 1px solid var(--admin-line); border-radius: 6px; }
+.admin-shell .promotion-swatch { width: 16px; height: 16px; flex: 0 0 16px; border: 1px solid #d1d5db; border-radius: 50%; }
+.admin-shell .promotion-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.admin-shell .promotion-fields label:not(.promotion-check) { display: block; margin-bottom: 6px; font-size: .8125rem; font-weight: 600; }
+.admin-shell .promotion-field-wide { grid-column: 1/-1; }
+.admin-shell .promotion-check { display: flex; gap: 8px; align-items: center; min-height: 30px; font-size: .8125rem; }
+.admin-shell .promotion-detail { display: grid; gap: 15px; margin: 0; }
+.admin-shell .promotion-detail > div { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 12px; }
+.admin-shell .promotion-detail dt { color: #737373; font-size: .8125rem; }
+.admin-shell .promotion-detail dd { margin: 0; overflow-wrap: anywhere; font-size: .875rem; }
+@media (max-width: 480px) { .admin-shell .promotion-fields { grid-template-columns: minmax(0,1fr); } .admin-shell .promotion-detail > div { grid-template-columns: minmax(0,1fr); gap: 3px; } }
+.admin-shell .catalog-color-input { display: flex; align-items: center; gap: 10px; }
+.admin-shell .catalog-color-input input[type="color"] { flex: 0 0 48px; width: 48px; height: 40px; padding: 3px; border: 1px solid var(--admin-line); border-radius: 8px; background: #fff; cursor: pointer; }
 .admin-shell .input-group { display: flex; align-items: stretch; }
 .admin-shell .input-group > :is(.sg-input, .form-select) { flex: 1 1 auto; width: 1%; }
 .admin-shell .input-group-text { display: flex; align-items: center; padding: 0 12px; }
