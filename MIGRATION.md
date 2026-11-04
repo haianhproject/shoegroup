@@ -1,5 +1,12 @@
 # Tiến Độ ShoeGroup
 
+## Hoàn Thiện Đơn Hàng Của Hưng Và Rà Soát Bàn Giao - 2026-11-04
+
+- Badge Hoàn thành trong danh sách và chi tiết thanh toán dùng màu xanh lá. Chuẩn hóa `COMPLETED`, Hoàn thành, Hoàn tất và Đã nhận hàng về cùng trạng thái hiển thị; đơn hoàn tất không còn xuất hiện trong hàng đợi đang xử lý. Không đổi quy tắc chuyển trạng thái ở backend.
+- Icon Hủy đơn đã dùng SVG. Kiểm tra popup trên desktop/mobile: mở/đóng bằng bàn phím, giữ focus, giữ lý do khi API lỗi, khóa bấm lặp trong lúc gửi và cập nhật ngay trạng thái hủy/chờ hoàn tiền sau thành công đều đạt; không cần sửa thêm luồng đang có.
+- Rà lại phần Việt, Hiếu và Hải Anh bằng kiểm thử giao diện màu/sản phẩm, Drawer khuyến mại, POS và Dashboard; các yêu cầu đã hoàn chỉnh. Kiểm thử JavaScript 96 frontend + 30 Node đạt; build Vue và kiểm tra 73 file import đạt.
+- Phục hồi `ShoegroupDB_FULL_20261025.sql` vào DB thử riêng, đối chiếu logic với DB đang dùng: 27 bảng, cột, chỉ mục, khóa/ràng buộc, cột tính toán, thuộc tính mở rộng và module SQL khớp. Không so sánh/cập nhật dữ liệu đơn hàng hoặc bộ đếm identity; không cần xuất lại SQL. DB thử đã được dọn.
+
 ## Hoàn Thiện Sản Phẩm Và Khuyến Mại - 2026-11-02
 
 - Đối chiếu `vietdo` tại `4c1aa49`: thay đổi sản phẩm/màu đã có trong `main`. Đối chiếu `shop` tại `8ac1f29`: đưa yêu cầu bảng gọn và Drawer vào cấu trúc `frontend/` hiện tại; bổ sung những phần chưa hoạt động hoàn chỉnh.

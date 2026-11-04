@@ -698,6 +698,21 @@ test('customer cancellation blocks repeated submits, updates immediately after s
   assert.equal(orders.orderState.orders[0].status, 'CONFIRMED');
 });
 
+test('completed payment orders use the same green badge for API codes and Vietnamese labels', () => {
+  const admin = loadAdminRealtime();
+  for (const status of ['COMPLETED', 'completed', ' Hoàn thành ', 'Hoàn tất', 'Đã nhận hàng', 'RECEIVED']) {
+    const order = admin.mapOrder({ id: 1, status });
+    assert.equal(order.status, 'Đã nhận hàng');
+    assert.equal(admin.getOrderStatusPill(order).label, 'Hoàn thành');
+    assert.match(admin.getOrderStatusPill(order).cls, /\bbg-success\b/);
+    assert.match(admin.getOrderStatusPill({ status }).cls, /\bbg-success\b/);
+    assert.equal(admin.getOrderActions(order).some(action => action.next === 'Đang vận chuyển'), false);
+  }
+  for (const status of ['Chờ xác nhận', 'Đã xác nhận', 'Đang vận chuyển', 'Đã giao hàng thành công', 'Đã hủy', 'Yêu cầu trả hàng']) {
+    assert.doesNotMatch(admin.getOrderStatusPill({ status }).cls, /\bbg-success\b/);
+  }
+});
+
 function loadAdminRealtime(globals = {}, getToken = () => 'admin-token', revenue = { recognizedOrderRevenue: () => 0 }) {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
@@ -706,7 +721,10 @@ function loadAdminRealtime(globals = {}, getToken = () => 'admin-token', revenue
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
     '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:vue.ref(false), logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken },
-    '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
+    '@/stores/orderStore': load('src/stores/orderStore.js', {
+      './authStore': { getCurrentUser: () => null },
+      '../services/apiClient': { API_BASE_URL: '/api' },
+    }),
   }, {
     setTimeout,
     clearTimeout,
