@@ -1310,6 +1310,9 @@ export function canonicalAdminOrderStatus(value) {
     "delivered": "Đã giao hàng thành công",
     "da nhan hang": "Đã nhận hàng",
     "received": "Đã nhận hàng",
+    "hoan thanh": "Đã nhận hàng",
+    "hoan tat": "Đã nhận hàng",
+    "completed": "Đã nhận hàng",
     "huy": "Đã hủy",
     "huy don": "Đã hủy",
     "da huy": "Đã hủy",
@@ -1322,7 +1325,7 @@ export function getOrderStatusPill(o) {
   const map = {
     "Đã nhận hàng": {
       label: "Hoàn thành",
-      cls: "bg-dark text-white",
+      cls: "bg-success text-white",
     },
     "Đã giao hàng thành công": {
       label: "Đã giao hàng",
