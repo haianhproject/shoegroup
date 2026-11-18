@@ -28,16 +28,20 @@ async function editDetail() {
         <input v-model="discountSearch" type="search" class="sg-input promotion-search" placeholder="Tìm mã hoặc tên chương trình" aria-label="Tìm mã giảm giá">
         <select v-model="discountStatusFilter" class="sg-input promotion-filter" aria-label="Lọc trạng thái mã giảm giá"><option v-for="s in discountStatuses" :key="s" :value="s">{{ s === 'Tất cả' ? 'Tất cả trạng thái' : s }}</option></select>
       </div>
-      <div class="table-responsive" tabindex="0" role="region" aria-label="Danh sách mã giảm giá, có thể cuộn ngang">
+      <div class="table-responsive" tabindex="0" role="region" aria-label="Danh sách mã giảm giá">
         <table class="table align-middle mb-0 promotion-table">
+          <colgroup>
+            <col class="promotion-col-code"><col><col class="promotion-col-value">
+            <col class="promotion-col-time"><col class="promotion-col-status"><col class="promotion-col-actions">
+          </colgroup>
           <thead><tr><th scope="col">Mã</th><th scope="col">Tên chương trình</th><th scope="col">Giá trị</th><th scope="col" class="promotion-time">Thời gian</th><th scope="col">Trạng thái</th><th scope="col" class="text-end">Thao tác</th></tr></thead>
           <tbody>
             <tr v-if="!filteredDiscountsList.length"><td colspan="6" class="text-center text-gray-600 py-5">Không có mã giảm giá phù hợp.</td></tr>
             <tr v-for="d in filteredDiscountsList" :key="d.id">
-              <td class="font-bold">{{ d.code }}</td><td>{{ d.name || '—' }}</td><td class="whitespace-nowrap">{{ formatDiscountValue(d) }}</td>
-              <td class="promotion-time"><div class="promotion-period"><span>Từ {{ formatPromotionDate(d.start_date) }}</span><span>Đến {{ formatPromotionDate(d.expiry, true) }}</span></div></td>
-              <td><span class="badge" :class="getDiscountStatus(d).cls">{{ getDiscountStatus(d).label }}</span></td>
-              <td><div class="promotion-actions">
+              <td class="font-bold" data-label="Mã">{{ d.code }}</td><td data-label="Tên chương trình">{{ d.name || '—' }}</td><td data-label="Giá trị">{{ formatDiscountValue(d) }}</td>
+              <td class="promotion-time" data-label="Thời gian"><div class="promotion-period"><span>Từ {{ formatPromotionDate(d.start_date) }}</span><span>Đến {{ formatPromotionDate(d.expiry, true) }}</span></div></td>
+              <td data-label="Trạng thái"><span class="badge" :class="getDiscountStatus(d).cls">{{ getDiscountStatus(d).label }}</span></td>
+              <td data-label="Thao tác"><div class="promotion-actions">
                 <button type="button" class="btn btn-sm btn-light border" @click="openDiscountDetail(d)" :aria-label="'Xem mã '+d.code" title="Xem chi tiết"><i class="icon icon-eye" aria-hidden="true"></i></button>
                 <button type="button" class="btn btn-sm btn-light border" @click="openDiscountForm(d)" :disabled="couponFinished(d)" :aria-label="'Sửa mã '+d.code" title="Chỉnh sửa"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                 <input type="checkbox" role="switch" :checked="d.active" :disabled="couponFinished(d)" @change="toggleDiscountStatus(d,$event)" :aria-label="'Trạng thái mã '+d.code" :title="d.active?'Ngừng hoạt động':'Bật hoạt động'">

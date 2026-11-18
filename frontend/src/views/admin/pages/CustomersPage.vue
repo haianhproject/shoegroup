@@ -1,6 +1,7 @@
 <!-- Mục đích: Trang CRM để tìm kiếm, xem hạng, hồ sơ và lịch sử mua của khách hàng. -->
 <!-- Trang: Khách Hàng (CRM) -->
 <script setup>
+import { vDialogFocus } from '../../../directives/dialogFocus'
 import { customerSearch, filteredCustomers, getRank, formatPrice, formatDate, viewCustomerDetails, customerModal, closeCustomerDetails, getOrderStatusPill } from '../adminStore'
 </script>
 
@@ -23,7 +24,7 @@ import { customerSearch, filteredCustomers, getRank, formatPrice, formatDate, vi
 
     <!-- MODAL Chi tiết khách hàng + lịch sử đơn + ảnh sản phẩm -->
     <div v-if="customerModal.open" class="custom-modal-overlay" @click.self="closeCustomerDetails()">
-      <div class="custom-modal-box fade-in-scale" style="max-width:760px;">
+      <div v-dialog-focus="closeCustomerDetails" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Chi tiết khách hàng" style="max-width:760px;">
         <div class="p-4 border-b flex justify-between items-center">
           <h6 class="font-bold mb-0 text-gray-900"><i class="icon icon-person-vcard mr-2"></i>Chi tiết khách hàng</h6>
           <button @click="closeCustomerDetails()" class="btn btn-sm btn-light border-0"><i class="icon icon-x-lg"></i></button>

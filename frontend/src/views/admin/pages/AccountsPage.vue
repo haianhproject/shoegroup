@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="fade-in accounts-page">
+  <div class="fade-in accounts-page admin-catalog-page">
     <!-- Tiêu đề -->
     <div class="page-header">
       <div>

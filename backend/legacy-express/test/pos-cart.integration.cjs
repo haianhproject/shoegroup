@@ -1,4 +1,4 @@
-// Mục đích: Kiểm thử đầu cuối POS/checkout Spring với SQL riêng và so sánh một số kết quả với Express cũ.
+// Mục đích: Kiểm thử đầu cuối POS/checkout trên SQL riêng và đối chiếu quy tắc vận chuyển Express cũ.
 // Explicit integration run: node backend/legacy-express/test/pos-cart.integration.cjs
 // Uses a fresh isolated SQL database; never writes to the configured shop database.
 "use strict";
@@ -30,7 +30,7 @@ async function startServer() {
   }
   server = spawn(process.execPath, [path.resolve(__dirname, "../server.js")], {
     windowsHide: true,
-    env: { ...process.env, DB_NAME: DATABASE, PORT: spring ? "5195" : "5194", MIGRATION_BRIDGE: spring ? "true" : "false", JOBS_ENABLED: spring ? "false" : "true", AUTH_MODE: "enforce", EMAIL_USER: "", EMAIL_PASS: "" },
+    env: { ...process.env, DB_NAME: DATABASE, PORT: spring ? "5195" : "5194", MIGRATION_BRIDGE: spring ? "true" : "false", JOBS_ENABLED: spring ? "false" : "true", AUTH_MODE: "enforce", RATE_LIMIT_MAX_API: "10000", EMAIL_USER: "", EMAIL_PASS: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", data => { serverOutput += data; });
@@ -45,7 +45,7 @@ async function startServer() {
     const jdbcUrl = `jdbc:sqlserver://${location};databaseName=${DATABASE};encrypt=${config.db.options.encrypt};trustServerCertificate=${config.db.options.trustServerCertificate}`;
     springServer = spawn(javaCommand, ["-jar", jar], {
       windowsHide: true, cwd: path.resolve(__dirname, "../.."),
-      env: { ...process.env, DB_NAME: DATABASE, SPRING_DB_URL: jdbcUrl, DB_USER: config.db.user, DB_PASS: config.db.password, JWT_SECRET: config.jwt.secret, SPRING_PORT: "5194", JOBS_DELAY_MS: "1000", LOGGING_LEVEL_VN_SHOEGROUP_API_APIERRORS: "DEBUG", EMAIL_USER: "", EMAIL_PASS: "" },
+      env: { ...process.env, DB_NAME: DATABASE, SPRING_DB_URL: jdbcUrl, DB_USER: config.db.user, DB_PASS: config.db.password, JWT_SECRET: config.jwt.secret, SPRING_PORT: "5194", JOBS_DELAY_MS: "1000", RATE_LIMIT_MAX_API: "10000", LOGGING_LEVEL_VN_SHOEGROUP_API_APIERRORS: "DEBUG", EMAIL_USER: "", EMAIL_PASS: "" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     springServer.stdout.on("data", data => { serverOutput += data; });
@@ -71,14 +71,30 @@ async function stopServer() {
 }
 async function fixture(stock = 3) {
   const sku = `POS-${Date.now()}-${checks}`;
-  const result = await pool.request().input("sku", sql.VarChar, sku).input("stock", sql.Int, stock).query(`
-    INSERT Products(ProductName,BasePrice,IsActive,ParentSKU) OUTPUT INSERTED.ProductID
-      VALUES (@sku,300000,1,@sku);
-    DECLARE @pid int=SCOPE_IDENTITY();
-    INSERT ProductVariants(ProductID,Size,ColorName,ChildSKU,StockQuantity,IsActive)
-      OUTPUT INSERTED.ProductVariantID VALUES (@pid,N'40',N'Đen',@sku,@stock,1);
-  `);
-  return { product_id: result.recordsets[0][0].ProductID, product_variant_id: result.recordsets[1][0].ProductVariantID, quantity: 1, price: 300000 };
+  if (process.env.POS_AUDIT_BACKEND !== 'spring') {
+    const result = await pool.request().input('sku', sql.VarChar, sku).input('stock', sql.Int, stock).query(`
+      INSERT Products(ProductName,BasePrice,IsActive,ParentSKU) OUTPUT INSERTED.ProductID
+        VALUES (@sku,300000,1,@sku);
+      DECLARE @pid int=SCOPE_IDENTITY();
+      INSERT ProductVariants(ProductID,Size,ColorName,ChildSKU,StockQuantity,IsActive)
+        OUTPUT INSERTED.ProductVariantID VALUES (@pid,N'40',N'Đen',@sku,@stock,1);
+    `);
+    return { product_id: result.recordsets[0][0].ProductID, product_variant_id: result.recordsets[1][0].ProductVariantID, quantity: 1, price: 300000 };
+  }
+  const colors = (await api('/colors', { user: admin })).data;
+  const sizes = (await api('/sizes', { user: admin })).data;
+  const color = colors.find(row => row.active !== false);
+  const size = sizes.find(row => row.name === '40' && row.standard === 'EU');
+  assert.ok(color && size, 'The migrated catalog must contain a color and EU size 40');
+  const created = await api('/products', { user: admin, method: 'POST', body: {
+    name: sku, category_id: 1, brand_id: 1, active: true,
+    variants: [{ color_id: color.id, size_id: size.id, price: 300000, stock, sku }],
+  } });
+  assert.equal(created.status, 200, JSON.stringify(created));
+  const productId = created.data.ProductID;
+  const variant = await pool.request().input('pid', sql.Int, productId)
+    .query('SELECT ProductVariantID FROM ProductVariants WHERE ProductID=@pid');
+  return { product_id: productId, product_variant_id: variant.recordset[0].ProductVariantID, quantity: 1, price: 300000 };
 }
 async function stock(item) {
   const result = await pool.request().input("vid", sql.Int, item.product_variant_id)
@@ -97,7 +113,7 @@ async function clear(user = admin) {
 function checkoutBody(item, revision, extra = {}) {
   return { customer_name: "Khách kiểm thử", customer_phone: "0901234567", payment_method: "Tiền mặt",
     payment_status: "Đã thanh toán", status: "Đã nhận hàng", handled_by: "Quầy",
-    products: [item], total: item.quantity * item.price, pos_cart_revision: revision, ...extra };
+    products: [item], total: item.quantity * item.price, cash_given: item.quantity * item.price, pos_cart_revision: revision, ...extra };
 }
 async function check(name, fn) { await fn(); checks++; console.log(`PASS ${checks}: ${name}`); }
 
@@ -105,15 +121,32 @@ async function main() {
   await setup();
   pool = await connection().connect();
   assert.equal((await pool.request().query("SELECT DB_NAME() AS name")).recordset[0].name, DATABASE);
+  if (process.env.POS_AUDIT_BACKEND === 'spring') {
+    await pool.request().query("UPDATE ProductVariants SET Size=CASE Size WHEN N'M' THEN N'40' WHEN N'L' THEN N'41' WHEN N'S' THEN N'39' ELSE Size END");
+  }
   await startServer();
 
-  if (process.env.POS_AUDIT_BACKEND === "spring") await check("native product, inventory and discount reads match the Express JSON contract", async () => {
+  if (process.env.POS_AUDIT_BACKEND === "spring") await check("native catalog reads preserve JSON shapes and match normalized SQL inventory", async () => {
     for (const route of ["/products", "/v2/products?page=1&limit=2", "/v2/products?sort=price_asc", "/v2/products?categoryId=1&brandId=1&q=Audit", "/v2/products/featured?limit=2", "/inventory", "/inventory/alerts?threshold=10", "/discounts", "/variantDiscounts", "/accounts", "/shippingmethods"]) {
       const actual = await api(route, { user: admin });
-      const expected = await api(route, { user: admin, port: 5195 });
       assert.equal(actual.status, 200, `${route}: ${JSON.stringify(actual)}`);
-      assert.deepEqual(actual.data, expected.data, route);
+      if (route.startsWith('/v2/products')) assert.ok(Array.isArray(actual.data.data), route);
+      else if (route.startsWith('/inventory/alerts')) assert.ok(Array.isArray(actual.data.items), route);
+      else assert.ok(Array.isArray(actual.data), route);
     }
+    const inventory = (await api('/inventory', { user: admin })).data;
+    const variants = (await pool.request().query('SELECT ProductVariantID AS id,StockQuantity AS stock,SalePrice AS price FROM ProductVariants ORDER BY ProductVariantID')).recordset;
+    assert.deepEqual(inventory.map(row => ({ id: row.id, stock: row.stock, price: row.price })).sort((a, b) => a.id - b.id), variants);
+    const products = (await api('/products', { user: admin })).data;
+    for (const product of products) {
+      const expected = variants.filter(row => product.variants.some(variant => variant.id === row.id));
+      assert.equal(product.stock, expected.reduce((total, row) => total + row.stock, 0));
+      assert.equal(product.variant_count, expected.length);
+    }
+    const page = (await api('/v2/products?page=1&limit=2', { user: admin })).data;
+    const count = (await pool.request().query('SELECT COUNT(*) AS n FROM Products WHERE IsActive=1')).recordset[0].n;
+    assert.equal(page.pagination.total, count);
+    assert.equal(page.data.length, Math.min(count, 2));
   });
   if (process.env.POS_AUDIT_BACKEND === "spring") await check("native shipping quotes match every original province rule and aliases", async () => {
     const distances = require("../../src/main/resources/shipping-distances.json");

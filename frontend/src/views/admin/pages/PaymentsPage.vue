@@ -341,10 +341,10 @@ function transitionMessage() {
             <thead>
               <tr class="text-gray-600 text-sm uppercase bg-gray-100">
                 <th scope="col" style="width: 46px" class="text-center">STT</th>
-                <th scope="col" style="min-width: 170px">Đơn hàng</th>
+                <th scope="col">Đơn hàng</th>
                 <th scope="col" style="width: 110px">Phương thức</th>
                 <th scope="col" style="width: 125px">Thanh toán</th>
-                <th scope="col" style="min-width: 130px">Trạng thái đơn</th>
+                <th scope="col">Trạng thái đơn</th>
                 <th scope="col" class="text-end" style="width: 105px">
                   Tổng tiền
                 </th>

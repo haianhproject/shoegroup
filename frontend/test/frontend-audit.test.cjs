@@ -21,13 +21,16 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
   const code = transformSync(source, { format: 'cjs', target: 'node22' }).code;
   const module = { exports: {} };
   const sandbox = {
-    module, exports: module.exports, console, URL, Headers, Request, FormData,
+    module, exports: module.exports, console, URL, URLSearchParams, Headers, Request, FormData,
     setInterval: () => ({ unref() {} }), clearInterval() {},
     AbortController, setTimeout, clearTimeout,
     localStorage: storage(), sessionStorage: storage(),
     crypto: require('node:crypto').webcrypto,
     require: name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === '@/services/orderCode' || name === '../services/orderCode') return load('src/services/orderCode.js');
+      if (name === '../services/vietQr') return load('src/services/vietQr.js');
+      if (name === '../directives/dialogFocus') return load('src/directives/dialogFocus.js');
       if (name === 'vue') return { ...vue, onMounted() {}, onUnmounted() {}, onBeforeUnmount() {} };
       throw new Error(`Unexpected dependency ${name} in ${relative}`);
     },
@@ -44,6 +47,45 @@ function loadCart(products, localStorage = storage()) {
 }
 const product = (stock = 7, price = 500000, active = true) => ({ id: 1, price, active, variants: [{ id: 11, size: 'M', color: 'Black', stock, active: true }] });
 const cartLine = (quantity = 1) => ({ id_product: 1, id_product_detail: '1_variant_11', variant_id: 11, product: { id_product: 1, product_name: 'Shoe' }, size: { size_name: 'M' }, color: { color_label: 'Black' }, unitPrice: 500000, quantity });
+
+test('cart suggestions exclude inactive products before limiting the results', async () => {
+  const products = [
+    { id: 1, active: false }, { id: 2, active: 0 }, { id: 3, active: '0' },
+    { id: 4, IsActive: false }, { id: 5, active: true, name: 'Available' },
+    { id: 6, active: 1 }, { id: 7 }, { id: 8, active: true },
+  ];
+  const drawer = load('src/components/CartDrawer.vue', {
+    './StoreIllustration.vue': {},
+    '../directives/dialogFocus': {},
+    'vue-router': { useRoute: () => ({ fullPath: '/' }), useRouter: () => ({ push() {} }) },
+    '../stores/cartStore': { cartState: vue.reactive({ isDrawerOpen: false }) },
+    '../stores/uiStore': { notify() {} },
+    '../stores/authStore': { isAuthenticated: vue.ref(false) },
+    '../services/apiClient': { api: { get: async () => products } },
+  }, {}, ['suggestions', 'fetchSuggestions']);
+  await drawer.fetchSuggestions();
+  assert.deepEqual(Array.from(drawer.suggestions.value, row => row.id), [5, 6, 7]);
+});
+
+test('customer and admin show the same order code while local IDs remain usable', () => {
+  const orders = load('src/stores/orderStore.js', {
+    './authStore': { getCurrentUser: () => ({ id_user: 1 }) },
+    '../services/apiClient': { API_BASE_URL: '/api' },
+  });
+  const admin = loadAdminImages();
+  const original = { id: 'SG-LOCAL', serverId: null, createdAt: new Date('2026-11-17T23:59:59').getTime() };
+  orders.orderState.orders = [original];
+  assert.equal(orders.getCustomerOrderCode(original), 'SG-LOCAL');
+  orders.setServerId(original.id, 1, '2026-11-18T00:00:01');
+  const expected = admin.getTrackingCode({ id: 1, date: '2026-11-18T00:00:01' });
+  assert.equal(expected, 'SGVN26111800001K0');
+  assert.equal(orders.getCustomerOrderCode(original), expected);
+  assert.equal(original.id, 'SG-LOCAL');
+  assert.equal(orders.getCustomerOrderCode(orders.mapServerOrder({ id: 1, created_at: '2026-11-18T00:00:01' })), expected);
+  orders.reconcileOrdersFromServer([{ id: 1, created_at: '2026-11-19T00:00:01', status: 'Chờ xác nhận' }]);
+  assert.equal(orders.getCustomerOrderCode(original), admin.getTrackingCode({ id: 1, date: '2026-11-19T00:00:01' }));
+  assert.equal(orders.getCustomerOrderCode({ ...original, tracking_code: 'CARRIER-EXISTING' }), 'CARRIER-EXISTING');
+});
 
 test('checkout retry retains its key through reload and rotates after success', () => {
   const sessionStorage=storage(), payload={items:[{productId:1,quantity:2}],addressId:1};
@@ -243,7 +285,8 @@ test('server re-delivery replaces a stale local cancellation and removes its dup
 test('bank transfer is completed at checkout and is not deferred from the orders page', () => {
   const checkout = fs.readFileSync(path.join(root, 'src/views/CheckoutView.vue'), 'utf8');
   const orders = fs.readFileSync(path.join(root, 'src/views/MyOrders.vue'), 'utf8');
-  assert.match(checkout, /TÔI ĐÃ THANH TOÁN/);
+  assert.match(checkout, /TÔI ĐÃ CHUYỂN KHOẢN/);
+  assert.doesNotMatch(checkout, /QR_code_for_mobile_English_Wikipedia/);
   assert.doesNotMatch(checkout, /Thanh toán sau|24 giờ|24h/i);
   assert.match(orders, /Thanh toán thành công\. Cửa hàng đang xử lý đơn/);
   assert.doesNotMatch(orders, /isWaitingTransfer|Thanh toán ngay|Payment QR Modal/);
@@ -269,6 +312,8 @@ test('checkout blocks double click before stock preflight resolves', async () =>
   let resolveStock, stockCalls = 0;
   const stock = new Promise(resolve => { resolveStock = resolve; });
   const checkout = load('src/views/CheckoutView.vue', {
+    '../components/StoreIllustration.vue': {},
+    '../components/BrandLogo.vue': {},
     'vue-router': { useRouter: () => ({ push() {}, replace() {} }) },
     '../stores/cartStore': { cartItems: vue.ref([]), cartCount: vue.ref(0), cartSubtotal: vue.ref(0), formatCurrency: String, clearCart() {}, refreshCartAvailability: () => { stockCalls++; return stock; }, cartHasUnavailableItems: vue.ref(false) },
     '../stores/orderStore': {}, '../stores/authStore': { currentUser: vue.ref({ id_user: 1 }) },
@@ -283,6 +328,77 @@ test('checkout blocks double click before stock preflight resolves', async () =>
   await Promise.all([first, second]);
   assert.equal(stockCalls, 1);
   assert.equal(checkout.placing.value, false);
+});
+
+function loadCheckoutPayment(apiClient, orders, notices = [], navigation = []) {
+  return load('src/views/CheckoutView.vue', {
+    '../components/StoreIllustration.vue': {}, '../components/BrandLogo.vue': {},
+    'vue-router': { useRouter: () => ({ push: value => navigation.push(value), replace() {} }) },
+    '../stores/cartStore': { cartItems: vue.ref([]), cartCount: vue.ref(0), cartSubtotal: vue.ref(0) },
+    '../stores/orderStore': orders,
+    '../stores/authStore': { currentUser: vue.ref({ id_user: 1 }) },
+    '../stores/uiStore': { notify: value => notices.push(value) },
+    '../services/apiClient': { api: apiClient },
+    '../services/addressService': { addressBookApi: {}, vietnamAddressApi: {} },
+    '../services/shippingService': { shippingApi: {} }, '../services/checkoutAttempt': {},
+  }, {}, ['loadBankConfig', 'bankConfig', 'bankLoading', 'paymentQrUrl', 'transferContent', 'payModal', 'confirmPaid', 'viewPlacedOrder']);
+}
+
+test('checkout builds VietQR from the configured merchant, server total and shared order code', async () => {
+  const orders = load('src/stores/orderStore.js', {
+    './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: '/api' },
+  });
+  orders.orderState.orders = [{ id: 'LOCAL-1', serverId: 1, createdAt: new Date('2026-11-18T00:29:00').getTime() }];
+  const requests = [];
+  const page = loadCheckoutPayment({ get: async url => {
+    requests.push(url);
+    return { bankId: '970415', bankName: 'Audit bank', accountNo: '123456789', accountName: 'AUDIT SHOP' };
+  } }, orders);
+  Object.assign(page.payModal, { orderId: 'LOCAL-1', serverId: 1, total: 525000 });
+  await page.loadBankConfig();
+  const qr = new URL(page.paymentQrUrl.value);
+  assert.equal(qr.hostname, 'img.vietqr.io');
+  assert.match(qr.pathname, /970415-123456789-compact2\.png$/);
+  assert.equal(qr.searchParams.get('amount'), '525000');
+  assert.equal(qr.searchParams.get('addInfo'), 'SG SGVN26111800001K0');
+  assert.equal(qr.searchParams.get('accountName'), 'AUDIT SHOP');
+  assert.ok(requests.includes('/payment-config'));
+  assert.equal(page.bankLoading.value, false);
+});
+
+test('checkout handles missing bank configuration and failed payment confirmation without losing the order', async () => {
+  const orders = { orderState: vue.reactive({ orders: [{ id: 'LOCAL-1', serverId: 1, payment_status: 'Chưa thanh toán' }] }), getCustomerOrderCode: () => 'SGVN26111800001K0' };
+  const navigation = [], notices = [];
+  const page = loadCheckoutPayment({ get: async () => { throw new Error('Unavailable'); }, put: async () => { throw new Error('Try again'); } }, orders, notices, navigation);
+  Object.assign(page.payModal, { open: true, orderId: 'LOCAL-1', serverId: 1, total: 525000 });
+  await page.loadBankConfig();
+  assert.equal(page.bankConfig.value.configured, false);
+  assert.equal(page.paymentQrUrl.value, '');
+  await page.confirmPaid();
+  assert.equal(page.payModal.open, true);
+  assert.equal(page.payModal.confirming, false);
+  assert.equal(orders.orderState.orders[0].payment_status, 'Chưa thanh toán');
+  assert.equal(navigation.length, 0);
+  assert.equal(notices.at(-1).message, 'Try again');
+});
+
+test('checkout confirms a transfer once and waits for the API before closing', async () => {
+  let finish, writes = 0, saves = 0;
+  const order = { id: 'LOCAL-1', serverId: 1, payment_status: 'Chưa thanh toán' };
+  const orders = { orderState: vue.reactive({ orders: [order] }), getCustomerOrderCode: () => 'SGVN26111800001K0', saveOrders: () => saves++ };
+  const navigation = [];
+  const page = loadCheckoutPayment({ get: async () => [], put: url => {
+    assert.equal(url, '/orders/1/payment'); writes++;
+    return new Promise(resolve => { finish = resolve; });
+  } }, orders, [], navigation);
+  Object.assign(page.payModal, { open: true, orderId: 'LOCAL-1', serverId: 1, total: 525000 });
+  const first = page.confirmPaid(); await page.confirmPaid(); page.viewPlacedOrder();
+  assert.equal(writes, 1); assert.equal(page.payModal.open, true); assert.equal(navigation.length, 0);
+  assert.equal(order.payment_status, 'Chưa thanh toán');
+  finish({ payment_status: 'Đã thanh toán' }); await first;
+  assert.equal(page.payModal.open, false); assert.equal(page.payModal.confirming, false);
+  assert.equal(order.payment_status, 'Đã thanh toán'); assert.equal(saves, 1);
+  assert.equal(navigation[0].query.orderId, 'LOCAL-1');
 });
 
 function loadAdminImages() {
@@ -678,6 +794,7 @@ test('customer cancellation blocks repeated submits, updates immediately after s
   orders.orderState.orders = [{ id: 'SV1', serverId: 1, userId: 1, status: 'CONFIRMED', payment_status: 'Đã thanh toán' }];
   let finish, requests = 0, reject = false;
   const page = load('src/views/MyOrders.vue', {
+    '../components/StoreIllustration.vue': {},
     'vue-router': { useRouter: () => ({ currentRoute: vue.ref({ query: {} }) }) },
     '../stores/orderStore': { ...orders, loadOrders: async () => [] },
     '../stores/uiStore': { notify() {} },
@@ -1049,8 +1166,12 @@ test('fixed customer navbar has a matching content offset and one global chat wi
   const app = fs.readFileSync(path.join(root, 'src/App.vue'), 'utf8');
   const navbar = fs.readFileSync(path.join(root, 'src/components/figma/layout/FigmaNavbar.vue'), 'utf8');
   const home = fs.readFileSync(path.join(root, 'src/views/HomeDisplay.vue'), 'utf8');
+  const storefrontCss = fs.readFileSync(path.join(root, 'src/assets/storefront.css'), 'utf8');
+  const mainCss = fs.readFileSync(path.join(root, 'src/assets/main.css'), 'utf8');
   assert.match(navbar, /<header[^>]+\bfixed\b[^>]+\btop-0\b/);
-  assert.match(app, /<main[^>]+pt-\[69px\][^>]*>/);
+  assert.match(app, /<main[^>]+store-main[^>]*>/);
+  assert.match(storefrontCss, /\.storefront \.store-main\s*\{\s*padding-top:\s*var\(--sg-header-height\)/);
+  assert.match(mainCss, /--sg-header-height:\s*104px/);
   assert.equal((app.match(/<ZaloChat\s*\/>/g) || []).length, 1);
   assert.equal((home.match(/<ZaloChat\s*\/>/g) || []).length, 0);
 });
@@ -1168,23 +1289,204 @@ test('POS walk-in customers never become synthetic login accounts', () => {
 test('home hero serializes rapid navigation and resets clones without animation', () => {
   const home = fs.readFileSync(path.join(root, 'src/views/HomeDisplay.vue'), 'utf8');
   assert.match(home, /const isHeroAnimating = ref\(false\)/);
-  assert.match(home, /const queuedHeroSteps = ref\(0\)/);
   assert.match(home, /if \(isHeroAnimating\.value \|\| !isTransitioning\.value\)/);
   assert.match(home, /isTransitioning\.value = false[\s\S]*currentIndex\.value \+=/);
-  assert.match(home, /slide\.type === 'video' && i === currentIndex/);
+  assert.match(home, /slide\.type === 'video' && \(i === currentIndex \|\| i === outgoingHeroIndex\)/);
+  assert.doesNotMatch(home, /:inert="i !== currentIndex"/);
+  assert.match(home, /:tabindex="i === currentIndex \? 0 : -1"/);
   assert.doesNotMatch(home, /currentIndex\.value\+\+|currentIndex\.value--/);
 });
 
-function loadHome(notify = () => {}) {
+function loadHome(notify = () => {}, { globals = {}, expose = [], router = { push() {} }, apiClient = {} } = {}) {
   return load('src/views/HomeDisplay.vue', {
-    'vue-router': { useRouter: () => ({ push() {} }) },
+    '../../img/hero-sneaker-crimson.png': 'hero-sneaker-crimson.png',
+    '../../img/hero-runner-crimson.png': 'hero-runner-crimson.png',
+    '../../img/hero-court-crimson.png': 'hero-court-crimson.png',
+    '../components/StoreIllustration.vue': {},
+    'lucide-vue-next': {},
+    'vue-router': { useRouter: () => router },
     '../components/figma/product/FigmaProductCard.vue': {},
     '../components/figma/product/FigmaProductGrid.vue': {},
-    '../services/apiClient': { api: {} },
+    '../services/apiClient': { api: apiClient },
     '../stores/uiStore': { notify },
     '../data/homeMedia': { homeMedia: { videos: ['video'], hero: {}, promo: {}, categories: [] } },
-  }, {}, ['categoryCards', 'categoriesFromApi', 'allProducts', 'email', 'subscribe']);
+  }, globals, ['categoryCards', 'categoriesFromApi', 'allProducts', 'email', 'subscribe', 'subscribing', ...expose]);
 }
+
+function loadHero() {
+  const timeouts = new Map(), intervals = new Map(), frames = new Map(), routes = [], captures = new Set();
+  let nextTimer = 0, renderedOffset = null;
+  const home = loadHome(() => {}, {
+    router: { push: route => routes.push(route) },
+    globals: {
+      document: { hidden: false },
+      window: { getComputedStyle: () => ({ transform: renderedOffset == null ? 'none' : `matrix(1,0,0,1,${renderedOffset},0)` }) },
+      DOMMatrixReadOnly: class { constructor(value) { this.m41 = Number(value.slice(7, -1).split(',')[4]); } },
+      setTimeout: callback => { const id = ++nextTimer; timeouts.set(id, callback); return id; },
+      clearTimeout: id => timeouts.delete(id),
+      setInterval: callback => { const id = ++nextTimer; intervals.set(id, callback); return id; },
+      clearInterval: id => intervals.delete(id),
+      requestAnimationFrame: callback => { const id = ++nextTimer; frames.set(id, callback); return id; },
+      cancelAnimationFrame: id => frames.delete(id),
+    },
+    expose: ['heroSlides', 'currentIndex', 'activeSlide', 'isHeroAnimating', 'isTransitioning', 'isDragging', 'dragMoved', 'trackOffset', 'heroTrack', 'heroViewport', 'slideWidth', 'heroGap', 'onPointerDown', 'onPointerMove', 'onPointerUp', 'onPointerCancel', 'onHeroClickCapture', 'handleSlideClick', 'nextSlide', 'prevSlide', 'handleTransitionComplete', 'heroMotionPaused', 'onHeroEnter', 'onHeroFocusIn', 'toggleHeroMotion', 'outgoingHeroIndex'],
+  });
+  home.heroViewport.value = {
+    querySelectorAll: () => [],
+    setPointerCapture: id => captures.add(id),
+    hasPointerCapture: id => captures.has(id),
+    releasePointerCapture: id => captures.delete(id),
+  };
+  home.heroTrack.value = { offsetHeight: 560 };
+  const pointer = (x, extra = {}) => ({
+    button: 0, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: x, clientY: 200,
+    target: { closest: () => null }, cancelable: true, preventDefault() {}, ...extra,
+  });
+  const flushFrames = () => {
+    const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback());
+  };
+  return { home, pointer, captures, routes, frames, timeouts, intervals, flushFrames, setRenderedOffset: value => { renderedOffset = value; } };
+}
+
+test('hero play control resumes autoplay while that control has keyboard focus', () => {
+  const { home, intervals } = loadHero();
+  home.heroMotionPaused.value = true;
+  home.onHeroEnter();
+  home.onHeroFocusIn();
+  home.toggleHeroMotion();
+  assert.equal(home.heroMotionPaused.value, false);
+  assert.equal(intervals.size, 1);
+  home.toggleHeroMotion();
+  assert.equal(home.heroMotionPaused.value, true);
+  assert.equal(intervals.size, 0);
+});
+
+test('hero retains its outgoing video through transition completion and interrupted dragging', async () => {
+  const { home, pointer } = loadHero();
+  home.currentIndex.value = 5;
+  home.nextSlide(true);
+  assert.equal(home.outgoingHeroIndex.value, 5);
+  assert.equal(home.currentIndex.value, 6);
+  home.onPointerDown(pointer(600));
+  home.onPointerMove(pointer(400));
+  home.onPointerUp(pointer(400));
+  assert.equal(home.outgoingHeroIndex.value, 5);
+  await home.handleTransitionComplete();
+  assert.equal(home.outgoingHeroIndex.value, null);
+});
+
+test('hero mouse drag follows the pointer, changes one slide and suppresses its release click', () => {
+  const { home, pointer, captures, routes } = loadHero();
+  const initialOffset = home.trackOffset.value;
+  home.onPointerDown(pointer(600));
+  assert.equal(captures.size, 0);
+  home.onPointerMove(pointer(430));
+  assert.equal(home.trackOffset.value, initialOffset - 170);
+  assert.equal(captures.has(1), true);
+  home.onPointerUp(pointer(430));
+  assert.equal(home.currentIndex.value, 5);
+  assert.equal(home.isDragging.value, false);
+  assert.equal(home.isHeroAnimating.value, true);
+  assert.equal(captures.size, 0);
+  home.nextSlide(true);
+  assert.equal(home.currentIndex.value, 5);
+  let blocked = false;
+  home.onHeroClickCapture({ preventDefault() { blocked = true; }, stopPropagation() {} });
+  home.handleSlideClick(5, home.heroSlides[1]);
+  assert.equal(blocked, true);
+  assert.equal(routes.length, 0);
+});
+
+test('hero click still navigates and a touch scroll or cancelled drag keeps the current slide', () => {
+  const { home, pointer, routes, captures } = loadHero();
+  home.onPointerDown(pointer(600));
+  home.onPointerUp(pointer(600));
+  home.handleSlideClick(4, home.heroSlides[0]);
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].path, '/products');
+  home.onPointerDown(pointer(600, { pointerType: 'touch' }));
+  home.onPointerMove(pointer(610, { pointerType: 'touch', clientY: 360 }));
+  assert.equal(captures.size, 0);
+  home.onPointerCancel(pointer(610));
+  assert.equal(home.currentIndex.value, 4);
+  assert.equal(home.isHeroAnimating.value, false);
+  home.onPointerDown(pointer(600));
+  home.onPointerMove(pointer(400));
+  home.onPointerCancel(pointer(400));
+  assert.equal(home.currentIndex.value, 4);
+  assert.equal(home.isDragging.value, false);
+});
+
+test('hero grabs the rendered position during a transition and ignores other pointer ids', () => {
+  const { home, pointer, setRenderedOffset } = loadHero();
+  home.nextSlide(true);
+  const halfway = home.trackOffset.value + 300;
+  setRenderedOffset(halfway);
+  home.onPointerDown(pointer(600));
+  assert.equal(home.trackOffset.value, halfway);
+  assert.equal(home.isHeroAnimating.value, false);
+  home.onPointerMove(pointer(200, { pointerId: 2 }));
+  home.onPointerUp(pointer(200, { pointerId: 2 }));
+  assert.equal(home.isDragging.value, true);
+  assert.equal(home.trackOffset.value, halfway);
+  home.onPointerMove(pointer(520));
+  assert.equal(home.trackOffset.value, halfway - 80);
+  home.onPointerUp(pointer(520));
+  assert.equal(home.currentIndex.value, 6);
+});
+
+test('hero clone reset flushes the non-animated position before enabling transitions again', async () => {
+  const { home, frames, flushFrames } = loadHero();
+  home.currentIndex.value = 8;
+  home.isHeroAnimating.value = true;
+  let measuredAfterUpdate = false;
+  home.heroTrack.value = { get offsetHeight() {
+    measuredAfterUpdate = home.currentIndex.value === 4 && home.isTransitioning.value === false;
+    return 560;
+  } };
+  const finished = home.handleTransitionComplete();
+  assert.equal(home.currentIndex.value, 4);
+  assert.equal(home.isTransitioning.value, false);
+  assert.equal(frames.size, 0);
+  await finished;
+  assert.equal(measuredAfterUpdate, true);
+  assert.equal(frames.size, 1);
+  assert.equal(home.isHeroAnimating.value, true);
+  flushFrames();
+  assert.equal(home.isHeroAnimating.value, false);
+  assert.equal(home.isTransitioning.value, true);
+  home.prevSlide(true);
+  await home.handleTransitionComplete();
+  flushFrames();
+  assert.equal(home.currentIndex.value, 7);
+});
+
+test('auth input focus uses its wrapper ring and admin primary actions share the red accent', () => {
+  const storefront = fs.readFileSync(path.join(root, 'src/assets/storefront.css'), 'utf8');
+  const admin = fs.readFileSync(path.join(root, 'src/views/admin/admin-theme.css'), 'utf8');
+  assert.match(storefront, /\.in-wrap \.auth-input:focus-visible\s*\{\s*outline: none;\s*box-shadow: none;/);
+  assert.match(storefront, /\.in-wrap:focus-within\s*\{\s*border-color: var\(--sg-red\)/);
+  assert.match(admin, /:is\(\.btn-dark, \.btn-primary\)\s*\{\s*background: var\(--admin-accent\)/);
+});
+
+test('promotion tables fit their workspace and label every field on narrow screens', () => {
+  const css = fs.readFileSync(path.join(root, 'src/views/admin/admin-theme.css'), 'utf8');
+  assert.match(css, /\.promotion-table\s*\{\s*width: 100%;\s*min-width: 0;\s*table-layout: fixed;/);
+  assert.match(css, /\.promotion-time\s*\{\s*min-width: 0;/);
+  assert.doesNotMatch(css, /\.promotion-table\s*\{[^}]*overflow(?:-x)?:\s*hidden/);
+  const pages = [
+    ['DiscountsPage.vue', ['Mã', 'Tên chương trình', 'Giá trị', 'Thời gian', 'Trạng thái', 'Thao tác']],
+    ['VariantDiscountsPage.vue', ['Hình ảnh', 'Sản phẩm', 'Màu áp dụng', 'Giá trị', 'Thời gian', 'Trạng thái', 'Thao tác']],
+  ];
+  for (const [filename, labels] of pages) {
+    const source = fs.readFileSync(path.join(root, 'src/views/admin/pages', filename), 'utf8');
+    const template = parse(source).descriptor.template.content;
+    assert.equal((template.match(/<col(?:\s[^>]*)?>/g) || []).length, labels.length);
+    for (const label of labels) assert.ok(template.includes(`data-label="${label}"`), `${filename} labels ${label}`);
+    assert.match(template, /class="promotion-actions"/);
+    assert.match(template, /role="switch"/);
+  }
+});
 test('home category counts stay numeric when categories are missing or empty', () => {
   const home = loadHome();
   const training = () => home.categoryCards.value.find(card => card.key === 'training');
@@ -1197,12 +1499,80 @@ test('home category counts stay numeric when categories are missing or empty', (
   home.allProducts.value = [{ id_category: 9 }, { id_category: 9 }];
   assert.equal(training().count, '2 sản phẩm');
 });
-test('newsletter never claims success without a persistence API', () => {
-  const notices = []; const home = loadHome(notice => notices.push(notice));
-  home.email.value = 'invalid'; home.subscribe();
+test('newsletter preserves the email when the server cannot accept its request', async () => {
+  const notices = [];
+  const home = loadHome(notice => notices.push(notice), { apiClient: { post: async () => { throw new Error('Email unavailable'); } } });
+  home.email.value = 'invalid'; await home.subscribe();
   assert.equal(notices.at(-1).type, 'warning');
-  home.email.value = 'test@example.com'; home.subscribe();
-  assert.equal(notices.at(-1).type, 'warning');
+  home.email.value = 'test@example.com'; await home.subscribe();
+  assert.equal(notices.at(-1).type, 'error');
   assert.equal(home.email.value, 'test@example.com');
+  assert.equal(home.subscribing.value, false);
   assert.equal(notices.some(notice => notice.type === 'success'), false);
+});
+
+test('newsletter submits once and clears its field after server acceptance', async () => {
+  const notices = [], requests = [];
+  let accept;
+  const home = loadHome(notice => notices.push(notice), { apiClient: { post: (url, body) => {
+    requests.push({ url, email: body.email });
+    return new Promise(resolve => { accept = resolve; });
+  } } });
+  home.email.value = ' member@example.test ';
+  const first = home.subscribe();
+  await home.subscribe();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/newsletter');
+  assert.equal(requests[0].email, 'member@example.test');
+  assert.equal(home.subscribing.value, true);
+  accept({ success: true, message: 'Request accepted' });
+  await first;
+  assert.equal(home.email.value, '');
+  assert.equal(home.subscribing.value, false);
+  assert.equal(notices.at(-1).type, 'success');
+});
+
+function loadContact(api, notices) {
+  return load('src/views/ContactView.vue', {
+    '../services/apiClient': { api },
+    '../stores/uiStore': { notify: notice => notices.push(notice) },
+  }, {}, ['form', 'submitting', 'handleSubmit']);
+}
+
+test('contact form keeps its message on rejection and validates its contact information', async () => {
+  const notices = [], requests = [];
+  const contact = loadContact({ post: async (url, body) => { requests.push(url); return { success: false, message: 'Email unavailable' }; } }, notices);
+  Object.assign(contact.form, { name: 'Customer', contact: 'invalid', message: 'Please help with sizing.' });
+  await contact.handleSubmit();
+  assert.equal(requests.length, 0);
+  assert.equal(notices.at(-1).type, 'warning');
+  contact.form.contact = 'customer@example.test';
+  await contact.handleSubmit();
+  assert.equal(requests[0], '/contact');
+  assert.equal(notices.at(-1).type, 'error');
+  assert.equal(contact.form.message, 'Please help with sizing.');
+  assert.equal(contact.submitting.value, false);
+});
+
+test('contact form waits for a real response and prevents duplicate submissions', async () => {
+  const notices = [], requests = [];
+  let accept;
+  const contact = loadContact({ post: (url, body) => {
+    requests.push({ url, ...body });
+    return new Promise(resolve => { accept = resolve; });
+  } }, notices);
+  Object.assign(contact.form, { name: ' Customer ', contact: ' 0901234567 ', message: ' Help with sizing. ' });
+  const first = contact.handleSubmit();
+  await contact.handleSubmit();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].message, 'Help with sizing.');
+  assert.equal(contact.submitting.value, true);
+  assert.equal(notices.length, 0);
+  accept({ success: true, message: 'Accepted' });
+  await first;
+  assert.equal(contact.form.name, '');
+  assert.equal(contact.form.contact, '');
+  assert.equal(contact.form.message, '');
+  assert.equal(contact.submitting.value, false);
+  assert.equal(notices.at(-1).type, 'success');
 });

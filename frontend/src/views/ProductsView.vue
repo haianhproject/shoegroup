@@ -1,5 +1,6 @@
 <!-- Mục đích: Trang danh sách sản phẩm với tìm kiếm, lọc, sắp xếp và phân trang. -->
 <script setup>
+import StoreIllustration from '../components/StoreIllustration.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FigmaProductCard from '../components/figma/product/FigmaProductCard.vue'
@@ -231,53 +232,261 @@ onMounted(fetchAll)
 </script>
 
 <template>
-  <div class="figma-products-page bg-white" :class="{ 'flex items-center justify-center min-h-screen': isCentered }">
-    <div class="mx-auto w-full max-w-[1400px] px-5 pb-16 pt-8 sm:px-6 lg:px-12">
-      <div class="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+  <div class="figma-products-page bg-white min-h-screen" :class="{ 'flex items-center justify-center': isCentered }">
+    <div class="mx-auto w-full max-w-[1440px] px-4 pb-20 pt-8 sm:px-6 lg:px-10">
+
+      <!-- Page Header -->
+      <div class="collection-heading mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between border-b border-slate-100 pb-6">
         <div>
-          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-[#737373]">Sản phẩm ShoeGroup</span>
-          <h1 class="figma-display mt-2 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">{{ pageTitle }}</h1>
-          <p class="mt-2 text-sm text-[#737373]">{{ filtered.length }} sản phẩm từ dữ liệu cửa hàng</p>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#D4001A]"></span>
+            <span class="text-[11px] font-bold uppercase tracking-[0.2em] text-[#D4001A]">Bộ sưu tập</span>
+          </div>
+          <h1 class="figma-display text-3xl font-bold leading-tight tracking-tight text-slate-900 md:text-5xl">{{ pageTitle }}</h1>
+          <p class="mt-2 text-sm text-slate-500 font-medium">{{ filtered.length }} sản phẩm chính hãng có sẵn</p>
         </div>
-        <div class="flex items-center gap-2">
-          <button type="button" class="inline-flex items-center gap-2 rounded-full border border-[#E5E5E5] bg-white px-4 py-2.5 text-xs font-semibold transition-colors hover:border-[#0E0E0E]" @click="showFiltersMobile = !showFiltersMobile"><i class="icon icon-funnel"></i>{{ showFiltersMobile ? 'Ẩn bộ lọc' : 'Bộ lọc' }}</button>
-          <label class="sr-only" for="product-sort">Sắp xếp</label>
-          <select id="product-sort" v-model="sortBy" class="rounded-full border border-[#E5E5E5] bg-white px-4 py-2.5 text-xs font-semibold outline-none focus:border-[#0E0E0E]">
-            <option value="featured">Nổi bật</option><option value="price-asc">Giá thấp → cao</option><option value="price-desc">Giá cao → thấp</option><option value="name">Tên A → Z</option>
-          </select>
+
+        <div class="flex items-center gap-3">
+          <!-- Toggle Filter Button -->
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-800 transition-all hover:border-slate-900 hover:shadow-xs cursor-pointer"
+            :class="showFiltersMobile ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800' : ''"
+            @click="showFiltersMobile = !showFiltersMobile"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            <span>{{ showFiltersMobile ? 'Ẩn bộ lọc chi tiết' : 'Bộ lọc chi tiết' }}</span>
+          </button>
+
+          <!-- Sort Select -->
+          <div class="relative">
+            <label class="sr-only" for="product-sort">Sắp xếp</label>
+            <select
+              id="product-sort"
+              v-model="sortBy"
+              class="appearance-none rounded-full border border-slate-200 bg-white pl-4 pr-9 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-900 cursor-pointer shadow-xs hover:border-slate-300"
+            >
+              <option value="featured">Nổi bật nhất</option>
+              <option value="price-asc">Giá: Thấp → Cao</option>
+              <option value="price-desc">Giá: Cao → Thấp</option>
+              <option value="name">Tên sản phẩm: A → Z</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="mb-8 flex flex-col gap-4 border-y border-[#E5E5E5] py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex flex-wrap items-center gap-2">
-          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="!activeFilter && selSports.length === 0 ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="clearFilters">Tất cả</button>
-          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="activeFilter === 'sale' ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="router.push({ path: '/products', query: { filter: 'sale' } })">Sale</button>
-          <button type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="activeFilter === 'new' ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="router.push({ path: '/products', query: { filter: 'new' } })">Hàng mới</button>
-          <button v-for="sport in sports" :key="sport" type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="selSports.includes(sport) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="toggle(selSports, sport)">{{ sport }}</button>
-          <button v-for="brand in brands" :key="brand.id_brand" type="button" class="rounded-full border px-4 py-2 text-xs font-semibold transition-colors" :class="String(selBrand) === String(brand.id_brand) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white hover:border-[#0E0E0E]'" @click="setBrand(brand.id_brand)">{{ brand.brand_name }}</button>
+      <!-- Quick Filter Pills & Search Bar -->
+      <div class="collection-toolbar mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between rounded-2xl bg-[#F8FAFC] p-3 border border-slate-200/80">
+        <!-- Quick pills -->
+        <div class="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer border"
+            :class="!activeFilter && selSports.length === 0 ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+            @click="clearFilters"
+          >
+            Tất cả
+          </button>
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer border"
+            :class="activeFilter === 'sale' ? 'border-[#D4001A] bg-[#D4001A] text-white shadow-xs' : 'border-red-200 bg-red-50/70 text-[#D4001A] hover:bg-red-100'"
+            @click="router.push({ path: '/products', query: { filter: 'sale' } })"
+          >
+            Sale Ưu Đãi
+          </button>
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer border"
+            :class="activeFilter === 'new' ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+            @click="router.push({ path: '/products', query: { filter: 'new' } })"
+          >
+            Hàng Mới
+          </button>
+          <button
+            v-for="sport in sports"
+            :key="sport"
+            type="button"
+            class="rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer border"
+            :class="selSports.includes(sport) ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+            @click="toggle(selSports, sport)"
+          >
+            {{ sport }}
+          </button>
+          <button
+            v-for="brand in brands"
+            :key="brand.id_brand"
+            type="button"
+            class="rounded-full px-4 py-2 text-xs font-bold transition-all cursor-pointer border"
+            :class="String(selBrand) === String(brand.id_brand) ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+            @click="setBrand(brand.id_brand)"
+          >
+            {{ brand.brand_name }}
+          </button>
         </div>
-        <div class="flex items-center gap-2 rounded-full border border-[#E5E5E5] px-4 py-2 text-sm">
-          <i class="icon icon-search text-[#737373]"></i><input v-model="search" type="search" class="w-full min-w-0 border-0 bg-transparent text-sm outline-none placeholder:text-[#737373]" placeholder="Tìm sản phẩm…" />
+
+        <!-- Search Input -->
+        <div class="relative flex items-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 shadow-xs focus-within:border-slate-900 focus-within:ring-2 focus-within:ring-slate-900/10 min-w-[260px]">
+          <svg class="h-4 w-4 text-slate-400 mr-2 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            v-model="search"
+            type="search"
+            class="w-full min-w-0 border-0 bg-transparent text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400"
+            placeholder="Tìm theo tên, màu, chất liệu…"
+          />
+          <button
+            v-if="search"
+            type="button"
+            class="text-xs text-slate-400 hover:text-slate-700 ml-1 cursor-pointer border-0 bg-transparent"
+            @click="search = ''"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
-      <div v-if="showFiltersMobile" class="mb-8 grid gap-5 rounded-2xl bg-[#F0F0F0] p-5 md:grid-cols-2 lg:grid-cols-4">
-        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Màu sắc</div><div class="flex flex-wrap gap-3"><button v-for="c in colors" :key="c.id_color" type="button" class="relative h-8 w-8 rounded-full border-2 transition-all duration-150" :class="selColors.includes(c.color_label) ? 'border-white scale-110 shadow-[0_0_0_3px_#0E0E0E]' : 'border-white shadow-[0_0_0_1.5px_#D4D4D4] hover:shadow-[0_0_0_2px_#737373]'" :style="{ background: c.hex || '#ccc' }" :title="c.color_label" @click="toggle(selColors, c.color_label)"></button></div></div>
-        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Kích cỡ</div><div class="flex flex-wrap gap-2"><button v-for="s in sizes" :key="s.id_size" type="button" class="rounded-full border px-3 py-1.5 text-xs font-semibold" :class="selSizes.includes(s.size_name) ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white'" @click="toggle(selSizes, s.size_name)">{{ s.size_name }}</button></div></div>
-        <div><div class="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#737373]">Chất liệu</div><label v-for="m in materials" :key="m.id_material" class="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" :value="m.id_material" :checked="selMaterials.includes(m.id_material)" @change="toggle(selMaterials, m.id_material)" />{{ m.material_name }}</label><button type="button" class="mt-2 text-xs font-bold underline" @click="clearFilters">Xóa bộ lọc</button></div>
+      <!-- Expandable Filter Panel -->
+      <transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2 scale-98" enter-to-class="opacity-100 translate-y-0 scale-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0 scale-100" leave-to-class="opacity-0 -translate-y-2 scale-98">
+        <div v-if="showFiltersMobile" class="mb-8 rounded-3xl bg-[#F8FAFC] border border-slate-200 p-6 shadow-sm">
+          <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <!-- Colors -->
+            <div class="space-y-3">
+              <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Màu sắc</div>
+              <div class="flex flex-wrap gap-2.5">
+                <button
+                  v-for="c in colors"
+                  :key="c.id_color"
+                  type="button"
+                  class="relative h-8 w-8 rounded-full border-2 transition-all cursor-pointer"
+                  :class="selColors.includes(c.color_label) ? 'border-white scale-110 shadow-[0_0_0_3px_#0F172A]' : 'border-white shadow-[0_0_0_1.5px_#CBD5E1] hover:scale-105'"
+                  :style="{ background: c.hex || '#ccc' }"
+                  :title="c.color_label"
+                  @click="toggle(selColors, c.color_label)"
+                ></button>
+              </div>
+            </div>
+
+            <!-- Sizes -->
+            <div class="space-y-3">
+              <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Kích cỡ giày</div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="s in sizes"
+                  :key="s.id_size"
+                  type="button"
+                  class="rounded-xl border px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
+                  :class="selSizes.includes(s.size_name) ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+                  @click="toggle(selSizes, s.size_name)"
+                >
+                  {{ s.size_name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Materials -->
+            <div class="space-y-3">
+              <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Chất liệu</div>
+              <div class="space-y-2">
+                <label v-for="m in materials" :key="m.id_material" class="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="m.id_material"
+                    :checked="selMaterials.includes(m.id_material)"
+                    class="rounded border-slate-300 text-slate-900 accent-slate-900 focus:ring-slate-900 h-4 w-4"
+                    @change="toggle(selMaterials, m.id_material)"
+                  />
+                  <span>{{ m.material_name }}</span>
+                </label>
+              </div>
+              <button type="button" class="mt-3 text-xs font-bold text-[#D4001A] hover:underline cursor-pointer border-0 bg-transparent p-0" @click="clearFilters">
+                Đặt lại toàn bộ lọc
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Loading State -->
+      <div v-if="isLoading" class="flex flex-col items-center justify-center py-28 gap-3">
+        <span class="sg-spinner text-slate-900" aria-label="Đang tải"></span>
+        <span class="text-xs font-semibold text-slate-400">Đang chuẩn bị sản phẩm…</span>
       </div>
 
-      <div v-if="isLoading" class="flex justify-center py-24"><span class="sg-spinner" aria-label="Đang tải"></span></div>
-      <div v-else-if="filtered.length === 0" class="rounded-2xl border border-[#E5E5E5] px-6 py-24 text-center"><div class="mb-4 text-4xl text-[#D4D4D4]">⌕</div><h2 class="figma-display text-2xl font-semibold">Không tìm thấy sản phẩm</h2><p class="mt-2 text-sm text-[#737373]">Thử điều chỉnh bộ lọc hoặc từ khóa khác.</p><button type="button" class="mt-6 rounded-full bg-[#0E0E0E] px-6 py-3 text-xs font-bold text-white" @click="clearFilters">Xóa bộ lọc</button></div>
-      <FigmaProductGrid v-else :columns="5" class="figma-product-grid">
-        <div v-for="product in paginatedProducts" :key="product.id_product" class="min-w-0"><FigmaProductCard :product="product" /></div>
+      <!-- Empty State with Vector SVG -->
+      <div v-else-if="filtered.length === 0" class="rounded-3xl border border-slate-200 bg-[#F8FAFC] px-6 py-20 text-center max-w-xl mx-auto shadow-sm">
+        <StoreIllustration kind="search" class="mb-5" />
+        <h2 class="figma-display text-2xl font-bold text-slate-900">Không tìm thấy sản phẩm</h2>
+        <p class="mt-2 text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+          Rất tiếc, không có mẫu giày nào phù hợp với bộ lọc hoặc từ khóa bạn đang tìm.
+        </p>
+        <button
+          type="button"
+          class="btn-sg-warm mt-6 inline-flex items-center gap-2 cursor-pointer border-0"
+          @click="clearFilters"
+        >
+          <span>Xóa bộ lọc & Xem tất cả</span>
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Product Grid -->
+      <FigmaProductGrid v-else :columns="4" class="figma-product-grid">
+        <div v-for="product in paginatedProducts" :key="product.id_product" class="min-w-0">
+          <FigmaProductCard :product="product" />
+        </div>
       </FigmaProductGrid>
 
-      <nav v-if="totalPages > 1" class="mt-10 flex items-center justify-center gap-2" aria-label="Phân trang sản phẩm">
-        <button type="button" class="flex h-9 w-9 items-center justify-center rounded-full border border-[#E5E5E5] disabled:opacity-40" :disabled="currentPage === 1" aria-label="Trang trước" @click="updatePageQuery(currentPage - 1)"><i class="icon icon-chevron-left"></i></button>
-        <button v-for="page in pageNumbers" :key="page" type="button" class="flex h-9 min-w-9 items-center justify-center rounded-full border px-3 text-xs font-bold" :class="page === currentPage ? 'border-[#0E0E0E] bg-[#0E0E0E] text-white' : 'border-[#E5E5E5] bg-white'" @click="updatePageQuery(page)">{{ page }}</button>
-        <button type="button" class="flex h-9 w-9 items-center justify-center rounded-full border border-[#E5E5E5] disabled:opacity-40" :disabled="currentPage === totalPages" aria-label="Trang sau" @click="updatePageQuery(currentPage + 1)"><i class="icon icon-chevron-right"></i></button>
+      <!-- Pagination -->
+      <nav v-if="totalPages > 1" class="mt-14 flex items-center justify-center gap-2" aria-label="Phân trang sản phẩm">
+        <button
+          type="button"
+          class="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-xs hover:border-slate-900 hover:text-slate-950 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+          :disabled="currentPage === 1"
+          aria-label="Trang trước"
+          @click="updatePageQuery(currentPage - 1)"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+
+        <button
+          v-for="page in pageNumbers"
+          :key="page"
+          type="button"
+          class="flex h-10 min-w-10 items-center justify-center rounded-full px-3.5 text-xs font-bold transition-all shadow-xs cursor-pointer border"
+          :class="page === currentPage ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'"
+          @click="updatePageQuery(page)"
+        >
+          {{ page }}
+        </button>
+
+        <button
+          type="button"
+          class="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-xs hover:border-slate-900 hover:text-slate-950 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+          :disabled="currentPage === totalPages"
+          aria-label="Trang sau"
+          @click="updatePageQuery(currentPage + 1)"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
       </nav>
+
     </div>
   </div>
 </template>

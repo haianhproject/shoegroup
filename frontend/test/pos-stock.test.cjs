@@ -7,6 +7,10 @@ const vm = require('node:vm');
 const vue = require('vue');
 const { transformSync } = require('esbuild');
 const { parse } = require('@vue/compiler-sfc');
+const orderCodes = { exports: {} };
+vm.runInNewContext(transformSync(fs.readFileSync(path.resolve(__dirname, '../src/services/orderCode.js'), 'utf8'), { format: 'cjs' }).code, {
+  module: orderCodes, exports: orderCodes.exports,
+});
 
 function store(fetch, sessionStorage = {getItem(){return null},setItem(){}}) {
   const module = { exports: {} };
@@ -16,6 +20,7 @@ function store(fetch, sessionStorage = {getItem(){return null},setItem(){}}) {
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: 'Khách thử', phone: '0901234567' }) },
+    '@/services/orderCode': orderCodes.exports,
     '@/stores/authStore': { currentUser: vue.ref({ id: 1, name: 'Quầy' }), logout() {} },
     '../../services/apiClient': { API_BASE_URL: '/api', getToken: () => 'test' },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },

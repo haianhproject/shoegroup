@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" role="img" aria-label="SG — ShoeGroup">
+  <title>ShoeGroup — SG monogram</title>
+  <rect width="96" height="96" rx="16" fill="#FFFFFF"/>
+  <g transform="translate(13 20) skewX(-8) scale(.8)" fill-rule="evenodd">
+    <path fill="#0F172A" d="M10 0H44L41 12H15L12 15V24H34L44 34V54L34 64H0L3 52H29L32 49V40H10L0 30V10Z"/>
+    <path transform="translate(50)" fill="#D4001A" d="M10 0H44L41 12H15L12 15V49L15 52H32V39H23V27H44V54L34 64H10L0 54V10Z"/>
+  </g>
+</svg>

@@ -1,18 +1,22 @@
 <!-- Mục đích: Trang thanh toán, xác nhận giỏ hàng, địa chỉ, vận chuyển và phương thức trả tiền. -->
 <script setup>
+import StoreIllustration from '../components/StoreIllustration.vue'
+import BrandLogo from '../components/BrandLogo.vue'
 import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   cartItems, cartCount, cartSubtotal, formatCurrency, clearCart,
   refreshCartAvailability, cartHasUnavailableItems,
 } from '../stores/cartStore'
-import { createOrder, setServerId, removeOrder, orderState, saveOrders } from '../stores/orderStore'
+import { createOrder, setServerId, removeOrder, orderState, saveOrders, getCustomerOrderCode } from '../stores/orderStore'
 import { currentUser } from '../stores/authStore'
 import { notify } from '../stores/uiStore'
 import { api } from '../services/apiClient'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import { shippingApi } from '../services/shippingService'
 import { getCheckoutAttempt, clearCheckoutAttempt } from '../services/checkoutAttempt'
+import { buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '../services/vietQr'
+import { vDialogFocus } from '../directives/dialogFocus'
 
 const router = useRouter()
 
@@ -42,13 +46,26 @@ const shippingQuoteError = ref('')
 let shippingQuoteRequestId = 0
 const paymentCode = ref('COD')
 const placing = ref(false)
+const bankConfig = ref(normalizePosBankConfig())
+const bankLoading = ref(false)
+
+const loadBankConfig = async () => {
+  bankLoading.value = true
+  try {
+    bankConfig.value = normalizePosBankConfig(await api.get('/payment-config'))
+  } catch {
+    bankConfig.value = normalizePosBankConfig()
+  } finally {
+    bankLoading.value = false
+  }
+}
 
 const payments = [
   {
     code: 'BANK',
     name: 'Chuyển khoản ngân hàng (VietQR)',
     desc: 'Bạn sẽ quét mã VietQR hoặc chuyển khoản trực tiếp qua ứng dụng ngân hàng để hoàn tất mua hàng.',
-    badges: ['VietQR', 'MC', 'VISA'],
+    badges: ['VietQR'],
   },
   {
     code: 'COD',
@@ -109,7 +126,7 @@ onMounted(async () => {
     router.replace('/cart')
     return
   }
-  await Promise.all([loadAddresses(), fetchProvinces()])
+  await Promise.all([loadAddresses(), fetchProvinces(), loadBankConfig()])
   await loadShippingMethods()
 })
 
@@ -480,28 +497,37 @@ const discountAmount = computed(() => {
 const total = computed(() => Math.max(0, cartSubtotal.value + shippingFee.value - discountAmount.value))
 
 /* ---- Order & Modal Action ---- */
-const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0 })
+const payModal = reactive({ open: false, orderId: null, serverId: null, total: 0, confirming: false, qrFailed: false })
+const paymentOrder = computed(() => orderState.orders.find(order => order.id === payModal.orderId))
+const paymentOrderCode = computed(() => getCustomerOrderCode(paymentOrder.value))
+const transferContent = computed(() => createPosTransferContent(paymentOrderCode.value))
+const paymentQrUrl = computed(() => buildVietQrUrl(bankConfig.value, payModal.total, transferContent.value))
+
+const viewPlacedOrder = () => {
+  if (payModal.confirming) return
+  payModal.open = false
+  router.push('/account?tab=orders')
+}
 
 const confirmPaid = async () => {
+  if (payModal.confirming) return
   if (!payModal.serverId) {
     notify({ type: 'error', message: 'Đơn hàng chưa được máy chủ xác nhận. Vui lòng tải lại danh sách đơn hàng.' })
     return
   }
-  let paymentStatus = 'Đã thanh toán'
-  if (payModal.serverId) {
-    try {
-      const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
-      paymentStatus = result?.payment_status || 'Đã thanh toán'
-    } catch (error) {
-      notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
-      return
-    }
+  payModal.confirming = true
+  try {
+    const result = await api.put(`/orders/${payModal.serverId}/payment`, { payment_status: 'Đã thanh toán' })
+    const order = paymentOrder.value
+    if (order) { order.payment_status = result?.payment_status || 'Đã thanh toán'; saveOrders() }
+    notify({ type: 'success', title: 'Đã ghi nhận xác nhận chuyển khoản', message: 'Thông tin thanh toán đã được cập nhật cho đơn hàng.' })
+    payModal.open = false
+    router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
+  } catch (error) {
+    notify({ type: 'error', message: error.message || 'Không thể ghi nhận thanh toán. Vui lòng thử lại.' })
+  } finally {
+    payModal.confirming = false
   }
-  const order = orderState.orders.find((x) => x.id === payModal.orderId)
-  if (order) { order.payment_status = paymentStatus; saveOrders() }
-  notify({ type: 'success', title: 'Thanh toán thành công', message: 'Đơn hàng đã được ghi nhận thanh toán.' })
-  payModal.open = false
-  router.push({ path: '/order-success', query: { orderId: payModal.orderId } })
 }
 
 const placeOrder = async () => {
@@ -604,7 +630,7 @@ const placeOrder = async () => {
     const data = await api.post('/orders', payload, { headers: { 'Idempotency-Key': attempt.key } })
     createdServerId = data?.orderId ?? data?.OrderID ?? null
     if (!createdServerId) throw new Error('Máy chủ chưa trả mã đơn hợp lệ. Vui lòng kiểm tra danh sách đơn trước khi thử lại.')
-    setServerId(clientOrder.order.id, createdServerId)
+    setServerId(clientOrder.order.id, createdServerId, data?.createdAt)
     const serverTotal = Number(data?.totalAmount)
     if (Number.isFinite(serverTotal)) {
       clientOrder.order.subtotal = Number(data?.subtotalAmount) || 0
@@ -650,6 +676,7 @@ const placeOrder = async () => {
     payModal.orderId = clientOrder.order.id
     payModal.serverId = createdServerId
     payModal.total = clientOrder.order.total
+    payModal.qrFailed = false
     payModal.open = true
     await clearCart()
     return
@@ -664,16 +691,14 @@ const placeOrder = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-white" style="font-family:'Be Vietnam Pro',sans-serif">
+  <div class="checkout-page min-h-screen bg-white" style="font-family:'Be Vietnam Pro',sans-serif">
 
     <!-- ── Giỏ trống ── -->
     <div v-if="cartCount === 0" class="pt-24 flex flex-col items-center justify-center py-24 px-6 text-center">
-      <div class="w-16 h-16 mb-4 rounded-full bg-[#FAFAFA] border border-[#E5E5E5] flex items-center justify-center text-[#737373]">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-      </div>
-      <h2 style="font-family:'Fraunces',serif" class="text-2xl font-semibold text-[#0E0E0E] mb-2">Giỏ hàng của bạn đang trống</h2>
+      <StoreIllustration kind="bag" class="mb-5" />
+      <h2 class="text-3xl font-semibold text-[#0E0E0E] mb-2">Giỏ hàng của bạn đang trống</h2>
       <p class="text-sm text-[#737373] mb-6">Không có sản phẩm nào để tiến hành thanh toán.</p>
-      <router-link to="/products" class="inline-block px-8 py-3.5 bg-[#0E0E0E] text-white text-sm font-semibold rounded-lg hover:bg-[#333] transition-colors">MUA SẮM NGAY</router-link>
+      <router-link to="/products" class="btn-sg-warm">MUA SẮM NGAY</router-link>
     </div>
 
     <!-- ── Giao diện thanh toán Split-Screen chuẩn Shopify / Reference ── -->
@@ -686,8 +711,7 @@ const placeOrder = async () => {
           <!-- Header thương hiệu -->
           <div class="flex items-center pb-6 mb-6 border-b border-[#F0F0F0]">
             <router-link to="/" class="inline-flex items-center gap-2 no-underline" aria-label="Trang chủ ShoeGroup">
-              <img src="../../img/logogiay.png" alt="" aria-hidden="true" class="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9" />
-              <span class="figma-display text-[22px] font-semibold leading-none tracking-tight text-[#0E0E0E]">ShoeGroup</span>
+              <BrandLogo :size="33" />
             </router-link>
           </div>
 
@@ -712,12 +736,6 @@ const placeOrder = async () => {
               </div>
             </div>
             <div v-if="formErrors.email" class="text-xs text-red-500 mt-1">{{ formErrors.email }}</div>
-            <label class="flex items-center gap-2.5 mt-3 cursor-pointer select-none">
-              <span class="w-4 h-4 rounded-full bg-[#0E0E0E] flex items-center justify-center flex-shrink-0">
-                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><path d="M2 6l3 3 5-5"/></svg>
-              </span>
-              <span class="text-[13px] text-[#0E0E0E]">Gửi cho tôi tin tức và ưu đãi qua email</span>
-            </label>
           </div>
 
           <!-- ── 2. GIAO HÀNG & SỔ ĐỊA CHỈ ── -->
@@ -742,22 +760,27 @@ const placeOrder = async () => {
             </div>
 
             <!-- Danh sách Sổ Địa Chỉ đã lưu -->
-            <div v-else-if="savedAddresses.length > 0" class="flex flex-col gap-2 mb-4">
+            <div v-else-if="savedAddresses.length > 0" class="flex flex-col gap-2 mb-4" role="radiogroup" aria-label="Địa chỉ nhận hàng">
               <div
                 v-for="a in savedAddresses"
                 :key="a.id"
                 @click="selectedAddressId = a.id"
+                role="radio"
+                :aria-checked="selectedAddressId === a.id"
+                tabindex="0"
+                @keydown.enter.prevent="selectedAddressId = a.id"
+                @keydown.space.prevent="selectedAddressId = a.id"
                 class="flex items-start gap-3 border rounded-xl p-3.5 transition-all cursor-pointer bg-white"
                 :class="selectedAddressId === a.id
-                  ? 'border-[#0E0E0E] bg-[#FAFAFA] shadow-xs'
+                  ? 'border-[#D4001A] bg-[#FFF1F2] shadow-xs'
                   : 'border-[#E5E5E5] hover:border-[#B0B0B0]'"
               >
                 <!-- Radio chọn địa chỉ -->
                 <span
                   class="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                  :class="selectedAddressId === a.id ? 'border-[#0E0E0E]' : 'border-[#D4D4D4]'"
+                  :class="selectedAddressId === a.id ? 'border-[#D4001A]' : 'border-[#D4D4D4]'"
                 >
-                  <span v-if="selectedAddressId === a.id" class="w-2 h-2 rounded-full bg-[#0E0E0E]"></span>
+                  <span v-if="selectedAddressId === a.id" class="w-2 h-2 rounded-full bg-[#D4001A]"></span>
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5">
@@ -775,7 +798,7 @@ const placeOrder = async () => {
               <button
                 type="button"
                 @click="openAddAddress"
-                class="px-4 py-2 text-xs font-semibold bg-[#0E0E0E] text-white rounded-lg hover:bg-[#333] transition-colors cursor-pointer border-none"
+                class="px-4 py-2 text-xs font-semibold bg-[#D4001A] text-white rounded-lg hover:bg-[#B80017] transition-colors cursor-pointer border-none"
               >+ Thêm địa chỉ mới vào sổ</button>
             </div>
 
@@ -803,14 +826,19 @@ const placeOrder = async () => {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               {{ shippingQuoteError }}
             </div>
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2" role="radiogroup" aria-label="Phương thức vận chuyển">
               <div
                 v-for="m in shippingMethods"
                 :key="m.code"
                 @click="shippingCode = m.code"
+                role="radio"
+                :aria-checked="shippingCode === m.code"
+                tabindex="0"
+                @keydown.enter.prevent="shippingCode = m.code"
+                @keydown.space.prevent="shippingCode = m.code"
                 class="flex items-center justify-between border rounded-xl px-4 py-3.5 transition-all cursor-pointer"
                 :class="shippingCode === m.code
-                  ? 'border-[#0E0E0E] bg-[#FAFAFA] shadow-xs'
+                  ? 'border-[#D4001A] bg-[#FFF1F2] shadow-xs'
                   : 'border-[#E5E5E5] bg-white hover:border-[#B0B0B0]'"
               >
                 <div>
@@ -832,29 +860,32 @@ const placeOrder = async () => {
           <div class="mb-8">
             <h2 class="text-base sm:text-lg font-bold text-[#0E0E0E] mb-1">Thanh toán</h2>
             <p class="text-xs text-[#737373] mb-3">Địa chỉ thanh toán của phương thức thanh toán phải khớp với địa chỉ giao hàng. Toàn bộ các giao dịch được bảo mật và mã hóa.</p>
-            <div class="border border-[#E5E5E5] rounded-xl overflow-hidden divide-y divide-[#E5E5E5] bg-white">
+            <div class="border border-[#E5E5E5] rounded-xl overflow-hidden divide-y divide-[#E5E5E5] bg-white" role="radiogroup" aria-label="Phương thức thanh toán">
               <div
                 v-for="p in payments"
                 :key="p.code"
                 @click="paymentCode = p.code"
+                role="radio"
+                :aria-checked="paymentCode === p.code"
+                tabindex="0"
+                @keydown.enter.prevent="paymentCode = p.code"
+                @keydown.space.prevent="paymentCode = p.code"
                 class="cursor-pointer transition-all"
-                :class="paymentCode === p.code ? 'bg-[#FAFAFA] ring-1 ring-inset ring-[#0E0E0E]' : 'bg-white hover:bg-[#FAFAFA]'"
+                :class="paymentCode === p.code ? 'bg-[#FFF1F2] ring-1 ring-inset ring-[#D4001A]' : 'bg-white hover:bg-[#FAFAFA]'"
               >
                 <div class="flex items-center justify-between px-4 py-3.5">
                   <span class="flex items-center gap-3">
                     <span
                       class="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors"
-                      :class="paymentCode === p.code ? 'border-[#0E0E0E]' : 'border-[#D4D4D4]'"
+                      :class="paymentCode === p.code ? 'border-[#D4001A]' : 'border-[#D4D4D4]'"
                     >
-                      <span v-if="paymentCode === p.code" class="w-2 h-2 rounded-full bg-[#0E0E0E]"></span>
+                      <span v-if="paymentCode === p.code" class="w-2 h-2 rounded-full bg-[#D4001A]"></span>
                     </span>
                     <span class="text-sm font-semibold text-[#0E0E0E]">{{ p.name }}</span>
                   </span>
-                  <!-- Badges ngân hàng/thẻ -->
+                  <!-- Phương thức chuyển khoản -->
                   <div v-if="p.badges" class="flex items-center gap-1">
-                    <span class="text-[9px] font-bold text-white bg-[#005BAA] rounded px-1.5 py-0.5 leading-none">VietQR</span>
-                    <span class="text-[9px] font-bold text-white bg-[#EB001B] rounded px-1 py-0.5 leading-none">MC</span>
-                    <span class="text-[9px] font-bold text-white bg-[#1A1F71] rounded px-1 py-0.5 leading-none">VISA</span>
+                    <span class="text-[9px] font-bold text-white bg-[#0F172A] rounded px-1.5 py-0.5 leading-none">VietQR</span>
                   </div>
                 </div>
                 <div v-if="paymentCode === p.code && p.desc" class="px-4 pb-3.5 -mt-0.5">
@@ -869,7 +900,7 @@ const placeOrder = async () => {
           <!-- ── Nút Đặt hàng ── -->
           <button
             type="button"
-            class="w-full bg-[#0E0E0E] text-white py-4 rounded-xl text-sm font-bold uppercase tracking-wider hover:bg-[#262626] active:bg-black transition-colors border-none cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            class="checkout-submit w-full bg-[#D4001A] text-white py-4 rounded-xl text-sm font-bold uppercase tracking-wider hover:bg-[#B80017] active:bg-[#B80017] transition-colors border-none cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             :disabled="placing"
             @click="placeOrder"
           >
@@ -885,7 +916,7 @@ const placeOrder = async () => {
 
       <!-- ══ CỘT PHẢI: Tóm tắt đơn hàng (chiếm 48% màn hình, nền xám #FAFAFA, sticky) ══ -->
       <div class="w-full lg:w-[48%] xl:w-[48%] bg-[#FAFAFA] flex justify-start order-1 lg:order-2 flex-shrink-0">
-        <div class="w-full max-w-[480px] px-6 sm:px-8 lg:pl-10 lg:pr-6 xl:pl-14 xl:pr-8 py-8 lg:py-10 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
+        <div class="checkout-sidebar w-full max-w-[480px] px-6 sm:px-8 lg:pl-10 lg:pr-6 xl:pl-14 xl:pr-8 py-8 lg:py-10 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
 
           <!-- Danh sách sản phẩm -->
           <div class="space-y-4 mb-5">
@@ -1001,7 +1032,7 @@ const placeOrder = async () => {
       <div v-if="addrModal.open" class="modal-overlay" @click.self="addrModal.open = false">
         <div class="modal-box">
           <div class="flex justify-between items-center mb-4">
-            <h3 style="font-family:'Fraunces',serif" class="text-xl font-semibold text-[#0E0E0E] m-0">Thêm địa chỉ mới</h3>
+            <h3 style="font-family:'Barlow Condensed',sans-serif" class="text-xl font-semibold text-[#0E0E0E] m-0">Thêm địa chỉ mới</h3>
             <button class="btn-close-modal" @click="addrModal.open = false">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
@@ -1082,7 +1113,7 @@ const placeOrder = async () => {
 
           <div class="flex gap-2 mt-6 justify-end">
             <button class="px-5 py-2.5 text-sm font-semibold border border-[#D9D9D9] rounded-lg text-[#737373] hover:text-[#0E0E0E] hover:border-[#0E0E0E] transition-colors cursor-pointer bg-white" @click="addrModal.open = false">Hủy bỏ</button>
-            <button class="px-6 py-2.5 text-sm font-semibold bg-[#0E0E0E] text-white rounded-lg hover:bg-[#333] transition-colors cursor-pointer disabled:opacity-50 border-none" :disabled="addressSaving" @click="saveNewAddress">
+            <button class="px-6 py-2.5 text-sm font-semibold bg-[#D4001A] text-white rounded-lg hover:bg-[#B80017] transition-colors cursor-pointer disabled:opacity-50 border-none" :disabled="addressSaving" @click="saveNewAddress">
               {{ addressSaving ? 'Đang lưu…' : 'Lưu & Chọn' }}
             </button>
           </div>
@@ -1093,14 +1124,26 @@ const placeOrder = async () => {
     <!-- ── Modal QR Chuyển khoản ngân hàng (VietQR) ── -->
     <transition name="suc">
       <div v-if="payModal.open" class="modal-overlay">
-        <div class="modal-box text-center max-w-[460px]">
-          <h3 style="font-family:'Fraunces',serif" class="text-xl font-semibold text-[#0E0E0E] mb-2">Thanh toán đơn hàng</h3>
-          <p class="text-xs text-[#737373] mb-4">Mã đơn: <strong class="text-[#0E0E0E]">#{{ payModal.orderId }}</strong></p>
-          <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" class="qr-img mx-auto mb-4" />
-          <h4 style="font-family:'Fraunces',serif" class="text-2xl font-bold text-[#0E0E0E] mb-3">{{ formatCurrency(payModal.total) }}</h4>
-          <p class="text-xs text-[#737373] mb-5 leading-relaxed">Quét mã QR để chuyển khoản. Sau khi thanh toán, bấm xác nhận để hệ thống ghi nhận ngay.</p>
+        <div v-dialog-focus="viewPlacedOrder" class="modal-box text-center max-w-[460px]" role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title" :aria-busy="payModal.confirming" @keydown.esc.stop="viewPlacedOrder">
+          <h3 id="payment-dialog-title" style="font-family:'Barlow Condensed',sans-serif" class="text-xl font-semibold text-[#0E0E0E] mb-2">Thanh toán đơn hàng</h3>
+          <p class="text-xs text-[#737373] mb-4">Mã đơn: <strong class="text-[#0E0E0E]">#{{ paymentOrderCode }}</strong></p>
+          <p v-if="bankLoading" class="text-sm text-slate-500 mb-4" role="status">Đang tải thông tin chuyển khoản…</p>
+          <template v-else-if="bankConfig.configured">
+            <img v-if="paymentQrUrl && !payModal.qrFailed" :src="paymentQrUrl" alt="VietQR chuyển khoản đơn hàng ShoeGroup" class="qr-img mx-auto mb-4" @error="payModal.qrFailed = true" />
+            <p v-else class="text-sm text-slate-500 mb-4" role="status">Bạn có thể chuyển khoản bằng thông tin tài khoản bên dưới.</p>
+            <dl class="text-sm text-left bg-slate-50 rounded-xl p-4 mb-4 space-y-2">
+              <div class="flex justify-between gap-3"><dt>Ngân hàng</dt><dd class="font-semibold text-right">{{ bankConfig.bankName }}</dd></div>
+              <div class="flex justify-between gap-3"><dt>Số tài khoản</dt><dd class="font-semibold text-right break-all">{{ bankConfig.accountNo }}</dd></div>
+              <div class="flex justify-between gap-3"><dt>Chủ tài khoản</dt><dd class="font-semibold text-right">{{ bankConfig.accountName }}</dd></div>
+              <div class="flex justify-between gap-3"><dt>Nội dung</dt><dd class="font-semibold text-right break-all">{{ transferContent }}</dd></div>
+            </dl>
+          </template>
+          <p v-else class="text-sm text-slate-600 leading-relaxed mb-4" role="status">Đơn hàng đã được lưu. Vui lòng liên hệ <a class="font-semibold underline" href="tel:0375990871">0375.990.871</a> để nhận thông tin chuyển khoản của cửa hàng.</p>
+          <h4 style="font-family:'Barlow Condensed',sans-serif" class="text-2xl font-bold text-[#0E0E0E] mb-3">{{ formatCurrency(payModal.total) }}</h4>
+          <p class="text-xs text-[#737373] mb-5 leading-relaxed">Sau khi chuyển khoản đúng số tiền và nội dung đơn hàng, bấm xác nhận để cập nhật cho cửa hàng.</p>
           <div class="flex flex-col gap-2.5">
-            <button class="w-full py-3.5 bg-[#0E0E0E] text-white rounded-lg text-sm font-semibold hover:bg-[#333] transition-colors border-none cursor-pointer" @click="confirmPaid">TÔI ĐÃ THANH TOÁN</button>
+            <button class="w-full py-3.5 bg-[#D4001A] text-white rounded-lg text-sm font-semibold hover:bg-[#B80017] transition-colors border-none cursor-pointer disabled:opacity-50" :disabled="payModal.confirming" @click="confirmPaid">{{ payModal.confirming ? 'ĐANG GỬI XÁC NHẬN…' : 'TÔI ĐÃ CHUYỂN KHOẢN' }}</button>
+            <button class="w-full py-3 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg disabled:opacity-50" :disabled="payModal.confirming" @click="viewPlacedOrder">Xem đơn hàng</button>
           </div>
         </div>
       </div>
@@ -1122,6 +1165,8 @@ const placeOrder = async () => {
 }
 .modal-box {
   max-width: 600px;
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
   width: 100%;
   padding: 28px;
   border-radius: 16px;

@@ -19,6 +19,7 @@ import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAtt
 import { recognizedOrderRevenue } from '@/services/revenue';
 import { buildPosPaymentQrUrl, buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '@/services/vietQr';
 import { validatePosCustomer } from '@/services/posCustomer';
+import { formatOrderCode } from '@/services/orderCode';
 import { currentUser, logout, isEmployee } from "@/stores/authStore";
 
 import { API_BASE_URL, getToken } from "../../services/apiClient";
@@ -522,13 +523,14 @@ export const recentOrdersByDate = computed(() => {
 });
 export function buildOrderStatusData() {
   const colorMap = {
-    "Chờ xác nhận": "#f59e0b",
-    "Đã xác nhận": "#0ea5e9",
-    "Đang vận chuyển": "#6366f1",
-    "Giao hàng thất bại": "#dc2626",
-    "Về kho": "#f59e0b",
-    "Đã giao hàng thành công": "#10b981",
-    "Đã hủy": "#ef4444",
+    "Chờ xác nhận": "#d4001a",
+    "Đã xác nhận": "#475569",
+    "Đang vận chuyển": "#64748b",
+    "Giao hàng thất bại": "#9f1239",
+    "Về kho": "#cbd5e1",
+    "Đã giao hàng thành công": "#0f172a",
+    "Đã nhận hàng": "#0f172a",
+    "Đã hủy": "#94a3b8",
   };
   const map = {};
   ordersInRange.value.forEach((o) => {
@@ -1406,16 +1408,7 @@ export function getOrderResolutionReason(o) {
 
 export function getTrackingCode(o) {
   if (o && o.tracking_code) return o.tracking_code;
-  const id = Number(o && o.id) || 0;
-  const d = o && o.date ? new Date(o.date) : new Date();
-  const ymd =
-    String(d.getFullYear()).slice(2) +
-    String(d.getMonth() + 1).padStart(2, "0") +
-    String(d.getDate()).padStart(2, "0");
-  const seq = String(id).padStart(5, "0");
-  const check =
-    String.fromCharCode(65 + ((id * 7 + 3) % 26)) + String((id * 13 + 7) % 10);
-  return "SGVN" + ymd + seq + check;
+  return formatOrderCode(o && o.id, o && o.date);
 }
 export function getShipperCode(o) {
   return "SHIP-" + String(o.id);

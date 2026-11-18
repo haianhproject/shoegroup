@@ -1,12 +1,13 @@
 <!-- Mục đích: Trang đơn hàng của tôi: xem tiến độ, hủy đơn, đổi địa chỉ và xác nhận nhận hàng. -->
 ﻿<script setup>
+import StoreIllustration from '../components/StoreIllustration.vue'
 // Mục đích: Trang theo dõi lịch sử, trạng thái và thao tác trên đơn hàng của khách.
 import { computed, onMounted, onUnmounted, ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
   loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
-  getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel
+  getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel, getCustomerOrderCode
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
@@ -54,7 +55,7 @@ const filtered = computed(() => {
   if (q) {
     list = list.filter((o) =>
       (o.items || []).some((it) => (it.product_name || it.product?.product_name || '').toLowerCase().includes(q)) ||
-      String(o.id).includes(q)
+      String(o.id).toLowerCase().includes(q) || getCustomerOrderCode(o).toLowerCase().includes(q)
     )
   }
   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -119,7 +120,8 @@ const submitCancel = async () => {
     cancelOrder(orderId, reason, response?.payment_status)
     cancelModal.submitting = false
     closeCancelModal()
-    notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${orderId} đã được hủy.` })
+    const order = orderState.orders.find(o => o.id === orderId)
+    notify({ type: 'success', title: 'Đã hủy đơn', message: `Đơn ${getCustomerOrderCode(order) || orderId} đã được hủy.` })
   } catch (error) {
     cancelModal.error = error.message || 'Không thể hủy đơn ở trạng thái hiện tại.'
     notify({ type: 'error', message: cancelModal.error })
@@ -435,7 +437,7 @@ onUnmounted(() => {
 
 <template>
   <div class="orders-page" :class="{ 'flex items-center justify-center min-h-screen': isCentered }">
-    <div class="w-full px-4 py-4" :style="isCentered ? 'max-width: 900px; width: 100%;' : ''">
+    <div class="orders-container w-full px-4 py-4" :style="isCentered ? 'max-width: 900px; width: 100%;' : ''">
       <div class="sg-title-bar mb-2"></div>
       <h1 class="op-title">Đơn hàng của tôi</h1>
 
@@ -453,7 +455,7 @@ onUnmounted(() => {
 
       <div v-if="isLoading" class="text-center py-5"><div class="sg-spinner text-gray-900"></div></div>
       <div v-else-if="filtered.length === 0" class="empty sg-card">
-        <i class="icon icon-inbox"></i><h5>Không có đơn hàng</h5>
+        <StoreIllustration kind="bag" /><h5>Không có đơn hàng</h5>
         <p class="text-gray-600">Bạn chưa có đơn hàng nào ở trạng thái này.</p>
         <router-link to="/products" class="btn-sg">Mua sắm ngay</router-link>
       </div>
@@ -477,7 +479,7 @@ onUnmounted(() => {
             @keydown.space.prevent="toggle(o.id)"
           >
             <div class="oc-head-l">
-              <span class="oc-id">#{{ o.id }}</span>
+              <span class="oc-id">#{{ getCustomerOrderCode(o) }}</span>
               <span class="oc-date"><OrderStatusIcon name="calendar" :size="13" /> {{ fmtDate(o.createdAt) }}</span>
             </div>
             <div class="oc-head-r">
@@ -571,11 +573,10 @@ onUnmounted(() => {
                 <OrderStatusIcon name="delivered" :size="16" /> Đã giao thành công
               </span>
               <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer"
-                style="display:inline-flex;align-items:center;gap:6px;background:#0068ff;color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;">
-                <svg width="16" height="16" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-                  <rect width="40" height="40" rx="10" fill="#fff"/>
-                  <path d="M20 6C12.268 6 6 11.82 6 19c0 4.08 1.98 7.72 5.08 10.18L9.5 34l5.1-1.6C16.5 33.44 18.2 33.8 20 33.8c7.732 0 14-5.82 14-13S27.732 6 20 6z" fill="#0068ff"/>
-                  <path d="M14 17h7M14 21h4m-4-8h7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+                class="order-support-link">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>
+                  <path d="M8 10h8M8 14h5"/>
                 </svg>
                 Sản phẩm có vấn đề?
               </a>
@@ -734,23 +735,26 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.orders-page { background: var(--sg-canvas); min-height: 100vh; }
+.orders-page { background: var(--sg-soft); min-height: calc(100dvh - var(--sg-header-height)); }
+.orders-container { max-width: 1360px; margin-inline: auto; padding: 40px 24px 72px; }
+.order-support-link { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 12px; border: 1px solid #d4001a30; border-radius: 8px; background: #fff1f2; color: var(--sg-red); font-size: 12px; font-weight: 600; text-decoration: none; transition: background .18s ease; }
+.order-support-link:hover { background: #ffe3e7; }
 .op-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
 .op-toolbar { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; margin: 14px 0 20px; }
 .op-search { display: flex; align-items: center; gap: 10px; background: var(--sg-canvas); border: 1.5px solid var(--sg-line); border-radius: 12px; padding: 8px 14px; }
 .op-search i { color: var(--sg-muted); }
 .op-search input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
 .op-filters { display: flex; flex-wrap: wrap; gap: 8px; }
-.stat-pill { border: 1.5px solid var(--sg-line); background: #fff; border-radius: 999px; padding: .35rem .9rem; font-size: .82rem; font-weight: 700; color: var(--sg-ink-2); transition: .2s; }
+.stat-pill { border: 1px solid var(--sg-line); background: #fff; border-radius: 8px; min-height: 38px; padding: .45rem .9rem; font-size: .75rem; font-weight: 600; color: var(--sg-ink-2); transition: .2s; }
 .stat-pill:hover { border-color: #0A0A0A; color: #0A0A0A; }
-.stat-pill.active { background: var(--sg-ink); color: #fff; border-color: var(--sg-ink); }
+.stat-pill.active { background: var(--sg-red); color: #fff; border-color: var(--sg-red); }
 .empty { text-align: center; padding: 60px; }
 .empty i { font-size: 3rem; color: var(--sg-muted); }
 .order-list { display: flex; flex-direction: column; gap: 14px; }
 .order-card { padding: 18px; transition: border-color .25s ease, box-shadow .25s ease; }
 .order-card.is-expanded { border-color: #a3a3a3; box-shadow: 0 12px 30px rgba(10, 10, 10, .08); }
 .oc-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: 12px; flex-wrap: wrap; }
-.oc-head:focus-visible { outline: 2px solid #0a0a0a; outline-offset: 6px; border-radius: 4px; }
+.oc-head:focus-visible { outline: 2px solid var(--sg-red); outline-offset: 6px; border-radius: 4px; }
 .oc-head-l { display: flex; align-items: center; gap: 14px; }
 .oc-id { font-weight: 900; font-size: 1.05rem; }
 .oc-date { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; color: var(--sg-muted); }
@@ -829,8 +833,8 @@ onUnmounted(() => {
 .oc-issue-step.danger .oc-step-dot { border-color: #fca5a5; color: #dc2626; }
 .oc-issue-step.warning { color: #92400e; }
 .oc-issue-step.warning .oc-step-dot { border-color: #fcd34d; color: #b45309; }
-.oc-issue-step.active { color: #1d4ed8; }
-.oc-issue-step.active .oc-step-dot { border-color: #93c5fd; color: #2563eb; }
+.oc-issue-step.active { color: var(--sg-red); }
+.oc-issue-step.active .oc-step-dot { border-color: #fda4af; color: var(--sg-red); }
 .oc-issue-step.success { color: #15803d; }
 .oc-issue-step.success .oc-step-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
 .oc-issue-step.current:not(.success) .oc-step-dot { box-shadow: 0 0 0 4px rgba(82,82,82,.12); }
@@ -850,7 +854,7 @@ onUnmounted(() => {
 .delivery-success-pill { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; }
 @media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 22px; }
+.modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 16px; }
 .suc-enter-active { transition: opacity .3s; }
 .suc-enter-from { opacity: 0; }
 </style>

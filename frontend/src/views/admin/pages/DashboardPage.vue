@@ -227,7 +227,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 </template>
 
 <style scoped>
-.overview { display: flex; flex-direction: column; gap: 24px; color: #0e0e0e; font-family: 'Be Vietnam Pro', sans-serif; }
+.overview { display: flex; flex-direction: column; gap: 24px; color: var(--admin-ink); font-family: 'Be Vietnam Pro', sans-serif; }
 .overview button, .overview input, .overview select { font: inherit; }
 .overview-data-error { padding: 12px; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: 12px; }
 .overview-data-error button { margin-left: 8px; text-decoration: underline; }
@@ -240,15 +240,15 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 .overview button:focus-visible, .overview input:focus-visible { outline: 3px solid #d4001a40; outline-offset: 3px; }
 .overview-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .overview-eyebrow { margin: 0 0 8px; color: #d4001a; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
-.overview-intro h1 { margin: 0; font-size: clamp(24px, 2.25vw, 32px); font-weight: 700; line-height: 1.3; letter-spacing: -.045em; }
+.overview-intro h1 { margin: 0; font-family: 'Barlow Condensed', 'Be Vietnam Pro', sans-serif; font-size: clamp(32px, 2.8vw, 40px); font-weight: 700; line-height: 1.15; letter-spacing: -.02em; }
 .overview-description { margin: 9px 0 0; color: #777780; font-size: 12px; line-height: 1.7; }
-.overview-export { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 17px; border: 1px solid #0e0e0e; border-radius: 8px; background: #0e0e0e; color: white; font-size: 12px !important; font-weight: 600 !important; transition: background .15s; }
-.overview-export:hover { background: #333; }
+.overview-export { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 17px; border: 1px solid var(--admin-accent); border-radius: var(--admin-radius-control); background: var(--admin-accent); color: white; font-size: 12px !important; font-weight: 600 !important; transition: background .18s; }
+.overview-export:hover { background: var(--admin-accent-dark); }
 .overview-filters { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.overview-segments { display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid #e6e6e9; border-radius: 9px; background: #ededf0; }
+.overview-segments { display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--admin-line); border-radius: 9px; background: #fff; }
 .overview-segments button { flex-shrink: 0; padding: 9px 15px; border: 0; border-radius: 6px; background: transparent; color: #72727c; font-size: 11px; font-weight: 500; white-space: nowrap; transition: color .15s, background .15s; }
 .overview-segments button:hover { color: #0e0e0e; background: #ffffff80; }
-.overview-segments button.is-active { color: #0e0e0e; background: #fff; box-shadow: 0 1px 3px #0000000c; font-weight: 600; }
+.overview-segments button.is-active { color: var(--admin-accent); background: var(--admin-accent-soft); box-shadow: 0 1px 3px #d4001a08; font-weight: 600; }
 .overview-range { display: inline-flex; align-items: center; gap: 8px; color: #777780; font-size: 11px; }
 .overview-range :deep(svg) { font-size: 14px; }
 .overview-custom-range { display: flex; align-items: end; gap: 14px; padding: 16px 20px; border: 1px solid #e7e7eb; border-radius: 10px; background: #fff; }
@@ -257,18 +257,18 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 .overview-date-divider { padding-bottom: 9px; color: #999; }
 .overview-loading { margin: -10px 0; color: #777780; font-size: 12px; }
 .overview-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.overview-stat { min-width: 0; padding: 22px; border: 1px solid #e7e7eb; border-radius: 12px; background: #fff; }
+.overview-stat { min-width: 0; padding: 22px; border: 1px solid var(--admin-line); border-radius: var(--admin-radius-panel); background: #fff; box-shadow: 0 4px 20px #0f172a09; }
 .overview-stat-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #64646e; font-size: 11px; font-weight: 500; }
 .overview-stat-icon { display: inline-flex; flex-shrink: 0; width: 34px; height: 34px; align-items: center; justify-content: center; border-radius: 8px; background: #f5f5f7; color: #393940; font-size: 15px; }
 .overview-stat-value { display: block; margin-top: 14px; font-size: 31px; line-height: 1.25; font-weight: 700; letter-spacing: -.055em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .overview-stat p { margin: 11px 0 0; color: #93939b; font-size: 10px; line-height: 1.5; }
-.overview-stat-revenue { background: #0e0e0e; border-color: #0e0e0e; color: #fff; }
+.overview-stat-revenue { background: radial-gradient(ellipse at 100% 0, #d4001a35, transparent 65%), var(--admin-ink); border-color: var(--admin-ink); color: #fff; }
 .overview-stat-revenue .overview-stat-heading { color: #d4d4d8; }
 .overview-stat-revenue .overview-stat-icon { background: #ffffff12; color: #fff; }
 .overview-stat-revenue p { color: #a4a4ab; }
 .overview-currency { font-size: clamp(21px, 1.85vw, 29px); line-height: 1.48; letter-spacing: -.05em; }
 .overview-chart-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr); gap: 20px; }
-.overview-panel { min-width: 0; overflow: hidden; padding: 23px; border: 1px solid #e7e7eb; border-radius: 12px; background: #fff; }
+.overview-panel { min-width: 0; overflow: hidden; padding: 23px; border: 1px solid var(--admin-line); border-radius: var(--admin-radius-panel); background: #fff; box-shadow: 0 4px 20px #0f172a09; }
 .overview-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .overview-panel-heading h2 { margin: 0; color: #0e0e0e; font-size: 14px; font-weight: 650; letter-spacing: -.025em; line-height: 1.55; }
 .overview-panel-heading p { margin: 5px 0 0; color: #909099; font-size: 10px; line-height: 1.65; }
@@ -308,7 +308,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 .overview-table-wrap { overflow-x: auto; margin: 0 -23px -23px; }
 .overview-table-scroll { max-height: 350px; scrollbar-width: thin; scrollbar-color: #d9d9df transparent; }
 .overview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.overview-table th { position: sticky; top: 0; z-index: 1; padding: 12px 13px; border-top: 1px solid #efeff2; border-bottom: 1px solid #efeff2; background: #fafafb; color: #858590; font-size: 9px; font-weight: 500; text-align: left; white-space: nowrap; }
+.overview-table th { position: sticky; top: 0; z-index: 1; padding: 12px 13px; border-top: 1px solid var(--admin-line); border-bottom: 1px solid var(--admin-line); background: var(--admin-canvas); color: var(--admin-muted); font-size: 11px; font-weight: 600; text-align: left; white-space: nowrap; }
 .overview-table td { padding: 13px; border-bottom: 1px solid #f0f0f3; color: #43434e; vertical-align: middle; }
 .overview-table th:first-child, .overview-table td:first-child { padding-left: 23px; }
 .overview-table th:last-child, .overview-table td:last-child { padding-right: 23px; }
@@ -317,7 +317,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 .overview-table .overview-align-right { text-align: right; }
 .overview-count { display: inline-flex; min-width: 25px; min-height: 23px; justify-content: center; align-items: center; padding: 3px 7px; border-radius: 5px; background: #f3f3f6; color: #42424b; font-size: 10px; font-weight: 600; }
 .overview-rank { display: inline-flex; align-items: center; justify-content: center; width: 27px; height: 27px; border-radius: 6px; background: #f4f4f6; color: #92929c; font-size: 10px; font-weight: 600; }
-.overview-rank.is-first { background: #0e0e0e; color: #fff; }
+.overview-rank.is-first { background: var(--admin-accent); color: #fff; }
 .overview-product-name { min-width: 125px; max-width: 200px; font-weight: 500; line-height: 1.65; }
 .overview-table .overview-muted { color: #92929c; }
 .overview-table .overview-quantity { color: #17171d; font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -353,7 +353,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
 @media (max-width: 575px) {
   .overview { gap: 18px; }
   .overview-intro { align-items: flex-start; flex-direction: column; gap: 16px; }
-  .overview-intro h1 { font-size: 25px; }
+  .overview-intro h1 { font-size: 32px; }
   .overview-description { max-width: 310px; font-size: 11px; }
   .overview-export { width: 100%; padding: 11px 15px; }
   .overview-filters { flex-direction: column; align-items: stretch; gap: 10px; }
@@ -370,7 +370,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
   .overview-stat-value { margin-top: 10px; font-size: 27px; }
   .overview-currency { font-size: 20px; line-height: 1.65; }
   .overview-stat p { font-size: 9px; }
-  .overview-panel { padding: 18px; border-radius: 10px; }
+  .overview-panel { padding: 18px; }
   .overview-panel-heading { gap: 10px; margin-bottom: 17px; }
   .overview-panel-heading h2 { font-size: 13px; }
   .overview-panel-heading p { font-size: 9px; }
