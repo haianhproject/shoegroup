@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 472 80" color="#0F172A" fill="none" role="img" aria-label="ShoeGroup">
+  <title>ShoeGroup — custom wordmark</title>
+  <g transform="translate(9 8) skewX(-8)" fill="currentColor" fill-rule="evenodd">
+    <path d="M10 0H44L41 12H15L12 15V24H34L44 34V54L34 64H0L3 52H29L32 49V40H10L0 30V10Z"/>
+    <path transform="translate(50)" d="M0 0H12V25H32V0H44V64H32V38H12V64H0Z"/>
+    <path transform="translate(100)" d="M10 0H34L44 10V54L34 64H10L0 54V10ZM15 12L12 15V49L15 52H29L32 49V15L29 12Z"/>
+    <path transform="translate(150)" d="M0 0H44L41 12H12V25H38L35 37H12V52H44L41 64H0Z"/>
+    <path transform="translate(208)" fill="#D4001A" d="M10 0H44L41 12H15L12 15V49L15 52H32V39H23V27H44V54L34 64H10L0 54V10Z"/>
+    <path transform="translate(258)" d="M0 0H34L44 10V29L35 38L47 64H33L22 40H12V64H0ZM12 12V28H28L32 24V16L28 12Z"/>
+    <path transform="translate(312)" d="M10 0H34L44 10V54L34 64H10L0 54V10ZM15 12L12 15V49L15 52H29L32 49V15L29 12Z"/>
+    <path transform="translate(362)" d="M0 0H12V49L15 52H29L32 49V0H44V54L34 64H10L0 54Z"/>
+    <path transform="translate(412)" d="M0 0H34L44 10V30L34 40H12V64H0ZM12 12V28H29L32 25V15L29 12Z"/>
+  </g>
+</svg>

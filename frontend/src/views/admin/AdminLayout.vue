@@ -12,7 +12,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AdminIcon from "./components/AdminIcon.vue";
 import AdminLogoutModal from "./components/AdminLogoutModal.vue";
-import brandMark from "../../../img/logogiay.png";
+import BrandLogo from "../../components/BrandLogo.vue";
+import { vDialogFocus } from '../../directives/dialogFocus';
 import { isEmployee } from '../../stores/authStore';
 import { genericBrandLogo, resolveBrandLogo } from "../../utils/brandLogos";
 import {
@@ -92,7 +93,7 @@ const visibleSections = computed(() => sections.map(section => ({
 })).filter(section => section.items.length));
 const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
 const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
-const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-discounts','admin-variant-discounts'].includes(route.name));
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-sizes','admin-discounts','admin-variant-discounts'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',
@@ -290,8 +291,7 @@ onUnmounted(() => {
     <aside ref="sidebar" id="admin-navigation" class="admin-sidebar" :inert="!isNavOpen" :aria-hidden="!isNavOpen" :role="isMobile ? 'dialog' : undefined" :aria-modal="isMobile && isNavOpen ? true : undefined" aria-label="Điều hướng quản lý">
       <div class="admin-brand-row">
         <router-link to="/admin/panel/dashboard" class="admin-brand" aria-label="ShoeGroup — Tổng quan quản lý">
-          <img :src="brandMark" alt="" width="38" height="38" />
-          <span><strong>SHOEGROUP<span class="admin-brand-dot">.</span></strong><small>QUẢN LÝ CỬA HÀNG</small></span>
+          <span><BrandLogo :size="29" /><small>QUẢN LÝ CỬA HÀNG</small></span>
         </router-link>
         <button v-if="isMobile" type="button" class="admin-icon-button" aria-label="Đóng menu" @click="closeNavigation(true)"><AdminIcon name="close" /></button>
       </div>
@@ -367,7 +367,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="cancelModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Hủy đơn hàng">
+      <div v-dialog-focus="() => { cancelModal.open = false }" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Hủy đơn hàng">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -435,7 +435,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="timelineModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Lịch sử đơn hàng">
+      <div v-dialog-focus="() => { timelineModal.open = false }" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Lịch sử đơn hàng">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -489,7 +489,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @keydown.esc.prevent="requestCloseForm"
     >
-      <div class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" :aria-label="formModal.title">
+      <div v-dialog-focus="requestCloseForm" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" :aria-label="formModal.title">
         <div
           class="p-4 border-b flex justify-between items-center"
         >
@@ -684,7 +684,7 @@ onUnmounted(() => {
       class="custom-modal-overlay"
       @click.self="confirmModal.open = false"
     >
-      <div class="custom-modal-box fade-in-scale" role="alertdialog" aria-modal="true" :aria-label="confirmModal.title" style="max-width: 440px">
+      <div v-dialog-focus="() => { confirmModal.open = false }" class="custom-modal-box fade-in-scale" role="alertdialog" aria-modal="true" :aria-label="confirmModal.title" style="max-width: 440px">
         <div class="p-4 text-center">
           <div class="confirm-icon mx-auto mb-3">
             <i class="icon icon-exclamation-triangle-fill"></i>

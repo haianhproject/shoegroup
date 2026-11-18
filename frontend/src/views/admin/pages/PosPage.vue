@@ -2,6 +2,7 @@
 <!-- Trang: Bán Hàng Tại Quầy (POS) -->
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { vDialogFocus } from '../../../directives/dialogFocus'
 import {
   activePosOrder, resetPosOrder,
   posPayModal, confirmPosPaid, cancelPosPay, markPosQrFailed,
@@ -268,7 +269,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
     </div>
 
     <div v-if="posConfirmModal.open" class="custom-modal-overlay" @click.self="posConfirmModal.open=false">
-      <div class="custom-modal-box p-4" role="dialog" aria-modal="true" aria-label="Xác nhận thanh toán" style="max-width:420px">
+      <div v-dialog-focus="() => { posConfirmModal.open = false }" class="custom-modal-box p-4" role="dialog" aria-modal="true" aria-label="Xác nhận thanh toán" style="max-width:420px">
         <h6 class="font-bold mb-3">Xác nhận thanh toán</h6>
         <p>Bạn có muốn thanh toán hóa đơn #{{ posCartId }} không?</p>
         <p class="font-bold">{{ formatPrice(posGrandTotal) }} · {{ activePosOrder.payment_method }}</p>
@@ -279,7 +280,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
 
     <!-- MODAL QR chuyển khoản tại quầy (hiện 1 lần khi bấm thanh toán) -->
     <div v-if="posPayModal.open" class="custom-modal-overlay" @click.self="cancelPosPay()">
-        <div class="custom-modal-box fade-in-scale" style="max-width:380px;">
+        <div v-dialog-focus="cancelPosPay" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Quét mã chuyển khoản" style="max-width:380px;">
           <div class="p-4 text-center">
             <h6 class="font-bold text-gray-900 mb-1"><i class="icon icon-qr-code mr-2"></i>Quét mã chuyển khoản</h6>
             <p v-if="posPayModal.bankConfigured" class="text-gray-600 text-sm mb-3">Khách quét VietQR để chuyển đúng số tiền và nội dung.</p>
@@ -309,7 +310,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
 
     <!-- MODAL HÓA ĐƠN sau khi thanh toán thành công -->
     <div v-if="posInvoiceModal.open" class="custom-modal-overlay" @click.self="closePosInvoice()">
-        <div class="custom-modal-box fade-in-scale pos-invoice-dialog" role="dialog" aria-modal="true" aria-label="Hóa đơn thanh toán">
+        <div v-dialog-focus="closePosInvoice" class="custom-modal-box fade-in-scale pos-invoice-dialog" role="dialog" aria-modal="true" aria-label="Hóa đơn thanh toán">
           <!-- Header hóa đơn -->
           <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2 pos-invoice-header">
             <div class="flex items-center gap-2">

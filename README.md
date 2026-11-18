@@ -77,5 +77,9 @@ cấu hình `backend/.env` theo file mẫu. Maven được chuẩn bị trong `t
 Kiểm thử SQL/POS dùng database riêng; kiểm thử POS cần JAR đã build.
 
 `backend/legacy-express/` chỉ phục vụ đối chiếu trong kiểm thử, không chạy cùng ứng dụng.
+Form liên hệ và yêu cầu nhận tin gửi email tới `EMAIL_REPLY_TO`, mặc định dùng hộp thư `EMAIL_USER`.
+Các form này dùng cấu hình SMTP trong `backend/.env` và chỉ báo thành công sau khi máy chủ gửi được yêu cầu.
+VietQR khi thanh toán online dùng cùng các biến `POS_BANK_*` trong `backend/.env` như tại quầy.
+Khi thông tin ngân hàng chưa được cấu hình, trang thanh toán hiển thị số hỗ trợ để khách nhận hướng dẫn chuyển khoản.
 `node_modules/`, `frontend/dist/`, `backend/target/` và `tools/.cache/`
 là thư viện/build cần dùng, được ẩn trong VS Code. Tiến độ mới nhất: [MIGRATION.md](MIGRATION.md).

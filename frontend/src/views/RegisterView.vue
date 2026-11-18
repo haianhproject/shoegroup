@@ -1,5 +1,6 @@
 <!-- Mục đích: Trang tạo tài khoản khách hàng mới và kiểm tra dữ liệu đăng ký. -->
 <script setup>
+import AuthVisual from '../components/AuthVisual.vue'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { register } from '../stores/authStore'
@@ -44,10 +45,10 @@ const submit = async () => {
 <template>
   <div class="auth-page">
     <div class="auth-shell">
+      <AuthVisual />
       <div class="auth-form">
         <router-link to="/" class="auth-logo">
-          <BrandLogo :size="32" :radius="6" />
-          <span class="auth-logo-text"><span class="logo-shoe">SHOE</span><span class="logo-group">GROUP</span></span>
+          <BrandLogo :size="38" />
         </router-link>
         <h2 class="auth-title">TẠO TÀI KHOẢN</h2>
         <p class="auth-sub">Tham gia ShoeGroup để nhận ưu đãi và trải nghiệm mua sắm tốt nhất.</p>
@@ -95,15 +96,19 @@ const submit = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: #ffffff;
+  padding: 32px 20px;
+  background: #F8FAFC;
 }
 .auth-shell {
   max-width: 460px;
   width: 100%;
 }
 .auth-form {
-  padding: 48px 0;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 24px;
+  padding: 40px 36px;
+  box-shadow: 0 20px 50px -12px rgba(15, 23, 42, 0.08);
 }
 .auth-logo {
   display: inline-flex;
@@ -111,107 +116,115 @@ const submit = async () => {
   gap: 10px;
   font-weight: 700;
   font-size: 1rem;
-  color: #111;
+  color: #0F172A;
   text-decoration: none;
   letter-spacing: 0.08em;
 }
-.auth-logo-text { font-family: "Inter", sans-serif; font-size: 1.25rem; }
-.auth-logo-text .logo-shoe { color: #0A0A0A; }
-.auth-logo-text .logo-group { color: #0A0A0A; }
 .auth-title {
+  font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
   font-weight: 700;
   font-size: 1.75rem;
-  margin-top: 40px;
+  margin-top: 28px;
   margin-bottom: 8px;
-  letter-spacing: 0.06em;
-  color: #111;
+  letter-spacing: -0.02em;
+  color: #0F172A;
 }
 .auth-sub {
-  color: #767676;
+  color: #64748B;
   margin-bottom: 28px;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1.5;
 }
 .co-label {
-  font-weight: 600;
-  font-size: 0.75rem;
-  color: #111;
-  margin: 16px 0 8px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: #0F172A;
+  margin: 16px 0 6px;
   display: block;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .in-wrap {
   display: flex;
   align-items: center;
-  border: 1px solid #d5d5d5;
-  border-radius: 4px;
-  padding: 0 14px;
-  transition: border-color 0.2s;
-  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 0 16px;
+  transition: all 0.2s;
+  background: #FFFFFF;
 }
 .in-wrap:focus-within {
-  border-color: #111;
+  border-color: #0F172A;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
 }
 .auth-input {
   border: 0;
   outline: none;
-  padding: 14px 0;
+  padding: 13px 0;
   width: 100%;
-  font-size: 0.95rem;
-  font-weight: 400;
+  font-size: 0.92rem;
+  font-weight: 500;
   background: transparent;
-  color: #111;
+  color: #0F172A;
 }
-.auth-input::placeholder { color: #aaa; }
+.auth-input::placeholder { color: #94A3B8; }
 .eye {
   border: 0;
   background: transparent;
-  color: #767676;
+  color: #94A3B8;
   cursor: pointer;
   padding: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: color 0.15s;
 }
-.eye:hover { color: #111; }
-.eye:focus-visible { outline: 2px solid #111; outline-offset: 2px; border-radius: 3px; }
+.eye:hover { color: #0F172A; }
+.eye:focus-visible { outline: 2px solid #0F172A; outline-offset: 2px; border-radius: 6px; }
 .eye-icon { display: block; width: 20px; height: 20px; }
 .auth-btn {
   width: 100%;
   margin-top: 28px;
-  padding: 15px 24px;
-  background: #111;
-  color: #fff;
+  padding: 14px 24px;
+  background: #0F172A;
+  color: #FFFFFF;
   border: none;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.auth-btn:hover { background: #333; }
+.auth-btn:hover {
+  background: #1E293B;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+}
 .auth-btn:disabled {
-  background: #999;
+  background: #CBD5E1;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 .auth-foot {
   text-align: center;
   margin-top: 24px;
-  color: #767676;
-  font-size: 0.9rem;
+  color: #64748B;
+  font-size: 0.88rem;
 }
 .auth-foot a {
-  font-weight: 600;
-  color: #111;
+  font-weight: 700;
+  color: #0F172A;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
 }
-.auth-foot a:hover { color: #666; }
+.auth-foot a:hover { color: #D4001A; }
 
 @media (max-width: 520px) {
-  .auth-page { padding: 24px 20px; }
-  .auth-form { padding: 32px 0; }
+  .auth-page { padding: 20px 16px; }
+  .auth-form { padding: 32px 24px; }
 }
 </style>
 

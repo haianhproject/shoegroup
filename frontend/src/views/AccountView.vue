@@ -1,5 +1,6 @@
 <!-- Mục đích: Trang tài khoản để xem, sửa hồ sơ và đăng xuất. -->
 <script setup>
+import StoreIllustration from '../components/StoreIllustration.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { currentUser, updateProfile, logout } from '../stores/authStore'
@@ -8,7 +9,6 @@ import { formatCurrency } from '../stores/cartStore'
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import { api } from '../services/apiClient'
 import MyOrders from './MyOrders.vue'
-import logoGiay from '../../img/logogiay.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -513,7 +513,7 @@ const copyCoupon = (code) => {
               Đang tải sổ địa chỉ…
             </div>
             <div v-else-if="addresses.length === 0" class="text-center py-5 text-gray-500 empty-state">
-              <i class="icon icon-geo-alt-fill" style="font-size:2.8rem; color: #ccc;"></i>
+              <StoreIllustration kind="account" class="account-empty-illustration" />
               <p class="mt-2 font-semibold">Bạn chưa có địa chỉ nhận hàng nào trong sổ địa chỉ.</p>
               <button class="btn-sg-outline btn-sg-compact mt-1" @click="openAdd">Tạo địa chỉ ngay</button>
             </div>
@@ -652,7 +652,7 @@ const copyCoupon = (code) => {
 </template>
 
 <style scoped>
-.account-page.account-page { background: #FAFAFA; min-height: calc(100vh - 69px); padding: 24px 0 80px; }
+.account-page.account-page { background: var(--sg-soft); min-height: calc(100dvh - var(--sg-header-height)); padding: 24px 0 80px; }
 .account-container { width: 100%; max-width: 1200px; margin-inline: auto; padding-inline: 24px; }
 .account-home-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 24px; font-size: 12px; color: var(--sg-muted); text-decoration: none; transition: color .2s; }
 .account-home-link:hover { color: var(--sg-ink); }
@@ -663,18 +663,18 @@ const copyCoupon = (code) => {
 .acc-identity { display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: 20px; border-bottom: 1px solid var(--sg-line); }
 .acc-avatar { width: 80px; height: 80px; margin: 0 0 12px; border-radius: 50%; overflow: hidden; background: var(--sg-ink); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.5rem; flex-shrink: 0; }
 .acc-avatar-img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.acc-name { margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; line-height: 1.5; }
+.acc-name { margin: 0; font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: 18px; font-weight: 600; line-height: 1.5; }
 .acc-email { margin: 2px 0 0; font-size: 12px; color: var(--sg-muted); overflow-wrap: anywhere; }
 .acc-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; }
 .acc-nav button, .acc-nav a { width: 100%; border: 0; background: transparent; padding: 12px 16px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 500; color: var(--sg-ink); text-decoration: none; display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; transition: background-color .2s, color .2s; }
 .acc-nav i { width: 17px; flex-shrink: 0; font-size: 17px; }
 .acc-nav button:hover, .acc-nav a:hover { background: var(--sg-soft); }
-.acc-nav button.active, .acc-nav button.active:hover { background: var(--sg-ink); color: #fff; }
+.acc-nav button.active, .acc-nav button.active:hover { background: var(--sg-red); color: #fff; }
 .acc-nav .acc-logout { color: #C0392B; }
 .acc-nav .acc-logout:hover { background: #FBEDEC; }
 .acc-content { min-width: 0; min-height: 520px; padding: 24px; }
 .account-title-bar { width: 40px; height: 4px; background: var(--sg-ink); border-radius: 999px; margin-bottom: 20px; }
-.account-heading { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.025em; margin: 0 0 24px; }
+.account-heading { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.025em; margin: 0 0 24px; }
 .account-heading-compact { margin-bottom: 4px; }
 .account-description { color: var(--sg-muted); font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
 .account-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
@@ -725,7 +725,7 @@ const copyCoupon = (code) => {
 .coupon-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .coupon-meta span { font-size: 11px; color: var(--sg-muted); }
 .coupon-right { padding: 16px 16px 16px 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; flex-shrink: 0; }
-.coupon-discount { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 600; color: var(--sg-ink); }
+.coupon-discount { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: 20px; font-weight: 600; color: var(--sg-ink); }
 .coupon-status-tag { font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 4px; }
 .coupon-status-tag.active { background: var(--sg-ink); color: #fff; }
 .coupon-status-tag.used, .coupon-status-tag.expired { background: var(--sg-soft); color: var(--sg-muted); }
@@ -750,7 +750,7 @@ const copyCoupon = (code) => {
 .dropdown-search-list .no-result { color: var(--sg-muted); font-size: 12px; text-align: center; padding: 12px; cursor: default; }
 .acc-orders :deep(.orders-page) { background: transparent; min-height: auto; padding: 0; }
 .acc-orders :deep(.orders-page > .w-full) { padding: 0; max-width: none; }
-.acc-orders :deep(.op-title) { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; }
+.acc-orders :deep(.op-title) { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: 24px; font-weight: 600; }
 .acc-orders :deep(.sg-title-bar) { display: none; }
 .acc-orders :deep(.op-toolbar) { padding: 16px; border-radius: 12px; }
 .acc-orders :deep(.op-search) { border-width: 1px; border-radius: 8px; }
@@ -764,7 +764,7 @@ const copyCoupon = (code) => {
 @media (min-width: 1024px) {
   .account-container { padding-inline: 32px; }
   .account-grid { grid-template-columns: 280px minmax(0, 1fr); }
-  .acc-side { position: sticky; top: 92px; }
+  .acc-side { position: sticky; top: calc(var(--sg-header-height) + 24px); }
   .acc-content { padding: 32px; }
 }
 @media (max-width: 639px) {

@@ -43,6 +43,10 @@ class SecurityCompatibilityTest {
         assertThat(expired.verify(token)).isNull();
     }
     @Test void policiesKeepFailClosedAndOwnershipRules() {
+        assertThat(ApiPolicy.resolve("GET", "/api/payment-config")).isEqualTo(ApiPolicy.Level.CUSTOMER);
+        assertThat(ApiPolicy.resolve("GET", "/api/pos/payment-config")).isEqualTo(ApiPolicy.Level.STAFF);
+        assertThat(ApiPolicy.resolve("POST", "/api/payment-config")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("GET", "/api/payment-config/private")).isEqualTo(ApiPolicy.Level.ADMIN);
         assertThat(ApiPolicy.resolve("GET", "/api/products")).isEqualTo(ApiPolicy.Level.PUBLIC);
         assertThat(ApiPolicy.resolve("POST", "/api/products")).isEqualTo(ApiPolicy.Level.ADMIN);
         assertThat(ApiPolicy.resolve("GET", "/api/variantDiscounts")).isEqualTo(ApiPolicy.Level.STAFF);
@@ -61,6 +65,17 @@ class SecurityCompatibilityTest {
         limits.loginSucceeded("ip");
         assertThat(limits.acquire("ip", true)).isZero();
         assertThat(limits.acquire("ip", true)).isPositive();
+    }
+    @Test void supportFormsExposeOnlyTheirSubmissionRoutes() {
+        assertThat(ApiPolicy.resolve("POST", "/api/contact")).isEqualTo(ApiPolicy.Level.PUBLIC);
+        assertThat(ApiPolicy.resolve("POST", "/api/newsletter")).isEqualTo(ApiPolicy.Level.PUBLIC);
+        assertThat(ApiPolicy.resolve("GET", "/api/contact")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("DELETE", "/api/newsletter")).isEqualTo(ApiPolicy.Level.ADMIN);
+        assertThat(ApiPolicy.resolve("POST", "/api/contact/private")).isEqualTo(ApiPolicy.Level.ADMIN);
+        var limits = new RateLimits(Clock.systemUTC(), 60000, 100, 1);
+        assertThat(limits.acquire("mail:ip", true)).isZero();
+        assertThat(limits.acquire("mail:ip", true)).isPositive();
+        assertThat(limits.acquire("ip", true)).isZero();
     }
     @Test void employeeAccessDoesNotBecomeAdminAccess() {
         var employee=new ApiUser(3,false,true);

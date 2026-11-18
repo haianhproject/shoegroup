@@ -1,11 +1,12 @@
-<!-- Mục đích: Thanh điều hướng chính của khách hàng, gồm tìm kiếm, tài khoản và giỏ hàng. -->
+<!-- Mục đích: Điều hướng, tìm kiếm và giỏ hàng dùng chung trong khu khách hàng. -->
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../../../services/apiClient'
 import { cartCount, showDrawer } from '../../../stores/cartStore'
 import { isAuthenticated } from '../../../stores/authStore'
-import logoGiay from '../../../../img/logogiay.png'
+import BrandLogo from '../../BrandLogo.vue'
+import { ArrowRight, ArrowUpRight, ChevronDown, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
@@ -189,90 +190,219 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header class="figma-navbar fixed inset-x-0 top-0 z-[70] bg-white/95 backdrop-blur-md">
-    <div class="mx-auto flex h-[68px] min-w-0 max-w-[1440px] items-center gap-2 px-3 sm:gap-5 sm:px-6 lg:px-10">
-      <button type="button" class="flex min-w-0 shrink-0 items-center gap-2 border-0 bg-transparent p-0" aria-label="Trang chủ" @click="goHome">
-        <img :src="logoGiay" alt="ShoeGroup" class="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9" />
-        <span class="figma-display truncate text-[19px] font-semibold leading-none tracking-tight sm:text-[22px] max-[340px]:hidden">ShoeGroup</span>
+  <header class="figma-navbar storefront-header fixed top-0 inset-x-0">
+    <div class="store-announcement">
+      <span
+        >CHÍNH HÃNG TỪNG ĐÔI
+        <span class="announcement-star" aria-hidden="true">✳</span> ĐẬM CHẤT
+        TỪNG BƯỚC</span
+      >
+    </div>
+    <div class="store-nav-inner">
+      <button
+        type="button"
+        class="store-wordmark"
+        aria-label="ShoeGroup — Trang chủ"
+        @click="goHome"
+      >
+        <BrandLogo :size="33" tagline />
       </button>
-
-      <nav class="pointer-events-none absolute inset-x-0 hidden h-full items-center justify-center lg:flex" aria-label="Điều hướng chính">
-        <div class="pointer-events-auto flex items-center gap-5 xl:gap-6">
-        <div v-for="link in navLinks" :key="link.label" class="relative" @mouseleave="link.menu && (openMenu = null)">
+      <nav class="store-desktop-nav" aria-label="Điều hướng chính">
+        <button
+          type="button"
+          class="store-nav-link"
+          :class="{
+            active:
+              route.path === '/products' && !Object.keys(activeQuery).length,
+          }"
+          @click="goProducts({})"
+        >
+          Cửa hàng
+        </button>
+        <div
+          v-for="(link, linkIndex) in navLinks"
+          :key="link.label"
+          class="store-nav-group"
+          @mouseleave="link.menu && (openMenu = null)"
+        >
           <button
             type="button"
-            class="relative flex items-center gap-1 border-0 bg-transparent py-6 text-[13px] font-medium text-[#0E0E0E]/80 transition-colors hover:text-[#0E0E0E] xl:text-[14px]"
-            :class="[isActive(link) || link.sale ? 'font-bold text-[#0E0E0E]' : '', link.sale ? 'underline decoration-2 underline-offset-4' : '']"
+            class="store-nav-link"
+            :class="{ active: isActive(link), 'sale-link': link.sale }"
+            :aria-expanded="link.menu ? openMenu === link.label : undefined"
+            :aria-controls="link.menu ? 'nav-menu-' + linkIndex : undefined"
             @mouseenter="link.menu && (openMenu = link.label)"
             @click="handleLink(link)"
           >
-            {{ link.label }}
-            <svg v-if="link.menu" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" :class="openMenu === link.label ? 'rotate-180' : ''" class="transition-transform"><path d="m6 9 6 6 6-6" /></svg>
+            {{ link.label
+            }}<ChevronDown
+              v-if="link.menu"
+              :size="11"
+              aria-hidden="true"
+              :class="{ 'rotate-180': openMenu === link.label }"
+            />
           </button>
-          <div v-if="link.menu && openMenu === link.label" class="absolute left-0 top-full w-52 pt-1" @click.stop>
-            <div class="border border-[#E5E5E5] bg-white py-2 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.18)]">
-              <button v-for="item in link.menu" :key="item.label" type="button" class="flex w-full items-center justify-between border-0 bg-transparent px-4 py-2.5 text-left text-[13px] font-medium text-[#0E0E0E]/80 transition-colors hover:bg-[#F5F5F5] hover:text-[#0E0E0E]" @click="handleMenuItem(item)">
-                {{ item.label }}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-40"><path d="M5 12h14M12 5l7 7-7-7" /></svg>
-              </button>
-            </div>
+          <div
+            v-if="link.menu && openMenu === link.label"
+            :id="'nav-menu-' + linkIndex"
+            class="store-nav-dropdown"
+            @click.stop
+          >
+            <button
+              v-for="item in link.menu"
+              :key="item.label"
+              type="button"
+              @click="handleMenuItem(item)"
+            >
+              {{ item.label }}<ArrowUpRight :size="13" aria-hidden="true" />
+            </button>
           </div>
         </div>
-        </div>
       </nav>
-
-      <div class="ml-auto flex shrink-0 items-center gap-0.5">
-        <button type="button" aria-label="Tìm kiếm" class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-transparent text-[#0E0E0E]/70 transition-colors hover:bg-[#F0F0F0] hover:text-[#0E0E0E] max-[340px]:h-8 max-[340px]:w-8" :class="searchOpen ? 'bg-[#F0F0F0] text-[#0E0E0E]' : ''" @click="toggleSearch">
-          <svg v-if="!searchOpen" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-          <svg v-else width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      <div class="store-nav-actions">
+        <button
+          type="button"
+          aria-label="Tìm kiếm"
+          class="store-nav-search"
+          :aria-expanded="searchOpen"
+          aria-controls="store-search-panel"
+          @click="toggleSearch"
+        >
+          <Search v-if="!searchOpen" :size="18" aria-hidden="true" /><X
+            v-else
+            :size="18"
+            aria-hidden="true"
+          /><span>Tìm đôi giày của bạn</span
+          ><span class="search-slash" aria-hidden="true">↗</span>
         </button>
-        <button type="button" aria-label="Tài khoản" class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-transparent text-[#0E0E0E]/70 transition-colors hover:bg-[#F0F0F0] hover:text-[#0E0E0E] max-[340px]:h-8 max-[340px]:w-8" @click="router.push(isAuthenticated ? '/account' : '/login')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+        <button
+          type="button"
+          aria-label="Tài khoản"
+          class="store-icon-button"
+          @click="router.push(isAuthenticated ? '/account' : '/login')"
+        >
+          <UserRound :size="20" :stroke-width="1.6" aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Giỏ hàng" class="relative flex h-9 w-9 items-center justify-center rounded-full border-0 bg-transparent text-[#0E0E0E]/70 transition-colors hover:bg-[#F0F0F0] hover:text-[#0E0E0E] max-[340px]:h-8 max-[340px]:w-8" @click="showDrawer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
-          <span v-if="cartCount > 0" class="absolute right-0.5 top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#0E0E0E] px-1 text-[10px] font-bold text-white">{{ cartCount }}</span>
+        <button
+          type="button"
+          aria-label="Giỏ hàng"
+          class="store-icon-button store-cart-button"
+          @click="showDrawer"
+        >
+          <ShoppingBag :size="20" :stroke-width="1.6" aria-hidden="true" /><span
+            v-if="cartCount > 0"
+            class="store-cart-count"
+            >{{ cartCount }}</span
+          >
         </button>
-        <button type="button" aria-label="Mở menu" class="flex h-9 w-9 items-center justify-center border-0 bg-transparent lg:hidden max-[340px]:h-8 max-[340px]:w-8" @click="menuOpen = !menuOpen">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+        <button
+          type="button"
+          class="store-icon-button store-menu-toggle"
+          :aria-label="menuOpen ? 'Đóng menu' : 'Mở menu'"
+          :aria-expanded="menuOpen"
+          aria-controls="store-mobile-menu"
+          @click="menuOpen = !menuOpen"
+        >
+          <X v-if="menuOpen" :size="22" aria-hidden="true" /><Menu
+            v-else
+            :size="22"
+            aria-hidden="true"
+          />
         </button>
       </div>
     </div>
-    <div class="h-px bg-[#E5E5E5]" />
-
-    <Transition enter-active-class="transition duration-200" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150" leave-from-class="translate-y-0 opacity-100" leave-to-class="-translate-y-2 opacity-0">
-      <div v-if="searchOpen" class="absolute left-0 right-0 top-full border-b border-[#E5E5E5] bg-white shadow-[0_24px_50px_-20px_rgba(0,0,0,0.25)]">
-        <div class="mx-auto max-w-[900px] px-5 py-5 sm:px-6">
-          <form class="flex items-center gap-3 rounded-full border border-[#0E0E0E] px-5 py-3" @submit.prevent="submitSearch">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-[#737373]"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-            <input v-model="searchQuery" autofocus type="search" class="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-[#737373]" placeholder="Nhập tên giày, thương hiệu, màu sắc…" @input="onSearchInput" />
-            <button v-if="searchQuery" type="button" aria-label="Xóa tìm kiếm" class="border-0 bg-transparent p-0 text-[#737373]" @click="searchQuery = ''; searchProducts = []"><span aria-hidden="true">×</span></button>
+    <Transition name="store-search">
+      <div v-if="searchOpen" id="store-search-panel" class="store-search-panel">
+        <div class="store-container">
+          <form class="store-search-form" @submit.prevent="submitSearch">
+            <Search :size="23" :stroke-width="1.5" aria-hidden="true" /><input
+              v-model="searchQuery"
+              type="search"
+              placeholder="Tìm tên giày, thương hiệu, màu sắc..."
+              aria-label="Từ khóa tìm kiếm sản phẩm"
+              @input="onSearchInput"
+            /><button type="submit">
+              Tìm kiếm <ArrowRight :size="17" aria-hidden="true" />
+            </button>
           </form>
-          <div v-if="searchQuery" class="mt-4">
-            <div v-if="isSearching" class="py-4 text-center text-sm text-[#737373]">Đang tìm kiếm…</div>
-            <div v-else-if="searchProducts.length" class="grid gap-2 sm:grid-cols-2">
-              <button v-for="product in searchProducts" :key="product.id_product" type="button" class="flex items-center gap-3 rounded-xl border-0 bg-transparent p-2 text-left transition-colors hover:bg-[#F0F0F0]" @click="pickSearchProduct(product)">
-                <img :src="product.image_url" :alt="product.product_name" class="h-12 w-12 shrink-0 rounded-lg bg-[#F0F0F0] object-cover" />
-                <span class="min-w-0"><span class="block truncate text-[10px] font-bold uppercase tracking-wide text-[#737373]">{{ product.brand_name }}</span><span class="block truncate text-sm font-medium">{{ product.product_name }}</span></span>
-              </button>
-            </div>
-            <p v-else class="py-4 text-center text-sm text-[#737373]">Không tìm thấy sản phẩm phù hợp.</p>
+          <div v-if="isSearching" class="store-search-status" role="status">
+            <span class="sg-spinner sg-spinner-sm"></span> Đang tìm đôi giày của
+            bạn…
           </div>
+          <div v-else-if="searchProducts.length" class="store-search-results">
+            <button
+              v-for="product in searchProducts"
+              :key="product.id_product"
+              type="button"
+              @click="pickSearchProduct(product)"
+            >
+              <img :src="product.image_url" :alt="product.product_name" /><span
+                ><small>{{ product.brand_name }}</small
+                ><strong>{{ product.product_name }}</strong
+                ><span
+                  >{{
+                    Number(
+                      product.sale_price || product.price || 0,
+                    ).toLocaleString('vi-VN')
+                  }}
+                  ₫</span
+                ></span
+              ><ArrowUpRight :size="18" aria-hidden="true" />
+            </button>
+          </div>
+          <p v-else-if="searchQuery.trim()" class="store-search-status">
+            Chưa tìm thấy sản phẩm phù hợp. Thử một từ khóa khác nhé.
+          </p>
+          <p v-else class="store-search-status">
+            Tìm cảm hứng cho bước chân tiếp theo của bạn.
+          </p>
         </div>
       </div>
     </Transition>
-
-    <div v-if="menuOpen" class="border-b border-[#E5E5E5] bg-white px-5 py-4 lg:hidden sm:px-6">
+    <nav
+      v-if="menuOpen"
+      id="store-mobile-menu"
+      class="store-mobile-nav"
+      aria-label="Điều hướng trên điện thoại"
+    >
+      <button type="button" @click="goProducts({})">
+        Cửa hàng <ArrowUpRight :size="17" aria-hidden="true" />
+      </button>
       <div v-for="link in navLinks" :key="link.label">
-        <button type="button" class="block w-full border-0 bg-transparent py-2.5 text-left text-[15px] font-medium" :class="link.sale ? 'font-bold' : ''" @click="handleLink(link); link.menu || (menuOpen = false)">{{ link.label }}<span v-if="link.menu" class="float-right text-[#737373]">{{ openMenu === link.label ? '−' : '+' }}</span></button>
-        <div v-if="link.menu && openMenu === link.label" class="mb-2 ml-3 border-l border-[#E5E5E5] pl-3">
-          <button v-for="item in link.menu" :key="item.label" type="button" class="block w-full border-0 bg-transparent py-2 text-left text-sm text-[#737373]" @click="handleMenuItem(item); menuOpen = false">{{ item.label }}</button>
+        <button
+          type="button"
+          :class="{ 'sale-link': link.sale }"
+          :aria-expanded="link.menu ? openMenu === link.label : undefined"
+          @click="
+            handleLink(link);
+            link.menu || (menuOpen = false);
+          "
+        >
+          {{ link.label
+          }}<ChevronDown
+            v-if="link.menu"
+            :size="15"
+            aria-hidden="true"
+            :class="{ 'rotate-180': openMenu === link.label }"
+          /><ArrowUpRight v-else :size="17" aria-hidden="true" />
+        </button>
+        <div
+          v-if="link.menu && openMenu === link.label"
+          class="store-mobile-submenu"
+        >
+          <button
+            v-for="item in link.menu"
+            :key="item.label"
+            type="button"
+            @click="
+              handleMenuItem(item);
+              menuOpen = false;
+            "
+          >
+            {{ item.label }}
+          </button>
         </div>
       </div>
-    </div>
+    </nav>
   </header>
 </template>
-
-<style scoped>
-.figma-navbar :where(button) { cursor: pointer; }
-</style>

@@ -1,4 +1,7 @@
 <!-- Mục đích: Nút liên hệ Zalo nổi để khách mở nhanh kênh hỗ trợ. -->
+<script setup>
+import { MessageCircle } from 'lucide-vue-next'
+</script>
 <template>
   <a
     class="zalo-chat"
@@ -8,11 +11,11 @@
     aria-label="Chat với shop qua Zalo"
   >
     <span class="zalo-icon">
-      Z
+      <MessageCircle :size="23" :stroke-width="1.7" aria-hidden="true" />
     </span>
 
     <span class="zalo-label">
-      Chat với shop
+      Hỗ trợ qua Zalo
     </span>
   </a>
 </template>
@@ -23,12 +26,12 @@
   right: 25px;
   bottom: 25px;
 
-  width: 62px;
-  height: 62px;
+  width: 48px;
+  height: 48px;
 
   border-radius: 50%;
 
-  background: #0068ff;
+  background: #D4001A;
   color: #fff;
 
   display: flex;
@@ -37,9 +40,9 @@
 
   text-decoration: none;
 
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
 
-  z-index: 99999;
+  z-index: 60;
 
   transition:
     width 0.25s ease,
@@ -57,7 +60,7 @@
   width: 42px;
   height: 42px;
 
-  border: 3px solid #fff;
+  border: 0;
   border-radius: 50%;
 
   display: flex;
@@ -89,12 +92,12 @@
 
   position: absolute;
 
-  width: 62px;
-  height: 62px;
+  width: 48px;
+  height: 48px;
 
   border-radius: 50%;
 
-  border: 2px solid #0068ff;
+  border: 1px solid #D4001A;
 
   animation: zaloPulse 1.8s infinite;
 
@@ -123,13 +126,13 @@
     right: 15px;
     bottom: 15px;
 
-    width: 55px;
-    height: 55px;
+    width: 46px;
+    height: 46px;
   }
 
   .zalo-chat::before {
-    width: 55px;
-    height: 55px;
+    width: 46px;
+    height: 46px;
   }
 }
 </style>

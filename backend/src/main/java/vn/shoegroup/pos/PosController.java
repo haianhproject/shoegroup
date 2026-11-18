@@ -31,7 +31,7 @@ public class PosController {
         if (action != null) events.publish("inventory.updated", Map.of("source", "pos", "userId", user.id(), "stockUpdates", response.get("stockUpdates")));
         return response;
     }
-    @GetMapping("/api/pos/payment-config") public Map<String, Object> bank() {
+    @GetMapping({"/api/pos/payment-config", "/api/payment-config"}) public Map<String, Object> bank() {
         String id = Values.text(env.getProperty("POS_BANK_ID"), 20);
         String name = Values.text(env.getProperty("POS_BANK_NAME"), 100); if (name.isEmpty()) name = id;
         String account = Values.text(env.getProperty("POS_BANK_ACCOUNT_NO"), 30).replaceAll("\\s+", "");

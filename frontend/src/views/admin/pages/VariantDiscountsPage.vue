@@ -40,19 +40,23 @@ function imageError(event) {
         <select v-model="variantReasonFilter" class="sg-input promotion-filter" aria-label="Lọc lý do khuyến mại"><option value="Tất cả">Tất cả lý do</option><option v-for="r in variantReasons" :key="r" :value="r">{{ r }}</option></select>
         <select v-model="variantStatusFilter" class="sg-input promotion-filter" aria-label="Lọc trạng thái khuyến mại"><option value="Tất cả">Tất cả trạng thái</option><option v-for="s in ['Hoạt động','Sắp diễn ra','Đã dùng hết','Hết hạn','Ngừng hoạt động']" :key="s" :value="s">{{ s }}</option></select>
       </div>
-      <div class="table-responsive" tabindex="0" role="region" aria-label="Danh sách khuyến mại sản phẩm, có thể cuộn ngang">
+      <div class="table-responsive" tabindex="0" role="region" aria-label="Danh sách khuyến mại sản phẩm">
         <table class="table align-middle mb-0 promotion-table">
+          <colgroup>
+            <col class="promotion-col-image"><col><col class="promotion-col-color"><col class="promotion-col-value">
+            <col class="promotion-col-time"><col class="promotion-col-status"><col class="promotion-col-actions">
+          </colgroup>
           <thead><tr><th scope="col">Hình ảnh</th><th scope="col">Sản phẩm</th><th scope="col">Màu áp dụng</th><th scope="col">Giá trị</th><th scope="col" class="promotion-time">Thời gian</th><th scope="col">Trạng thái</th><th scope="col" class="text-end">Thao tác</th></tr></thead>
           <tbody>
             <tr v-if="!filteredVariantDiscounts.length"><td colspan="7" class="text-center text-gray-600 py-5">Không có khuyến mại sản phẩm phù hợp.</td></tr>
             <tr v-for="vd in filteredVariantDiscounts" :key="vd.id">
-              <td><img :src="getVariantInfo(vd).image || fallbackProductImage" :alt="getVariantInfo(vd).product_name" width="44" height="44" class="promotion-image" @error="imageError"></td>
-              <td><strong>{{ getVariantInfo(vd).product_name }}</strong><div v-if="vd.reason" class="text-gray-600 text-xs">{{ vd.reason }}</div></td>
-              <td><div class="flex items-center gap-2"><span class="promotion-swatch" :style="{backgroundColor:getVariantInfo(vd).color_hex}"></span>{{ getVariantInfo(vd).color }}</div><small class="text-gray-600">{{ vd.apply_scope==='variant' ? 'Chương trình cũ: '+getVariantInfo(vd).size : 'Mọi kích cỡ' }}</small></td>
-              <td class="whitespace-nowrap">{{ formatVariantDiscountValue(vd) }}</td>
-              <td class="promotion-time"><div class="promotion-period"><span>Từ {{ formatPromotionDate(vd.start_date) }}</span><span>Đến {{ formatPromotionDate(vd.end_date,true) }}</span></div></td>
-              <td><span class="badge" :class="getVariantDiscountStatus(vd).cls">{{ getVariantDiscountStatus(vd).label }}</span></td>
-              <td><div class="promotion-actions">
+              <td data-label="Hình ảnh"><img :src="getVariantInfo(vd).image || fallbackProductImage" :alt="getVariantInfo(vd).product_name" width="44" height="44" class="promotion-image" @error="imageError"></td>
+              <td data-label="Sản phẩm"><strong>{{ getVariantInfo(vd).product_name }}</strong><div v-if="vd.reason" class="text-gray-600 text-xs">{{ vd.reason }}</div></td>
+              <td data-label="Màu áp dụng"><div class="flex items-center gap-2"><span class="promotion-swatch" :style="{backgroundColor:getVariantInfo(vd).color_hex}"></span>{{ getVariantInfo(vd).color }}</div><small class="text-gray-600">{{ vd.apply_scope==='variant' ? 'Chương trình cũ: '+getVariantInfo(vd).size : 'Mọi kích cỡ' }}</small></td>
+              <td data-label="Giá trị">{{ formatVariantDiscountValue(vd) }}</td>
+              <td class="promotion-time" data-label="Thời gian"><div class="promotion-period"><span>Từ {{ formatPromotionDate(vd.start_date) }}</span><span>Đến {{ formatPromotionDate(vd.end_date,true) }}</span></div></td>
+              <td data-label="Trạng thái"><span class="badge" :class="getVariantDiscountStatus(vd).cls">{{ getVariantDiscountStatus(vd).label }}</span></td>
+              <td data-label="Thao tác"><div class="promotion-actions">
                 <button type="button" class="btn btn-sm btn-light border" @click="openVariantDiscountDetail(vd)" :aria-label="'Xem khuyến mại '+getVariantInfo(vd).product_name" title="Xem chi tiết"><i class="icon icon-eye" aria-hidden="true"></i></button>
                 <button type="button" class="btn btn-sm btn-light border" @click="openVariantDiscountForm(vd)" :disabled="isExpired(vd.end_date)" :aria-label="'Sửa khuyến mại '+getVariantInfo(vd).product_name" title="Chỉnh sửa"><i class="icon icon-pencil" aria-hidden="true"></i></button>
                 <input type="checkbox" role="switch" :checked="vd.active" :disabled="isExpired(vd.end_date)" @change="toggleVariantDiscount(vd,$event)" aria-label="Trạng thái khuyến mại" :title="vd.active?'Ngừng hoạt động':'Bật hoạt động'">

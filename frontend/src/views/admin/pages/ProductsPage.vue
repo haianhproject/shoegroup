@@ -1,6 +1,7 @@
 <!-- Mục đích: Trang quản lý sản phẩm và biến thể, gồm danh sách cùng form thêm/sửa. -->
 <!-- Trang: Quản Lý Sản Phẩm (danh sách + form thêm/sửa) -->
 <script setup>
+import { vDialogFocus } from '../../../directives/dialogFocus'
 import { canManageProducts } from '../../../stores/authStore';
 import ActivityStatus from '../components/ActivityStatus.vue';
 import { computed } from "vue";
@@ -524,7 +525,7 @@ function onProductImageError(event) {
     class="custom-modal-overlay product-detail-overlay"
     @click.self="closeProductDetail"
   >
-    <div class="custom-modal-box fade-in-scale product-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+    <div v-dialog-focus="closeProductDetail" class="custom-modal-box fade-in-scale product-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
       <div v-if="productDetailModal.product" class="product-detail-layout">
         <header class="product-detail-header">
           <div class="product-detail-identity">

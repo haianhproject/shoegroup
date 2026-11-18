@@ -1,226 +1,327 @@
-/* Mục đích: CSS toàn cục, font chữ, Tailwind theme và kiểu giao diện dùng chung toàn website. */
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap');
+/* Mục đích: CSS toàn cục, font chữ, Tailwind theme và kiểu giao diện dùng chung toàn website ShoeGroup. */
 @import "tailwindcss";
+@import "./storefront.css";
 
 @theme inline {
-  --font-display: "Fraunces", serif;
-  --font-body: "Be Vietnam Pro", sans-serif;
+  --font-display: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
+  --font-body: "Be Vietnam Pro", "Plus Jakarta Sans", system-ui, sans-serif;
   --color-background: #FFFFFF;
-  --color-foreground: #0E0E0E;
-  --color-secondary: #F0F0F0;
-  --color-muted: #D4D4D4;
-  --color-muted-foreground: #737373;
-  --color-border: #E5E5E5;
-  --radius: 4px;
+  --color-foreground: #0F172A;
+  --color-secondary: #F8FAFC;
+  --color-muted: #E2E8F0;
+  --color-muted-foreground: #64748B;
+  --color-border: #E2E8F0;
+  --radius: 8px;
 }
+
 /* =====================================================================
-   ShoeGroup - Figma Design System
+   ShoeGroup - Modern Sneaker Store Design System
+   Realtime Colors + Godly / Dribbble Inspiration
    ===================================================================== */
 
-
 :root {
+  --sg-display: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
+  --sg-body: "Be Vietnam Pro", system-ui, sans-serif;
+  --sg-header-height: 104px;
   /* Neutral Palette */
-  --sg-ink:       #0E0E0E;
-  --sg-ink-2:     #333333;
-  --sg-muted:     #737373;
-  --sg-line:      #E5E5E5;
-  --sg-surface:   #FFFFFF;
-  --sg-canvas:    #FFFFFF;
-  --sg-soft:      #F0F0F0;
+  --sg-ink:          #0F172A; /* Deep slate / charcoal */
+  --sg-ink-2:        #1E293B;
+  --sg-ink-3:        #334155;
+  --sg-muted:        #64748B;
+  --sg-line:         #E2E8F0;
+  --sg-surface:      #FFFFFF;
+  --sg-canvas:       #FFFFFF;
+  --sg-soft:         #F8FAFC;
+  --sg-soft-hover:   #F1F5F9;
 
-  /* Brand - Minimal (Black, White, Red) */
-  --sg-navy:       #0A0A0A;
-  --sg-blue:       #0A0A0A;
-  --sg-blue-700:   #0E0E0E;
-  --sg-red:        #D4001A;
-  --sg-orange:     #D4001A;
-  --sg-orange-600: #B80017;
+  /* Sport Sneaker Accent (Fiery Red / Crimson) */
+  --sg-navy:         #0F172A;
+  --sg-blue:         #0F172A;
+  --sg-blue-700:     #020617;
+  --sg-red:          #D4001A;
+  --sg-red-hover:    #B80017;
+  --sg-red-light:    #FEF2F2;
+  --sg-orange:       #D4001A;
+  --sg-orange-600:   #B80017;
 
-  /* Gradients - NONE, use solid colors */
-  --sg-grad-primary: #0A0A0A;
+  /* Modern Gradients & Highlights */
+  --sg-grad-primary: #0F172A;
   --sg-grad-warm:    #D4001A;
   --sg-grad-hero:    #FFFFFF;
+  --sg-accent-glow:  rgba(212, 0, 26, 0.15);
 
-  /* Radii - Sharp, minimal */
-  --sg-r-sm: 4px;
-  --sg-r: 8px;
-  --sg-r-lg: 12px;
-  --sg-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --sg-shadow:    0 4px 12px rgba(0, 0, 0, 0.08);
-  --sg-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
-  --sg-ring:      0 0 0 2px rgba(10, 10, 10, 0.15);
+  /* Radii */
+  --sg-r-xs: 4px;
+  --sg-r-sm: 6px;
+  --sg-r:    10px;
+  --sg-r-lg: 16px;
+  --sg-r-xl: 24px;
+  --sg-r-full: 9999px;
+
+  /* Logo / Wordmark font */
+  --sg-logo-font: "Outfit", "Plus Jakarta Sans", system-ui, sans-serif;
+
+  /* Soft Shadows (Dribbble & Godly style) */
+  --sg-shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --sg-shadow-sm: 0 2px 8px -2px rgba(15, 23, 42, 0.06);
+  --sg-shadow:    0 8px 24px -4px rgba(15, 23, 42, 0.08);
+  --sg-shadow-lg: 0 20px 40px -12px rgba(15, 23, 42, 0.12);
+  --sg-shadow-xl: 0 25px 60px -15px rgba(15, 23, 42, 0.20);
+  --sg-ring:      0 0 0 2px rgba(15, 23, 42, 0.1);
 }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  color-scheme: light;
+}
 
-/* Chuyển trang dùng chung cho toàn bộ router-view. Một transition duy nhất
-   giúp các nav không bị trang mờ lâu, trang đổi ngay lập tức không đồng bộ. */
+/* Logo / Wordmark utility — Bebas Neue: sharp, condensed, sneaker-brand iconic */
+.font-logo {
+  font-family: "Bebas Neue", "Barlow Condensed", system-ui, sans-serif;
+  font-weight: 400; /* Bebas Neue has only one weight */
+  letter-spacing: 0.04em;
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Page transitions */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity .24s ease, transform .24s ease;
+  transition: opacity .24s cubic-bezier(0.16, 1, 0.3, 1), transform .24s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.page-enter-from { opacity: 0; transform: translateY(8px); }
+.page-enter-from { opacity: 0; transform: translateY(6px); }
 .page-leave-to { opacity: 0; transform: translateY(-4px); }
 
 body {
-  background-color: #fff;
+  background-color: var(--sg-canvas);
   color: var(--sg-ink);
   font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.01em;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.012em;
+  overflow-x: hidden;
 }
 
-/* ---- Typography nhất quán ---- */
+/* Typography Hierarchy */
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
-  font-weight: 900;
+  font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
+  font-weight: 700;
   letter-spacing: -0.025em;
-  line-height: 1.15;
+  line-height: 1.2;
   color: var(--sg-ink);
 }
 p, span, li, td, th, label, input, select, textarea, button {
   font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
 }
 
-/* Dấu bắt buộc dùng thống nhất cho label ở cả trang khách hàng và quản trị. */
-.form-required { color: #ef4444 !important; font-weight: 700; }
+.form-required { color: var(--sg-red) !important; font-weight: 700; }
 
-/* ---------- Utilities ---------- */
+/* Utilities */
 .cursor-pointer { cursor: pointer; }
 .object-fit-cover { object-fit: cover; }
 .fw-black { font-weight: 900; }
 .tracking-tight { letter-spacing: -0.03em; }
-.transition-all { transition: all 0.25s ease; }
+.transition-all { transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
 .text-sg-blue { color: var(--sg-ink) !important; }
 .text-sg-orange { color: var(--sg-red) !important; }
 
-/* ---------- Buttons ---------- */
+/* Modern Button System */
 .btn-sg {
   background: var(--sg-ink);
-  color: #fff;
+  color: #FFFFFF;
   border: 1px solid var(--sg-ink);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  border-radius: var(--sg-r);
-  padding: 14px 32px;
-  transition: all 0.2s ease;
+  letter-spacing: 0.04em;
+  border-radius: var(--sg-r-full);
+  padding: 13px 28px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
-  text-transform: uppercase;
+  gap: 8px;
+  font-size: 0.88rem;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+  cursor: pointer;
 }
 .btn-sg:hover {
-  background: #333;
-  color: #fff;
+  background: #1E293B;
+  border-color: #1E293B;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  color: #FFFFFF;
+}
+.btn-sg:active {
+  transform: translateY(0);
 }
 
 .btn-sg-warm {
   background: var(--sg-red);
-  color: #fff;
-  border: none;
+  color: #FFFFFF;
+  border: 1px solid var(--sg-red);
   font-weight: 700;
-  border-radius: var(--sg-r);
-  padding: 14px 32px;
-  transition: all 0.2s ease;
+  border-radius: var(--sg-r-full);
+  padding: 13px 28px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(212, 0, 26, 0.25);
+  cursor: pointer;
 }
 .btn-sg-warm:hover {
-  background: var(--sg-orange-600);
-  color: #fff;
+  background: var(--sg-red-hover);
+  border-color: var(--sg-red-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(212, 0, 26, 0.35);
+  color: #FFFFFF;
+}
+.btn-sg-warm:active {
+  transform: translateY(0);
 }
 
 .btn-sg-ghost {
-  background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.35);
   font-weight: 600;
-  border-radius: var(--sg-r);
-  padding: 13px 32px;
-  transition: all 0.2s ease;
+  border-radius: var(--sg-r-full);
+  padding: 12px 28px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
 }
 .btn-sg-ghost:hover {
-  background: #fff;
+  background: #FFFFFF;
   color: var(--sg-ink);
-  border-color: #fff;
+  border-color: #FFFFFF;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
 .btn-sg-outline {
-  background: #fff;
+  background: #FFFFFF;
   color: var(--sg-ink);
-  border: 1px solid var(--sg-ink);
+  border: 1.5px solid var(--sg-line);
   font-weight: 700;
-  border-radius: var(--sg-r);
-  padding: 13px 32px;
-  transition: all 0.2s ease;
+  border-radius: var(--sg-r-full);
+  padding: 12px 26px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
 }
 .btn-sg-outline:hover {
-  background: var(--sg-ink);
-  color: #fff;
+  background: var(--sg-soft);
+  border-color: var(--sg-ink);
+  color: var(--sg-ink);
+  transform: translateY(-2px);
+  box-shadow: var(--sg-shadow-sm);
 }
 
-/* ---------- Cards & surfaces ---------- */
+/* Cards & Surfaces */
 .sg-card {
-  background: #fff;
+  background: #FFFFFF;
   border: 1px solid var(--sg-line);
   border-radius: var(--sg-r-lg);
-  transition: border-color 0.2s ease;
+  box-shadow: var(--sg-shadow-sm);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sg-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sg-shadow);
+  border-color: #CBD5E1;
 }
 
-/* Section title accent */
-.sg-title-bar { width: 40px; height: 2px; background: var(--sg-ink); margin-bottom: 12px; }
+/* Section Title Accent Bar */
+.sg-title-bar {
+  width: 48px;
+  height: 3px;
+  background: var(--sg-red);
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
 
-/* Chips */
+/* Chips / Badges */
 .sg-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 0.75rem; font-weight: 600;
-  padding: 4px 10px; border-radius: 4px;
-  background: var(--sg-soft); color: var(--sg-ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--sg-soft);
+  color: var(--sg-ink);
+  border: 1px solid var(--sg-line);
 }
 .sg-chip-blue { background: var(--sg-soft); color: var(--sg-ink); }
-.sg-chip-warm { background: #FFF0F0; color: var(--sg-red); }
-.sg-chip-lime { background: var(--sg-soft); color: var(--sg-ink-2); }
+.sg-chip-warm { background: var(--sg-red-light); color: var(--sg-red); border-color: rgba(212, 0, 26, 0.15); }
+.sg-chip-lime { background: #F0FDF4; color: #16A34A; border-color: #DCFCE7; }
 
-/* Inputs */
+/* Modern Input Fields */
 .sg-input {
-  border: 1px solid var(--sg-line);
+  border: 1.5px solid var(--sg-line);
   border-radius: var(--sg-r);
-  padding: 12px 16px;
-  background: #fff;
+  padding: 12px 18px;
+  background: #FFFFFF;
+  color: var(--sg-ink);
   font-weight: 500;
   font-family: inherit;
-  transition: border-color 0.2s;
-  font-size: 0.9rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 0.92rem;
 }
 .sg-input:focus {
   outline: none;
   border-color: var(--sg-ink);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+.sg-input::placeholder {
+  color: #94A3B8;
 }
 
-/* Figma customer design system. The customer shell is the single visual
-   contract for every route; admin pages keep their own workspace theme. */
+/* Customer shell contract (Figma customer design system) */
 .figma-customer-shell {
-  --figma-ink: #0E0E0E;
-  --figma-muted: #737373;
-  --figma-line: #E5E5E5;
-  --figma-surface: #F0F0F0;
-  --figma-radius-sm: 4px;
+  --figma-ink: #0F172A;
+  --figma-muted: #64748B;
+  --figma-line: #E2E8F0;
+  --figma-surface: #F8FAFC;
+  --figma-radius-sm: 6px;
   --figma-radius-md: 12px;
-  --figma-radius-lg: 16px;
-  --figma-shadow: 0 12px 40px -20px rgba(0, 0, 0, .22);
-  font-family: "Be Vietnam Pro", sans-serif;
+  --figma-radius-lg: 20px;
+  --figma-shadow: 0 16px 40px -16px rgba(15, 23, 42, 0.12);
+  font-family: "Be Vietnam Pro", system-ui, sans-serif;
 }
 .figma-customer-shell .figma-display,
 .figma-customer-shell h1,
@@ -229,14 +330,14 @@ p, span, li, td, th, label, input, select, textarea, button {
 .figma-customer-shell h4,
 .figma-customer-shell h5,
 .figma-customer-shell h6 {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
   letter-spacing: -.025em;
 }
 .figma-customer-shell input,
 .figma-customer-shell select,
 .figma-customer-shell textarea,
 .figma-customer-shell button {
-  font-family: "Be Vietnam Pro", sans-serif;
+  font-family: "Be Vietnam Pro", system-ui, sans-serif;
 }
 .figma-customer-shell .products-page,
 .figma-customer-shell .orders-page,
@@ -260,7 +361,7 @@ p, span, li, td, th, label, input, select, textarea, button {
 .figma-customer-shell .page-title,
 .figma-customer-shell .detail-name,
 .figma-customer-shell .success-title {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif;
   font-weight: 600;
   letter-spacing: -.035em;
 }
@@ -269,7 +370,7 @@ p, span, li, td, th, label, input, select, textarea, button {
 .figma-customer-shell .address-card {
   border-color: var(--figma-line);
   border-radius: var(--figma-radius-md);
-  box-shadow: none;
+  box-shadow: var(--sg-shadow-sm);
 }
 .figma-customer-shell .sg-input,
 .figma-customer-shell .auth-input,
@@ -282,7 +383,7 @@ p, span, li, td, th, label, input, select, textarea, button {
   min-height: calc(100vh - 69px);
   background: #FFFFFF;
 }
-.figma-customer-shell .auth-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; letter-spacing: -.02em; }
+.figma-customer-shell .auth-title { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-weight: 600; letter-spacing: -.02em; }
 @media (max-width: 767px) {
   .figma-customer-shell .products-page > .w-full,
   .figma-customer-shell .orders-page > .w-full,
@@ -294,27 +395,70 @@ p, span, li, td, th, label, input, select, textarea, button {
   }
 }
 
-/* Loading indicators used across customer and admin views. */
+/* Loading Spinner */
 .sg-spinner {
   display: inline-block;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 2px solid rgba(10, 10, 10, .18);
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2.5px solid rgba(15, 23, 42, 0.12);
   border-top-color: var(--sg-ink);
   border-radius: 999px;
-  animation: sgSpin .7s linear infinite;
+  animation: sgSpin .65s linear infinite;
   vertical-align: -.2em;
 }
-.sg-spinner-sm { width: .9rem; height: .9rem; border-width: 1.5px; }
+.sg-spinner-sm { width: 1rem; height: 1rem; border-width: 2px; }
 @keyframes sgSpin { to { transform: rotate(360deg); } }
 
-/* ---------- Animations ---------- */
-.fade-in-up { opacity: 0; animation: sgFadeInUp 0.5s ease forwards; }
-.fade-in { opacity: 0; animation: sgFadeIn 0.5s ease forwards; }
-@keyframes sgFadeInUp { from { opacity:0; transform: translateY(16px);} to {opacity:1; transform: translateY(0);} }
-@keyframes sgFadeIn { from { opacity:0; } to { opacity:1; } }
+/* Micro-animations */
+.fade-in-up { opacity: 0; animation: sgFadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.fade-in { opacity: 0; animation: sgFadeIn 0.4s ease forwards; }
+@keyframes sgFadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sgFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-/* ---------- Sakura petals (global) ---------- */
+/* Infinite Brand Marquee Animation */
+@keyframes sgMarquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: sgMarquee 32s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Shimmer Highlight Effect */
+@keyframes sgShimmer {
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.animate-shimmer::after {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.5) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: sgShimmer 2.5s infinite;
+  content: '';
+}
+
+/* Sakura Petals */
 .sakura-layer {
   position: fixed; inset: 0; width: 100%; height: 100%;
   pointer-events: none; overflow: hidden; z-index: 60;
@@ -338,9 +482,22 @@ p, span, li, td, th, label, input, select, textarea, button {
   50%     { margin-left: 46px; }
 }
 
-/* Gradient text helper */
-.sg-gradient-text { color: var(--sg-ink); font-weight: 900; }
+.sg-gradient-text {
+  background: linear-gradient(135deg, #0F172A 0%, #334155 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+}
 
-/* Trang thai khoi dong khi may chu tam thoi khong san sang. */
-.startup-message { max-width: 480px; margin: 80px auto; padding: 24px; font-family: system-ui, sans-serif; text-align: center; }
-.startup-message button { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 6px; background: #171717; color: #fff; cursor: pointer; }
+/* Startup Message */
+.startup-message {
+  max-width: 480px; margin: 80px auto; padding: 28px;
+  font-family: inherit; text-align: center;
+  background: #FFFFFF; border-radius: 16px; border: 1px solid var(--sg-line);
+  box-shadow: var(--sg-shadow-lg);
+}
+.startup-message button {
+  min-height: 42px; padding: 10px 24px; border: 0;
+  border-radius: 999px; background: var(--sg-ink); color: #fff;
+  cursor: pointer; font-weight: 700;
+}

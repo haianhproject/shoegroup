@@ -1,6 +1,7 @@
 // Mục đích: Quản lý danh sách đơn, trạng thái và các thao tác đơn hàng phía khách hàng.
 import { computed, reactive } from "vue";
 import { getCurrentUser } from "./authStore";
+import { formatOrderCode } from "../services/orderCode";
 
 /* =====================================================================
    orderStore — quản lý đơn hàng phía khách (localStorage demo)
@@ -58,6 +59,10 @@ const createOrderId = () => `SG${Date.now().toString().slice(-6)}`;
 
 export const formatCurrency = (value) =>
   new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " ₫";
+
+export const getCustomerOrderCode = (order) => order?.serverId
+  ? order.tracking_code || formatOrderCode(order.serverId, order.createdAt)
+  : String(order?.id || "");
 
 /* ---------- State ---------- */
 export const orderState = reactive({
@@ -236,11 +241,16 @@ export const cancelOrder = (orderId, reason, paymentStatus) => {
 };
 
 /* Gắn ID đơn hàng phía server để đồng bộ trạng thái sau này */
-export const setServerId = (localId, serverId) => {
+export const setServerId = (localId, serverId, createdAt) => {
   const o = orderState.orders.find((x) => x.id === localId);
   if (o) {
     o.serverId = serverId;
     o.fromServer = true;
+    const serverTime = createdAt == null ? NaN : new Date(createdAt).getTime();
+    if (Number.isFinite(serverTime)) {
+      o.createdAt = serverTime;
+      o.date = formatOrderDate(new Date(serverTime));
+    }
     saveOrders();
   }
 };
@@ -519,6 +529,14 @@ export const reconcileOrdersFromServer = (list) => {
   orderState.orders.forEach((o) => {
     const s = list.find((item) => String(item.id) === String(o.serverId));
     if (!s) return;
+
+    if (s.created_at || s.date) {
+      const serverCreatedAt = mapServerOrder(s).createdAt;
+      if (o.createdAt !== serverCreatedAt) {
+        o.createdAt = serverCreatedAt;
+        changed = true;
+      }
+    }
 
     const key = mapStatusToKey(s.status);
     if (o.serverStatus !== key) {

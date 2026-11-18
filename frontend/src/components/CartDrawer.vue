@@ -1,5 +1,7 @@
 <!-- Mục đích: Ngăn giỏ hàng trượt, cho phép xem và chỉnh sản phẩm trước khi thanh toán. -->
 <script setup>
+import StoreIllustration from './StoreIllustration.vue'
+import { vDialogFocus } from '../directives/dialogFocus'
 import { onUnmounted, computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -91,7 +93,9 @@ const fetchSuggestions = async () => {
   try {
     const products = await api.get('/products')
     if (Array.isArray(products)) {
-      suggestions.value = products.slice(0, 3).map(p => ({
+      suggestions.value = products
+        .filter(p => ![false, 0, '0'].includes(p.active ?? p.IsActive))
+        .slice(0, 3).map(p => ({
         id: p.id ?? p.ProductID ?? p.product_id,
         name: p.product_name ?? p.name ?? p.ProductName ?? 'Sản phẩm',
         price: Number(p.sale_price ?? p.SalePrice ?? 0) > 0
@@ -115,7 +119,7 @@ const addSuggestedToCart = async (p) => {
   <teleport to="body">
     <transition name="drawer-fade">
       <div v-if="isOpen" class="cart-drawer-overlay" @click.self="close">
-        <aside class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" @click.stop @keydown.esc="close">
+        <aside v-dialog-focus="close" class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" @click.stop @keydown.esc="close">
           <!-- Header -->
           <div class="drawer-header">
             <h2 id="cart-drawer-title" class="drawer-title">Giỏ hàng của bạn ({{ cartCount }})</h2>
@@ -126,17 +130,14 @@ const addSuggestedToCart = async (p) => {
 
           <!-- Body -->
           <div class="drawer-body">
-            <div v-if="cartCount === 0" class="empty-state">
-              <div class="empty-icon-wrap flex justify-center mb-3 text-[#737373]">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                  <line x1="3" y1="6" x2="21" y2="6"/>
-                  <path d="M16 10a4 4 0 0 1-8 0"/>
-                </svg>
-              </div>
-              <h3>Giỏ hàng trống</h3>
-              <p>Thêm vài đôi giày để bắt đầu.</p>
-              <router-link to="/products" class="btn-sg-dark" @click="close">Khám phá sản phẩm</router-link>
+            <div v-if="cartCount === 0" class="empty-state flex flex-col items-center justify-center text-center px-6 py-24">
+              <StoreIllustration kind="bag" class="mb-5" />
+              <h3 class="figma-display text-2xl font-bold text-slate-900 mb-2">Giỏ hàng của bạn đang trống</h3>
+              <p class="text-sm text-slate-500 max-w-xs mb-7 leading-relaxed">Hãy lựa chọn cho mình đôi giày yêu thích để bắt đầu hành trình phong cách mới.</p>
+              <router-link to="/products" class="btn-sg-warm inline-flex items-center gap-2" @click="close">
+                <span>Khám phá sản phẩm ngay</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </router-link>
             </div>
 
             <div v-else class="cart-compact-list">
@@ -212,20 +213,20 @@ const addSuggestedToCart = async (p) => {
             </div>
           </div>
 
-          <!-- Footer (đã bỏ ghi chú + icon) -->
+          <!-- Footer -->
           <div v-if="cartCount > 0" class="drawer-footer">
             <div class="footer-row">
-              <span>Tạm tính ({{ cartCount }} sản phẩm)</span>
-              <strong>{{ formatCurrency(cartSubtotal) }}</strong>
+              <span class="text-sm text-slate-500">Tạm tính ({{ cartCount }} sản phẩm)</span>
+              <strong class="text-base text-slate-900 font-bold">{{ formatCurrency(cartSubtotal) }}</strong>
             </div>
             <div class="footer-row footer-shipping">
-              <span>Phí vận chuyển</span>
-              <span>Tính khi thanh toán</span>
+              <span class="text-xs text-slate-400">Phí vận chuyển</span>
+              <span class="text-xs font-semibold text-slate-600">Tính khi thanh toán</span>
             </div>
             <button class="btn-checkout" :disabled="isCheckingCartStock || cartHasUnavailableItems" @click="goCheckout">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 inline-block"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>{{ isCheckingCartStock ? 'ĐANG KIỂM TRA...' : 'Tiếp tục thanh toán' }}
             </button>
-            <p class="footer-hint">Nhập coupon và phí vận chuyển ở trang thanh toán</p>
+            <p class="footer-hint">Nhập coupon và chọn hình thức nhận hàng ở bước thanh toán</p>
           </div>
         </aside>
       </div>
@@ -246,7 +247,7 @@ const addSuggestedToCart = async (p) => {
 .cart-drawer {
   width: 440px;
   max-width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   background: #fff;
   display: flex;
   flex-direction: column;
@@ -261,7 +262,7 @@ const addSuggestedToCart = async (p) => {
 .drawer-fade-leave-to .cart-drawer { transform: translateX(100%); }
 
 .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #E5E5E5; flex-shrink: 0; }
-.drawer-title { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 1.25rem; letter-spacing: -.025em; text-transform: uppercase; margin: 0; color: #0E0E0E; }
+.drawer-title { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-weight: 600; font-size: 1.25rem; letter-spacing: -.025em; text-transform: uppercase; margin: 0; color: #0E0E0E; }
 .drawer-close { width: 36px; height: 36px; border: 0; background: #F0F0F0; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #0E0E0E; transition: background .2s ease; }
 .drawer-close:hover { background: #E5E5E5; }
 
@@ -270,7 +271,7 @@ const addSuggestedToCart = async (p) => {
 .drawer-body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
 .empty-state { text-align: center; padding: 96px 24px; color: #737373; }
 .empty-state i { font-size: 2.2rem; color: #ccc; display: block; margin-bottom: 12px; }
-.empty-state h3 { font-family: "Fraunces", Georgia, serif; font-size: 1.25rem; font-weight: 500; color: #0E0E0E; margin: 0 0 4px; }
+.empty-state h3 { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: 1.25rem; font-weight: 500; color: #0E0E0E; margin: 0 0 4px; }
 .empty-state p { font-size: .875rem; margin: 0 0 20px; }
 .btn-sg-dark { background: #0E0E0E; color: #fff; border: 1px solid #0E0E0E; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: .8125rem; text-decoration: none; display: inline-block; transition: background .2s ease; }
 .btn-sg-dark:hover { background: #333; }
@@ -284,7 +285,7 @@ const addSuggestedToCart = async (p) => {
 .cc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .cc-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .cc-heading-copy { min-width: 0; }
-.cc-name { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: .98rem; color: #0E0E0E; text-decoration: none; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cc-name { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-weight: 600; font-size: .98rem; color: #0E0E0E; text-decoration: none; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cc-variant { font-size: .75rem; color: #737373; margin-top: 3px; }
 .cc-alert { font-size: .74rem; font-weight: 700; color: #0A0A0A; background: #f5f5f5; border-left: 2px solid #0A0A0A; padding: 4px 8px; }
 .cc-alert.warn { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
@@ -311,7 +312,7 @@ const addSuggestedToCart = async (p) => {
 .suggest-card-3 { background: transparent; border: 0; border-radius: 0; overflow: hidden; padding: 0; display: flex; flex-direction: column; text-align: left; cursor: pointer; }
 .suggest-img { position: relative; display: block; aspect-ratio: 1; background: #f9fafb; overflow: hidden; }
 .suggest-img img { width: 100%; height: 100%; object-fit: cover; }
-.suggest-name { font-family: "Fraunces", Georgia, serif; font-size: .75rem; font-weight: 500; color: #0E0E0E; padding: 6px 0 0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+.suggest-name { font-family: "Barlow Condensed", "Be Vietnam Pro", sans-serif; font-size: .75rem; font-weight: 500; color: #0E0E0E; padding: 6px 0 0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
 .suggest-price { font-size: .75rem; font-weight: 500; color: #737373; padding: 2px 0 0; }
 .suggest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .suggest-card { border: 1px dashed #d1d5db; border-radius: 6px; background: #fff; height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-decoration: none; color: #0A0A0A; font-size: .78rem; font-weight: 600; }
@@ -319,9 +320,9 @@ const addSuggestedToCart = async (p) => {
 .drawer-footer { border-top: 1px solid #E5E5E5; padding: 20px 24px; background: #fff; flex-shrink: 0; }
 .footer-row { display: flex; justify-content: space-between; font-size: .875rem; color: #0E0E0E; margin-bottom: 6px; }
 .footer-shipping { color: #737373; margin-bottom: 16px; }
-.btn-checkout { width: 100%; background: #0A0A0A; color: #fff; border: 1px solid #0A0A0A; border-radius: 999px; padding: 13px 18px; font-weight: 800; font-size: .88rem; letter-spacing: .02em; cursor: pointer; margin-top: 10px; transition: background .2s; }
-.btn-checkout:hover:not(:disabled) { background: #000; }
-.btn-checkout:disabled { opacity: .5; cursor: not-allowed; }
+.btn-checkout { width: 100%; background: #D4001A; color: #fff; border: 1px solid #D4001A; border-radius: 8px; padding: 14px 18px; font-weight: 800; font-size: .88rem; letter-spacing: .02em; cursor: pointer; margin-top: 10px; box-shadow: 0 4px 14px rgba(212, 0, 26, 0.25); transition: all .2s; }
+.btn-checkout:hover:not(:disabled) { background: #B80017; border-color: #B80017; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(212, 0, 26, 0.35); }
+.btn-checkout:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .footer-hint { text-align: center; font-size: .6875rem; color: #737373; margin: 12px 0 0; }
 
 @media (max-width: 480px) { .cart-drawer { width: 100vw; } }

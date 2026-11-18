@@ -31,9 +31,12 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
         if (!path.startsWith("/api/") || method.equals("OPTIONS")) { chain.doFilter(req, res); return; }
         res.setHeader("Cross-Origin-Resource-Policy", "same-site");
         boolean login = method.equals("POST") && path.equals("/api/login");
+        boolean publicMail = method.equals("POST") && List.of("/api/contact", "/api/newsletter").contains(path);
         if (!List.of("GET", "HEAD", "OPTIONS").contains(method)) {
             long retry = limits.acquire(req.getRemoteAddr(), false);
             if (retry == 0 && login) retry = limits.acquire(req.getRemoteAddr(), true);
+            // Giới hạn riêng cho các yêu cầu gửi thư.
+            if (retry == 0 && publicMail) retry = limits.acquire("mail:" + req.getRemoteAddr(), true);
             if (retry > 0) {
                 res.setHeader("Retry-After", String.valueOf(retry));
                 deny(res, 429, "Ban thu qua nhieu lan. Vui long doi mot lat."); return;

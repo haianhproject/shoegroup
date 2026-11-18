@@ -9,14 +9,14 @@ module.exports = async function orderAudit({ api, pool, admin, users, check, fix
   const state = async id => (await rows(`SELECT * FROM Orders WHERE OrderID=${Number(id)}`))[0];
   const ok = response => { assert.equal(response.status, 200, JSON.stringify(response)); return response.data; };
   const waitFor = async predicate => { const until = Date.now() + 15000; do { if (await predicate()) return; await new Promise(r => setTimeout(r, 150)); } while (Date.now() < until); throw Error('Native scheduler did not complete'); };
-  await check('native concurrent checkout key and legacy replay create exactly one order', async () => {
+  await check('native concurrent checkout and stored replay create exactly one order', async () => {
     const item = await fixture(10), key = `native-concurrent-${Date.now()}`;
     const responses = await Promise.all(Array.from({ length: 8 }, () => create(item, {}, key)));
     responses.forEach(ok); assert.equal(new Set(responses.map(r => r.data.orderId)).size, 1);
     assert.equal(await stock(item), 10);
-    const replay = ok(await create(item, {}, key, 5195)); assert.equal(replay.orderId, responses[0].data.orderId);
-    const oldKey = `legacy-first-${Date.now()}`, original = ok(await create(item, {}, oldKey, 5195));
-    assert.equal(ok(await create(item, {}, oldKey)).orderId, original.orderId);
+    const replay = ok(await create(item, {}, key)); assert.equal(replay.orderId, responses[0].data.orderId);
+    assert.equal((await rows(`SELECT COUNT(*) AS n FROM CheckoutRequests WHERE IdempotencyKey='${key}'`))[0].n, 1);
+    assert.equal((await rows(`SELECT COUNT(*) AS n FROM OrderDetails WHERE ProductID=${Number(item.product_id)}`))[0].n, 1);
     assert.equal((await create(item, { note: 'changed' }, key)).status, 409);
   });
   await check('native checkout rolls back order details and replay record after SQL failure', async () => {
@@ -85,7 +85,7 @@ module.exports = async function orderAudit({ api, pool, admin, users, check, fix
   });
   await check('native coupon redemption serializes last use and promotion quota restores once', async () => {
     const item = await fixture(10), code = `NATIVE${Date.now()}`;
-    await rows(`INSERT Coupons(CouponCode,CouponName,DiscountType,DiscountValue,DiscountPercent,UsageLimit,UsedCount,ExpiryDate,IsActive) VALUES('${code}',N'Audit',N'Phần trăm',10,10,1,0,'2099-01-01',1)`);
+    ok(await api('/discounts', { user: admin, method: 'POST', body: { code, name: 'Audit', type: 'percent', value: 10, quantity: 1, expiry: '2099-01-01', active: true } }));
     const responses = await Promise.all([create(item, { couponCode: code }), create(item, { couponCode: code })]);
     assert.deepEqual(responses.map(r => r.status).sort(), [200,409], JSON.stringify(responses));
     assert.equal((await rows(`SELECT UsedCount FROM Coupons WHERE CouponCode='${code}'`))[0].UsedCount, 1);
