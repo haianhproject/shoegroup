@@ -120,8 +120,13 @@ function onProductImageError(event) {
                 <strong>{{ productPriceLabel(p) }}</strong>
               </td>
               <td class="text-center">
-                <strong class="products-stock" :class="{ 'is-low': productStockTotal(p.id) <= LOW_STOCK_THRESHOLD }">{{ productStockTotal(p.id) }}</strong>
-                <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
+                <div class="products-inventory" :class="{ 'is-empty': productStockTotal(p.id) <= 0 }">
+                  <div class="products-stock-value">
+                    <strong class="products-stock">{{ productStockTotal(p.id) }}</strong>
+                    <span class="products-stock-unit">đôi</span>
+                  </div>
+                  <span v-if="productStockTotal(p.id) <= LOW_STOCK_THRESHOLD" class="products-stock-note">{{ productStockTotal(p.id) <= 0 ? 'Hết hàng' : 'Sắp hết' }}</span>
+                </div>
               </td>
               <td class="text-center">
                 <ActivityStatus :active="p.active" />
@@ -841,9 +846,12 @@ function onProductImageError(event) {
 .products-price { white-space: normal; }
 .products-price strong { display: block; font-size: 12px; font-weight: 650; }
 .products-price del { display: block; margin-top: 5px; color: #95959b; font-size: 10px; }
-.products-stock { display: block; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.products-stock.is-low { color: #c00019; }
-.products-stock-note { display: block; margin-top: 4px; color: #b80017; font-size: 9px; white-space: nowrap; }
+.products-inventory { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 68px; min-height: 42px; vertical-align: middle; }
+.products-stock-value { display: flex; align-items: baseline; justify-content: center; gap: 5px; line-height: 1.2; }
+.admin-shell .admin-catalog-page .products-inventory .products-stock { display: block; color: #0f172a; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.products-stock-unit { color: #7a8595; font-size: 10px; font-weight: 400; }
+.admin-shell .admin-catalog-page .products-inventory.is-empty .products-stock { color: #b80017; }
+.products-stock-note { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 4px; background: #fff1f2; color: #b80017; font-size: 10px; font-weight: 500; line-height: 1.4; white-space: nowrap; }
 .products-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .products-action {
   display: inline-flex;

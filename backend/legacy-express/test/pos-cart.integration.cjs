@@ -288,6 +288,7 @@ async function main() {
       assert.equal(await stock(item), 1);
     }
   });
+  if (process.env.POS_AUDIT_BACKEND === "spring") await require("../../scripts/sales-demo-audit.cjs")({ api, pool, admin, users, check });
   if (process.env.POS_AUDIT_BACKEND === "spring") await require("../../scripts/commerce-audit.cjs")({ api, pool, admin, users, check });
   if (process.env.POS_AUDIT_BACKEND === "spring") await require("../../scripts/order-audit.cjs")({ api, pool, admin, users, check, fixture, stock, stopLegacy: async () => {
     if (!server || server.exitCode !== null) return;

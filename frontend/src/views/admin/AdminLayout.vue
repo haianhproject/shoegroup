@@ -60,7 +60,14 @@ const sidebar = ref(null);
 const contentArea = ref(null);
 const isMobile = ref(window.innerWidth < 1024);
 isNavOpen.value = !isMobile.value;
-const initials = computed(() => getDisplayName.value.trim().split(/\s+/).slice(-2).map(part => part[0]).join('').toUpperCase());
+const initials = computed(() => {
+  const name = String(getDisplayName.value || '')
+    .normalize('NFC')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .split('@')[0];
+  const words = name.match(/[\p{L}\p{N}]+/gu) || [];
+  return words.slice(-2).map(word => Array.from(word)[0]).join('').toLocaleUpperCase('vi-VN') || 'SG';
+});
 const todayLabel = computed(() => new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()));
 
 const sections = [

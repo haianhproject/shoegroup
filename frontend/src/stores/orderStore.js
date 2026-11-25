@@ -192,6 +192,7 @@ export const markAsDelivered = (orderId) => {
 export const confirmReceived = (orderId) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
+  ordersMutationVersion++;
   const now = Date.now();
   o.status = "RECEIVED";
   if (o.serverId) o.serverStatus = "RECEIVED";
