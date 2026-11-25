@@ -42,6 +42,9 @@
 .hero-slide-featured {
   background: #f3f4f5;
 }
+.hero-slide-street {
+  background: #f4f3f1;
+}
 .hero-slide-running {
   background: #edf0f2;
 }
@@ -181,6 +184,33 @@
 }
 .hero-art-running .hero-shoe {
   transform: rotate(3deg);
+}
+.hero-art-street::before {
+  content: '';
+  position: absolute;
+  width: 85%;
+  height: 70%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #d4001a12, transparent 68%);
+  transform: rotate(-25deg);
+}
+.hero-art-street .hero-shoe-float {
+  width: 126%;
+  left: -17%;
+}
+.hero-art-street .hero-shoe {
+  transform: rotate(-8deg);
+}
+.hero-art-street .hero-art-word {
+  top: 25%;
+  left: -8%;
+  font-size: clamp(128px, 14.5vw, 215px);
+  color: #e3dfdb;
+  transform: rotate(-12deg);
+}
+.hero-art-street .hero-orbit {
+  border-color: #d4001a2b;
+  transform: rotate(-22deg);
 }
 .hero-art-running .hero-shoe-float {
   width: 120%;
@@ -479,6 +509,7 @@
 .campaign-section .section-heading h2 {
   color: #fff;
   font-size: clamp(40px, 4.5vw, 66px);
+  line-height: 1.2;
 }
 .campaign-section .section-kicker {
   color: #ffffff73;

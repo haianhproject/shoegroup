@@ -815,6 +815,63 @@ test('customer cancellation blocks repeated submits, updates immediately after s
   assert.equal(orders.orderState.orders[0].status, 'CONFIRMED');
 });
 
+function loadCustomerReceive(api, reload = async () => {}) {
+  const orders = load('src/stores/orderStore.js', {
+    './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: '/api' },
+  });
+  orders.orderState.orders = [{ id: 'SV7', serverId: 7, userId: 1, status: 'DELIVERED', serverStatus: 'DELIVERED', payment_status: 'Đã thanh toán' }];
+  const notifications = [];
+  const page = load('src/views/MyOrders.vue', {
+    '../components/StoreIllustration.vue': {}, '../components/OrderStatusIcon.vue': {},
+    'vue-router': { useRouter: () => ({ currentRoute: vue.ref({ query: {} }) }) },
+    '../stores/orderStore': { ...orders, loadOrders: () => reload(orders) },
+    '../stores/uiStore': { notify: item => notifications.push(item) },
+    '../services/apiClient': { api }, '../services/addressService': { addressBookApi: {}, vietnamAddressApi: {} },
+  }, {}, ['receiveModal', 'handleReceive', 'closeReceiveModal', 'submitReceive']);
+  return { page, orders, notifications };
+}
+
+test('customer receiving waits for the server, blocks duplicate clicks and starts the revenue hold', async () => {
+  let finish, calls = 0, reloads = 0;
+  const { page, orders } = loadCustomerReceive({ put: url => {
+    assert.equal(url, '/orders/7/receive'); calls++;
+    return new Promise(resolve => { finish = resolve; });
+  } }, async () => { reloads++; });
+  const order = orders.orderState.orders[0];
+  page.handleReceive(order);
+  const pending = page.submitReceive(); await page.submitReceive(); page.closeReceiveModal();
+  assert.equal(calls, 1); assert.equal(page.receiveModal.open, true);
+  assert.equal(order.status, 'DELIVERED');
+  finish({ success: true }); await pending;
+  assert.equal(order.status, 'RECEIVED'); assert.equal(order.serverStatus, 'RECEIVED');
+  assert.equal(order.isCountedAsRevenue, false);
+  assert.equal(order.revenueEligibleDate - order.receivedConfirmedDate, 14 * 864e5);
+  assert.equal(page.receiveModal.open, false); assert.equal(page.receiveModal.submitting, false);
+  assert.equal(reloads, 1);
+});
+
+test('customer receiving keeps a failed request available and requires a synchronized server ID', async () => {
+  let calls = 0;
+  const { page, orders } = loadCustomerReceive({ put: async () => { calls++; throw new Error('Server unavailable'); } });
+  const order = orders.orderState.orders[0];
+  page.handleReceive(order); await page.submitReceive();
+  assert.equal(page.receiveModal.open, true); assert.equal(page.receiveModal.submitting, false);
+  assert.equal(page.receiveModal.error, 'Server unavailable'); assert.equal(order.status, 'DELIVERED');
+  order.serverId = null;
+  await page.submitReceive();
+  assert.equal(calls, 1); assert.match(page.receiveModal.error, /đồng bộ đơn hàng/);
+});
+
+test('customer receiving recovers a lost response from the refreshed server status', async () => {
+  const { page, orders, notifications } = loadCustomerReceive({ put: async () => { throw new Error('Connection lost'); } }, async store => {
+    store.reconcileOrdersFromServer([{ id: 7, user_id: 1, status: 'Đã nhận hàng', received_confirmed_date: '2026-11-25T12:00:00', revenue_eligible_date: '2026-12-09T12:00:00', is_counted_as_revenue: false }]);
+  });
+  page.handleReceive(orders.orderState.orders[0]); await page.submitReceive();
+  assert.equal(orders.getOrderDisplayStatus(orders.orderState.orders[0]), 'RECEIVED');
+  assert.equal(page.receiveModal.open, false); assert.equal(page.receiveModal.submitting, false);
+  assert.equal(notifications.at(-1).type, 'info');
+});
+
 test('completed payment orders use the same green badge for API codes and Vietnamese labels', () => {
   const admin = loadAdminRealtime();
   for (const status of ['COMPLETED', 'completed', ' Hoàn thành ', 'Hoàn tất', 'Đã nhận hàng', 'RECEIVED']) {
@@ -1302,6 +1359,7 @@ function loadHome(notify = () => {}, { globals = {}, expose = [], router = { pus
     '../../img/hero-sneaker-crimson.png': 'hero-sneaker-crimson.png',
     '../../img/hero-runner-crimson.png': 'hero-runner-crimson.png',
     '../../img/hero-court-crimson.png': 'hero-court-crimson.png',
+    '../../img/hero-street-crimson.png': 'hero-street-crimson.png',
     '../components/StoreIllustration.vue': {},
     'lucide-vue-next': {},
     'vue-router': { useRouter: () => router },
@@ -1312,6 +1370,25 @@ function loadHome(notify = () => {}, { globals = {}, expose = [], router = { pus
     '../data/homeMedia': { homeMedia: { videos: ['video'], hero: {}, promo: {}, categories: [] } },
   }, globals, ['categoryCards', 'categoriesFromApi', 'allProducts', 'email', 'subscribe', 'subscribing', ...expose]);
 }
+
+test('admin avatar uses name initials and excludes role suffixes and punctuation', () => {
+  const name = vue.ref('Hải Anh (Admin)');
+  const layout = load('src/views/admin/AdminLayout.vue', {
+    'vue-router': { useRoute: () => ({ path: '/admin/panel/products', fullPath: '/admin/panel/products', meta: {} }), useRouter: () => ({}) },
+    './components/AdminIcon.vue': {}, './components/AdminLogoutModal.vue': {},
+    '../../components/BrandLogo.vue': {}, '../../directives/dialogFocus': {},
+    '../../stores/authStore': { isEmployee: vue.ref(false) },
+    '../../utils/brandLogos': {},
+    './adminStore': { getDisplayName: name, isNavOpen: vue.ref(true) },
+  }, { window: { innerWidth: 1366 } }, ['initials']);
+  for (const [value, expected] of [
+    ['Hải Anh (Admin)', 'HA'], ['Nguyễn Hải Anh [Quản trị viên]', 'HA'],
+    ['Đỗ Ánh (Admin)', 'ĐÁ'], ['haianh@example.test', 'H'], ['  (Admin)  ', 'SG'],
+  ]) {
+    name.value = value;
+    assert.equal(layout.initials.value, expected, value);
+  }
+});
 
 function loadHero() {
   const timeouts = new Map(), intervals = new Map(), frames = new Map(), routes = [], captures = new Set();
@@ -1361,7 +1438,7 @@ test('hero play control resumes autoplay while that control has keyboard focus',
   assert.equal(intervals.size, 0);
 });
 
-test('hero retains its outgoing video through transition completion and interrupted dragging', async () => {
+test('hero retains its outgoing slide through transition completion and interrupted dragging', async () => {
   const { home, pointer } = loadHero();
   home.currentIndex.value = 5;
   home.nextSlide(true);

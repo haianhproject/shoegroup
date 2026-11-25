@@ -6,13 +6,14 @@ import { computed, onMounted, onUnmounted, ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, cancelOrder, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
+  loadOrders, cancelOrder, confirmReceived, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
   getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel, getCustomerOrderCode
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import OrderStatusIcon from '../components/OrderStatusIcon.vue'
+import { vDialogFocus } from '../directives/dialogFocus'
 
 const router = useRouter()
 const search = ref('')
@@ -75,6 +76,49 @@ const scrollExpandedIntoView = () => {
   const detail = card?.querySelector('.oc-detail')
   if (!detail) return
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const receiveModal = reactive({ open: false, order: null, submitting: false, error: '' })
+const handleReceive = (order) => {
+  if (receiveModal.submitting || getOrderDisplayStatus(order) !== 'DELIVERED') return
+  receiveModal.order = order
+  receiveModal.error = ''
+  receiveModal.open = true
+}
+const closeReceiveModal = () => {
+  if (receiveModal.submitting) return
+  receiveModal.open = false
+}
+const submitReceive = async () => {
+  if (!receiveModal.open || receiveModal.submitting) return
+  const order = receiveModal.order
+  if (!order?.serverId) {
+    receiveModal.error = 'Vui lòng tải lại danh sách để đồng bộ đơn hàng trước khi xác nhận.'
+    await loadOrders()
+    return
+  }
+  receiveModal.submitting = true
+  receiveModal.error = ''
+  try {
+    const response = await api.put(`/orders/${order.serverId}/receive`, {})
+    if (!response?.success) throw new Error(response?.message || 'Chưa thể xác nhận nhận hàng.')
+    confirmReceived(order.id)
+    receiveModal.open = false
+    notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${getCustomerOrderCode(order)} đã được cập nhật.` })
+    await loadOrders()
+  } catch (error) {
+    await loadOrders()
+    const liveOrder = orderState.orders.find(item => item.id === order.id)
+    if (['RECEIVED', 'COMPLETED'].includes(getOrderDisplayStatus(liveOrder))) {
+      receiveModal.open = false
+      notify({ type: 'info', message: 'Đơn hàng đã được xác nhận nhận hàng.' })
+    } else {
+      receiveModal.error = error.message || 'Chưa thể xác nhận nhận hàng. Vui lòng thử lại.'
+    }
+  } finally {
+    receiveModal.submitting = false
+    if (!receiveModal.open) nextTick(() => orderCardRefs.get(order.id)?.querySelector('[aria-expanded]')?.focus())
+  }
 }
 
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null, submitting: false, error: '' })
@@ -567,6 +611,7 @@ onUnmounted(() => {
           <!-- Quick actions (always visible) -->
           <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><OrderStatusIcon name="cancelled" :size="16" />Hủy đơn</button>
+            <button v-if="o.status === 'DELIVERED' && o.serverId" type="button" class="btn-sg" @click.stop="handleReceive(o)">Xác nhận đã nhận hàng</button>
             <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
             <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
               <span class="delivery-success-pill">
@@ -712,6 +757,20 @@ onUnmounted(() => {
           </div>
 
         </div>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <div v-if="receiveModal.open" class="modal-overlay" @click.self="closeReceiveModal">
+        <form v-dialog-focus="closeReceiveModal" class="sg-card modal-box" role="dialog" aria-modal="true" aria-labelledby="receive-title" aria-describedby="receive-description" :aria-busy="receiveModal.submitting" @submit.prevent="submitReceive">
+          <h5 id="receive-title" class="font-bold mb-3">Xác nhận nhận hàng</h5>
+          <p id="receive-description" class="text-gray-600 mb-3">Bạn đã nhận và kiểm tra đơn <strong>#{{ getCustomerOrderCode(receiveModal.order) }}</strong>? Sau khi xác nhận, đơn bắt đầu thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày.</p>
+          <p v-if="receiveModal.error" class="text-red-600 mt-2" role="alert">{{ receiveModal.error }}</p>
+          <div class="flex gap-2 mt-4 justify-end">
+            <button type="button" class="btn-sg-outline" :disabled="receiveModal.submitting" @click="closeReceiveModal">Chưa nhận hàng</button>
+            <button type="submit" class="btn-sg" :disabled="receiveModal.submitting">{{ receiveModal.submitting ? 'Đang xác nhận…' : 'Xác nhận đã nhận' }}</button>
+          </div>
+        </form>
       </div>
     </transition>
 
