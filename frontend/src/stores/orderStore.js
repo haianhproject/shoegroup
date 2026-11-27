@@ -309,6 +309,7 @@ export const getDeliveryIssueType = (order) => {
   const issueCode = String(order.stockIssueStatus ?? order.stock_issue_status ?? "").trim().toUpperCase();
   const text = deliveryIssueText(order);
   if (issueCode === "LOST_IN_TRANSIT" || text.includes("mat hang") || text.includes("that lac") || text.includes("lost")) return "LOST";
+  if (text.includes("tu choi nhan")) return "REFUSED";
   if (issueCode === "DELIVERY_ACCIDENT" || text.includes("tai nan") || text.includes("truc trac") || text.includes("su co van chuyen") || text.includes("va cham")) return "ACCIDENT";
   if (issueCode === "RETURNED_TO_WAREHOUSE" || text.includes("khong bat may") || text.includes("khong nhan hang") || text.includes("chua lien he")) return "UNREACHABLE";
   if (issueCode === "DELIVERY_FAILED" || ["DELIVERY_FAILED", "WAREHOUSE_RETURN"].includes(getOrderDisplayStatus(order))) return "FAILED";
@@ -322,8 +323,9 @@ export const getCustomerOrderStatusLabel = (order) => {
   const issueType = getDeliveryIssueType(order);
   if (issueType === "LOST" && ["CANCELLED", "DELIVERY_FAILED"].includes(status)) return "Hàng bị thất lạc";
   if (status === "WAREHOUSE_RETURN" && issueType === "ACCIDENT") return "Sự cố vận chuyển";
+  if (status === "WAREHOUSE_RETURN" && issueType === "REFUSED") return "Chờ kiểm nhận";
   if (status === "WAREHOUSE_RETURN" && issueType === "UNREACHABLE") return "Chưa liên hệ được";
-  if (status === "WAREHOUSE_RETURN") return "Chờ giao lại";
+  if (status === "WAREHOUSE_RETURN") return "Chờ kiểm nhận";
   return ORDER_STATUS[status] || status;
 };
 

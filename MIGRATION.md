@@ -1,5 +1,12 @@
 # Tiến Độ ShoeGroup
 
+## Rút Gọn Xử Lý Giao Thất Bại Trong Chi Tiết Đơn - 2026-11-27
+
+- Dùng lại kiểm nhận/hoàn kho và API hiện có trong chi tiết đơn: đặt **Kiểm nhận, hoàn kho & đóng đơn** cạnh **Giao lại đơn hàng**. Không thêm bảng dữ liệu, endpoint hay trang chức năng.
+- Phân biệt khách chưa bắt máy với khách từ chối nhận vì hàng có vấn đề. Cả hai về bước kiểm nhận, nhưng giữ đúng lý do và nhãn phía khách; không tự hứa sẽ giao lại.
+- Chuyển Về kho chưa đánh dấu hoàn tồn ở state frontend. Chỉ kiểm nhận vật lý mới cộng hàng tốt, tách hàng hỏng và đóng đơn; COD chưa thu không phát sinh hoàn tiền, đơn trả trước dùng khoản hoàn sẵn có. Luồng này không tạo `OrderReturns`.
+- Trả hàng sau khi khách đã nhận vẫn là phần riêng đã có từ đợt trước; không dùng để giải quyết kiện chưa giao được và không mở rộng thêm trong đợt rà soát này.
+
 ## Báo Phí Giao Hàng Trong Chat - 2026-11-27
 
 - Bot hỏi tỉnh/thành hoặc cho chọn địa chỉ chính chủ rồi gọi cùng dịch vụ báo phí với checkout. Hiển thị phí tiêu chuẩn, thời gian dự kiến và ghi rõ trước ưu đãi trên đơn; không thay đổi cách tính cũ.

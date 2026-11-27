@@ -40,6 +40,7 @@ async function load(silent = false) {
   finally { if (current === generation) loading.value = false }
 }
 async function open() {
+  if (opened.value) return
   previousFocus = document.activeElement; opened.value = true; error.value = ''; success.value = ''
   previousOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'
   await nextTick(); panel.value?.showModal(); await load()
@@ -86,13 +87,14 @@ function confirmRefund(r) {
 watch(() => props.orderId, () => { data.value = null; request.key = ''; warehouse.lines = []; if (opened.value) load() })
 watch(() => props.startOpen, value => { if (value) open() }, { immediate: true })
 onBeforeUnmount(() => { clearInterval(timer); controller?.abort(); generation++; panel.value?.close(); if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow })
+defineExpose({ open })
 </script>
 
 <template>
   <button v-if="!startOpen" type="button" class="as-trigger" @click="open"><RotateCcw :size="16" :stroke-width="1.6" />{{ triggerLabel || (admin ? 'Trả hàng, hoàn kho & tiền hoàn' : 'Yêu cầu trả hàng') }}</button>
   <Teleport to="body">
     <dialog v-if="opened" ref="panel" class="as-dialog" :aria-label="admin ? 'Xử lý hậu mãi đơn hàng' : 'Trả hàng và hỗ trợ'" :aria-busy="busy" @cancel.prevent="close" @click="e => { if (e.target === panel) close() }">
-      <header class="as-head"><div><span class="as-eyebrow">SHOEGROUP / SAU MUA HÀNG</span><h2>{{ admin ? 'Trả hàng & hoàn kho' : 'Trả hàng & hỗ trợ' }}</h2><p>Đơn {{ orderCode || `#${orderId}` }}</p></div><button type="button" class="as-icon-btn" aria-label="Đóng thông tin hậu mãi" :disabled="busy" @click="close"><X :size="20" /></button></header>
+      <header class="as-head"><div><span class="as-eyebrow">SHOEGROUP / SAU MUA HÀNG</span><h2>{{ admin ? (data?.can_warehouse || data?.warehouse_closed ? 'Kiểm nhận & hoàn kho' : 'Hỗ trợ sau bán & tiền hoàn') : 'Trả hàng & hỗ trợ' }}</h2><p>Đơn {{ orderCode || `#${orderId}` }}</p></div><button type="button" class="as-icon-btn" aria-label="Đóng thông tin hậu mãi" :disabled="busy" @click="close"><X :size="20" /></button></header>
       <div class="as-body">
         <div class="as-tools"><span>Thông tin đồng bộ từ cửa hàng</span><button type="button" :disabled="loading || busy" @click="error = ''; load()"><RefreshCw :size="14" />Làm mới</button></div>
         <p v-if="error" class="as-note error" role="alert">{{ error }}</p>

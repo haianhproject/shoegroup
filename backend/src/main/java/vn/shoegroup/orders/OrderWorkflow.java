@@ -125,15 +125,12 @@ public class OrderWorkflow {
           "Đơn hàng được sắp xếp giao lại",
           "Shop đã sắp xếp giao lại đơn hàng vào thời gian gần nhất. Bạn có thể theo dõi tiếp trạng"
               + " thái đang giao hàng và giao hàng thành công.");
-    else if (warehouse && accident(reason))
-      sql.notify(
-          customer, id, "Sự cố vận chuyển", "Đơn gặp sự cố vận chuyển. Shop sẽ giao lại sớm.");
     else if (warehouse)
       sql.notify(
           customer,
           id,
-          "Chưa liên hệ được người nhận",
-          "Đơn chưa giao được vì chưa liên hệ được người nhận. Cửa hàng đang kiểm tra kiện hàng và hướng xử lý.");
+          "Kiện chờ kiểm nhận",
+          "Đơn giao không thành công. Cửa hàng đang kiểm nhận kiện hàng trước khi quyết định giao lại hoặc hoàn kho và đóng đơn.");
     else if (lostCancellation)
       sql.notify(
           customer,

@@ -90,6 +90,7 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
     AbortController, setTimeout, clearTimeout,
     localStorage: storage(), sessionStorage: storage(),
     crypto: require('node:crypto').webcrypto,
+    defineExpose() {},
     require: name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === '@/services/orderCode' || name === '../services/orderCode') return load('src/services/orderCode.js');
@@ -258,18 +259,22 @@ test('order mappings use warehouse state and server item subtotal', () => {
   assert.equal(mapped.subtotal, 550000);
 });
 
-test('customer sees three distinct delivery failure outcomes', () => {
+test('customer distinguishes refusal, unreachable recipient, transport accident and lost shipment', () => {
   const orders = load('src/stores/orderStore.js', { './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api' } });
   const unreachable = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'RETURNED_TO_WAREHOUSE' };
   const accident = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'DELIVERY_ACCIDENT' };
   const lost = { status: 'CANCELLED', stockIssueStatus: 'LOST_IN_TRANSIT' };
+  const refused = { status: 'WAREHOUSE_RETURN', stockIssueStatus: 'RETURNED_TO_WAREHOUSE', stockIssueReason: 'Khách từ chối nhận vì hàng có vấn đề' };
 
   assert.equal(orders.getDeliveryIssueType(unreachable), 'UNREACHABLE');
   assert.equal(orders.getDeliveryIssueType(accident), 'ACCIDENT');
   assert.equal(orders.getDeliveryIssueType(lost), 'LOST');
+  assert.equal(orders.getDeliveryIssueType(refused), 'REFUSED');
   assert.equal(orders.getCustomerOrderStatusLabel(unreachable), 'Chưa liên hệ được');
   assert.equal(orders.getCustomerOrderStatusLabel(accident), 'Sự cố vận chuyển');
   assert.equal(orders.getCustomerOrderStatusLabel(lost), 'Hàng bị thất lạc');
+  assert.equal(orders.getCustomerOrderStatusLabel(refused), 'Chờ kiểm nhận');
+  assert.equal(orders.getCustomerOrderStatusLabel({ ...refused, status: 'SHIPPING' }), 'Đang giao');
 });
 
 test('local order keeps the image of the purchased color variant', () => {
@@ -473,13 +478,13 @@ test('checkout confirms a transfer once and waits for the API before closing', a
   assert.equal(navigation[0].query.orderId, 'LOCAL-1');
 });
 
-function loadAdminImages() {
+function loadAdminImages(employee = vue.ref(false)) {
   return load('src/views/admin/adminStore.js', {
     '@/services/checkoutAttempt': {},
     '@/services/revenue': { recognizedOrderRevenue: () => 0 },
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: '', phone: '', message: '' }) },
-    '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:vue.ref(false), logout() {} },
+    '@/stores/authStore': { currentUser: vue.ref(null), isEmployee:employee, logout() {} },
     '../../services/apiClient': { API_BASE_URL: 'http://localhost:5000/api', getToken: () => null },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },
   }, {
@@ -1048,18 +1053,39 @@ test('lost delivery cancels permanently while the other failures can be reshippe
   const options = admin.getDeliveryFailureOptions();
   const unreachable = options.find(option => option.key === 'return_warehouse');
   const accident = options.find(option => option.key === 'delivery_accident');
+  const refused = options.find(option => option.key === 'delivery_refused');
   const lost = options.find(option => option.key === 'lost_delivery_cancel');
 
   assert.equal(unreachable.next, 'Về kho');
   assert.equal(accident.next, 'Về kho');
+  assert.equal(refused.next, 'Về kho');
+  assert.match(refused.reason, /từ chối nhận/);
   assert.equal(lost.next, 'Đã hủy');
   assert.equal(lost.issueStatus, 'LOST_IN_TRANSIT');
   assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' })[0].key, 'reship');
+  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' }).some(a=>a.afterSales), true);
+  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'BANK', payment_status: 'Chưa thanh toán' }).some(a=>a.afterSales), true);
+  assert.equal(loadAdminImages(vue.ref(true)).getOrderActions({ status: 'Về kho', payment_method: 'COD' }).some(a=>a.afterSales), false);
   assert.equal(admin.getOrderActions({
     status: 'Giao hàng thất bại',
     payment_method: 'COD',
     stock_issue_reason: 'Mất hàng khi vận chuyển',
   }).length, 0);
+});
+
+test('failed delivery opens the existing inspection panel without writing an order status or return request', () => {
+  let opened=0,writes=0;
+  const page=load('src/views/admin/pages/PaymentsPage.vue',{'../adminStore':{paymentChannelOrders:vue.ref([]),runOrderAction:()=>writes++}}, {},['afterSalesPanel','requestOrderAction','transitionConfirm']);
+  page.afterSalesPanel.value={open:()=>opened++};
+  page.requestOrderAction({id:9,status:'Về kho'},{key:'warehouse_inspection',afterSales:true});
+  assert.equal(opened,1);assert.equal(writes,0);assert.equal(page.transitionConfirm.open,false);
+});
+
+test('marking a parcel as warehouse-bound does not claim stock was already restored', async () => {
+  const admin=loadAdminRealtime({fetch:async()=>({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({success:true,stock_deducted:false})})});
+  const order={id:9,status:'Đang vận chuyển',payment_method:'COD',products:[],stock_restored_at:null};
+  await admin.runOrderAction(order,admin.getDeliveryFailureOptions().find(a=>a.key==='delivery_refused'));
+  assert.equal(order.status,'Về kho');assert.equal(order.stock_restored_at,null);assert.match(order.stock_issue_reason,/từ chối nhận/);
 });
 
 test('printed invoice uses ShoeGroup data, accurate totals, and no decorative tracking QR', () => {

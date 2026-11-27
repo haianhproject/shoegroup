@@ -146,6 +146,7 @@ const isLostDelivery = (o) => {
 }
 
 const isAccidentDelivery = (o) => getDeliveryIssueType(o) === 'ACCIDENT'
+const isRefusedDelivery = (o) => getDeliveryIssueType(o) === 'REFUSED'
 const isUnreachableDelivery = (o) => getDeliveryIssueType(o) === 'UNREACHABLE'
 
 const historyStatusKeys = (o) => (o?.history || []).map((h) => mapStatusToKey(h.status))
@@ -167,6 +168,7 @@ const deliveryIssueMessage = (o) => {
       : 'Hàng bị thất lạc trong quá trình vận chuyển. Đơn đã hủy.'
   }
   if (o.status === 'WAREHOUSE_RETURN') {
+    if (isRefusedDelivery(o)) return 'Đơn chưa được nhận do hàng có vấn đề. Cửa hàng đang kiểm nhận kiện hàng và xử lý hoàn kho; nếu đã thanh toán, khoản hoàn sẽ được đối soát riêng.'
     return isAccidentDelivery(o)
       ? 'Đơn gặp sự cố vận chuyển. Cửa hàng đang kiểm tra kiện hàng và hướng xử lý.'
       : 'Chưa liên hệ được người nhận. Cửa hàng đang kiểm tra và xử lý kiện hàng.'
@@ -186,7 +188,7 @@ const deliveryIssueSteps = (o) => {
   const returned = o.status === 'WAREHOUSE_RETURN' || historyKeys.includes('WAREHOUSE_RETURN')
   const steps = [{ label: 'Đang giao hàng', icon: 'shipping', tone: 'neutral' }]
   if (failed) steps.push({
-    label: isAccidentDelivery(o) ? 'Sự cố vận chuyển' : (isUnreachableDelivery(o) ? 'Chưa liên hệ được' : 'Giao hàng thất bại'),
+    label: isRefusedDelivery(o) ? 'Từ chối nhận hàng' : (isAccidentDelivery(o) ? 'Sự cố vận chuyển' : (isUnreachableDelivery(o) ? 'Chưa liên hệ được' : 'Giao hàng thất bại')),
     icon: 'failed',
     tone: 'danger'
   })

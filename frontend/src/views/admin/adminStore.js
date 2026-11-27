@@ -816,15 +816,23 @@ export function getDeliveryFailureOptions() {
       key: "return_warehouse",
       text: "Khách chưa bắt máy / chưa nhận hàng",
       next: "Về kho",
-      reason: "Khách không bắt máy / không nhận hàng, kiện đã về kho.",
+      reason: "Khách chưa bắt máy / chưa nhận hàng; kiện chờ kiểm nhận tại kho.",
       issueStatus: "RETURNED_TO_WAREHOUSE",
       class: "btn-dark text-white",
+    },
+    {
+      key: "delivery_refused",
+      text: "Hàng có vấn đề / khách từ chối nhận",
+      next: "Về kho",
+      reason: "Khách từ chối nhận vì hàng có vấn đề; kiện chờ kiểm nhận để hoàn kho và đóng đơn.",
+      issueStatus: "RETURNED_TO_WAREHOUSE",
+      class: "btn-outline-danger",
     },
     {
       key: "delivery_accident",
       text: "Tai nạn / trục trặc vận chuyển",
       next: "Về kho",
-      reason: "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại vào ngày gần nhất.",
+      reason: "Tai nạn / trục trặc trong quá trình vận chuyển; kiện chờ kiểm nhận và xác định hướng xử lý.",
       issueStatus: "DELIVERY_ACCIDENT",
       class: "btn-outline-dark",
     },
@@ -853,6 +861,12 @@ export function getOrderActions(o) {
   if (["Đã hủy", "Đã giao hàng thành công", "Đã nhận hàng", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng"].includes(o.status))
     return [];
   const acts = [];
+  const warehouseInspection = isEmployee.value ? [] : [{
+    key: "warehouse_inspection",
+    text: "Kiểm nhận, hoàn kho & đóng đơn",
+    afterSales: true,
+    class: "btn-outline-danger",
+  }];
   const preShipping = ["Chờ xác nhận", "Đã xác nhận"].includes(o.status);
   if (o.status === "Về kho") {
     if (method === "Chuyển khoản" && !paid) return [{
@@ -860,21 +874,21 @@ export function getOrderActions(o) {
       text: "Chờ khách chuyển khoản",
       locked: true,
       class: "btn-light text-dark border",
-    }];
+    }, ...warehouseInspection];
     return [{
       key: "reship",
       text: "Giao lại đơn hàng",
       next: "Đang vận chuyển",
       reason: "Shop đã sắp xếp giao lại đơn hàng vào ngày gần nhất.",
       class: "btn-dark text-white",
-    }];
+    }, ...warehouseInspection];
   }
   if (o.status === "Giao hàng thất bại") return [{
     key: "delivery_failed_menu",
     text: "Giao hàng thất bại",
     menu: getDeliveryFailureOptions(),
     class: "btn-outline-danger",
-  }];
+  }, ...warehouseInspection];
   if (method === "Chuyển khoản") {
     if (!paid) {
       const unpaidActions = [
@@ -1050,7 +1064,7 @@ export async function runOrderAction(o, act) {
       }
     }
     if (act.next === "Về kho") {
-      o.stock_restored_at = new Date().toISOString();
+      // Chỉ API kiểm nhận hoàn kho mới được đánh dấu đã hoàn tồn.
       o.stock_issue_status = act.issueStatus || "RETURNED_TO_WAREHOUSE";
       o.stock_issue_reason = act.reason || "";
     }
@@ -1401,7 +1415,7 @@ export function getOrderResolutionReason(o) {
   if (historyReason) return String(historyReason).trim();
 
   if (issueKey === "LOST_IN_TRANSIT") return "Mất hàng khi vận chuyển - hủy đơn, không hoàn kho.";
-  if (issueKey === "DELIVERY_ACCIDENT") return "Tai nạn / trục trặc trong quá trình vận chuyển, đơn sẽ được giao lại.";
+  if (issueKey === "DELIVERY_ACCIDENT") return "Tai nạn / trục trặc trong quá trình vận chuyển; cửa hàng đang kiểm tra kiện hàng.";
   if (issueKey === "RETURNED_TO_WAREHOUSE") return "Khách không bắt máy / không nhận hàng, kiện đã về kho.";
   if (issueKey === "DELIVERY_FAILED") return "Giao hàng thất bại, cần kiểm tra lại hành trình vận chuyển.";
   return cancelled ? "Đơn cũ chưa lưu lý do hủy." : "Chưa có ghi chú nguyên nhân giao thất bại.";
