@@ -54,9 +54,10 @@ public class OrderWorkflow {
         user.staff()
             && cancel
             && lost(reason)
-            && (shipping || current.equals("giao hang that bai"));
+            && (shipping || Set.of("giao hang that bai","ve kho").contains(current))
+            && order.get("StockRestoredAt")==null;
     boolean warehouse = n.equals("ve kho"),
-        reship = current.equals("ve kho") && n.equals("dang van chuyen"),
+        reship = Set.of("ve kho","giao hang that bai").contains(current) && n.equals("dang van chuyen"),
         confirm =
             Set.of("cho xac nhan", "cho xu ly", "pending").contains(current)
                 && n.equals("da xac nhan");
@@ -69,6 +70,8 @@ public class OrderWorkflow {
       throw new ApiException(409, "LOST_ORDER_TERMINAL", "Don that lac khong the giao lai.");
     if (cancel && !cancelled && reason.isEmpty())
       throw new ApiException(400, "CANCEL_REASON_REQUIRED", "Vui long nhap ly do huy.");
+    if(lostCancellation && !Values.bool(body.get("confirm_lost"),false))
+      throw new ApiException(400,"LOST_CONFIRMATION_REQUIRED","Cần xác nhận hàng đã thất lạc, không có hàng thực tế để hoàn kho.");
     if (!cancel && !sql.allowed(order.get("Status"), next))
       throw new ApiException(409, "Khong the chuyen trang thai don hang.");
     if (!user.staff() && !cancel)

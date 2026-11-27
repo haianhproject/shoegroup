@@ -574,9 +574,13 @@ onUnmounted(() => {
             </a>
           </div>
 
-          <div v-if="o.serverId && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)" class="oc-after-sales">
-            <AfterSalesPanel :order-id="o.serverId" :order-code="getCustomerOrderCode(o)" :trigger-label="o.returnCount ? 'Theo dõi trả hàng' : 'Yêu cầu trả hàng'" @updated="loadOrders" />
+          <div v-if="o.serverId && (o.returnCount || o.pendingRefundAmount || o.refundedAmount)" class="oc-after-sales">
+            <AfterSalesPanel :order-id="o.serverId" :order-code="getCustomerOrderCode(o)" trigger-label="Chi tiết hàng trả & tiền hoàn" read-only @updated="loadOrders" />
             <span v-if="o.activeReturnCount > 0" class="stat-badge amber">Trả hàng đang được xử lý</span>
+          </div>
+          <div v-if="o.refundedAmount || o.pendingRefundAmount" class="oc-refund-summary">
+            <span v-if="o.refundedAmount"><strong>{{ o.refundedAmount >= o.total ? 'Đã hoàn tiền toàn bộ' : 'Đã hoàn tiền một phần' }}</strong>{{ formatCurrency(o.refundedAmount) }}</span>
+            <span v-if="o.pendingRefundAmount"><strong>Chờ hoàn tiền</strong>{{ formatCurrency(o.pendingRefundAmount) }}</span>
           </div>
 
           <!-- Transfer notices -->
@@ -602,6 +606,7 @@ onUnmounted(() => {
                     <span v-if="it.color">· {{ it.color?.color_label || it.color }}</span>
                     <span v-if="it.attributes?.material_name">· {{ it.attributes.material_name }}</span>
                   </div>
+                  <div v-if="it.returnedQuantity" class="oc-returned-line">Đã trả {{ it.returnedQuantity }}/{{ it.quantity }} · {{ it.refundedQuantity ? `Đã hoàn tiền ${it.refundedQuantity} sản phẩm` : 'Chờ hoàn tiền' }}</div>
                 </div>
                 <div class="oc-line-qty">x{{ it.quantity }}</div>
                 <div class="oc-line-price">{{ formatCurrency(it.subtotal || it.unitPrice * it.quantity) }}</div>
@@ -741,6 +746,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.oc-refund-summary{display:flex;flex-wrap:wrap;gap:12px;padding:13px 15px;margin:12px 0;border:1px solid #dfe8e3;border-radius:9px;background:#f7faf8}.oc-refund-summary>span{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#4d6c59;line-height:1.8}.oc-refund-summary strong{font-weight:550}.oc-returned-line{font-size:11px;color:#527261;line-height:1.8;margin-top:8px}
 .orders-page { background: var(--sg-soft); min-height: calc(100dvh - var(--sg-header-height)); }
 .orders-container { max-width: 1360px; margin-inline: auto; padding: 40px 24px 72px; }
 .order-support-link { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 9px 12px; border: 1px solid #dce5df; border-radius: 8px; background: #fff; color: #3f5f4c; font-size: 12px; font-weight: 500; text-decoration: none; transition: background .18s ease, border-color .18s ease; }

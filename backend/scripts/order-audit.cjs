@@ -4,7 +4,7 @@ const { token } = require('../legacy-express/test/helpers/audit-db.cjs');
 
 module.exports = async function orderAudit({ api, pool, admin, users, check, fixture, stock, stopLegacy }) {
   const create = (item, extra = {}, key, port = 5194) => api('/orders', { port, method: 'POST', body: { addressId: users[0].addressId, paymentMethod: 'COD', items: [item], ...extra }, headers: key ? { 'Idempotency-Key': key } : {} });
-  const change = (id, status, reason = 'Audit status') => api(`/orders/${id}/status`, { user: admin, method: 'PUT', body: { status, reason } });
+  const change = (id, status, reason = 'Audit status') => api(`/orders/${id}/status`, { user: admin, method: 'PUT', body: { status, reason, ...(/thất lạc|mất hàng/i.test(reason) ? { confirm_lost: true } : {}) } });
   const rows = async query => (await pool.request().query(query)).recordset;
   const state = async id => (await rows(`SELECT * FROM Orders WHERE OrderID=${Number(id)}`))[0];
   const ok = response => { assert.equal(response.status, 200, JSON.stringify(response)); return response.data; };

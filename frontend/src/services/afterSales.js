@@ -9,6 +9,8 @@ export const afterSalesApi = {
   detail: (id, options) => api.get(`/orders/${id}/after-sales`, options),
   request: (id, body) => api.post(`/orders/${id}/returns`, body),
   list: (scope, q = '') => api.get(`/returns?scope=${encodeURIComponent(scope)}&q=${encodeURIComponent(q)}`),
+  lookup: code => api.get(`/returns/order?code=${encodeURIComponent(code)}`),
+  register: (id, body) => api.post(`/orders/${id}/return-receipts`, body),
   review: (id, body) => api.post(`/returns/${id}/review`, body),
   receive: (id, body) => api.post(`/returns/${id}/receive`, body),
   warehouse: (id, body) => api.post(`/orders/${id}/warehouse-return`, body),

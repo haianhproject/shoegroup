@@ -16,9 +16,16 @@
  * nho lop "httpInterceptor.js" (tu dong gan token + doi base URL).
  * ============================================================ */
 
-export const API_BASE_URL = (
+import { resolveDevelopmentApi } from './apiEndpoint'
+
+export let API_BASE_URL = (
   import.meta.env?.VITE_API_BASE_URL || "http://localhost:5000/api"
 ).replace(/\/+$/, "");
+
+export async function initializeApiEndpoint() {
+  API_BASE_URL = await resolveDevelopmentApi(API_BASE_URL, { development: import.meta.env?.DEV === true })
+  return API_BASE_URL
+}
 
 const TOKEN_KEY = "shoegroup_token";
 const USER_KEY = "shoegroup_current_user";

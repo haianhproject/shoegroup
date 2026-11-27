@@ -368,6 +368,9 @@ export const mapServerOrder = (s) => {
     isCountedAsRevenue,
     activeReturnCount: Number(s.active_return_count || 0),
     returnCount: Number(s.return_count || 0),
+    refundedAmount: Number(s.refunded_amount || 0),
+    pendingRefundAmount: Number(s.pending_refund_amount || 0),
+    returnAdjustmentAmount: Number(s.return_adjustment_amount || 0),
     stockIssueStatus: s.stock_issue_status ?? s.StockIssueStatus ?? null,
     stockIssueReason: s.stock_issue_reason ?? s.StockIssueReason ?? "",
     stockRestoredAt: toTimestamp(s.stock_restored_at ?? s.StockRestoredAt),
@@ -397,6 +400,8 @@ export const mapServerOrder = (s) => {
       size: { size_name: d.size || "" },
       color: { color_label: d.color || "" },
       quantity: d.quantity ?? 1,
+      returnedQuantity: Number(d.returned_quantity || 0) + Number(d.historical_returned_quantity || 0),
+      refundedQuantity: Number(d.refunded_quantity || 0),
       unitPrice: d.price ?? 0,
       subtotal: (d.price ?? 0) * (d.quantity ?? 1),
     })),
@@ -534,6 +539,10 @@ export const reconcileOrdersFromServer = (list) => {
     }
     o.fromServer = true;
     // Đơn đã đồng bộ luôn lấy trạng thái hiện tại trên server làm nguồn thật.
+    if (key === 'CANCELLED' && Object.prototype.hasOwnProperty.call(s, 'cancel_reason') && o.cancelReason !== s.cancel_reason) {
+      o.cancelReason = s.cancel_reason || 'Đơn bị hủy.';
+      changed = true;
+    }
     if (o.status !== key) {
       o.status = key;
       if (key === "DELIVERED" && !o.deliveredDate) {
@@ -573,7 +582,7 @@ export const reconcileOrdersFromServer = (list) => {
     }
     if (Array.isArray(s.products) || Array.isArray(s.OrderDetails)) {
       const snapshot = mapServerOrder(s);
-      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total', 'activeReturnCount', 'returnCount']) {
+      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total', 'activeReturnCount', 'returnCount', 'refundedAmount', 'pendingRefundAmount', 'returnAdjustmentAmount']) {
         if (JSON.stringify(o[field]) !== JSON.stringify(snapshot[field])) {
           o[field] = snapshot[field];
           changed = true;

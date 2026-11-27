@@ -23,20 +23,56 @@ test('inspection rejects fractional, negative, empty and over-received quantitie
   for (const change of [{ good_quantity: 1.5 }, { damaged_quantity: -1 }, { good_quantity: 3 }, { good_quantity: 0, damaged_quantity: 0 }]) assert.equal(validateInspection([{ ...line, ...change }]), false);
 });
 
-test('return submission blocks a double click and retains a failed customer draft', async () => {
-  const dto = { items: [{ order_detail_id: 1, quantity: 3, remaining_quantity: 3 }], returns: [], refunds: [], can_request: true };
+test('manual return submission blocks a double click and keeps its idempotency key on failure', async () => {
+  const dto = { order_id: 7, items: [{ order_detail_id: 1, quantity: 3, returned_quantity: 0, remaining_quantity: 3, net_line_total: 810000 }], remaining_refundable_amount: 810000, can_request: true };
   let finish, fail = false, calls = 0;
-  const helpers = load('src/services/afterSales.js', { './apiClient': { api: {} } });
-  const page = load('src/components/AfterSalesPanel.vue', {
-    'lucide-vue-next': {}, '../services/afterSales': { ...helpers, afterSalesApi: { detail: async () => dto, request: () => { calls++; return fail ? Promise.reject(new Error('Đơn đang được xử lý ở phiên khác')) : new Promise(resolve => finish = resolve); } } },
-  }, { defineProps: () => ({ orderId: 7, admin: false }), defineEmits: () => () => {} }, ['data', 'request', 'submitRequest', 'busy', 'error', 'close']);
-  page.data.value = dto; page.request.reason = 'Cần đổi kích cỡ'; page.request.quantities[1] = 1; page.request.key = 'test-request';
-  const pending = page.submitRequest(); await page.submitRequest(); page.close();
-  assert.equal(calls, 1); assert.equal(page.busy.value, true); assert.equal(page.request.reason, 'Cần đổi kích cỡ');
+  const page = load('src/components/OrderReturnForm.vue', {
+    'lucide-vue-next': {}, '../services/afterSales': { afterSalesApi: { register: () => { calls++; return fail ? Promise.reject(new Error('Đơn đang được xử lý ở phiên khác')) : new Promise(resolve => finish = resolve); } } },
+  }, { defineProps: () => ({}), defineEmits: () => () => {} }, ['order', 'form', 'seed', 'save', 'busy', 'error', 'refund']);
+  page.seed(dto); page.form.reason = 'Cần đổi kích cỡ'; page.form.lines[0].selected = true; page.form.confirmed = true;
+  const pending = page.save(); await page.save();
+  assert.equal(calls, 1); assert.equal(page.busy.value, true); assert.equal(page.refund.value, 270000);
   finish({ success: true }); await pending;
-  assert.equal(page.busy.value, false); assert.equal(page.request.reason, '');
-  fail = true; page.request.reason = 'Giữ lại nội dung này'; page.request.quantities[1] = 1; await page.submitRequest();
-  assert.equal(page.busy.value, false); assert.equal(page.request.reason, 'Giữ lại nội dung này'); assert.match(page.error.value, /phiên khác/);
+  assert.equal(page.busy.value, false); assert.equal(page.order.value.can_request, false);
+  fail = true; page.seed(dto); page.form.reason = 'Giữ lại nội dung này'; page.form.lines[0].selected = true; page.form.confirmed = true; const key=page.form.key; await page.save();
+  assert.equal(page.busy.value, false); assert.equal(page.form.reason, 'Giữ lại nội dung này'); assert.equal(page.form.key,key); assert.match(page.error.value, /phiên khác/);
+});
+
+test('development API selection uses only compatible local read probes before stores load', async () => {
+  const { resolveDevelopmentApi: resolve }=load('src/services/apiEndpoint.js',{}, {AbortSignal});
+  const base='http://localhost:5000/api', calls=[];
+  const current={success:true,db:'connected',application:'shoegroup',apiContract:2,database:'SameDB',catalogIdentity:{revision:'same'}};
+  const fetcher=async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:current};};
+  assert.equal(await resolve(base,{development:true,fetcher}),'http://localhost:5001/api');
+  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.url.endsWith('/health')&&!c.options.method&&!c.options.headers));
+  calls.length=0;assert.equal(await resolve(base,{development:false,fetcher}),base);assert.equal(await resolve('https://example.test/api',{development:true,fetcher}),'https://example.test/api');assert.equal(calls.length,0);
+  assert.equal(await resolve(base,{development:true,fetcher:async()=>({ok:true,json:async()=>current})}),base);
+  assert.equal(await resolve(base,{development:true,fetcher:async url=>({ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:{...current,database:'DifferentDB'}})}),base);
+});
+
+test('failure choices wait for confirmation and loss requires acknowledgement and a note', async () => {
+  let writes=0;
+  const page=load('src/views/admin/pages/PaymentsPage.vue',{'../adminStore':{paymentChannelOrders:vue.ref([]),runOrderAction:async()=>writes++}}, {document:{activeElement:null}},['chooseFailureResolution','confirmTransition','transitionConfirm']);
+  const lost={key:'lost_delivery_cancel',next:'Đã hủy',reason:'Mất hàng khi vận chuyển'};
+  Object.assign(page.transitionConfirm,{open:true,order:{id:9},action:{menu:[lost]}});
+  page.chooseFailureResolution(lost);assert.equal(writes,0);
+  await page.confirmTransition();assert.equal(writes,0);
+  page.transitionConfirm.confirmed=true;page.transitionConfirm.reason='Đơn vị vận chuyển đã xác minh mất kiện';await page.confirmTransition();assert.equal(writes,1);
+});
+
+test('partial refunds are visible without treating all remaining revenue as refunded', () => {
+  const admin=loadAdminRealtime();
+  const order=admin.mapOrder({id:7,total:900000,status:'Đã giao hàng thành công',payment_status:'Đã thanh toán',refunded_amount:270000,products:[{quantity:3,returned_quantity:1,refunded_quantity:1}]});
+  assert.equal(admin.getPaymentStatusPill(order).label,'Đã hoàn tiền một phần');assert.equal(order.payment_status,'Đã thanh toán');assert.equal(order.products[0].refunded_quantity,1);
+  assert.equal(admin.getPaymentStatusPill({...order,pending_refund_amount:270000}).label,'Chờ hoàn tiền');
+  assert.equal(admin.getPaymentStatusPill({...order,refunded_amount:900000}).label,'Đã hoàn tiền');
+});
+
+test('a server cancellation note replaces an older cached note even when status stays cancelled', () => {
+  const store=load('src/stores/orderStore.js',{'./authStore':{getCurrentUser:()=>({id_user:1})},'../services/apiClient':{API_BASE_URL:'/api'}});
+  store.reconcileOrdersFromServer([{id:9,user_id:1,status:'Đã hủy',cancel_reason:'Ghi chú cũ'}]);
+  store.reconcileOrdersFromServer([{id:9,user_id:1,status:'Đã hủy',cancel_reason:'Đã kiểm nhận đủ kiện và đóng đơn'}]);
+  assert.equal(store.orderState.orders.find(o=>o.serverId===9).cancelReason,'Đã kiểm nhận đủ kiện và đóng đơn');
 });
 
 test('chat clears account-specific responses when identity changes during a request', async () => {
@@ -1051,14 +1087,14 @@ test('admin read honors caller cancellation and clears its timeout', async () =>
 test('lost delivery cancels permanently while the other failures can be reshipped', () => {
   const admin = loadAdminImages();
   const options = admin.getDeliveryFailureOptions();
-  const unreachable = options.find(option => option.key === 'return_warehouse');
-  const accident = options.find(option => option.key === 'delivery_accident');
+  const unreachable = options.find(option => option.key === 'retry_delivery');
   const refused = options.find(option => option.key === 'delivery_refused');
   const lost = options.find(option => option.key === 'lost_delivery_cancel');
 
-  assert.equal(unreachable.next, 'Về kho');
-  assert.equal(accident.next, 'Về kho');
-  assert.equal(refused.next, 'Về kho');
+  assert.equal(options.length, 3);
+  assert.equal(unreachable.next, 'Giao hàng thất bại');
+  assert.equal(refused.afterSales, true);
+  assert.equal(refused.next, undefined);
   assert.match(refused.reason, /từ chối nhận/);
   assert.equal(lost.next, 'Đã hủy');
   assert.equal(lost.issueStatus, 'LOST_IN_TRANSIT');
@@ -1081,11 +1117,12 @@ test('failed delivery opens the existing inspection panel without writing an ord
   assert.equal(opened,1);assert.equal(writes,0);assert.equal(page.transitionConfirm.open,false);
 });
 
-test('marking a parcel as warehouse-bound does not claim stock was already restored', async () => {
+test('marking a retryable failure holds stock and allows reshipping', async () => {
   const admin=loadAdminRealtime({fetch:async()=>({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({success:true,stock_deducted:false})})});
   const order={id:9,status:'Đang vận chuyển',payment_method:'COD',products:[],stock_restored_at:null};
-  await admin.runOrderAction(order,admin.getDeliveryFailureOptions().find(a=>a.key==='delivery_refused'));
-  assert.equal(order.status,'Về kho');assert.equal(order.stock_restored_at,null);assert.match(order.stock_issue_reason,/từ chối nhận/);
+  await admin.runOrderAction(order,admin.getDeliveryFailureOptions().find(a=>a.key==='retry_delivery'));
+  assert.equal(order.status,'Giao hàng thất bại');assert.equal(order.stock_restored_at,null);
+  assert.equal(admin.getOrderActions(order).some(a=>a.key==='reship'),true);
 });
 
 test('printed invoice uses ShoeGroup data, accurate totals, and no decorative tracking QR', () => {

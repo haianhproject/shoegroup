@@ -16,18 +16,20 @@ let pool, server, springServer, serverOutput = "", checks = 0;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function startServer() {
   const spring = process.env.POS_AUDIT_BACKEND === "spring";
+  const startLegacy = !server || server.exitCode !== null;
   // Refuse to send test writes to any pre-existing process on the audit port.
   await new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once("error", reject);
     probe.listen(5194, () => probe.close(resolve));
   });
-  if (spring) {
+  if (spring && startLegacy) {
     await new Promise((resolve, reject) => {
       const probe = net.createServer(); probe.once("error", reject);
       probe.listen(5195, () => probe.close(resolve));
     });
   }
+  if (startLegacy) {
   server = spawn(process.execPath, [path.resolve(__dirname, "../server.js")], {
     windowsHide: true,
     env: { ...process.env, DB_NAME: DATABASE, PORT: spring ? "5195" : "5194", MIGRATION_BRIDGE: spring ? "true" : "false", JOBS_ENABLED: spring ? "false" : "true", AUTH_MODE: "enforce", RATE_LIMIT_MAX_API: "10000", EMAIL_USER: "", EMAIL_PASS: "" },
@@ -35,7 +37,17 @@ async function startServer() {
   });
   server.stdout.on("data", data => { serverOutput += data; });
   server.stderr.on("data", data => { serverOutput += data; });
+  }
   if (spring) {
+    // Finish the legacy comparison fixture before Spring normalizes its columns.
+    // Starting both migration engines concurrently can deadlock or replay legacy DDL after ColorName was normalized.
+    let legacyReady = false;
+    for (let i=0;i<300;i++) {
+      if(server.exitCode!==null)throw new Error(serverOutput);
+      try { const probe=await api('/shipping/quote',{method:'POST',body:{province:'Hà Nội'},user:admin,port:5195});if(probe.status===200){legacyReady=true;break;} }catch {}
+      await sleep(150);
+    }
+    if(!legacyReady)throw new Error(`Legacy comparison fixture did not initialize: ${serverOutput}`);
     const jar = path.resolve(__dirname, "../../target/shoegroup-api-2.0.0.jar");
     if (!require("node:fs").existsSync(jar)) throw new Error("Build backend with Maven package before the Spring POS audit.");
     const javaHome = process.env.JAVA_HOME || "C:/Program Files/Java/jdk-21";
@@ -59,8 +71,8 @@ async function startServer() {
   }
   throw new Error(`Server did not become ready: ${serverOutput}`);
 }
-async function stopServer() {
-  for (const child of [springServer, server]) {
+async function stopServer(keepComparison = false) {
+  for (const child of keepComparison ? [springServer] : [springServer, server]) {
     if (!child || child.exitCode !== null) continue;
     await new Promise(resolve => {
       child.once("exit", resolve);
@@ -190,7 +202,7 @@ async function main() {
   await check("held cart survives API restart and is returned on reload", async () => {
     const item = await fixture();
     const added = await put(item, 2, (await cart()).revision);
-    await stopServer();
+    await stopServer(process.env.POS_AUDIT_BACKEND === 'spring');
     await startServer();
     const restored = await cart();
     assert.equal(restored.revision, added.data.revision);

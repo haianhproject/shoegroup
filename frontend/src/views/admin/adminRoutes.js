@@ -46,7 +46,7 @@ const adminRoutes = [
         path: "returns",
         name: "admin-returns",
         component: () => import("./pages/ReturnsPage.vue"),
-        meta: { title: "Trả hàng & hoàn kho" },
+        meta: { title: "Trả hàng & tiền hoàn" },
       },
       {
         path: "pos",

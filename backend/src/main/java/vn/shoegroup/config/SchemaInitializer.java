@@ -31,7 +31,8 @@ public class SchemaInitializer {
           "20261015_order_coupon_hardening.sql",
           "20261016_catalog_data_hardening.sql",
           "20261016_catalog_name_uniqueness.sql",
-          "20261127_after_sales.sql");
+          "20261127_after_sales.sql",
+          "20261127_return_workflow.sql");
   private final JdbcTemplate jdbc;
 
   public SchemaInitializer(JdbcTemplate jdbc) {

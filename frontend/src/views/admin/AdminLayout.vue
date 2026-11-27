@@ -88,7 +88,7 @@ const sections = [
     { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã giảm giá' },
     { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Khuyến mại sản phẩm' },
     { to: '/admin/panel/customers', icon: 'people', label: 'Khách hàng' },
-    { to: '/admin/panel/returns', icon: 'return', label: 'Trả hàng & hoàn kho' },
+    { to: '/admin/panel/returns', icon: 'return', label: 'Trả hàng & tiền hoàn' },
   ] },
   { title: 'Hệ thống', items: [
     { to: '/admin/panel/accounts', icon: 'shield', label: 'Tài khoản & phân quyền' },
