@@ -17,6 +17,7 @@
 import { ref, reactive, computed, watch } from "vue";
 import { getCheckoutAttempt, clearCheckoutAttempt } from '@/services/checkoutAttempt';
 import { recognizedOrderRevenue } from '@/services/revenue';
+import { isOrderInProgress } from '@/services/orderQueue';
 import { buildPosPaymentQrUrl, buildVietQrUrl, createPosTransferContent, normalizePosBankConfig } from '@/services/vietQr';
 import { validatePosCustomer } from '@/services/posCustomer';
 import { formatOrderCode } from '@/services/orderCode';
@@ -372,7 +373,7 @@ export const lowStockCount = computed(
 export const incompleteOrdersCount = computed(
   () =>
     db.orders.filter(
-      (o) => !["Đã giao hàng thành công", "Đã nhận hàng", "Đã hủy", "Yêu cầu trả hàng", "Đã hoàn tất trả hàng", "Về kho"].includes(o.status),
+      isOrderInProgress,
     ).length,
 );
 export const outOfStockProductsCount = computed(() => {
@@ -452,7 +453,7 @@ export function localDateKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 export function revenueDate(order) {
-  // POS ghi nhận lúc thu tiền; Online ghi nhận khi hết thời gian chờ trả hàng.
+  // POS ghi nhận lúc thu tiền; Online ghi nhận khi đã giao và đã thanh toán.
   return getOrderChannel(order) === "Offline"
     ? order.payment_confirmed_at || order.received_confirmed_at || order.date
     : order.revenue_eligible_at || order.received_confirmed_at || order.date;
@@ -1330,8 +1331,8 @@ export function getOrderStatusPill(o) {
       cls: "bg-success text-white",
     },
     "Đã giao hàng thành công": {
-      label: "Đã giao hàng",
-      cls: "bg-dark text-white",
+      label: "Hoàn thành",
+      cls: "bg-success text-white",
     },
     "Đang vận chuyển": {
       label: "Đang giao",

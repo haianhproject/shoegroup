@@ -29,6 +29,7 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
     require: name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === '@/services/orderCode' || name === '../services/orderCode') return load('src/services/orderCode.js');
+      if (name === '@/services/orderQueue') return load('src/services/orderQueue.js');
       if (name === '../services/vietQr') return load('src/services/vietQr.js');
       if (name === '../directives/dialogFocus') return load('src/directives/dialogFocus.js');
       if (name === 'vue') return { ...vue, onMounted() {}, onUnmounted() {}, onBeforeUnmount() {} };
@@ -101,6 +102,9 @@ test('dashboard revenue excludes unpaid/cancelled orders and preserves historica
   const {recognizedOrderRevenue}=load('src/services/revenue.js');
   const paid={id:1,status:'Đã nhận hàng',payment_status:'Đã thanh toán',is_counted_as_revenue:1,total:575000,historical_refund_amount:100000};
   assert.equal(recognizedOrderRevenue(paid),475000);
+  for (const status of ['Đã giao hàng thành công', 'Delivered', 'Hoàn thành', 'COMPLETED']) {
+    assert.equal(recognizedOrderRevenue({...paid,status}),475000);
+  }
   assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'}),0);
   assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'}),0);
   assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0}),0);
@@ -815,61 +819,54 @@ test('customer cancellation blocks repeated submits, updates immediately after s
   assert.equal(orders.orderState.orders[0].status, 'CONFIRMED');
 });
 
-function loadCustomerReceive(api, reload = async () => {}) {
-  const orders = load('src/stores/orderStore.js', {
+test('order queue partitions all nonterminal orders from completed and cancelled history', () => {
+  const { isOrderInProgress } = load('src/services/orderQueue.js');
+  const active = ['Chờ xác nhận', 'Đã xác nhận', 'Đang vận chuyển', 'Giao hàng thất bại', 'Về kho', 'Yêu cầu trả hàng', 'unknown'];
+  const closed = ['Đã giao hàng thành công', 'Đã nhận hàng', 'Hoàn tất', 'COMPLETED', 'Đã hủy', 'cancelled', 'Đã hoàn tất trả hàng'];
+  for (const status of active) assert.equal(isOrderInProgress({ status }), true, status);
+  for (const status of closed) assert.equal(isOrderInProgress({ status }), false, status);
+  const admin = loadAdminRealtime();
+  admin.db.orders = [...active, ...closed].map((status, i) => ({ id: i + 1, status, created_at: new Date(2026, 10, i + 1).toISOString() }));
+  assert.equal(admin.incompleteOrdersCount.value, active.length);
+  const page = load('src/views/admin/pages/PaymentsPage.vue', {
+    '../adminStore': { ...admin, paymentChannelOrders: vue.computed(() => admin.db.orders) },
+  }, {}, ['displayedOrders', 'queueView']);
+  assert.deepEqual(Array.from(page.displayedOrders.value, order => order.status), active);
+  page.queueView.value = 'ALL';
+  assert.deepEqual(Array.from(page.displayedOrders.value, order => order.status), closed);
+  admin.db.orders[0].status = 'Đã giao hàng thành công';
+  assert.equal(page.displayedOrders.value.length, closed.length + 1);
+  assert.equal(admin.incompleteOrdersCount.value, active.length - 1);
+});
+
+test('customer delivery and historical received orders synchronize without a receipt action', () => {
+  const store = load('src/stores/orderStore.js', {
     './authStore': { getCurrentUser: () => ({ id_user: 1 }) }, '../services/apiClient': { API_BASE_URL: '/api' },
   });
-  orders.orderState.orders = [{ id: 'SV7', serverId: 7, userId: 1, status: 'DELIVERED', serverStatus: 'DELIVERED', payment_status: 'Đã thanh toán' }];
-  const notifications = [];
+  store.reconcileOrdersFromServer([
+    { id: 7, user_id: 1, status: 'Đã giao hàng thành công', payment_status: 'Đã thanh toán', is_counted_as_revenue: true },
+    { id: 8, user_id: 1, status: 'Đã nhận hàng', payment_status: 'Đã thanh toán', is_counted_as_revenue: true },
+  ]);
+  const delivered = store.orderState.orders.find(order => order.serverId === 7);
+  const historical = store.orderState.orders.find(order => order.serverId === 8);
+  assert.equal(store.getOrderDisplayStatus(delivered), 'DELIVERED');
+  assert.equal(store.getOrderDisplayStatus(historical), 'RECEIVED');
+  assert.equal(delivered.isCountedAsRevenue, true);
+  assert.equal(store.getCustomerOrderDisplayStatus(historical), 'DELIVERED');
+  assert.equal(store.getCustomerOrderStatusLabel(historical), 'Đã giao');
+  assert.equal('confirmReceived' in store, false);
   const page = load('src/views/MyOrders.vue', {
     '../components/StoreIllustration.vue': {}, '../components/OrderStatusIcon.vue': {},
     'vue-router': { useRouter: () => ({ currentRoute: vue.ref({ query: {} }) }) },
-    '../stores/orderStore': { ...orders, loadOrders: () => reload(orders) },
-    '../stores/uiStore': { notify: item => notifications.push(item) },
-    '../services/apiClient': { api }, '../services/addressService': { addressBookApi: {}, vietnamAddressApi: {} },
-  }, {}, ['receiveModal', 'handleReceive', 'closeReceiveModal', 'submitReceive']);
-  return { page, orders, notifications };
-}
-
-test('customer receiving waits for the server, blocks duplicate clicks and starts the revenue hold', async () => {
-  let finish, calls = 0, reloads = 0;
-  const { page, orders } = loadCustomerReceive({ put: url => {
-    assert.equal(url, '/orders/7/receive'); calls++;
-    return new Promise(resolve => { finish = resolve; });
-  } }, async () => { reloads++; });
-  const order = orders.orderState.orders[0];
-  page.handleReceive(order);
-  const pending = page.submitReceive(); await page.submitReceive(); page.closeReceiveModal();
-  assert.equal(calls, 1); assert.equal(page.receiveModal.open, true);
-  assert.equal(order.status, 'DELIVERED');
-  finish({ success: true }); await pending;
-  assert.equal(order.status, 'RECEIVED'); assert.equal(order.serverStatus, 'RECEIVED');
-  assert.equal(order.isCountedAsRevenue, false);
-  assert.equal(order.revenueEligibleDate - order.receivedConfirmedDate, 14 * 864e5);
-  assert.equal(page.receiveModal.open, false); assert.equal(page.receiveModal.submitting, false);
-  assert.equal(reloads, 1);
-});
-
-test('customer receiving keeps a failed request available and requires a synchronized server ID', async () => {
-  let calls = 0;
-  const { page, orders } = loadCustomerReceive({ put: async () => { calls++; throw new Error('Server unavailable'); } });
-  const order = orders.orderState.orders[0];
-  page.handleReceive(order); await page.submitReceive();
-  assert.equal(page.receiveModal.open, true); assert.equal(page.receiveModal.submitting, false);
-  assert.equal(page.receiveModal.error, 'Server unavailable'); assert.equal(order.status, 'DELIVERED');
-  order.serverId = null;
-  await page.submitReceive();
-  assert.equal(calls, 1); assert.match(page.receiveModal.error, /đồng bộ đơn hàng/);
-});
-
-test('customer receiving recovers a lost response from the refreshed server status', async () => {
-  const { page, orders, notifications } = loadCustomerReceive({ put: async () => { throw new Error('Connection lost'); } }, async store => {
-    store.reconcileOrdersFromServer([{ id: 7, user_id: 1, status: 'Đã nhận hàng', received_confirmed_date: '2026-11-25T12:00:00', revenue_eligible_date: '2026-12-09T12:00:00', is_counted_as_revenue: false }]);
-  });
-  page.handleReceive(orders.orderState.orders[0]); await page.submitReceive();
-  assert.equal(orders.getOrderDisplayStatus(orders.orderState.orders[0]), 'RECEIVED');
-  assert.equal(page.receiveModal.open, false); assert.equal(page.receiveModal.submitting, false);
-  assert.equal(notifications.at(-1).type, 'info');
+    '../stores/orderStore': { ...store, loadOrders: async () => [] },
+    '../stores/uiStore': { notify() {} },
+    '../services/apiClient': { api: {} }, '../services/addressService': { addressBookApi: {}, vietnamAddressApi: {} },
+  }, {}, ['filtered', 'statusFilter', 'customerStatuses']);
+  page.statusFilter.value = 'DELIVERED';
+  assert.equal(page.filtered.value.length, 2);
+  assert.ok(page.customerStatuses.every(status => !['RECEIVED', 'COMPLETED'].includes(status.key)));
+  const source = fs.readFileSync(path.join(root, 'src/views/MyOrders.vue'), 'utf8');
+  assert.doesNotMatch(source, /receiveModal|submitReceive|REVENUE_HOLD_DAYS|daysUntilRevenue/);
 });
 
 test('completed payment orders use the same green badge for API codes and Vietnamese labels', () => {
@@ -882,7 +879,9 @@ test('completed payment orders use the same green badge for API codes and Vietna
     assert.match(admin.getOrderStatusPill({ status }).cls, /\bbg-success\b/);
     assert.equal(admin.getOrderActions(order).some(action => action.next === 'Đang vận chuyển'), false);
   }
-  for (const status of ['Chờ xác nhận', 'Đã xác nhận', 'Đang vận chuyển', 'Đã giao hàng thành công', 'Đã hủy', 'Yêu cầu trả hàng']) {
+  assert.equal(admin.getOrderStatusPill({ status: 'Đã giao hàng thành công' }).label, 'Hoàn thành');
+  assert.match(admin.getOrderStatusPill({ status: 'Đã giao hàng thành công' }).cls, /\bbg-success\b/);
+  for (const status of ['Chờ xác nhận', 'Đã xác nhận', 'Đang vận chuyển', 'Đã hủy', 'Yêu cầu trả hàng']) {
     assert.doesNotMatch(admin.getOrderStatusPill({ status }).cls, /\bbg-success\b/);
   }
 });

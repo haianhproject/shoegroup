@@ -110,15 +110,14 @@ module.exports = async function salesDemoAudit({ api, pool, admin, users, check 
     ok(await request(`/customers/${customer.id}/orders`, 'GET', undefined, users[1]), 403);
   });
 
-  await check('DEMO COD delivery collects once and receiving the order starts the revenue hold', async () => {
+  await check('DEMO COD delivery completes, collects and recognizes revenue once without customer confirmation', async () => {
     ok(await change(onlineOrderId, 'Đang vận chuyển'));
     ok(await change(onlineOrderId, 'Đã giao hàng thành công'));
     ok(await change(onlineOrderId, 'Đã giao hàng thành công'));
-    ok(await request(`/orders/${onlineOrderId}/receive`, 'PUT', {}, customer));
     const saved = await order(onlineOrderId);
-    assert.equal(saved.Status, 'Đã nhận hàng');
+    assert.equal(saved.Status, 'Đã giao hàng thành công');
     assert.equal(saved.PaymentStatus, 'Đã thanh toán');
-    assert.equal(saved.IsCountedAsRevenue, false);
+    assert.equal(saved.IsCountedAsRevenue, true);
     assert.equal(await stock(firstVariant), 7);
     const collections = (await pool.request().query(`SELECT COUNT(*) AS n FROM PaymentTransactions WHERE OrderID=${Number(onlineOrderId)} AND Provider='COD_COLLECTION'`)).recordset[0].n;
     assert.equal(collections, 1);

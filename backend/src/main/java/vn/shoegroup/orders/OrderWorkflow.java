@@ -1,4 +1,4 @@
-// Mục đích: Xử lý trạng thái, thanh toán, nhận hàng và đổi địa chỉ; kiểm tra quyền và hoàn tồn một lần.
+// Mục đích: Xử lý trạng thái, thanh toán và đổi địa chỉ; kiểm tra quyền và hoàn tồn một lần.
 package vn.shoegroup.orders;
 
 import static vn.shoegroup.orders.OrderSql.*;
@@ -202,20 +202,6 @@ public class OrderWorkflow {
         user.id());
     effects.afterCommit(id, "payment_changed", paid(next) ? "paid" : null);
     return Map.of("success", true, "payment_status", next);
-  }
-
-  @Transactional(isolation = Isolation.SERIALIZABLE)
-  public Map<String, Object> receive(int id, ApiUser user) {
-    String operation = "put /api/orders/:id/receive";
-    var order = sql.one(operation, 0, params("id", id));
-    owner(user, order);
-    if (!Set.of("da giao", "da giao hang thanh cong", "delivered")
-        .contains(normalize(order.get("Status"))))
-      throw new ApiException(409, "Don hang chua o trang thai da giao.");
-    sql.update(operation, 1, params("id", id, "hold", 14));
-    sql.history(id, order.get("Status"), "Đã nhận hàng", "Khách xác nhận đã nhận hàng", user.id());
-    effects.afterCommit(id, "received", null);
-    return Values.success();
   }
 
   @Transactional(isolation = Isolation.SERIALIZABLE)

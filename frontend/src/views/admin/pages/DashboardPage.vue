@@ -111,7 +111,7 @@ onBeforeUnmount(() => { [trendChart, statusChart].forEach(chart => chart?.destro
       <article class="overview-stat overview-stat-revenue">
         <div class="overview-stat-heading"><span>Doanh thu ghi nhận</span><span class="overview-stat-icon"><AdminIcon name="payment" /></span></div>
         <strong class="overview-stat-value overview-currency">{{ formatPrice(statRevenue) }}</strong>
-        <p>Theo ngày ghi nhận; đã trừ tiền hoàn. Online chờ 14 ngày sau khi nhận hàng.</p>
+        <p>Đơn đã giao và đã thanh toán; đã trừ các khoản hoàn được ghi nhận.</p>
       </article>
     </section>
 

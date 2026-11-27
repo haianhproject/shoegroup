@@ -1,4 +1,4 @@
-// Mục đích: API đặt đơn và cập nhật trạng thái, thanh toán, xác nhận nhận hàng, địa chỉ.
+// Mục đích: API đặt đơn và cập nhật trạng thái, thanh toán và địa chỉ.
 package vn.shoegroup.orders;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,8 +48,4 @@ public class OrderWriteController {
     return workflow.address(id(id), user(req), body);
   }
 
-  @PutMapping("/api/orders/{id}/receive")
-  public Map<String, Object> receive(HttpServletRequest req, @PathVariable String id) {
-    return workflow.receive(id(id), user(req));
-  }
 }

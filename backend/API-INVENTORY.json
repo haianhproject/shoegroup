@@ -1,6 +1,6 @@
 {
-  "total": 76,
-  "spring": 76,
+  "total": 75,
+  "spring": 75,
   "routes": [
     {
       "route": "POST /api/log-error",
@@ -391,12 +391,6 @@
       "implementation": "spring",
       "file": "backend/legacy-express/server.js",
       "line": 4538
-    },
-    {
-      "route": "PUT /api/orders/:id/receive",
-      "implementation": "spring",
-      "file": "backend/legacy-express/server.js",
-      "line": 4562
     },
     {
       "route": "POST /api/auth/forgot-password",
