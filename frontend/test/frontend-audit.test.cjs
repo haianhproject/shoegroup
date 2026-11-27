@@ -46,7 +46,7 @@ test('chat clears account-specific responses when identity changes during a requ
   }, {}, ['messages', 'send', 'pending']);
   const pending = page.send('Tra đơn hàng'); await new Promise(resolve => setImmediate(resolve));
   user.value = { id_user: 2 }; await vue.nextTick();
-  finish({ intent: 'ORDERS', message: 'Private order from user 1', orders: [{ code: 'PRIVATE' }], quick_replies: [] }); await pending;
+  finish({ intent: 'ORDERS', message: 'Private order from user 1', orders: [{ code: 'PRIVATE' }], addresses: [{ label: 'PRIVATE ADDRESS' }], quick_replies: [] }); await pending;
   assert.equal(page.messages.value.length, 1); assert.doesNotMatch(JSON.stringify(page.messages.value), /PRIVATE|Private order/); assert.equal(page.pending.value, false);
 });
 
@@ -59,6 +59,24 @@ test('chat retry reuses its message and keeps one active send', async () => {
   fail = false; await page.send(entry.message, entry);
   assert.equal(calls, 2); assert.equal(page.messages.value.filter(m => m.role === 'user').length, 1); assert.equal(entry.failed, false); assert.equal(page.pending.value, false);
 });
+test('chat carries a shipping followup context and resets it when returning to product search', async () => {
+  const requests=[];
+  const page=load('src/components/ChatWidget.vue', {
+    'lucide-vue-next':{}, '../services/apiClient':{API_BASE_URL:'/api',api:{post:async(_,body)=>{requests.push(body);return body.message==='Phí giao hàng'?{intent:'SHIPPING',message:'Nhận ở đâu?',context:{shipping_requested:true,size:'40'}}:body.message==='Hà Nội'?{intent:'SHIPPING_QUOTE',message:'Đã báo phí',context:{shipping_requested:true,size:'40'},shipping_quote:{fee:30000}}:{intent:'PRODUCTS',message:'Giày',context:{size:'41'}};}}}, '../stores/authStore':{currentUser:vue.ref(null)},
+  },{},['send','context']);
+  await page.send('Phí giao hàng');await page.send('Hà Nội');assert.equal(requests[1].context.shipping_requested,true);
+  await page.send('size 41');assert.equal(page.context.value.size,'41');assert.equal(page.context.value.shipping_requested,undefined);
+});
+
+test('chat retries a saved address quote with its original address id', async () => {
+  let fail=true;const requests=[];
+  const page=load('src/components/ChatWidget.vue', {
+    'lucide-vue-next':{}, '../services/apiClient':{API_BASE_URL:'/api',api:{post:async(_,body)=>{requests.push(body);if(fail)throw new Error('offline');return {intent:'SHIPPING_QUOTE',message:'Đã báo phí',context:{shipping_requested:true}};}}}, '../stores/authStore':{currentUser:vue.ref({id_user:7})},
+  },{},['quoteAddress','send','messages']);
+  await page.quoteAddress({id:12,label:'Địa chỉ riêng'});const entry=page.messages.value.find(m=>m.role==='user');assert.equal(entry.failed,true);
+  fail=false;await page.send(entry.message,entry);assert.deepEqual(requests.map(r=>r.shipping_address_id),[12,12]);assert.equal(page.messages.value.filter(m=>m.role==='user').length,1);
+});
+
 function load(relative, mocks = {}, globals = {}, expose = []) {
   const file = path.join(root, relative);
   let source = fs.readFileSync(file, 'utf8');

@@ -441,5 +441,12 @@ PHẦN 8. DEMO MỞ RỘNG HẬU MÃI VÀ CHATBOT (THÊM 5–7 PHÚT)
    A: "Bot tra dữ liệu máy chủ, chỉ xem đơn của chính khách và hướng dẫn
    đúng phạm vi. Bot không tự duyệt hoàn tiền hoặc cộng lại kho."
 
+7. Hỏi "Phí giao hàng bao nhiêu?", bot hỏi nơi nhận. Nhập "Hà Nội", rồi
+   "Đà Nẵng" để thấy phí thay đổi theo quy tắc checkout. Khi đăng nhập,
+   có thể chọn địa chỉ đã lưu để lấy báo phí theo chính tỉnh/thành của địa chỉ.
+   A: "Bot lấy phí và thời gian từ cùng dịch vụ tính phí của thanh toán,
+   không tự tạo số tiền. Đây là phí trước ưu đãi; checkout kiểm tra lại khi đặt."
+   Nếu hỏi một nơi chưa nhận diện được, bot hỏi lại thay vì báo mức phí mặc định.
+
 Kết: đối chiếu tồn bán, tồn hỏng, doanh thu thuần và khoản chờ hoàn riêng.
 Giữ ví dụ gọn; chỉ mở rộng khi hội đồng có thời gian hoặc hỏi tình huống.

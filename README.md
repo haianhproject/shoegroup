@@ -103,5 +103,8 @@ Xác nhận đối soát không tự chuyển tiền qua ngân hàng. Chỉ qu�
 
 Trợ lý ở góc trang khách dùng FAQ và dữ liệu thật để tìm giày theo tên/màu/size/ngân sách, tra đơn của tài khoản đang đăng nhập
 và hướng dẫn chuyển hỗ trợ Zalo. Đây là chatbot tra cứu có ngữ cảnh, chưa dùng mô hình ngôn ngữ hoặc dịch vụ AI trả phí.
+Hỏi **Phí giao hàng** rồi nhập tỉnh/thành (ví dụ Hà Nội, Đà Nẵng) hoặc chọn địa chỉ đã lưu của chính tài khoản.
+Bot gọi cùng `ShippingService.quote` như checkout để báo phí tiêu chuẩn và thời gian dự kiến, trước ưu đãi trên đơn.
+Nơi nhận chưa rõ hoặc có nhiều tỉnh/thành sẽ được hỏi lại; không lấy mức phí dự phòng làm báo giá cho một địa chỉ chưa xác định.
 Hội thoại chỉ giữ trong bộ nhớ phiên trang, xóa khi đổi tài khoản; bot không tự hủy đơn, hoàn kho hay xác nhận thanh toán.
 Migration `20261127_after_sales.sql` được Spring áp dụng tự động, giữ nguyên số liệu hoàn lịch sử và làm mới view sau khi thêm cột tồn hỏng.

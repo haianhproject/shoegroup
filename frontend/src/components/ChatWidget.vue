@@ -1,13 +1,13 @@
 <!-- Trợ lý dùng dữ liệu cửa hàng, có tra đơn chính chủ và chuyển hỗ trợ Zalo. -->
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { MessageCircle, X, Send, ArrowUpRight, Package, RefreshCw } from 'lucide-vue-next'
+import { MessageCircle, X, Send, ArrowUpRight, Package, RefreshCw, Truck, MapPin } from 'lucide-vue-next'
 import { api, API_BASE_URL } from '../services/apiClient'
 import { currentUser } from '../stores/authStore'
 const open = ref(false), input = ref(''), pending = ref(false), feed = ref(null), field = ref(null), toggle = ref(null)
 const messages = ref([]), context = ref({}), quick = ref([])
 let controller, epoch = 0, sequence = 0
-const initialQuick = ['Tìm giày', 'Hướng dẫn chọn size', 'Tra đơn hàng', 'Trả hàng / hoàn tiền', 'Gặp nhân viên']
+const initialQuick = ['Tìm giày', 'Phí giao hàng', 'Hướng dẫn chọn size', 'Tra đơn hàng', 'Trả hàng / hoàn tiền', 'Gặp nhân viên']
 const money = value => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value) || 0)
 function welcome() {
   epoch++; controller?.abort(); pending.value = false; context.value = {}; quick.value = initialQuick
@@ -22,24 +22,25 @@ function safeLink(href) { return typeof href === 'string' && (/^\/(?!\/)/.test(h
 async function scroll() { await nextTick(); if (feed.value) feed.value.scrollTop = feed.value.scrollHeight }
 async function show() { open.value = true; await nextTick(); field.value?.focus(); await scroll() }
 function close() { open.value = false; nextTick(() => toggle.value?.focus()) }
-async function send(text = input.value, retry = null) {
+async function send(text = input.value, retry = null, options = {}) {
   const message = String(text).trim()
   if (!message || message.length > 500 || pending.value) return
-  const entry = retry || { id: ++sequence, role: 'user', message, failed: false }
+  const entry = retry || { id: ++sequence, role: 'user', message, failed: false, shippingAddressId: options.shipping_address_id }
   if (!retry) messages.value.push(entry)
   entry.failed = false; input.value = ''; pending.value = true
   const current = epoch; controller = new AbortController(); await scroll()
   try {
-    const reply = await api.post('/chat', { message, context: context.value }, { signal: controller.signal })
+    const reply = await api.post('/chat', { message, context: context.value, ...(entry.shippingAddressId != null ? { shipping_address_id: entry.shippingAddressId } : {}) }, { signal: controller.signal })
     if (current !== epoch) return
     messages.value.push({ ...reply, id: ++sequence, role: 'assistant' })
-    if (reply.intent === 'PRODUCTS' || reply.intent === 'WELCOME') context.value = reply.context || {}
+    if (['PRODUCTS', 'WELCOME', 'SHIPPING', 'SHIPPING_QUOTE'].includes(reply.intent)) context.value = reply.context || {}
     quick.value = reply.quick_replies || initialQuick
     if (messages.value.length > 30) messages.value.splice(0, messages.value.length - 30)
   } catch (e) {
     if (current === epoch && e.name !== 'AbortError') { entry.failed = true; entry.error = e.status === 429 ? 'Bạn gửi hơi nhanh. Vui lòng đợi một lát rồi thử lại.' : 'Chưa kết nối được trợ lý. Bạn có thể thử lại hoặc liên hệ shop qua Zalo.' }
   } finally { if (current === epoch) { pending.value = false; await scroll(); if (open.value) field.value?.focus() } }
 }
+function quoteAddress(address) { return send('Tính phí giao tới địa chỉ đã chọn', null, { shipping_address_id: address.id }) }
 watch(() => currentUser.value?.id_user ?? currentUser.value?.id ?? null, welcome, { immediate: true })
 onBeforeUnmount(() => { epoch++; controller?.abort() })
 </script>
@@ -51,6 +52,12 @@ onBeforeUnmount(() => { epoch++; controller?.abort() })
       <article v-for="entry in messages" :key="entry.id" class="chat-message" :class="entry.role">
         <span v-if="entry.role === 'assistant'" class="chat-speaker">SHOEGROUP</span><p>{{ entry.message }}</p>
         <template v-if="entry.role === 'assistant'">
+          <aside v-if="entry.shipping_quote" class="chat-shipping" aria-label="Báo phí giao hàng">
+            <span class="chat-shipping-label"><Truck :size="17" :stroke-width="1.5" />Giao hàng tiêu chuẩn</span>
+            <strong>{{ money(entry.shipping_quote.fee) }}</strong><span class="chat-shipping-destination"><MapPin :size="14" />{{ entry.shipping_quote.destination }}</span>
+            <small>Dự kiến {{ entry.shipping_quote.eta }} · Phí trước ưu đãi trên đơn</small>
+          </aside>
+          <div v-if="entry.addresses?.length" class="chat-addresses" aria-label="Địa chỉ của bạn để báo phí"><button v-for="address in entry.addresses" :key="address.id" type="button" :disabled="pending" :aria-label="`Tính phí tới ${address.label}`" @click="quoteAddress(address)"><MapPin :size="16" :stroke-width="1.5" /><span><small>{{ address.is_default ? 'Địa chỉ mặc định' : 'Địa chỉ đã lưu' }}</small>{{ address.label }}</span><ArrowUpRight :size="15" /></button></div>
           <router-link v-for="p in entry.products || []" :key="p.id" :to="safeLink(p.href)" class="chat-product" @click="close">
             <figure><img v-if="asset(p.image)" :src="asset(p.image)" :alt="p.name" loading="lazy" @error="e => e.target.style.display = 'none'" /><Package v-else :size="26" :stroke-width="1.3" /></figure>
             <div><strong>{{ p.name }}</strong><b>{{ money(p.price) }}</b><small>{{ p.variants.map(v => `${v.color} / ${v.size}`).slice(0, 4).join(' · ') }}</small><span>Còn {{ p.stock }} đôi phù hợp</span></div><ArrowUpRight :size="17" />
@@ -77,4 +84,7 @@ onBeforeUnmount(() => { epoch++; controller?.abort() })
 .chat-order{display:grid;gap:5px;padding:13px;margin-top:8px;border:1px solid #e1e7ef;border-radius:10px;background:#fff;color:#253145;text-decoration:none;font-size:11px}.chat-order>span{color:#758093;font-size:10px}.chat-order b{font-size:13px}.chat-order small{color:#9b6e2c}.chat-link-label{display:flex;align-items:center;gap:6px;margin-top:4px;color:#d4001a!important}.chat-link{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;margin:8px 6px 0 0;border:1px solid #e0e5ed;border-radius:7px;background:#fff;text-decoration:none;font-size:10px;color:#d4001a}
 .chat-quick{display:flex;gap:6px;overflow:auto;padding:10px 12px;border-top:1px solid #e9edf2;scrollbar-width:thin}.chat-quick button{flex:0 0 auto;padding:7px 9px;border:1px solid #e3e7ef;border-radius:15px;background:#fff;color:#667284;font-size:10px;cursor:pointer}.chat-quick button:hover{color:#d4001a;border-color:#d4001a40}.chat-form{display:flex;gap:8px;align-items:flex-end;padding:6px 12px 8px}.chat-form label{flex:1;display:flex}.chat-form textarea{width:100%;resize:none;max-height:80px;min-height:42px;box-sizing:border-box;outline:none;border:1px solid #e2e7ee;border-radius:10px;padding:12px;font:inherit;font-size:11px;line-height:1.6;background:#fbfcfd;color:#253145}.chat-form textarea:focus{border-color:#d4001a80}.chat-form>button{display:grid;place-items:center;width:41px;height:42px;border:0;border-radius:10px;background:#d4001a;color:#fff;cursor:pointer}.sg-chat button:disabled{opacity:.45;cursor:default}.chat-footer{font-size:8px;text-align:center;color:#a1a8b3;padding:0 10px 10px}.chat-footer a{color:#7e8897;text-decoration:underline}.chat-thinking{display:flex;align-items:center;gap:3px;padding:10px;color:#919ba8;font-size:9px}.chat-thinking i{height:4px;width:4px;background:#b4bbc5;border-radius:100%;animation:chat-dot 1s infinite}.chat-thinking i:nth-child(2){animation-delay:.16s}.chat-thinking i:nth-child(3){animation-delay:.32s}.chat-thinking span{margin-left:6px}.chat-retry{display:grid;gap:8px;margin-top:6px;color:#9b5261;font-size:10px}.chat-retry button{display:inline-flex;align-items:center;gap:6px;justify-self:start;border:1px solid #eccfd7;background:#fff4f6;color:#a8314a;border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer}.sg-chat button:focus-visible,.chat-toggle:focus-visible,.sg-chat a:focus-visible{outline:2px solid #d4001a;outline-offset:2px}
 @keyframes chat-dot{50%{opacity:.35;transform:translateY(-2px)}}@media(prefers-reduced-motion:reduce){.chat-thinking i{animation:none}}@media(max-width:540px){.sg-chat{right:14px;bottom:78px;height:min(620px,calc(100dvh - 100px));border-radius:15px}.chat-toggle{right:15px;bottom:16px;height:48px;min-width:48px}.chat-toggle>span{display:none}.chat-head{padding:13px}}
+.chat-shipping{display:grid;gap:7px;padding:15px;margin-top:8px;border:1px solid #e4d8dd;border-radius:12px;background:linear-gradient(120deg,#fff6f7,#fff)}
+.chat-shipping-label{display:flex;align-items:center;gap:7px;font-size:10px;color:#8f5b66}.chat-shipping>strong{font-size:22px;line-height:1.4;color:#d4001a;letter-spacing:-.5px}.chat-shipping-destination{display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.7;color:#536071}.chat-shipping-destination svg{flex-shrink:0;margin-top:2px}.chat-shipping>small{font-size:9px;color:#9299a5}
+.chat-addresses{display:grid;gap:7px;margin-top:9px}.chat-addresses>button{display:flex;gap:9px;align-items:flex-start;width:100%;padding:11px;border:1px solid #e3e8ee;border-radius:10px;background:#fff;color:#5e6a7a;text-align:left;cursor:pointer}.chat-addresses>button:hover{border-color:#d4001a60}.chat-addresses svg{flex-shrink:0;margin-top:3px}.chat-addresses span{flex:1;min-width:0;font-size:11px;line-height:1.7;overflow-wrap:anywhere}.chat-addresses small{display:block;margin-bottom:3px;font-size:9px;color:#a0a7b1}
 </style>

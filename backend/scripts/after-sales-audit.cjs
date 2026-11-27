@@ -194,6 +194,22 @@ async function main(){
     assert.equal(accepted.refund_amount,300000);ok(await confirm({id:sold.orderId},accepted.refund_transaction_id,'CASH-POS-RETURN'));
     assert.equal((await state(sold.orderId)).PaymentStatus,'Hoàn tiền');assert.equal((await inventory(variant.id)).stock,9);
   });
+  await check('chatbot shipping followups use checkout fees and never quote an unknown destination',async()=>{
+    const initial=ok(await request('/chat','POST',{message:'Phí vận chuyển bao nhiêu?',context:{size:'40',color:'Đen'}},null));assert.equal(initial.intent,'SHIPPING');assert.equal(initial.shipping_quote,undefined);assert.equal(initial.context.size,'40');
+    for(const province of ['Hà Nội','Đà Nẵng','Cà Mau']) {
+      const reply=ok(await request('/chat','POST',{message:province,context:initial.context},null));const quote=ok(await request('/shipping/quote','POST',{province},null));
+      assert.equal(reply.intent,'SHIPPING_QUOTE');assert.equal(reply.shipping_quote.fee,quote.fee);assert.equal(reply.shipping_quote.eta,quote.eta);
+    }
+    const unknown=ok(await request('/chat','POST',{message:'Atlantis',context:initial.context},null));assert.equal(unknown.shipping_quote,undefined);
+    const ambiguous=ok(await request('/chat','POST',{message:'Hà Nội hay Đà Nẵng',context:initial.context},null));assert.equal(ambiguous.shipping_quote,undefined);
+  });
+  await check('chatbot saved address quotes are owner-scoped and do not disclose phone or recipient',async()=>{
+    const prompt=ok(await request('/chat','POST',{message:'Phí giao hàng'},users[0]));assert.equal(prompt.addresses.length,1);assert.equal(prompt.addresses[0].id,users[0].addressId);assert.doesNotMatch(JSON.stringify(prompt.addresses),/phone|recipient|0900000001/);
+    const reply=ok(await request('/chat','POST',{message:'Tính phí giao tới địa chỉ đã chọn',shipping_address_id:users[0].addressId,userId:users[1].id},users[0]));
+    const quote=ok(await request('/shipping/quote','POST',{province:'Thành phố Hồ Chí Minh'},null));assert.equal(reply.shipping_quote.fee,quote.fee);
+    ok(await request('/chat','POST',{message:'Tính phí giao tới địa chỉ đã chọn',shipping_address_id:users[0].addressId},users[1]),404);
+    const guest=ok(await request('/chat','POST',{message:'Phí giao hàng',shipping_address_id:users[0].addressId},null));assert.equal(guest.shipping_quote,undefined);assert.equal(guest.addresses.length,0);
+  });
   await check('chatbot cannot leak another account order or private identity data',async()=>{
     const own=ok(await request('/chat','POST',{message:`Tra đơn ${f.id}`},users[0]));assert.equal(own.orders.length,1);
     const foreign=ok(await request('/chat','POST',{message:`Tra đơn ${f.id}`,userId:users[0].id},users[1]));assert.equal(foreign.orders.length,0);

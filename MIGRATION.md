@@ -1,5 +1,12 @@
 # Tiến Độ ShoeGroup
 
+## Báo Phí Giao Hàng Trong Chat - 2026-11-27
+
+- Bot hỏi tỉnh/thành hoặc cho chọn địa chỉ chính chủ rồi gọi cùng dịch vụ báo phí với checkout. Hiển thị phí tiêu chuẩn, thời gian dự kiến và ghi rõ trước ưu đãi trên đơn; không thay đổi cách tính cũ.
+- Giữ ngữ cảnh hỏi nơi nhận và các bộ lọc sản phẩm. Tên đường không thay tỉnh/thành cuối địa chỉ; nơi chưa rõ/nhiều địa danh được hỏi lại, không đưa số phí dự phòng thành báo giá xác định.
+- API kiểm tra `AddressID` cùng `UserID` đã xác thực, không nhận mã khách từ nội dung chat. Danh sách lựa chọn không gửi trường người nhận/số điện thoại; hội thoại tiếp tục được xóa khi đổi tài khoản.
+- Có kiểm thử đối chiếu phí/thời gian với checkout, địa chỉ chính chủ, nhập sai, nhiều nơi nhận, giữ ngữ cảnh và thử lại yêu cầu theo đúng địa chỉ cũ. Kịch bản demo đã bổ sung thao tác báo phí.
+
 ## Trả Hàng, Hoàn Kho Và Chatbot Tra Cứu - 2026-11-27
 
 - Đã lưu bản trước lên cả `main` và `admin` tại `0ec4e28`. Bổ sung hậu mãi trong module riêng, giữ trạng thái giao hàng và snapshot giá/biến thể của đơn đã bán.
