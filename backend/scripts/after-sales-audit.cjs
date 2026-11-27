@@ -149,6 +149,19 @@ async function main(){
     await change(order.id,'Về kho');ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order,3,0)));assert.equal((await inventory(order.variants[0].id)).stock,10);
     ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Đang vận chuyển'}),409);
   });
+  await check('a refused damaged parcel reuses warehouse inspection without creating a customer return case',async()=>{
+    const order=await fixture({delivered:false});await change(order.id,'Đã xác nhận');await change(order.id,'Đang vận chuyển');
+    const reason='Khách từ chối nhận vì hàng có vấn đề; kiện chờ kiểm nhận để hoàn kho và đóng đơn.';
+    ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Về kho',reason}));
+    assert.equal((await inventory(order.variants[0].id)).stock,7);assert.equal((await state(order.id)).StockRestoredAt,null);
+    const notice=(await rows(`SELECT TOP 1 Title,Message FROM Notifications WHERE RelatedID=${order.id} ORDER BY NotificationID DESC`))[0];
+    assert.equal(notice.Title,'Kiện chờ kiểm nhận');assert.doesNotMatch(notice.Message,/chưa liên hệ|giao lại sớm|sẽ giao lại/);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',{...warehouseBody(order),reason:'Đã nhận lại đủ kiện, một đôi hỏng, khách không tiếp tục nhận hàng.'}));
+    assert.equal((await inventory(order.variants[0].id)).stock,9);assert.equal((await inventory(order.variants[0].id)).damaged,1);
+    assert.equal((await detail(order.id)).returns.length,0);assert.equal((await detail(order.id)).refunds.length,0);
+    assert.equal((await state(order.id)).Status,'Đã hủy');assert.equal((await state(order.id)).IsCountedAsRevenue,false);
+    ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Đang vận chuyển'}),409);
+  });
   await check('prepaid refused delivery opens a refund obligation and can be settled once',async()=>{
     const order=await warehouse(true);ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order,3,0)));
     const d=await detail(order.id);assert.equal(d.refunds[0].amount,order.order.TotalAmount);assert.equal((await state(order.id)).PaymentStatus,'Chờ hoàn tiền');

@@ -41,6 +41,7 @@ async function refreshAfterSales() {
 }
 
 const queueView = ref("ACTIVE");
+const afterSalesPanel = ref(null);
 const paymentImagePlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88"><rect width="88" height="88" rx="8" fill="#f7f7f8"/><path d="M25 27h38v34H25z M25 53l12-12 11 11 7-7 8 8" fill="none" stroke="#b5b5bc" stroke-width="2" stroke-linejoin="round"/><circle cx="51" cy="37" r="4" fill="#b5b5bc"/></svg>')}`;
 
 function onPaymentImageError(event) {
@@ -154,6 +155,10 @@ function onConfirmKeydown(event) {
 
 function requestOrderAction(order, action) {
   if (!order || !action || action.locked || transitionConfirm.busy) return;
+  if (action.afterSales) {
+    if (!isEmployee.value) afterSalesPanel.value?.open();
+    return;
+  }
   if (action.isCancel) {
     runOrderAction(order, action);
     return;
@@ -216,7 +221,7 @@ function transitionMessage() {
     return `Chọn lý do giao hàng thất bại cho đơn #${order.id}. Hệ thống sẽ chốt và cập nhật đúng nhánh ngay sau khi bạn chọn.`;
   }
   if (action.key === "delivery_accident") {
-    return `Xác nhận đơn #${order.id} giao thất bại do tai nạn hoặc trục trặc vận chuyển? Đơn sẽ được sắp xếp giao lại vào ngày gần nhất.`;
+    return `Xác nhận đơn #${order.id} gặp sự cố vận chuyển? Cửa hàng sẽ kiểm nhận kiện hàng trước khi quyết định giao lại hoặc hoàn kho.`;
   }
   if (action.key === "lost_delivery_cancel") {
     return `Xác nhận đơn #${order.id} bị thất lạc khi vận chuyển? Đơn sẽ bị hủy, không ghi doanh thu và không cộng lại tồn kho.`;
@@ -618,7 +623,7 @@ function transitionMessage() {
             </div>
           </div>
 
-          <div class="payment-panel mb-3"><h3 class="font-bold text-sm mb-2">Trả hàng, hoàn kho & tiền hoàn</h3><p class="text-xs text-gray-500 mb-3">Theo dõi yêu cầu hậu mãi, kiểm nhận kiện hàng và đối soát khoản cần hoàn.</p><AfterSalesPanel :order-id="orderDetail.order.id" :order-code="getTrackingCode(orderDetail.order)" admin :read-only="isEmployee" @updated="refreshAfterSales" /></div>
+          <div class="payment-panel mb-3"><h3 class="font-bold text-sm mb-2">Kiểm nhận & tiền hoàn</h3><p class="text-xs text-gray-500 mb-3">Xử lý kiện hàng và khoản cần hoàn ngay trong đơn, không cần lập phiếu trả hàng cho kiện chưa giao thành công.</p><AfterSalesPanel ref="afterSalesPanel" :order-id="orderDetail.order.id" :order-code="getTrackingCode(orderDetail.order)" trigger-label="Mở kiểm nhận & tiền hoàn" admin :read-only="isEmployee" @updated="refreshAfterSales" /></div>
 
           <!-- Sản phẩm -->
           <div class="payment-panel">
@@ -761,6 +766,7 @@ function transitionMessage() {
                 Tiến trình đơn hàng
               </p>
               <div class="grid gap-2">
+                <p v-if="['Về kho', 'Giao hàng thất bại'].includes(orderDetail.order.status)" class="text-xs text-gray-500 leading-relaxed">Giao lại khi khách vẫn muốn nhận và kiện còn nguyên vẹn. Nếu khách không nhận nữa, kiểm nhận hàng thực tế rồi hoàn kho và đóng đơn.</p>
                 <button
                   v-for="act in getOrderActions(orderDetail.order)"
                   :key="act.key"

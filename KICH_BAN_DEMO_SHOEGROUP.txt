@@ -430,6 +430,9 @@ PHẦN 8. DEMO MỞ RỘNG HẬU MÃI VÀ CHATBOT (THÊM 5–7 PHÚT)
    vẫn 8. Không trình diễn cả hai thao tác trên cùng một đôi.
 
 5. Với kiện COD bùng hàng đã chuẩn bị: Đang giao -> Về kho -> mở hậu mãi.
+   Dùng ngay Chi tiết đơn -> "Kiểm nhận, hoàn kho & đóng đơn" cạnh "Giao lại đơn hàng".
+   Nếu khách từ chối vì hàng có vấn đề: chọn đúng lý do này trong Giao hàng thất bại,
+   rồi dùng cùng bước kiểm nhận. Không tạo phiếu trả hàng vì khách chưa nhận hàng.
    Kiểm nhận đủ số tốt/hỏng, nhập lý do, xác nhận kiện đã về -> Hoàn kho và đóng đơn.
    A: "Đơn chưa thu tiền nên không phát sinh doanh thu và không có tiền
    phải hoàn. Nếu đơn trả trước thì sau hoàn kho vẫn cần đối soát khoản hoàn."
@@ -450,3 +453,5 @@ PHẦN 8. DEMO MỞ RỘNG HẬU MÃI VÀ CHATBOT (THÊM 5–7 PHÚT)
 
 Kết: đối chiếu tồn bán, tồn hỏng, doanh thu thuần và khoản chờ hoàn riêng.
 Giữ ví dụ gọn; chỉ mở rộng khi hội đồng có thời gian hoặc hỏi tình huống.
+Với demo chỉ có giao thất bại/bùng hàng, dùng chi tiết đơn là đủ; phần phiếu
+trả sau khi khách đã nhận là tình huống riêng, có thể bỏ qua khi thuyết trình.

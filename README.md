@@ -94,6 +94,9 @@ Có thể từ chối có lý do trước khi nhận hàng; hàng không nhận 
 
 Chuyển đơn giao thất bại sang **Về kho** giữ phần tồn đã xuất. **Hoàn kho và đóng đơn** chỉ cộng hàng tốt,
 đưa hàng hỏng vào tồn riêng và chỉ thực hiện một lần. Đơn cũ đã từng được hoàn tồn được đối chiếu qua dấu vết cũ để không cộng lặp.
+Ngay trong **Đơn hàng & thanh toán → Chi tiết đơn**, kiện Về kho có cả **Giao lại đơn hàng** và **Kiểm nhận, hoàn kho & đóng đơn**.
+Khách chưa bắt máy có thể giao lại; khách từ chối nhận vì hàng có vấn đề dùng kiểm nhận cùng đơn gốc, không lập phiếu trả hàng.
+COD chưa thu tiền không có tiền phải hoàn/doanh thu; đơn trả trước tiếp tục đối soát khoản hoàn. Hàng mất không được hoàn tồn.
 Kho hàng hỏng có thao tác đưa về bán sau khi kiểm đạt hoặc ghi giảm; cả hai đều có lịch sử theo người xử lý.
 
 Tiền trả từng phần được tính từ giá trên đơn gốc sau phân bổ giảm giá, làm tròn đến đồng và giữ phần dư cho các lần trả.
