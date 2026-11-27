@@ -20,6 +20,7 @@ const migrationFiles = Object.freeze([
   "20261004_revenue_history.sql",
   "20261127_after_sales.sql",
   "20261127_return_workflow.sql",
+  "20261127_simple_refunds.sql",
 ]);
 
 const schemaVerificationSql = `

@@ -23,25 +23,44 @@ test('inspection rejects fractional, negative, empty and over-received quantitie
   for (const change of [{ good_quantity: 1.5 }, { damaged_quantity: -1 }, { good_quantity: 3 }, { good_quantity: 0, damaged_quantity: 0 }]) assert.equal(validateInspection([{ ...line, ...change }]), false);
 });
 
+test('remaining order value handles cancelled full refunds without double-subtracting product returns', () => {
+  const {remainingOrderValue}=load('src/services/afterSales.js',{'./apiClient':{api:{}}});
+  assert.equal(remainingOrderValue({total:375000,refunded_amount:375000}),0);
+  assert.equal(remainingOrderValue({total:900000,return_adjustment_amount:270000,refunded_amount:270000}),630000);
+  assert.equal(remainingOrderValue({total:900000,return_adjustment_amount:540000,refunded_amount:270000,pending_refund_amount:270000}),360000);
+});
+
 test('manual return submission blocks a double click and keeps its idempotency key on failure', async () => {
   const dto = { order_id: 7, items: [{ order_detail_id: 1, quantity: 3, returned_quantity: 0, remaining_quantity: 3, net_line_total: 810000 }], remaining_refundable_amount: 810000, can_request: true };
   let finish, fail = false, calls = 0;
   const page = load('src/components/OrderReturnForm.vue', {
     'lucide-vue-next': {}, '../services/afterSales': { afterSalesApi: { register: () => { calls++; return fail ? Promise.reject(new Error('Đơn đang được xử lý ở phiên khác')) : new Promise(resolve => finish = resolve); } } },
   }, { defineProps: () => ({}), defineEmits: () => () => {} }, ['order', 'form', 'seed', 'save', 'busy', 'error', 'refund']);
-  page.seed(dto); page.form.reason = 'Cần đổi kích cỡ'; page.form.lines[0].selected = true; page.form.confirmed = true;
+  page.seed(dto); page.form.reason = 'Cần đổi kích cỡ'; page.form.lines[0].quantity = 1;
   const pending = page.save(); await page.save();
   assert.equal(calls, 1); assert.equal(page.busy.value, true); assert.equal(page.refund.value, 270000);
   finish({ success: true }); await pending;
   assert.equal(page.busy.value, false); assert.equal(page.order.value.can_request, false);
-  fail = true; page.seed(dto); page.form.reason = 'Giữ lại nội dung này'; page.form.lines[0].selected = true; page.form.confirmed = true; const key=page.form.key; await page.save();
+  fail = true; page.seed(dto); page.form.reason = 'Giữ lại nội dung này'; page.form.lines[0].quantity = 1; const key=page.form.key; await page.save();
   assert.equal(page.busy.value, false); assert.equal(page.form.reason, 'Giữ lại nội dung này'); assert.equal(page.form.key,key); assert.match(page.error.value, /phiên khác/);
+});
+
+test('simple returns submit only selected quantities and a cash/bank method, with optional notes', async () => {
+  let sent;
+  const page=load('src/components/OrderReturnForm.vue',{'lucide-vue-next':{},'../services/afterSales':{afterSalesApi:{register:async(id,body)=>{sent=body;return {return_id:1,status:'COMPLETED',refund_amount:300000}}}}},{defineProps:()=>({}),defineEmits:()=>()=>{}},['seed','form','save','error']);
+  page.seed({order_id:7,can_request:true,remaining_refundable_amount:600000,items:[{order_detail_id:1,quantity:2,returned_quantity:0,remaining_quantity:2,net_line_total:600000}]});
+  await page.save();assert.equal(sent,undefined);assert.match(page.error.value,/số lượng/);
+  page.form.lines[0].quantity=3;await page.save();assert.equal(sent,undefined);
+  page.form.lines[0].quantity=1;page.form.method='BANK';await page.save();
+  assert.equal(sent.simple,true);assert.equal(sent.refund_method,'BANK');assert.equal(sent.reason,'');assert.equal(sent.items[0].quantity,1);
+  for(const key of ['reference','confirm_received','confirm_paid','refund_note'])assert.equal(Object.hasOwn(sent,key),false);
+  const source=fs.readFileSync(path.join(root,'src/components/OrderReturnForm.vue'),'utf8');assert.doesNotMatch(source,/type="checkbox"|damaged_quantity|form\.reference/);
 });
 
 test('development API selection uses only compatible local read probes before stores load', async () => {
   const { resolveDevelopmentApi: resolve }=load('src/services/apiEndpoint.js',{}, {AbortSignal});
   const base='http://localhost:5000/api', calls=[];
-  const current={success:true,db:'connected',application:'shoegroup',apiContract:2,database:'SameDB',catalogIdentity:{revision:'same'}};
+  const current={success:true,db:'connected',application:'shoegroup',apiContract:3,database:'SameDB',catalogIdentity:{revision:'same'}};
   const fetcher=async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:current};};
   assert.equal(await resolve(base,{development:true,fetcher}),'http://localhost:5001/api');
   assert.equal(calls.length,2);assert.ok(calls.every(c=>c.url.endsWith('/health')&&!c.options.method&&!c.options.headers));
@@ -50,14 +69,12 @@ test('development API selection uses only compatible local read probes before st
   assert.equal(await resolve(base,{development:true,fetcher:async url=>({ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:{...current,database:'DifferentDB'}})}),base);
 });
 
-test('failure choices wait for confirmation and loss requires acknowledgement and a note', async () => {
-  let writes=0;
-  const page=load('src/views/admin/pages/PaymentsPage.vue',{'../adminStore':{paymentChannelOrders:vue.ref([]),runOrderAction:async()=>writes++}}, {document:{activeElement:null}},['chooseFailureResolution','confirmTransition','transitionConfirm']);
-  const lost={key:'lost_delivery_cancel',next:'Đã hủy',reason:'Mất hàng khi vận chuyển'};
-  Object.assign(page.transitionConfirm,{open:true,order:{id:9},action:{menu:[lost]}});
-  page.chooseFailureResolution(lost);assert.equal(writes,0);
-  await page.confirmTransition();assert.equal(writes,0);
-  page.transitionConfirm.confirmed=true;page.transitionConfirm.reason='Đơn vị vận chuyển đã xác minh mất kiện';await page.confirmTransition();assert.equal(writes,1);
+test('warehouse cancellation uses one confirmation without inspection fields', async () => {
+  let writes=0, action;
+  const page=load('src/views/admin/pages/PaymentsPage.vue',{'../adminStore':{paymentChannelOrders:vue.ref([]),runOrderAction:async(_,a)=>{writes++;action=a}}}, {document:{activeElement:null}},['chooseFailureResolution','confirmTransition','transitionConfirm']);
+  const warehouse={key:'return_warehouse',warehouseReturn:true};
+  Object.assign(page.transitionConfirm,{open:true,order:{id:9},action:{menu:[warehouse]},refundMethod:'BANK'});
+  page.chooseFailureResolution(warehouse);assert.equal(writes,0);await page.confirmTransition();assert.equal(writes,1);assert.equal(action.refundMethod,'BANK');
 });
 
 test('partial refunds are visible without treating all remaining revenue as refunded', () => {
@@ -129,6 +146,7 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
     defineExpose() {},
     require: name => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === '../../../services/afterSales') return load('src/services/afterSales.js', { './apiClient': { api: {} } });
       if (name === '@/services/orderCode' || name === '../services/orderCode') return load('src/services/orderCode.js');
       if (name === '@/services/orderQueue') return load('src/services/orderQueue.js');
       if (name === '../services/vietQr') return load('src/services/vietQr.js');
@@ -1084,37 +1102,15 @@ test('admin read honors caller cancellation and clears its timeout', async () =>
   assert.equal(cleared, true);
 });
 
-test('lost delivery cancels permanently while the other failures can be reshipped', () => {
-  const admin = loadAdminImages();
-  const options = admin.getDeliveryFailureOptions();
-  const unreachable = options.find(option => option.key === 'retry_delivery');
-  const refused = options.find(option => option.key === 'delivery_refused');
-  const lost = options.find(option => option.key === 'lost_delivery_cancel');
-
-  assert.equal(options.length, 3);
-  assert.equal(unreachable.next, 'Giao hàng thất bại');
-  assert.equal(refused.afterSales, true);
-  assert.equal(refused.next, undefined);
-  assert.match(refused.reason, /từ chối nhận/);
-  assert.equal(lost.next, 'Đã hủy');
-  assert.equal(lost.issueStatus, 'LOST_IN_TRANSIT');
-  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' })[0].key, 'reship');
-  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'COD' }).some(a=>a.afterSales), true);
-  assert.equal(admin.getOrderActions({ status: 'Về kho', payment_method: 'BANK', payment_status: 'Chưa thanh toán' }).some(a=>a.afterSales), true);
-  assert.equal(loadAdminImages(vue.ref(true)).getOrderActions({ status: 'Về kho', payment_method: 'COD' }).some(a=>a.afterSales), false);
-  assert.equal(admin.getOrderActions({
-    status: 'Giao hàng thất bại',
-    payment_method: 'COD',
-    stock_issue_reason: 'Mất hàng khi vận chuyển',
-  }).length, 0);
-});
-
-test('failed delivery opens the existing inspection panel without writing an order status or return request', () => {
-  let opened=0,writes=0;
-  const page=load('src/views/admin/pages/PaymentsPage.vue',{'../adminStore':{paymentChannelOrders:vue.ref([]),runOrderAction:()=>writes++}}, {},['afterSalesPanel','requestOrderAction','transitionConfirm']);
-  page.afterSalesPanel.value={open:()=>opened++};
-  page.requestOrderAction({id:9,status:'Về kho'},{key:'warehouse_inspection',afterSales:true});
-  assert.equal(opened,1);assert.equal(writes,0);assert.equal(page.transitionConfirm.open,false);
+test('failed delivery offers reship or warehouse cancellation without a damage workflow', () => {
+  const admin=loadAdminImages();const options=admin.getDeliveryFailureOptions();
+  assert.equal(options.length,2);assert.equal(options[0].next,'Giao hàng thất bại');assert.equal(options[1].warehouseReturn,true);
+  const order={status:'Giao hàng thất bại',payment_method:'COD'};
+  assert.equal(admin.getOrderActions(order).some(a=>a.key==='reship'),true);assert.equal(admin.getOrderActions(order).some(a=>a.warehouseReturn),true);
+  assert.equal(loadAdminImages(vue.ref(true)).getOrderActions(order).some(a=>a.warehouseReturn),false);
+  assert.equal(admin.getOrderActions({...order,stock_issue_status:'LOST_IN_TRANSIT'}).length,0);
+  const source=fs.readFileSync(path.join(root,'src/views/admin/pages/PaymentsPage.vue'),'utf8');
+  assert.doesNotMatch(source,/AfterSalesPanel|Kiểm nhận & tiền hoàn|afterSalesPanel/);
 });
 
 test('marking a retryable failure holds stock and allows reshipping', async () => {

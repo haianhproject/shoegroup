@@ -812,31 +812,9 @@ export async function processOrderFlow(ord) {
 
 export function getDeliveryFailureOptions() {
   return [
-    {
-      key: "retry_delivery",
-      text: "Có thể giao lại · chưa nghe máy / trục trặc vận chuyển",
-      next: "Giao hàng thất bại",
-      reason: "Chưa liên hệ được khách hoặc trục trặc vận chuyển; chờ sắp xếp giao lại.",
-      issueStatus: "DELIVERY_FAILED",
-      class: "btn-dark text-white",
-    },
-    {
-      key: "delivery_refused",
-      text: "Không nhận hàng · kiểm hàng, hoàn kho & hủy đơn",
-      afterSales: true,
-      reason: "Khách từ chối nhận / hàng có vấn đề; cửa hàng xử lý theo kết quả kiểm hàng.",
-      issueStatus: "RETURNED_TO_WAREHOUSE",
-      class: "btn-outline-danger",
-    },
-    {
-      key: "lost_delivery_cancel",
-      text: "Mất hàng · hủy đơn, không hoàn kho",
-      next: "Đã hủy",
-      reason: "Mất hàng khi vận chuyển - đơn đã hủy và không hoàn lại tồn kho.",
-      issueStatus: "LOST_IN_TRANSIT",
-      class: "btn-outline-danger",
-    },
-  ];
+    { key: 'retry_delivery', text: 'Khách chưa nghe máy · hẹn giao lại', next: 'Giao hàng thất bại', reason: 'Chưa liên hệ được khách; chờ sắp xếp giao lại.', issueStatus: 'DELIVERY_FAILED', class: 'btn-dark text-white' },
+    { key: 'return_warehouse', text: 'Khách bùng hàng · hoàn kho & hủy đơn', warehouseReturn: true, reason: 'Khách không nghe máy / không tiếp tục nhận hàng. Hoàn kho và hủy đơn.', class: 'btn-outline-danger' },
+  ].filter(action => !isEmployee.value || !action.warehouseReturn);
 }
 
 function isLostDeliveryOrder(o) {
@@ -854,9 +832,9 @@ export function getOrderActions(o) {
     return [];
   const acts = [];
   const warehouseInspection = isEmployee.value ? [] : [{
-    key: "warehouse_inspection",
-    text: "Kiểm nhận, hoàn kho & đóng đơn",
-    afterSales: true,
+    key: "return_warehouse",
+    text: "Hoàn kho & hủy đơn",
+    warehouseReturn: true,
     class: "btn-outline-danger",
   }];
   const preShipping = ["Chờ xác nhận", "Đã xác nhận"].includes(o.status);
@@ -979,6 +957,16 @@ export function getOrderActions(o) {
 }
 export async function runOrderAction(o, act) {
   if (!o || !act || act.locked) return;
+  if (act.warehouseReturn) {
+    const response = await apiWrite('/orders/' + o.id + '/warehouse-return', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ simple: true, reason: act.reason || '', refund_method: act.refundMethod || 'CASH' }),
+    });
+    if (!response.ok) throw new Error(response.data?.message || 'Chưa hoàn kho được đơn hàng.');
+    await refreshOrders();
+    notify('Đã hoàn kho và hủy đơn #' + o.id + (response.data?.refund_method ? '. Đã ghi nhận hoàn tiền.' : '.'), 'success');
+    return;
+  }
   if (act.isCancel) {
     openCancelModal(o);
     return;

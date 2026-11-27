@@ -87,25 +87,17 @@ là thư viện/build cần dùng, được ẩn trong VS Code. Tiến độ m�
 
 ## Trả hàng, hoàn kho và trợ lý cửa hàng
 
-Khách trao đổi qua Zalo và cung cấp mã đơn gốc. Quản trị viên vào **Trả hàng → Nhận trả**, nhập mã đơn,
-chọn từng màu/size và số lượng thực nhận, phân loại hàng hỏng rồi xác nhận một lần.
-Có thể ghi nhận chứng từ ngay nếu đã thực sự trả tiền; nếu chưa chi trả, phiếu ở trạng thái **Chờ hoàn tiền**.
-Khách và quản lý đều xem được từng sản phẩm đã trả, số lượng và khoản tiền đã hoàn trong chi tiết đơn.
-Các phiếu tạo theo quy trình cũ vẫn giữ lịch sử và có thể được xử lý tiếp.
-
-Chuyển đơn giao thất bại sang **Về kho** giữ phần tồn đã xuất. **Hoàn kho và đóng đơn** chỉ cộng hàng tốt,
-đưa hàng hỏng vào tồn riêng và chỉ thực hiện một lần. Đơn cũ đã từng được hoàn tồn được đối chiếu qua dấu vết cũ để không cộng lặp.
-Ngay trong **Đơn hàng & thanh toán → Chi tiết đơn**, chọn một trong ba hướng giao thất bại:
-**Có thể giao lại** (chưa nghe máy/trục trặc), **Không nhận hàng** (kiểm hàng, hoàn kho và hủy trực tiếp), hoặc **Mất hàng**.
-Chọn hướng xử lý chưa làm thay đổi dữ liệu; thao tác hủy vì mất hàng yêu cầu ghi chú xác minh và xác nhận không hoàn tồn.
-Đơn giao thất bại có thể giao lại bằng phần hàng đã xuất, không bị trừ tồn lần thứ hai. Kiện bị từ chối không cần sang trang trả hàng để xác nhận thêm.
-COD chưa thu tiền không có tiền phải hoàn/doanh thu; đơn trả trước tiếp tục đối soát khoản hoàn. Hàng mất không được hoàn tồn.
-Kho hàng hỏng có thao tác đưa về bán sau khi kiểm đạt hoặc ghi giảm; cả hai đều có lịch sử theo người xử lý.
-
-Tiền trả từng phần được tính từ giá trên đơn gốc sau phân bổ giảm giá, làm tròn đến đồng và giữ phần dư cho các lần trả.
-Doanh thu thuần trừ `ReturnAdjustmentAmount` khi kiểm nhận chấp nhận hàng trả; nghĩa vụ tiền hoàn được ghi `PENDING` riêng.
-Xác nhận đối soát không tự chuyển tiền qua ngân hàng. Chỉ quản trị viên được ghi nhận khoản đã hoàn, có chứng từ không trùng.
-Đơn còn yêu cầu hậu mãi hoặc khoản chờ hoàn tiếp tục nằm trong **Đang xử lý**. Trạng thái giao hàng gốc được giữ cho đơn đã giao.
+Đơn giao thất bại có hai hướng: **Hẹn giao lại** hoặc **Hoàn kho & hủy đơn** khi khách không nghe máy/bùng hàng.
+Hoàn kho lấy toàn bộ số lượng từ đơn gốc, thực hiện đúng một lần. Đơn COD chưa thu tiền không phát sinh tiền hoàn hay doanh thu.
+Đơn đã trả trước chọn **Tiền mặt** hoặc **Chuyển khoản** để ghi nhận hoàn tiền cùng thao tác hủy.
+Đơn đã giao thành công sử dụng trang **Trả hàng & tiền hoàn**: nhập mã đơn, nhập số lượng từng sản phẩm cần trả,
+chọn hình thức hoàn tiền và xác nhận. Số lượng 0 giữ nguyên sản phẩm; số trả không vượt phần còn được trả.
+Không yêu cầu chứng từ, ô tích điều kiện hoặc phân loại hàng tốt/hỏng. Ghi chú là tùy chọn.
+Khoản hoàn tính từ giá thực trả sau giảm giá; tùy chọn hoàn phí vận chuyển chỉ hiện khi nhận lại toàn bộ hàng còn lại.
+Khách và quản lý đều xem được từng sản phẩm đã trả cùng số tiền và hình thức hoàn.
+Nút xác nhận ghi nhận tiền cửa hàng đã hoàn; ứng dụng không tự chuyển khoản ngân hàng.
+Các khoản chờ hoàn từ đơn hủy cũ vẫn được xử lý ở **Khoản chờ hoàn**, chỉ chọn hình thức và bấm **Xác nhận đã hoàn tiền**.
+Giữ nguyên lịch sử và cấu trúc hàng hỏng/chứng từ cũ để không làm mất dữ liệu; giao diện mới không sử dụng các bước này.
 
 Trợ lý ở góc trang khách dùng FAQ và dữ liệu thật để tìm giày theo tên/màu/size/ngân sách, tra đơn của tài khoản đang đăng nhập
 và hướng dẫn chuyển hỗ trợ Zalo. Đây là chatbot tra cứu có ngữ cảnh, chưa dùng mô hình ngôn ngữ hoặc dịch vụ AI trả phí.

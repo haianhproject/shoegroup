@@ -57,6 +57,11 @@ public class AfterSalesService {
     try { String canonical=UUID.fromString(s).toString(); if(!canonical.equalsIgnoreCase(s))throw new IllegalArgumentException(); return canonical; }
     catch(IllegalArgumentException e) { throw new ApiException(400,"Mã yêu cầu không hợp lệ. Vui lòng tải lại biểu mẫu."); }
   }
+  private String refundMethod(Object value) {
+    String method=Objects.toString(value,"").strip().toUpperCase(Locale.ROOT);
+    if(!Set.of("CASH","BANK").contains(method))throw new ApiException(400,"Chọn hoàn tiền mặt hoặc chuyển khoản.");
+    return method;
+  }
   @SuppressWarnings("unchecked")
   private List<Map<String,Object>> items(Object value) {
     if(!(value instanceof List<?> list) || list.isEmpty() || list.size()>100 || list.stream().anyMatch(i->!(i instanceof Map)))
@@ -110,7 +115,7 @@ public class AfterSalesService {
     }
     var refunds=jdbc.queryForList("""
         SELECT pt.TransactionID AS id,pt.Provider AS provider,pt.Amount AS amount,pt.Status AS status,
-          pt.CompletedAt AS completed_at,fc.Reference AS reference
+          pt.CompletedAt AS completed_at,fc.Reference AS reference,fc.RefundMethod AS refund_method
         FROM PaymentTransactions pt LEFT JOIN RefundConfirmations fc ON fc.TransactionID=pt.TransactionID
         WHERE pt.OrderID=:id AND pt.Provider IN (N'AFTERSALES_REFUND',N'MANUAL_REFUND') ORDER BY pt.TransactionID DESC
         """,params("id",orderId));
@@ -129,7 +134,7 @@ public class AfterSalesService {
     }
     boolean open=caseRows.stream().anyMatch(r->Boolean.TRUE.equals(r.get("is_open")));
     BigDecimal shippingRefunded=jdbc.queryForObject("SELECT ISNULL(SUM(ShippingRefundAmount),0) FROM OrderReturns WHERE OrderID=:id",params("id",orderId),BigDecimal.class);
-    return params("order_id",orderId,"order_code",OrderCodes.format(orderId,((java.sql.Timestamp)o.get("OrderDate")).toLocalDateTime().toLocalDate()),"status",o.get("Status"),"payment_status",o.get("PaymentStatus"),
+    return params("order_id",orderId,"order_code",OrderCodes.format(orderId,((java.sql.Timestamp)o.get("OrderDate")).toLocalDateTime().toLocalDate()),"status",o.get("Status"),"payment_status",o.get("PaymentStatus"),"payment_method",o.get("PaymentMethod"),
         "total",o.get("TotalAmount"),"shipping_refundable_amount",money(o.get("ShippingFee")).subtract(shippingRefunded).max(BigDecimal.ZERO),
         "remaining_refundable_amount",money(o.get("TotalAmount")).subtract(money(o.get("HistoricalRefundAmount"))).subtract(money(o.get("ReturnAdjustmentAmount"))).max(BigDecimal.ZERO),
         "items",lineViews,"returns",caseRows,"refunds",refunds,
@@ -162,18 +167,21 @@ public class AfterSalesService {
   @Transactional(isolation=Isolation.SERIALIZABLE)
   public Map<String,Object> register(int orderId,ApiUser user,Map<String,Object> body) {
     admin(user); var o=order(orderId,true);
-    if(!Values.bool(body.get("confirm_received"),false))throw new ApiException(400,"Chỉ xác nhận khi đã nhận và kiểm tra hàng trả thực tế.");
-    String key=requestKey(body.get("request_key")),reason=note(body.get("reason"),true);
+    boolean simple=Values.bool(body.get("simple"),false);
+    String method=simple?refundMethod(body.get("refund_method")):"UNKNOWN";
+    if(!simple&&!Values.bool(body.get("confirm_received"),false))throw new ApiException(400,"Chỉ xác nhận khi đã nhận và kiểm tra hàng trả thực tế.");
+    String key=requestKey(body.get("request_key")),reason=note(body.get("reason"),!simple);
+    if(reason.isEmpty())reason="Khách liên hệ Zalo trả hàng; cửa hàng nhận trả và hoàn tiền.";
     var selected=indexed(items(body.get("items")),"order_detail_id");
     List<String> signature=new ArrayList<>();
     for(var e:selected.entrySet()) {
       int q=Values.integer(e.getValue().get("quantity"),1,1000000,null);
-      int damaged=Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
+      int damaged=simple?0:Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
       signature.add(e.getKey()+":"+q+":"+damaged);
     }
-    boolean paidNow=Values.bool(body.get("confirm_paid"),false),shipping=Values.bool(body.get("refund_shipping"),false);
+    boolean paidNow=simple||Values.bool(body.get("confirm_paid"),false),shipping=Values.bool(body.get("refund_shipping"),false);
     String reference=Objects.toString(body.get("reference"),"").strip().toUpperCase(Locale.ROOT),refundNote=Objects.toString(body.get("refund_note"),"").strip();
-    String fingerprint=hash("ZALO|"+reason+"|"+signature+"|"+shipping+"|"+paidNow+"|"+reference+"|"+refundNote);
+    String fingerprint=hash("ZALO|"+reason+"|"+signature+"|"+shipping+"|"+paidNow+"|"+reference+"|"+refundNote+(simple?"|SIMPLE|"+method:""));
     var prior=jdbc.queryForList("SELECT ReturnID,RequestHash,RefundAmount,Status FROM OrderReturns WHERE OrderID=:id AND RequestKey=CONVERT(uniqueidentifier,:key)",params("id",orderId,"key",key));
     if(!prior.isEmpty()) {
       var row=prior.get(0);
@@ -193,14 +201,14 @@ public class AfterSalesService {
         """,params("oid",orderId,"key",key,"hash",fingerprint,"reason",reason,"uid",user.id()),Integer.class);
     List<Map<String,Object>> received=new ArrayList<>();
     for(var e:selected.entrySet()) {
-      int q=Values.integer(e.getValue().get("quantity"),1,1000000,null),bad=Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
+      int q=Values.integer(e.getValue().get("quantity"),1,1000000,null),bad=simple?0:Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
       int item=jdbc.queryForObject("INSERT OrderReturnItems(ReturnID,OrderDetailID,RequestedQuantity) OUTPUT INSERTED.ReturnItemID VALUES(:id,:detail,:q)",params("id",id,"detail",e.getKey(),"q",q),Integer.class);
       received.add(params("return_item_id",item,"good_quantity",q-bad,"damaged_quantity",bad));
     }
     event(id,"APPROVED","Đã trao đổi với khách qua Zalo; tiếp nhận và kiểm hàng tại cửa hàng.",user);
-    var result=receive(id,user,params("items",received,"note",reason,"refund_shipping",shipping,"confirm_received",true));
+    var result=receive(id,user,params("items",received,"note",simple?"Trả hàng theo mã đơn. "+reason:reason,"refund_shipping",shipping,"confirm_received",true));
     if(paidNow && result.get("refund_transaction_id")!=null)
-      confirmRefund(orderId,integer(result.get("refund_transaction_id")),user,params("reference",reference,"note",refundNote,"confirm_paid",true));
+      confirmRefund(orderId,integer(result.get("refund_transaction_id")),user,simple?params("refund_method",method):params("reference",reference,"note",refundNote,"confirm_paid",true));
     return params("success",true,"order_id",orderId,"return_id",id,"refund_amount",result.get("refund_amount"),"status",paidNow||result.get("refund_transaction_id")==null?"COMPLETED":"REFUND_PENDING");
   }
 
@@ -340,6 +348,20 @@ public class AfterSalesService {
   public Map<String,Object> warehouse(int orderId,ApiUser user,Map<String,Object> body) {
     admin(user); var o=order(orderId,true);
     if(o.get("WarehouseClosedAt")!=null)return params("success",true,"unchanged",true);
+    if(Values.bool(body.get("simple"),false)) {
+      boolean wasPaid=paid(o.get("PaymentStatus"));
+      String method=wasPaid?refundMethod(body.get("refund_method")):"CASH";
+      var receipt=lines(orderId).stream().map(line->params("order_detail_id",line.get("OrderDetailID"),"good_quantity",quantity(line),"damaged_quantity",0)).toList();
+      String reason=note(body.get("reason"),false);
+      if(reason.isEmpty())reason="Khách không nghe máy / không nhận hàng. Hoàn kho và hủy đơn.";
+      var result=warehouse(orderId,user,params("confirm_received",true,"reason",reason.length()<5?"Khách không nhận hàng. "+reason:reason,"items",receipt));
+      if(wasPaid) {
+        var pending=jdbc.queryForList("SELECT TransactionID FROM PaymentTransactions WHERE OrderID=:id AND Provider=N'MANUAL_REFUND' AND Status=N'PENDING'",params("id",orderId));
+        for(var tx:pending)confirmRefund(orderId,integer(tx.get("TransactionID")),user,params("refund_method",method));
+      }
+      result.put("refund_pending",false);result.put("refund_method",wasPaid?method:null);
+      return result;
+    }
     if(!Set.of("dang van chuyen","dang giao","giao hang that bai","ve kho","shipping","shipped").contains(normalize(o.get("Status"))) || "LOST_IN_TRANSIT".equals(o.get("StockIssueStatus")))
       throw conflict("Chỉ hoàn kho cho kiện giao thất bại đã thực sự được nhận lại. Đơn đã giao cần dùng phiếu trả hàng.");
     if(o.get("StockDeductedAt")==null)throw conflict("Đơn chưa có dấu vết xuất kho. Cần đối soát tồn trước khi hoàn kho.");
@@ -367,13 +389,15 @@ public class AfterSalesService {
   @Transactional(isolation=Isolation.SERIALIZABLE)
   public Map<String,Object> confirmRefund(int orderId,int transaction,ApiUser user,Map<String,Object> body) {
     admin(user); var o=order(orderId,true);
-    String reference=Objects.toString(body.get("reference"),"").strip().toUpperCase(Locale.ROOT);
-    if(reference.length()<3||reference.length()>100||!Values.bool(body.get("confirm_paid"),false))throw new ApiException(400,"Cần mã chứng từ và xác nhận khoản tiền đã thực sự được hoàn.");
-    String message=note(body.get("note"),true);
+    boolean simple=body.containsKey("refund_method");
+    String method=simple?refundMethod(body.get("refund_method")):"UNKNOWN";
+    String reference=simple?"SG-REFUND-"+orderId+"-"+transaction:Objects.toString(body.get("reference"),"").strip().toUpperCase(Locale.ROOT);
+    if(reference.length()<3||reference.length()>100||!simple&&!Values.bool(body.get("confirm_paid"),false))throw new ApiException(400,"Cần mã chứng từ và xác nhận khoản tiền đã thực sự được hoàn.");
+    String message=simple?"Hoàn tiền bằng "+(method.equals("CASH")?"tiền mặt.":"chuyển khoản."):note(body.get("note"),true);
     var tx=one("SELECT * FROM PaymentTransactions WITH(UPDLOCK,HOLDLOCK) WHERE TransactionID=:tx AND OrderID=:id AND Provider IN (N'AFTERSALES_REFUND',N'MANUAL_REFUND')",params("tx",transaction,"id",orderId));
-    var confirmations=jdbc.queryForList("SELECT Reference FROM RefundConfirmations WHERE TransactionID=:tx",params("tx",transaction));
+    var confirmations=jdbc.queryForList("SELECT Reference,RefundMethod FROM RefundConfirmations WHERE TransactionID=:tx",params("tx",transaction));
     if("SUCCESS".equals(tx.get("Status"))) {
-      if(!confirmations.isEmpty()&&reference.equals(confirmations.get(0).get("Reference")))return params("success",true,"unchanged",true);
+      if(!confirmations.isEmpty()&&reference.equals(confirmations.get(0).get("Reference"))&&(!simple||method.equals(confirmations.get(0).get("RefundMethod"))))return params("success",true,"unchanged",true);
       throw conflict("Khoản hoàn đã được ghi nhận bằng chứng từ khác.");
     }
     if(!"PENDING".equals(tx.get("Status")))throw conflict("Khoản hoàn không còn chờ xử lý.");
@@ -381,7 +405,7 @@ public class AfterSalesService {
     BigDecimal completed=jdbc.queryForObject("SELECT ISNULL(SUM(Amount),0) FROM PaymentTransactions WHERE OrderID=:id AND Provider IN (N'AFTERSALES_REFUND',N'MANUAL_REFUND') AND Status=N'SUCCESS'",params("id",orderId),BigDecimal.class);
     BigDecimal cumulative=completed.add(money(tx.get("Amount"))).add(money(o.get("HistoricalRefundAmount")));
     if(money(tx.get("Amount")).signum()<=0||cumulative.compareTo(money(o.get("TotalAmount")))>0)throw conflict("Tổng hoàn vượt số tiền đã thu. Cần đối soát trước khi ghi nhận.");
-    jdbc.update("INSERT RefundConfirmations(TransactionID,Reference,Note,ConfirmedByUserID) VALUES(:tx,:ref,:n,:u)",params("tx",transaction,"ref",reference,"n",message,"u",user.id()));
+    jdbc.update("INSERT RefundConfirmations(TransactionID,Reference,Note,ConfirmedByUserID,RefundMethod) VALUES(:tx,:ref,:n,:u,:method)",params("tx",transaction,"ref",reference,"n",message,"u",user.id(),"method",method));
     jdbc.update("UPDATE PaymentTransactions SET Status=N'SUCCESS',CompletedAt=GETDATE() WHERE TransactionID=:tx",params("tx",transaction));
     var cases=jdbc.queryForList("SELECT ReturnID FROM OrderReturns WHERE RefundTransactionID=:tx",params("tx",transaction));
     for(var r:cases) {

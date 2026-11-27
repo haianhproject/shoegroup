@@ -5,6 +5,11 @@ export const returnStatuses = {
   COMPLETED: 'Đã hoàn tất', REJECTED: 'Đã từ chối',
 }
 export const formatAfterSalesMoney = value => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 2 }).format(Number(value) || 0)
+export function remainingOrderValue(order) {
+  const adjustment=Number(order?.historical_refund_amount||0)+Number(order?.return_adjustment_amount||0)
+  const refund=Number(order?.refunded_amount||0)+Number(order?.pending_refund_amount||0)
+  return Math.max(0,Number(order?.total||0)-Math.max(adjustment,refund))
+}
 export const afterSalesApi = {
   detail: (id, options) => api.get(`/orders/${id}/after-sales`, options),
   request: (id, body) => api.post(`/orders/${id}/returns`, body),
