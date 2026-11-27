@@ -71,6 +71,8 @@ public class ShippingService {
         return result;
     }
     static int fee(int d) { return d <= 20 ? 30000 : d <= 50 ? 35000 : d <= 120 ? 40000 : d <= 300 ? 45000 : d <= 600 ? 55000 : d <= 1000 ? 65000 : 75000; }
+    // Cùng danh sách khu vực với checkout, phục vụ nhận diện nơi nhận trong hội thoại.
+    public List<String> destinationKeys() { return rules.stream().map(Map.Entry::getKey).toList(); }
     static String eta(int d) { return d <= 30 ? "1 ngày" : d <= 100 ? "1-2 ngày" : d <= 300 ? "2 ngày" : d <= 600 ? "2-3 ngày" : d <= 1200 ? "3-4 ngày" : "4-5 ngày"; }
     private String normalize(String value) { return Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}+", "").replace('đ', 'd').replace('Đ', 'd').toLowerCase(Locale.ROOT).replaceAll("[.,;:/()\\[\\]{}]+", " ").replaceAll("\\s+", " ").trim(); }
     private String text(Object value, String fallback) { return value == null || value.toString().isEmpty() ? fallback : value.toString(); }

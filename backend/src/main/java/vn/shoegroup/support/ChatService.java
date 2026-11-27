@@ -17,9 +17,10 @@ import vn.shoegroup.security.ApiUser;
 public class ChatService {
   private final ProductReadService catalog;
   private final NamedParameterJdbcTemplate jdbc;
-  private static final List<String> START=List.of("Tìm giày","Hướng dẫn chọn size","Tra đơn hàng","Trả hàng / hoàn tiền","Gặp nhân viên");
+  private final ChatShippingService shipping;
+  private static final List<String> START=List.of("Tìm giày","Phí giao hàng","Hướng dẫn chọn size","Tra đơn hàng","Trả hàng / hoàn tiền","Gặp nhân viên");
   private static final Map<String,String> COLORS=Map.ofEntries(Map.entry("den","Đen"),Map.entry("trang","Trắng"),Map.entry("do","Đỏ"),Map.entry("xanh","Xanh"),Map.entry("xam","Xám"),Map.entry("hong","Hồng"),Map.entry("nau","Nâu"),Map.entry("vang","Vàng"),Map.entry("black","Đen"),Map.entry("white","Trắng"),Map.entry("red","Đỏ"));
-  public ChatService(ProductReadService catalog,NamedParameterJdbcTemplate jdbc) { this.catalog=catalog;this.jdbc=jdbc; }
+  public ChatService(ProductReadService catalog,NamedParameterJdbcTemplate jdbc,ChatShippingService shipping) { this.catalog=catalog;this.jdbc=jdbc;this.shipping=shipping; }
   private boolean contains(String text,String... words) { return Arrays.stream(words).anyMatch(text::contains); }
   private Map<String,Object> reply(String intent,String message,List<String> quick,Map<String,Object> context) {
     return params("intent",intent,"message",message,"quick_replies",quick,"context",context,"products",List.of(),"orders",List.of(),"links",List.of());
@@ -117,11 +118,13 @@ public class ChatService {
     if(contains(text,"tra hang","doi tra","hoan tien","hang hong","bi loi","khong vua"))return info("RETURNS","Với đơn đã giao, mở Đơn hàng của tôi và chọn Yêu cầu trả hàng. Bạn chọn từng sản phẩm và số lượng; cửa hàng duyệt, kiểm hàng thực nhận rồi đối soát tiền hoàn. Hàng hỏng được ghi riêng và không đưa ngay về tồn bán. Phí giao hàng được xem xét riêng khi kiểm nhận.","Mở đơn để yêu cầu hỗ trợ","/orders");
     if(contains(text,"tra don","don hang","don #","order","sgvn")||Pattern.compile("\\bdon\\s*#?\\s*\\d").matcher(text).find())return orders(message,user);
     if(contains(text,"huong dan chon size","bang size","do chan","chan dai","tu van size"))return info("SIZE_GUIDE","Bạn hãy đo chiều dài bàn chân và đối chiếu bảng size của đúng thương hiệu trên trang sản phẩm. Các hệ EU/US/UK và phom từng mẫu có thể khác nhau. Mình có thể tìm giày còn size bạn chọn, ví dụ: “giày đen size 40 dưới 1 triệu”.","Xem các mẫu giày","/products");
-    if(contains(text,"van chuyen","phi ship","giao hang","phi giao","bao lau"))return info("SHIPPING","Phí và thời gian giao dự kiến được báo ở bước thanh toán theo địa chỉ nhận. Bạn chọn địa chỉ rồi xem tổng tiền trước khi đặt; mình không đoán một mức phí cố định cho mọi nơi.","Đi đến giỏ hàng","/cart");
+    if(shipping.question(text)||body.containsKey("shipping_address_id"))return shipping.chat(message,body.get("context"),user,body.get("shipping_address_id"));
     if(contains(text,"thanh toan","chuyen khoan","cod","tien mat"))return info("PAYMENT","Website hỗ trợ COD và chuyển khoản theo hướng dẫn ở bước thanh toán. Hãy kiểm tra đúng số tiền, nội dung chuyển khoản và liên hệ cửa hàng nếu cần đối soát. Mình chỉ tra cứu, không xác nhận đã thu tiền hay tự chuyển tiền.","Xem giỏ hàng","/cart");
     if(contains(text,"ma giam","voucher","khuyen mai"))return info("PROMOTION","Giá ưu đãi đang có được hiển thị theo từng sản phẩm/màu/size. Mã giảm giá theo đơn còn phụ thuộc thời gian, số lượt và điều kiện giá trị đơn; hệ thống kiểm tra khi bạn áp mã tại thanh toán.","Xem sản phẩm ưu đãi","/products?sale=true");
     if(contains(text,"xin chao","hello","chao shop")||Set.of("chao","hi").contains(text))return reply("WELCOME","Chào bạn! Mình là trợ lý tra cứu ShoeGroup. Mình có thể tìm giày còn hàng, hướng dẫn chọn size và tra đơn của bạn. Bạn đang cần hỗ trợ việc gì?",START,Map.of());
-    if(contains(text,"tim","giay","size","sneaker","con hang","mau","tat ca san pham","xoa bo loc")||body.get("context") instanceof Map<?,?> c&&!c.isEmpty())return products(message,body.get("context"));
+    if(contains(text,"tim","giay","size","sneaker","con hang","tat ca san pham","xoa bo loc"))return products(message,body.get("context"));
+    if(shipping.awaiting(body.get("context")))return shipping.chat(message,body.get("context"),user,null);
+    if(contains(text,"mau")||body.get("context") instanceof Map<?,?> c&&!c.isEmpty())return products(message,body.get("context"));
     return reply("FALLBACK","Mình chưa hiểu rõ yêu cầu này. Bạn có thể mô tả mẫu giày, màu, size và ngân sách, hoặc chọn một mục bên dưới. Nếu vấn đề cần nhân viên quyết định, mình sẽ hướng dẫn bạn liên hệ cửa hàng.",START,Map.of());
   }
 }
