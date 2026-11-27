@@ -1,5 +1,17 @@
 # Tiến Độ ShoeGroup
 
+## Trả Hàng, Hoàn Kho Và Chatbot Tra Cứu - 2026-11-27
+
+- Đã lưu bản trước lên cả `main` và `admin` tại `0ec4e28`. Bổ sung hậu mãi trong module riêng, giữ trạng thái giao hàng và snapshot giá/biến thể của đơn đã bán.
+- Khách gửi yêu cầu theo dòng hàng/số lượng; quản trị viên duyệt, kiểm nhận số tốt/hỏng thực tế, rồi đối soát tiền hoàn. Có lý do từ chối trước khi tiếp nhận, lịch sử theo người thao tác và chống bấm lặp. Hàng tốt tăng tồn bán; hàng hỏng được sửa đạt đưa về bán hoặc ghi giảm riêng.
+- Kiện giao thất bại/Về kho giữ phần tồn đã xuất cho đến khi kiểm nhận. Hoàn kho đóng đơn đúng một lần; đối chiếu `StockRestoredAt` để không cộng lại tồn đã hoàn bởi bản cũ. Gửi lại vẫn giữ phần hàng đã dành cho đơn. Kiện mất hoặc đơn đã giao không đi qua luồng hoàn kiện thất bại.
+- Tiền trả tính theo giá trên đơn sau phân bổ giảm giá, làm tròn từng đồng và giữ tổng khi trả nhiều lần. `ReturnAdjustmentAmount` giảm doanh thu khi chấp nhận hàng trả; khoản tiền phải hoàn được giữ PENDING cho đến khi quản trị viên có chứng từ. Không tự chuyển tiền, không tự coi yêu cầu gửi lên là hàng đã về.
+- Trang quản lý **Trả hàng & hoàn kho** có phiếu, kiện cần nhận, tiền chờ hoàn, hàng hỏng và lịch sử kho. Chi tiết đơn và phía khách dùng chung bảng theo dõi. Đơn còn phiếu mở hoặc tiền chưa hoàn tiếp tục ở **Đang xử lý**.
+- Chatbot FAQ có ngữ cảnh màu/size/ngân sách, lấy giá/tồn thực tế và tra đơn chính chủ. Có hướng dẫn Zalo, giới hạn lượt gọi, thử lại khi mất kết nối, xóa hội thoại khi đổi tài khoản. Chưa tích hợp LLM/dịch vụ AI trả phí; không cho bot duyệt đơn hoặc thao tác tiền/kho.
+- Migration `20261127_after_sales.sql` thêm `OrderReturns`, `OrderReturnItems`, `OrderReturnEvents`, `InventoryMovements`, `RefundConfirmations` và các cột liên quan. Dữ liệu hoàn lịch sử giữ nguyên. Làm mới metadata `ProductVariantRead`/`ProductRead` để tránh lệch màu/size sau khi thêm cột. Bản SQL full/ERD cũ vẫn là mốc xuất trước đợt này; chạy các migration đăng ký khi khởi động Spring.
+- Kiểm chứng trên database riêng: frontend 119/119, Node 30/30, Java/SQL 60/60 không bỏ qua, catalog/POS 19/19, bán hàng/đơn hàng 37/37, hậu mãi/chatbot 27/27. Build Vue/Spring và audit import đạt. Thử giao diện khách gửi phiếu, quản lý duyệt/nhận 1 tốt + 1 hỏng/đối soát, sửa hàng hỏng, hoàn kiện COD, hàng chờ và chatbot desktop/mobile; không tràn ngang ở 390px. Không thực hiện chuyển tiền thật hoặc gửi email cho khách thật.
+- `KICH_BAN_DEMO_SHOEGROUP.txt` đã bổ sung phần demo hậu mãi/chatbot, số tồn/tiền đối chiếu và cách phân vai người nói/người thao tác.
+
 ## Hoàn Thiện Đơn Hàng Của Hưng Và Rà Soát Bàn Giao - 2026-11-04
 
 - Badge Hoàn thành trong danh sách và chi tiết thanh toán dùng màu xanh lá. Chuẩn hóa `COMPLETED`, Hoàn thành, Hoàn tất và Đã nhận hàng về cùng trạng thái hiển thị; đơn hoàn tất không còn xuất hiện trong hàng đợi đang xử lý. Không đổi quy tắc chuyển trạng thái ở backend.

@@ -3,6 +3,8 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { isOrderInProgress } from "@/services/orderQueue";
+import AfterSalesPanel from "../../../components/AfterSalesPanel.vue";
+import { isEmployee } from "../../../stores/authStore";
 import {
   paymentChannel,
   paymentSearch,
@@ -28,7 +30,15 @@ import {
   formatPrice,
   notify,
   apiErrors,
+  db,
+  refreshOrders,
 } from "../adminStore";
+
+async function refreshAfterSales() {
+  await refreshOrders();
+  const latest = db.orders.find(order => order.id === orderDetail.order?.id);
+  if (latest) orderDetail.order = latest;
+}
 
 const queueView = ref("ACTIVE");
 const paymentImagePlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88"><rect width="88" height="88" rx="8" fill="#f7f7f8"/><path d="M25 27h38v34H25z M25 53l12-12 11 11 7-7 8 8" fill="none" stroke="#b5b5bc" stroke-width="2" stroke-linejoin="round"/><circle cx="51" cy="37" r="4" fill="#b5b5bc"/></svg>')}`;
@@ -62,7 +72,7 @@ const displayedOrders = computed(() => {
 const actionableCount = computed(
   () =>
     displayedOrders.value.filter((order) =>
-      getOrderActions(order).some(
+      order.active_return_count > 0 || order.pending_refund_amount > 0 || getOrderActions(order).some(
         (action) => !action.locked && !action.isCancel,
       ),
     ).length,
@@ -199,8 +209,9 @@ function transitionMessage() {
     return `Bạn chắc chắn muốn chuyển trạng thái thanh toán của đơn #${order.id} sang “Đã thanh toán”?`;
   }
   if (action.key === "return_warehouse") {
-    return `Xác nhận khách không nghe máy/không nhận hàng ở đơn #${order.id}? Đơn sẽ được đưa về kho và dự kiến giao lại vào ngày gần nhất.`;
+    return `Xác nhận đơn #${order.id} giao không thành công? Kiện chuyển sang chờ kiểm nhận tại kho. Tồn bán chỉ được cộng sau khi kiểm nhận và hoàn kho.`;
   }
+  if (action.key === "reship") return `Xác nhận kiện của đơn #${order.id} đã được kiểm tra nguyên vẹn và sẵn sàng giao lại? Hệ thống giữ đúng phần tồn đã xuất cho đơn.`;
   if (action.key === "delivery_failed_menu") {
     return `Chọn lý do giao hàng thất bại cho đơn #${order.id}. Hệ thống sẽ chốt và cập nhật đúng nhánh ngay sau khi bạn chọn.`;
   }
@@ -606,6 +617,8 @@ function transitionMessage() {
               </div>
             </div>
           </div>
+
+          <div class="payment-panel mb-3"><h3 class="font-bold text-sm mb-2">Trả hàng, hoàn kho & tiền hoàn</h3><p class="text-xs text-gray-500 mb-3">Theo dõi yêu cầu hậu mãi, kiểm nhận kiện hàng và đối soát khoản cần hoàn.</p><AfterSalesPanel :order-id="orderDetail.order.id" :order-code="getTrackingCode(orderDetail.order)" admin :read-only="isEmployee" @updated="refreshAfterSales" /></div>
 
           <!-- Sản phẩm -->
           <div class="payment-panel">

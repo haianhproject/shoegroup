@@ -13,6 +13,52 @@ const storage = () => {
   const values = new Map();
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
 };
+
+test('inspection rejects fractional, negative, empty and over-received quantities', () => {
+  const { validateInspection } = load('src/services/afterSales.js', { './apiClient': { api: {} } });
+  const line = { expected_quantity: 3, good_quantity: 1, damaged_quantity: 1 };
+  assert.equal(validateInspection([line]), true);
+  assert.equal(validateInspection([line], true), false);
+  assert.equal(validateInspection([{ ...line, good_quantity: 2 }], true), true);
+  for (const change of [{ good_quantity: 1.5 }, { damaged_quantity: -1 }, { good_quantity: 3 }, { good_quantity: 0, damaged_quantity: 0 }]) assert.equal(validateInspection([{ ...line, ...change }]), false);
+});
+
+test('return submission blocks a double click and retains a failed customer draft', async () => {
+  const dto = { items: [{ order_detail_id: 1, quantity: 3, remaining_quantity: 3 }], returns: [], refunds: [], can_request: true };
+  let finish, fail = false, calls = 0;
+  const helpers = load('src/services/afterSales.js', { './apiClient': { api: {} } });
+  const page = load('src/components/AfterSalesPanel.vue', {
+    'lucide-vue-next': {}, '../services/afterSales': { ...helpers, afterSalesApi: { detail: async () => dto, request: () => { calls++; return fail ? Promise.reject(new Error('Đơn đang được xử lý ở phiên khác')) : new Promise(resolve => finish = resolve); } } },
+  }, { defineProps: () => ({ orderId: 7, admin: false }), defineEmits: () => () => {} }, ['data', 'request', 'submitRequest', 'busy', 'error', 'close']);
+  page.data.value = dto; page.request.reason = 'Cần đổi kích cỡ'; page.request.quantities[1] = 1; page.request.key = 'test-request';
+  const pending = page.submitRequest(); await page.submitRequest(); page.close();
+  assert.equal(calls, 1); assert.equal(page.busy.value, true); assert.equal(page.request.reason, 'Cần đổi kích cỡ');
+  finish({ success: true }); await pending;
+  assert.equal(page.busy.value, false); assert.equal(page.request.reason, '');
+  fail = true; page.request.reason = 'Giữ lại nội dung này'; page.request.quantities[1] = 1; await page.submitRequest();
+  assert.equal(page.busy.value, false); assert.equal(page.request.reason, 'Giữ lại nội dung này'); assert.match(page.error.value, /phiên khác/);
+});
+
+test('chat clears account-specific responses when identity changes during a request', async () => {
+  const user = vue.ref({ id_user: 1 }); let finish;
+  const page = load('src/components/ChatWidget.vue', {
+    'lucide-vue-next': {}, '../services/apiClient': { API_BASE_URL: '/api', api: { post: () => new Promise(resolve => finish = resolve) } }, '../stores/authStore': { currentUser: user },
+  }, {}, ['messages', 'send', 'pending']);
+  const pending = page.send('Tra đơn hàng'); await new Promise(resolve => setImmediate(resolve));
+  user.value = { id_user: 2 }; await vue.nextTick();
+  finish({ intent: 'ORDERS', message: 'Private order from user 1', orders: [{ code: 'PRIVATE' }], quick_replies: [] }); await pending;
+  assert.equal(page.messages.value.length, 1); assert.doesNotMatch(JSON.stringify(page.messages.value), /PRIVATE|Private order/); assert.equal(page.pending.value, false);
+});
+
+test('chat retry reuses its message and keeps one active send', async () => {
+  let fail = true, calls = 0;
+  const page = load('src/components/ChatWidget.vue', {
+    'lucide-vue-next': {}, '../services/apiClient': { API_BASE_URL: '/api', api: { post: async () => { calls++; if (fail) throw new Error('offline'); return { intent: 'WELCOME', message: 'Đã kết nối', quick_replies: [], context: {} }; } } }, '../stores/authStore': { currentUser: vue.ref(null) },
+  }, {}, ['messages', 'send', 'pending']);
+  await page.send('Xin chào'); const entry = page.messages.value.find(m => m.role === 'user'); assert.equal(entry.failed, true);
+  fail = false; await page.send(entry.message, entry);
+  assert.equal(calls, 2); assert.equal(page.messages.value.filter(m => m.role === 'user').length, 1); assert.equal(entry.failed, false); assert.equal(page.pending.value, false);
+});
 function load(relative, mocks = {}, globals = {}, expose = []) {
   const file = path.join(root, relative);
   let source = fs.readFileSync(file, 'utf8');
@@ -33,6 +79,8 @@ function load(relative, mocks = {}, globals = {}, expose = []) {
       if (name === '../services/vietQr') return load('src/services/vietQr.js');
       if (name === '../directives/dialogFocus') return load('src/directives/dialogFocus.js');
       if (name === 'vue') return { ...vue, onMounted() {}, onUnmounted() {}, onBeforeUnmount() {} };
+      if (name.endsWith('.vue') && fs.existsSync(path.resolve(path.dirname(file), name))) return {};
+      if (name === '../../../stores/authStore') return { isEmployee: vue.ref(false) };
       throw new Error(`Unexpected dependency ${name} in ${relative}`);
     },
     ...globals,
@@ -108,6 +156,8 @@ test('dashboard revenue excludes unpaid/cancelled orders and preserves historica
   assert.equal(recognizedOrderRevenue({...paid,status:'Đã hủy'}),0);
   assert.equal(recognizedOrderRevenue({...paid,payment_status:'Chờ thanh toán'}),0);
   assert.equal(recognizedOrderRevenue({...paid,is_counted_as_revenue:0}),0);
+  assert.equal(recognizedOrderRevenue({...paid,return_adjustment_amount:270000}),205000);
+  assert.equal(recognizedOrderRevenue({...paid,return_adjustment_amount:600000}),0);
 });
 
 test('cart checks exact variant, preserves requested quantity, and flags stale stock', async () => {
@@ -825,6 +875,8 @@ test('order queue partitions all nonterminal orders from completed and cancelled
   const closed = ['Đã giao hàng thành công', 'Đã nhận hàng', 'Hoàn tất', 'COMPLETED', 'Đã hủy', 'cancelled', 'Đã hoàn tất trả hàng'];
   for (const status of active) assert.equal(isOrderInProgress({ status }), true, status);
   for (const status of closed) assert.equal(isOrderInProgress({ status }), false, status);
+  assert.equal(isOrderInProgress({ status: 'Đã giao hàng thành công', active_return_count: 1 }), true);
+  assert.equal(isOrderInProgress({ status: 'Đã hủy', pending_refund_amount: 500000 }), true);
   const admin = loadAdminRealtime();
   admin.db.orders = [...active, ...closed].map((status, i) => ({ id: i + 1, status, created_at: new Date(2026, 10, i + 1).toISOString() }));
   assert.equal(admin.incompleteOrdersCount.value, active.length);

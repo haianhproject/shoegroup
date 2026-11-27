@@ -1,4 +1,4 @@
-// Mục đích: Kiểm thử 75 API hiện hành đều được xử lý bởi controller Java.
+// Mục đích: Kiểm thử các API hiện hành đều được xử lý bởi controller Java.
 package vn.shoegroup;
 
 import static org.assertj.core.api.Assertions.*;
@@ -43,6 +43,6 @@ class NativeRouteCoverageTest {
       assertThat(type).as(route.toString()).startsWith("vn.shoegroup.").doesNotContain("Legacy");
       checked++;
     }
-    assertThat(checked).isEqualTo(75);
+    assertThat(checked).isEqualTo(inventory.get("total").asInt());
   }
 }

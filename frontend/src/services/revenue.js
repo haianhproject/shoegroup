@@ -5,5 +5,6 @@ export function recognizedOrderRevenue(order) {
   if (![true,1,'1'].includes(flag) || !['da giao', 'da giao hang thanh cong', 'delivered', 'da nhan hang', 'received', 'hoan thanh', 'hoan tat', 'completed'].includes(normalize(order.status))
     || normalize(order.payment_status) !== 'da thanh toan') return 0;
   const refunded = Number(order.historical_refund_amount ?? order.HistoricalRefundAmount ?? 0);
-  return Math.max(0, Number(order.total ?? order.TotalAmount ?? 0) - refunded);
+  const returns = Number(order.return_adjustment_amount ?? order.ReturnAdjustmentAmount ?? 0);
+  return Math.max(0, Number(order.total ?? order.TotalAmount ?? 0) - refunded - returns);
 }

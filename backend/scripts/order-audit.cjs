@@ -74,11 +74,11 @@ module.exports = async function orderAudit({ api, pool, admin, users, check, fix
     assert.equal(refunds.length, 1); assert.equal(refunds[0].Status, 'PENDING'); assert.equal(refunds[0].SignatureValid, false);
     assert.equal((await api(`/orders/${id}/payment`, { user: admin, method: 'PUT', body: { payment_status: 'Hoàn tiền' } })).status, 409);
   });
-  await check('native failed delivery restores on warehouse return but never on lost shipment', async () => {
+  await check('native failed delivery holds stock until inspection and never restores a lost shipment', async () => {
     const item = await fixture(4), id = ok(await create(item)).orderId;
     ok(await change(id, 'Đã xác nhận')); ok(await change(id, 'Đang vận chuyển'));
     ok(await change(id, 'Về kho', 'Tai nạn vận chuyển')); ok(await change(id, 'Về kho', 'Tai nạn vận chuyển'));
-    assert.equal(await stock(item), 4);
+    assert.equal(await stock(item), 3);
     ok(await change(id, 'Đang vận chuyển')); assert.equal(await stock(item), 3);
     ok(await change(id, 'Đã hủy', 'Thất lạc hàng trong vận chuyển')); assert.equal(await stock(item), 3);
     assert.equal((await state(id)).StockIssueStatus, 'LOST_IN_TRANSIT');

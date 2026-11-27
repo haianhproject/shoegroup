@@ -88,6 +88,7 @@ const sections = [
     { to: '/admin/panel/discounts', icon: 'ticket', label: 'Mã giảm giá' },
     { to: '/admin/panel/variant-discounts', icon: 'tag', label: 'Khuyến mại sản phẩm' },
     { to: '/admin/panel/customers', icon: 'people', label: 'Khách hàng' },
+    { to: '/admin/panel/returns', icon: 'return', label: 'Trả hàng & hoàn kho' },
   ] },
   { title: 'Hệ thống', items: [
     { to: '/admin/panel/accounts', icon: 'shield', label: 'Tài khoản & phân quyền' },
@@ -100,7 +101,7 @@ const visibleSections = computed(() => sections.map(section => ({
 })).filter(section => section.items.length));
 const activeSection = computed(() => sections.find(section => section.items.some(item => item.to === route.path))?.title || 'Quản lý cửa hàng');
 const activeTabTitle = computed(() => sections.flatMap(section => section.items).find(item => item.to === route.path)?.label || route.meta.title || 'Tổng quan');
-const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-sizes','admin-discounts','admin-variant-discounts'].includes(route.name));
+const hasOwnPageHeading = computed(() => ['admin-dashboard', 'admin-products','admin-accounts','admin-brands','admin-colors','admin-materials','admin-categories','admin-sizes','admin-discounts','admin-variant-discounts','admin-returns'].includes(route.name));
 const pageDescriptions = {
   payments: 'Theo dõi đơn hàng và xử lý thanh toán trong một không gian.',
   pos: 'Tạo đơn và phục vụ khách hàng ngay tại cửa hàng.',

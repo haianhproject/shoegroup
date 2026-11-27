@@ -1,6 +1,6 @@
 # ShoeGroup
 
-Vue 3 + Spring Boot + SQL Server. 76/76 API có xử lý Java.
+Vue 3 + Spring Boot + SQL Server. Các API trong `backend/API-INVENTORY.json` đều có xử lý Java.
 Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Spring tại http://localhost:5000.
 
 ## Tìm Code
@@ -36,7 +36,7 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 | `backend/src/main/resources/application.properties` | Cấu hình chạy Spring |
 | `read-queries.json`, `order-queries.json` trong resources | Truy vấn SQL dùng bởi các API Java |
 | `order-rules.json`, `shipping-distances.json` trong resources | Quy tắc trạng thái đơn và khoảng cách tính phí giao hàng |
-| `backend/API-INVENTORY.json` | Danh sách 76 API dùng trong kiểm thử controller Java |
+| `backend/API-INVENTORY.json` | Danh sách API dùng trong kiểm thử controller Java |
 | `database/ShoegroupDB_FULL_20261025.sql` | DB đầy đủ mới nhất, có lệnh xóa/tạo lại DB; dùng cho cả nhóm cập nhật |
 | `backend/legacy-express/test/fixtures/legacy-schema.sql` | Chỉ cấu trúc gốc để kiểm thử migration; không chứa dữ liệu, không dùng cài DB |
 | `database/migrations/` | Các bản cập nhật SQL; Spring chạy những bản đã đăng ký trong SchemaInitializer |
@@ -74,6 +74,7 @@ cấu hình `backend/.env` theo file mẫu. Maven được chuẩn bị trong `t
 `npm run dev` khởi động Spring rồi Vue khi SQL đã kết nối.
 `npm run build` build frontend; `npm run build:api` build Spring.
 `npm test`, `npm run test:spring:sql`, `npm run test:spring:pos` kiểm tra phần mềm.
+`npm run test:spring:after-sales` kiểm tra trả hàng, hoàn kho, hoàn tiền và chatbot bằng Spring/SQL riêng sau khi build JAR.
 Kiểm thử SQL/POS dùng database riêng; kiểm thử POS cần JAR đã build.
 
 `backend/legacy-express/` chỉ phục vụ đối chiếu trong kiểm thử, không chạy cùng ứng dụng.
@@ -83,3 +84,24 @@ VietQR khi thanh toán online dùng cùng các biến `POS_BANK_*` trong `backen
 Khi thông tin ngân hàng chưa được cấu hình, trang thanh toán hiển thị số hỗ trợ để khách nhận hướng dẫn chuyển khoản.
 `node_modules/`, `frontend/dist/`, `backend/target/` và `tools/.cache/`
 là thư viện/build cần dùng, được ẩn trong VS Code. Tiến độ mới nhất: [MIGRATION.md](MIGRATION.md).
+
+## Trả hàng, hoàn kho và trợ lý cửa hàng
+
+Khách mở **Đơn hàng của tôi → Yêu cầu trả hàng**, chọn đúng biến thể/số lượng và gửi lý do.
+Quản trị viên xử lý ở **Trả hàng & hoàn kho** hoặc trong chi tiết **Đơn hàng & thanh toán**:
+duyệt tiếp nhận → kiểm nhận hàng tốt/hỏng → theo dõi khoản cần hoàn → ghi chứng từ sau khi thực sự hoàn tiền.
+Có thể từ chối có lý do trước khi nhận hàng; hàng không nhận không được nhập kho hoặc tạo tiền hoàn.
+
+Chuyển đơn giao thất bại sang **Về kho** giữ phần tồn đã xuất. **Hoàn kho và đóng đơn** chỉ cộng hàng tốt,
+đưa hàng hỏng vào tồn riêng và chỉ thực hiện một lần. Đơn cũ đã từng được hoàn tồn được đối chiếu qua dấu vết cũ để không cộng lặp.
+Kho hàng hỏng có thao tác đưa về bán sau khi kiểm đạt hoặc ghi giảm; cả hai đều có lịch sử theo người xử lý.
+
+Tiền trả từng phần được tính từ giá trên đơn gốc sau phân bổ giảm giá, làm tròn đến đồng và giữ phần dư cho các lần trả.
+Doanh thu thuần trừ `ReturnAdjustmentAmount` khi kiểm nhận chấp nhận hàng trả; nghĩa vụ tiền hoàn được ghi `PENDING` riêng.
+Xác nhận đối soát không tự chuyển tiền qua ngân hàng. Chỉ quản trị viên được ghi nhận khoản đã hoàn, có chứng từ không trùng.
+Đơn còn yêu cầu hậu mãi hoặc khoản chờ hoàn tiếp tục nằm trong **Đang xử lý**. Trạng thái giao hàng gốc được giữ cho đơn đã giao.
+
+Trợ lý ở góc trang khách dùng FAQ và dữ liệu thật để tìm giày theo tên/màu/size/ngân sách, tra đơn của tài khoản đang đăng nhập
+và hướng dẫn chuyển hỗ trợ Zalo. Đây là chatbot tra cứu có ngữ cảnh, chưa dùng mô hình ngôn ngữ hoặc dịch vụ AI trả phí.
+Hội thoại chỉ giữ trong bộ nhớ phiên trang, xóa khi đổi tài khoản; bot không tự hủy đơn, hoàn kho hay xác nhận thanh toán.
+Migration `20261127_after_sales.sql` được Spring áp dụng tự động, giữ nguyên số liệu hoàn lịch sử và làm mới view sau khi thêm cột tồn hỏng.

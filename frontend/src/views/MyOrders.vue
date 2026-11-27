@@ -13,6 +13,7 @@ import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import OrderStatusIcon from '../components/OrderStatusIcon.vue'
+import AfterSalesPanel from '../components/AfterSalesPanel.vue'
 
 const router = useRouter()
 const search = ref('')
@@ -51,7 +52,7 @@ const filtered = computed(() => {
     const status = getCustomerOrderDisplayStatus(order)
     return status === order.status ? order : { ...order, status }
   })
-  if (statusFilter.value !== 'ALL') list = list.filter((o) => o.status === statusFilter.value)
+  if (statusFilter.value !== 'ALL') list = list.filter((o) => statusFilter.value === 'RETURNED' ? (o.returnCount > 0 || o.status === 'RETURNED') : o.status === statusFilter.value)
   const q = search.value.trim().toLowerCase()
   if (q) {
     list = list.filter((o) =>
@@ -167,8 +168,8 @@ const deliveryIssueMessage = (o) => {
   }
   if (o.status === 'WAREHOUSE_RETURN') {
     return isAccidentDelivery(o)
-      ? 'Đơn gặp sự cố vận chuyển. Shop sẽ giao lại sớm.'
-      : 'Chưa liên hệ được người nhận. Shop sẽ giao lại sớm.'
+      ? 'Đơn gặp sự cố vận chuyển. Cửa hàng đang kiểm tra kiện hàng và hướng xử lý.'
+      : 'Chưa liên hệ được người nhận. Cửa hàng đang kiểm tra và xử lý kiện hàng.'
   }
   if (hasDeliveryIssue(o) && o.status === 'SHIPPING') return 'Shop đang giao lại đơn hàng. Vui lòng để ý điện thoại.'
   if (hasDeliveryIssue(o) && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)) return 'Đơn hàng đã được giao lại thành công.'
@@ -571,6 +572,11 @@ onUnmounted(() => {
             </a>
           </div>
 
+          <div v-if="o.serverId && ['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)" class="oc-after-sales">
+            <AfterSalesPanel :order-id="o.serverId" :order-code="getCustomerOrderCode(o)" :trigger-label="o.returnCount ? 'Theo dõi trả hàng' : 'Yêu cầu trả hàng'" @updated="loadOrders" />
+            <span v-if="o.activeReturnCount > 0" class="stat-badge amber">Trả hàng đang được xử lý</span>
+          </div>
+
           <!-- Transfer notices -->
           <div v-if="isBankTransfer(o) && o.payment_status === 'Đã thanh toán' && ['PENDING', 'CONFIRMED'].includes(o.status)" class="oc-payment-note">
             <OrderStatusIcon name="delivered" :size="18" /><span>Thanh toán thành công. Cửa hàng đang xử lý đơn.</span>
@@ -783,6 +789,7 @@ onUnmounted(() => {
 .oc-delivered-copy { flex: 1 1 220px; min-width: 0; }
 .oc-delivered-copy strong { font-size: .9rem; font-weight: 650; color: #226b40; }
 .oc-delivered-copy p { margin: 4px 0 0; font-size: .78rem; line-height: 1.7; color: #62776a; }
+.oc-after-sales { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 @media (min-width: 768px) { .oc-delivered .order-support-link { margin-inline-end: 44px; } }
 .btn-reorder { display: inline-flex; align-items: center; gap: 8px; }
 

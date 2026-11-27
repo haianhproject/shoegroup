@@ -12,7 +12,9 @@ public final class ApiPolicy {
     private static final List<Rule> RULES = List.of(
         new Rule("*", "^/api/pos(/|$)", Level.STAFF),
         new Rule("GET", "^/api/(orders|customers|inventory|variantDiscounts|admin/events)$", Level.STAFF),
-        new Rule("POST", "^/api/(login|register|auth/forgot-password|auth/reset-password|log-error|contact|newsletter)$", Level.PUBLIC),
+        new Rule("POST", "^/api/(login|register|auth/forgot-password|auth/reset-password|log-error|contact|newsletter|chat)$", Level.PUBLIC),
+        new Rule("GET", "^/api/orders/\\d+/after-sales$", Level.CUSTOMER),
+        new Rule("POST", "^/api/orders/\\d+/returns$", Level.CUSTOMER),
         new Rule("GET", "^/api/health$", Level.PUBLIC),
         new Rule("GET", "^/api/v2/products(/|$)", Level.PUBLIC),
         new Rule("GET", "^/api/v2/orders(/|$)", Level.CUSTOMER),

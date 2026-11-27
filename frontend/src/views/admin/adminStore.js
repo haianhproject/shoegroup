@@ -614,7 +614,7 @@ export const topProductsList = computed(() => {
     const key = localDateKey(order.date).slice(0, mode === "year" ? 4 : mode === "month" ? 7 : 10);
     if (key !== selected) return;
     (order.products || []).forEach(detail => {
-      const quantity = Math.max(0, (Number(detail.quantity) || 0) - (Number(detail.historical_returned_quantity) || 0));
+      const quantity = Math.max(0, (Number(detail.quantity) || 0) - (Number(detail.historical_returned_quantity) || 0) - (Number(detail.returned_quantity) || 0));
       if (!quantity) return;
       const id = detail.product_id != null ? `id:${detail.product_id}` : `name:${detail.name}`;
       if (!products.has(id)) {
@@ -4283,6 +4283,9 @@ export function mapOrder(o) {
     date: o.created_at ?? o.CreatedAt ?? o.OrderDate ?? o.date,
     total: o.TotalAmount ?? o.total ?? 0,
     historical_refund_amount: o.HistoricalRefundAmount ?? o.historical_refund_amount ?? 0,
+    return_adjustment_amount: o.ReturnAdjustmentAmount ?? o.return_adjustment_amount ?? 0,
+    active_return_count: Number(o.active_return_count || 0),
+    pending_refund_amount: Number(o.pending_refund_amount || 0),
     shipping_fee: o.ShippingFee ?? o.shippingFee ?? o.shipping_fee ?? 0,
     discount: o.DiscountAmount ?? o.discountAmount ?? o.discount ?? 0,
     status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
@@ -4318,6 +4321,7 @@ export function mapOrder(o) {
       size: d.Size ?? d.size ?? "",
       quantity: d.Quantity ?? d.quantity ?? 1,
       historical_returned_quantity: d.HistoricalReturnedQuantity ?? d.historical_returned_quantity ?? 0,
+      returned_quantity: Number(d.ReturnedQuantity ?? d.returned_quantity ?? 0),
       price: d.UnitPrice ?? d.price ?? 0,
       image: d.ImageURL ?? d.image ?? "",
     })),

@@ -37,6 +37,7 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
             if (retry == 0 && login) retry = limits.acquire(req.getRemoteAddr(), true);
             // Giới hạn riêng cho các yêu cầu gửi thư.
             if (retry == 0 && publicMail) retry = limits.acquire("mail:" + req.getRemoteAddr(), true);
+            if (retry == 0 && path.equals("/api/chat")) retry = limits.acquireChat(req.getRemoteAddr());
             if (retry > 0) {
                 res.setHeader("Retry-After", String.valueOf(retry));
                 deny(res, 429, "Ban thu qua nhieu lan. Vui long doi mot lat."); return;
