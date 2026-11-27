@@ -1,87 +1,53 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Search, PackageCheck, ArrowRight, CheckCircle2 } from 'lucide-vue-next'
+import { Search, RotateCcw, ArrowRight, CheckCircle2 } from 'lucide-vue-next'
 import { afterSalesApi, formatAfterSalesMoney as money } from '../services/afterSales'
-
-const props = defineProps({ initialCode: String })
-const emit = defineEmits(['updated', 'history'])
-const code = ref(props.initialCode || ''), order = ref(null), loading = ref(false), busy = ref(false), error = ref(''), saved = ref(null)
-const form = reactive({ lines: [], reason: '', confirmed: false, shipping: false, paid: false, reference: '', note: '', key: '' })
-let lookupVersion = 0
-const selected = computed(() => form.lines.filter(i => i.selected))
-const validLines = computed(() => selected.value.length > 0 && selected.value.every(i => Number.isSafeInteger(i.quantity) && i.quantity > 0 && i.quantity <= i.remaining_quantity && Number.isSafeInteger(i.damaged) && i.damaged >= 0 && i.damaged <= i.quantity))
-const wholeOrder = computed(() => validLines.value && form.lines.every(i => i.remaining_quantity === 0 || i.selected && i.quantity === i.remaining_quantity))
-// Cumulative rounding matches ReturnAmounts.portion; each return receives only its share of the original discount.
-const lineRefund = i => Math.round(Number(i.net_line_total) * (i.returned_quantity + i.quantity) / i.quantity_original) - Math.round(Number(i.net_line_total) * i.returned_quantity / i.quantity_original)
-const refund = computed(() => validLines.value ? selected.value.reduce((sum, i) => sum + lineRefund(i), 0) + (form.shipping && wholeOrder.value ? Number(order.value?.shipping_refundable_amount || 0) : 0) : 0)
-const ready = computed(() => order.value?.can_request && validLines.value && form.confirmed && form.reason.trim().length >= 5 && form.reason.length <= 500 && refund.value <= Number(order.value.remaining_refundable_amount)
-  && (!form.paid || refund.value === 0 || form.reference.trim().length >= 3 && form.note.trim().length >= 5))
-
-function seed(snapshot) {
-  order.value = snapshot
-  Object.assign(form, { lines: snapshot.items.map(i => ({ ...i, quantity_original: i.quantity, selected: false, quantity: 1, damaged: 0 })), reason: '', confirmed: false, shipping: false, paid: false, reference: '', note: '', key: crypto.randomUUID() })
+const props=defineProps({initialCode:String})
+const emit=defineEmits(['updated','history'])
+const code=ref(props.initialCode||''),order=ref(null),loading=ref(false),busy=ref(false),error=ref(''),saved=ref(null)
+const form=reactive({lines:[],reason:'',shipping:false,method:'CASH',key:''})
+const selected=computed(()=>form.lines.filter(i=>i.quantity>0))
+const validLines=computed(()=>selected.value.length>0&&form.lines.every(i=>Number.isSafeInteger(i.quantity)&&i.quantity>=0&&i.quantity<=i.remaining_quantity))
+const wholeOrder=computed(()=>validLines.value&&form.lines.every(i=>i.quantity===i.remaining_quantity))
+const lineRefund=i=>Math.round(Number(i.net_line_total)*(i.returned_quantity+i.quantity)/i.quantity_original)-Math.round(Number(i.net_line_total)*i.returned_quantity/i.quantity_original)
+const refund=computed(()=>validLines.value?selected.value.reduce((sum,i)=>sum+lineRefund(i),0)+(form.shipping&&wholeOrder.value?Number(order.value?.shipping_refundable_amount||0):0):0)
+const ready=computed(()=>order.value?.can_request&&validLines.value&&['CASH','BANK'].includes(form.method)&&refund.value<=Number(order.value.remaining_refundable_amount))
+function seed(snapshot){order.value=snapshot;Object.assign(form,{lines:snapshot.items.map(i=>({...i,quantity_original:i.quantity,quantity:0})),reason:'',shipping:false,method:/bank|chuyển khoản/i.test(snapshot.payment_method||'')?'BANK':'CASH',key:crypto.randomUUID()})}
+async function lookup(){
+  if(busy.value||loading.value||!code.value.trim())return
+  loading.value=true;error.value='';saved.value=null;order.value=null
+  try{seed(await afterSalesApi.lookup(code.value.trim()))}catch(e){error.value=e.message||'Không tìm thấy đơn hàng.'}finally{loading.value=false}
 }
-async function lookup() {
-  if (busy.value || loading.value || !code.value.trim()) return
-  const version = ++lookupVersion
-  loading.value = true; error.value = ''; saved.value = null; order.value = null
-  try { const snapshot = await afterSalesApi.lookup(code.value.trim()); if (version === lookupVersion) seed(snapshot) }
-  catch (e) { if (version === lookupVersion) error.value = e.message || 'Chưa tìm được đơn hàng.' }
-  finally { if (version === lookupVersion) loading.value = false }
+async function save(){
+  if(busy.value)return
+  if(!ready.value){error.value=validLines.value?'Vui lòng chọn hình thức hoàn tiền và tải lại số liệu của đơn.':'Nhập số lượng cần trả cho ít nhất một sản phẩm. Số lượng phải là số nguyên, không vượt phần còn được trả.';return}
+  busy.value=true;error.value=''
+  const body={simple:true,request_key:form.key,reason:form.reason.trim(),refund_method:form.method,refund_shipping:form.shipping&&wholeOrder.value,items:selected.value.map(i=>({order_detail_id:i.order_detail_id,quantity:i.quantity}))}
+  try{saved.value=await afterSalesApi.register(order.value.order_id,body);order.value={...order.value,can_request:false};emit('updated')}
+  catch(e){error.value=e.message||'Chưa nhận được kết quả. Giữ nguyên phiếu và thử lại để tránh ghi nhận trùng.'}finally{busy.value=false}
 }
-async function save() {
-  if (busy.value || !ready.value) return
-  busy.value = true; error.value = ''
-  const body = { request_key: form.key, reason: form.reason.trim(), confirm_received: true,
-    items: selected.value.map(i => ({ order_detail_id: i.order_detail_id, quantity: i.quantity, damaged_quantity: i.damaged })),
-    refund_shipping: form.shipping && wholeOrder.value, confirm_paid: form.paid && refund.value > 0,
-    reference: form.paid ? form.reference.trim() : '', refund_note: form.paid ? form.note.trim() : '' }
-  try {
-    saved.value = await afterSalesApi.register(order.value.order_id, body)
-    order.value = { ...order.value, can_request: false }
-    emit('updated')
-  } catch (e) {
-    error.value = e.message || 'Chưa nhận được kết quả. Giữ nguyên phiếu và thử lại để đối chiếu thao tác đã gửi.'
-    // Keep the UUID and payload after an ambiguous response: retrying cannot receive or refund twice.
-  } finally { busy.value = false }
-}
-onMounted(() => { if (code.value) lookup() })
-watch(() => props.initialCode, value => { if (value && !busy.value) { code.value = value; lookup() } })
+onMounted(()=>{if(code.value)lookup()})
+watch(()=>props.initialCode,value=>{if(value&&!busy.value){code.value=value;lookup()}})
 </script>
-
 <template>
   <div class="return-entry">
-    <div class="return-entry-intro"><span class="entry-step">01 / TRA CỨU</span><h2>Nhận lại đúng sản phẩm.</h2><p>Khách đã trao đổi qua Zalo? Nhập mã đơn, kiểm hàng thực nhận và lưu phiếu tại đây.</p></div>
-    <form class="entry-lookup" @submit.prevent="lookup"><label for="return-order-code">Mã đơn hàng gốc</label><div><Search :size="18" :stroke-width="1.5" /><input id="return-order-code" v-model="code" maxlength="100" placeholder="Ví dụ: SGVN… hoặc số đơn" :disabled="busy || loading" required /><button type="submit" :disabled="busy || loading || !code.trim()">{{ loading ? 'Đang tìm…' : 'Tìm đơn' }}<ArrowRight :size="16" /></button></div></form>
+    <div class="entry-intro"><span class="entry-step">TRẢ HÀNG THEO ĐƠN GỐC</span><h2>Nhập mã. Chọn hàng. Hoàn tiền.</h2><p>Dành cho đơn đã giao thành công, sau khi khách liên hệ cửa hàng qua Zalo.</p></div>
+    <form class="entry-lookup" @submit.prevent="lookup"><label for="return-order-code">Mã đơn hàng</label><div><Search :size="18" :stroke-width="1.5" /><input id="return-order-code" v-model="code" maxlength="100" placeholder="Nhập mã SGVN… hoặc số đơn" :disabled="busy||loading" required /><button type="submit" :disabled="busy||loading||!code.trim()">{{ loading?'Đang tìm…':'Tìm đơn' }}<ArrowRight :size="16" /></button></div></form>
     <p v-if="error" class="entry-note danger" role="alert">{{ error }}</p>
-    <div v-if="saved" class="entry-success" role="status"><CheckCircle2 :size="26" :stroke-width="1.5" /><div><strong>Đã lưu phiếu #{{ saved.return_id }}</strong><p>{{ saved.status === 'COMPLETED' ? 'Đã nhận hàng và ghi nhận khoản hoàn.' : 'Đã nhận hàng, điều chỉnh tồn kho và doanh thu. Khoản hoàn đang chờ chi trả.' }} {{ money(saved.refund_amount) }}</p><button type="button" @click="emit('history', order)">Xem sản phẩm & tiền hoàn</button></div></div>
-    <template v-if="order && !saved">
-      <div class="entry-order"><div><span>ĐƠN HÀNG GỐC</span><strong>{{ order.order_code }}</strong><small>{{ order.status }} · {{ order.payment_status }}</small></div><div><span>GIÁ TRỊ BAN ĐẦU</span><strong>{{ money(order.total) }}</strong><small>Còn được hoàn {{ money(order.remaining_refundable_amount) }}</small></div></div>
-      <p v-if="!order.can_request" class="entry-note">Đơn chưa đủ điều kiện nhận trả hoặc đang có phiếu cần xử lý. <button type="button" @click="emit('history', order)">Mở lịch sử & khoản chờ hoàn</button></p>
-      <form v-else class="entry-form" @submit.prevent="save">
-        <fieldset :disabled="busy"><legend><span class="entry-step">02 / KIỂM HÀNG</span>Chọn hàng đã nhận lại</legend>
-          <div v-for="i in form.lines" :key="i.order_detail_id" class="entry-line" :class="{ selected: i.selected, exhausted: !i.remaining_quantity }">
-            <label class="entry-product"><input v-model="i.selected" type="checkbox" :disabled="!i.remaining_quantity" :aria-label="`Chọn trả ${i.name} size ${i.size}`" /><span><strong>{{ i.name }}</strong><small>{{ i.color }} / {{ i.size }} · Đã mua {{ i.quantity_original }} · Đã trả {{ i.returned_quantity }}</small><small>Còn được trả {{ i.remaining_quantity }}{{ i.selected && validLines ? ` · Khoản hoàn ${money(lineRefund(i))}` : '' }}</small></span></label>
-            <label>Số nhận trả<input v-model.number="i.quantity" type="number" min="1" :max="i.remaining_quantity" step="1" :disabled="!i.selected" :aria-label="`Số nhận trả dòng ${i.order_detail_id}`" /></label>
-            <label>Trong đó hàng hỏng<input v-model.number="i.damaged" type="number" min="0" :max="i.quantity" step="1" :disabled="!i.selected" :aria-label="`Số hàng hỏng dòng ${i.order_detail_id}`" /></label>
-            <span class="entry-good">Nhập tồn bán <strong>{{ i.selected ? Math.max(0, i.quantity - i.damaged) : 0 }} đôi</strong></span>
-          </div>
-          <label class="entry-field">Lý do / kết quả kiểm hàng theo trao đổi qua Zalo<textarea v-model="form.reason" rows="3" minlength="5" maxlength="500" required placeholder="Sản phẩm khách gửi lại, tình trạng và phương án đã thống nhất…" /></label>
-          <label class="entry-check"><input v-model="form.shipping" type="checkbox" :disabled="!wholeOrder || !order.shipping_refundable_amount" />Hoàn cả phí giao hàng {{ money(order.shipping_refundable_amount) }} <small>(khi đã nhận lại toàn bộ phần hàng còn lại)</small></label>
-          <label class="entry-check"><input v-model="form.confirmed" type="checkbox" required />Tôi đã nhận hàng thực tế và kiểm tra số hàng tốt / hỏng ở trên</label>
-          <div class="entry-settlement"><span class="entry-step">03 / TIỀN HOÀN</span><div class="entry-total"><span>Khoản hoàn cho phiếu này</span><strong>{{ money(refund) }}</strong></div><p>Tính theo giá thực trả của sản phẩm sau giảm giá. Hàng hỏng được giữ riêng, không cộng vào tồn bán.</p>
-            <label class="entry-check"><input v-model="form.paid" type="checkbox" :disabled="!refund" />Tôi đã hoàn tiền thực tế cho khách</label>
-            <div v-if="form.paid && refund > 0" class="entry-proof"><label class="entry-field">Mã giao dịch / chứng từ<input v-model="form.reference" minlength="3" maxlength="100" required /></label><label class="entry-field">Ghi chú đối soát<input v-model="form.note" minlength="5" maxlength="500" required /></label></div>
-            <p v-else>Phiếu được lưu ở trạng thái <strong>Chờ hoàn tiền</strong>. Chỉ ghi “Đã hoàn tiền” sau khi đã chi trả và lưu chứng từ.</p>
-          </div>
-          <button class="entry-submit" type="submit" :disabled="!ready || busy"><PackageCheck :size="18" :stroke-width="1.5" />{{ busy ? 'Đang lưu…' : 'Xác nhận nhận trả & lưu phiếu' }}</button>
-        </fieldset>
-      </form>
+    <div v-if="saved" class="entry-success" role="status"><CheckCircle2 :size="25" :stroke-width="1.5" /><div><strong>Đã nhận trả & hoàn tiền</strong><p>Phiếu #{{ saved.return_id }} · {{ money(saved.refund_amount) }} · {{ form.method==='CASH'?'Tiền mặt':'Chuyển khoản' }}</p><button type="button" @click="emit('history',order)">Xem chi tiết sản phẩm đã trả</button></div></div>
+    <template v-if="order&&!saved">
+      <div class="entry-order"><div><span>ĐƠN HÀNG GỐC</span><strong>{{ order.order_code }}</strong><small>{{ order.status }}</small></div><div><span>GIÁ TRỊ BAN ĐẦU</span><strong>{{ money(order.total) }}</strong><small>Còn được hoàn {{ money(order.remaining_refundable_amount) }}</small></div></div>
+      <p v-if="!order.can_request" class="entry-note">Đơn chưa đủ điều kiện trả hàng, đã trả hết hoặc còn phiếu chưa hoàn tất. <button type="button" @click="emit('history',order)">Xem lịch sử & tiền hoàn</button></p>
+      <form v-else novalidate @submit.prevent="save"><fieldset :disabled="busy"><legend>Sản phẩm cần trả</legend><p>Nhập số lượng cần trả. Để 0 với sản phẩm không trả.</p>
+        <div v-for="i in form.lines" :key="i.order_detail_id" class="entry-line" :class="{selected:i.quantity>0}"><div><strong>{{ i.name }}</strong><small>{{ i.color }} / {{ i.size }} · Đã mua {{ i.quantity_original }} · Đã trả {{ i.returned_quantity }}</small><small>Còn được trả {{ i.remaining_quantity }}</small></div><label>Số lượng trả<input v-model.number="i.quantity" type="number" min="0" :max="i.remaining_quantity" step="1" :disabled="!i.remaining_quantity" :aria-label="`Số lượng trả dòng ${i.order_detail_id}`" /></label><span class="entry-line-money">Tiền hoàn<strong>{{ i.quantity>0&&validLines?money(lineRefund(i)):money(0) }}</strong></span></div>
+        <div class="entry-settings"><label>Hình thức hoàn tiền<select v-model="form.method"><option value="CASH">Tiền mặt</option><option value="BANK">Chuyển khoản</option></select></label><label v-if="wholeOrder&&order.shipping_refundable_amount">Phí vận chuyển<select v-model="form.shipping"><option :value="false">Giữ nguyên phí vận chuyển</option><option :value="true">Hoàn thêm {{ money(order.shipping_refundable_amount) }}</option></select></label></div>
+        <label class="entry-field">Ghi chú <small>(không bắt buộc)</small><textarea v-model="form.reason" maxlength="500" rows="2" placeholder="Nội dung đã trao đổi với khách qua Zalo…" /></label>
+        <div class="entry-total"><span>Tổng tiền hoàn</span><strong>{{ money(refund) }}</strong></div><p>Bấm xác nhận sau khi cửa hàng đã nhận lại hàng và hoàn tiền cho khách. Hệ thống cập nhật tồn kho, doanh thu và lịch sử đơn.</p>
+        <button class="entry-submit" type="submit" :disabled="busy"><RotateCcw :size="17" :stroke-width="1.5" />{{ busy?'Đang lưu…':'Xác nhận trả hàng & hoàn tiền' }}</button>
+      </fieldset></form>
     </template>
   </div>
 </template>
-
 <style scoped>
-.return-entry{max-width:100%;color:#253145}.return-entry-intro{margin-bottom:22px}.entry-step{display:block;color:#d4001a;font-size:9px;font-weight:650;letter-spacing:.12em;margin-bottom:8px}.return-entry h2{font-size:26px;line-height:1.45;margin:0 0 8px}.return-entry p{font-size:12px;line-height:1.9;color:#7b8697;margin:7px 0}.entry-lookup{max-width:620px;margin-bottom:24px}.entry-lookup>label{display:block;font-size:11px;font-weight:550;margin-bottom:8px}.entry-lookup>div{display:flex;align-items:center;gap:10px;border:1px solid #dce3eb;border-radius:9px;padding:5px 5px 5px 14px;background:#fff}.entry-lookup svg{flex-shrink:0;color:#8c95a4}.entry-lookup input{flex:1;min-width:0;border:0;outline:0;font:inherit;font-size:12px;padding:9px 0;background:none}.entry-lookup button,.entry-submit{display:flex;align-items:center;justify-content:center;gap:9px;border:0;border-radius:6px;background:#d4001a;color:#fff;padding:12px 17px;font:inherit;font-size:12px;cursor:pointer}.entry-lookup button svg{color:#fff}.entry-order{display:flex;justify-content:space-between;gap:20px;padding:18px 20px;background:#f8fafc;border:1px solid #e5eaf1;border-radius:10px;margin-bottom:25px}.entry-order>div{display:grid;gap:7px}.entry-order>div:last-child{text-align:right}.entry-order span{font-size:8px;letter-spacing:.1em;color:#8b94a3}.entry-order strong{font-size:15px;font-weight:650}.entry-order small{font-size:11px;color:#7e899a}.entry-form fieldset{border:0;padding:0;margin:0;min-width:0}.entry-form legend{font-size:15px;font-weight:600;padding:0;margin:0 0 17px}.entry-line{display:grid;grid-template-columns:minmax(150px,1fr) 95px 130px 105px;gap:16px;align-items:center;padding:17px 13px;border:1px solid #e7ebf1;border-radius:9px;margin-bottom:10px}.entry-line.selected{border-color:#d4001a50;background:#fffafb}.entry-line.exhausted{opacity:.6}.entry-product{display:flex;gap:12px;align-items:flex-start;min-width:0}.entry-product input{margin-top:4px;flex-shrink:0}.entry-product span{min-width:0}.entry-product strong{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere}.entry-product small{display:block;font-size:10px;color:#8a94a3;line-height:1.8;margin-top:4px}.entry-line>label:not(.entry-product){display:grid;gap:7px;font-size:10px;color:#8b94a2}.entry-line input[type=number],.entry-field input,.entry-field textarea{width:100%;min-width:0;border:1px solid #dfe5ed;border-radius:7px;padding:10px;background:#fff;color:#263247;font:inherit;font-size:12px}.entry-line input:disabled{background:#f5f6f8;color:#a0a7b2}.entry-good{font-size:9px;color:#8a94a3;line-height:1.8}.entry-good strong{display:block;font-size:12px;font-weight:550;color:#506175}.entry-field{display:grid;gap:8px;margin:19px 0;font-size:11px;font-weight:550}.entry-check{display:flex;align-items:flex-start;gap:9px;font-size:11px;line-height:1.9;color:#627085;margin:14px 0}.entry-check input{margin-top:4px;flex-shrink:0}.entry-check small{font-size:10px;color:#969eaa}.return-entry input[type=checkbox]{accent-color:#d4001a}.entry-settlement{padding:20px;border:1px solid #e5e9ef;border-radius:10px;margin:22px 0;background:#fafbfc}.entry-total{display:flex;justify-content:space-between;gap:15px;align-items:center;font-size:13px}.entry-total strong{font-size:23px;color:#111827;font-variant-numeric:tabular-nums}.entry-proof{display:grid;grid-template-columns:1fr 1fr;gap:15px}.entry-note{border:1px solid #e3e8ef;padding:13px 16px;background:#f8fafc;border-radius:8px;font-size:12px;line-height:1.8}.entry-note.danger{color:#a13c51;background:#fff5f7;border-color:#f0d9df}.entry-note button,.entry-success button{border:0;padding:0;background:none;color:#d4001a;text-decoration:underline;cursor:pointer;font:inherit}.entry-success{display:flex;gap:14px;padding:20px;border:1px solid #cfe7d8;border-radius:10px;background:#f3fbf6;color:#32724e}.entry-success svg{flex-shrink:0}.entry-success strong{font-size:15px}.entry-success p{color:#5d7c69}.entry-success button{font-size:12px}.return-entry button:disabled{opacity:.45;cursor:not-allowed}.return-entry :focus-visible{outline:2px solid #d4001a;outline-offset:3px}
-@media(max-width:1100px){.entry-line{grid-template-columns:minmax(140px,1fr) 75px 100px;gap:11px}.entry-good{grid-column:2/4;display:flex;gap:10px}}@media(max-width:600px){.entry-line{grid-template-columns:1fr 1fr;gap:13px}.entry-product{grid-column:1/-1}.entry-good{grid-column:1/-1}.entry-order{padding:15px;flex-direction:column}.entry-order>div:last-child{text-align:left}.entry-proof{grid-template-columns:1fr;gap:0}.entry-total{align-items:flex-start;flex-direction:column;gap:6px}.entry-check{flex-wrap:wrap}.entry-submit{width:100%;padding:14px}.return-entry h2{font-size:23px}}
+.return-entry{color:#263247}.entry-step{font-size:9px;font-weight:650;letter-spacing:.12em;color:#d4001a}.entry-intro h2{font-size:25px;line-height:1.5;margin:10px 0}.return-entry p{font-size:12px;line-height:1.9;color:#8290a1;margin:8px 0 16px}.entry-lookup{max-width:620px;margin:22px 0}.entry-lookup>label{display:block;font-size:11px;font-weight:550;margin-bottom:8px}.entry-lookup>div{display:flex;align-items:center;gap:11px;padding:5px 5px 5px 14px;border:1px solid #dce3eb;border-radius:9px}.entry-lookup svg{flex-shrink:0;color:#8b95a5}.entry-lookup input{flex:1;min-width:0;border:0;outline:0;padding:10px 0;font:inherit;font-size:12px}.entry-lookup button,.entry-submit{display:flex;align-items:center;justify-content:center;gap:9px;padding:12px 17px;border:0;border-radius:7px;background:#d4001a;color:#fff;font:inherit;font-size:12px;cursor:pointer}.entry-lookup button svg{color:#fff}.entry-order{display:flex;justify-content:space-between;gap:20px;padding:18px;background:#f8fafc;border:1px solid #e5eaf1;border-radius:10px;margin:22px 0}.entry-order>div{display:grid;gap:7px}.entry-order>div:last-child{text-align:right}.entry-order span{font-size:9px;letter-spacing:.06em;color:#8d97a7}.entry-order strong{font-size:15px;font-weight:650}.return-entry small{font-size:10px;color:#8b96a6;line-height:1.8}fieldset{border:0;padding:0;margin:0;min-width:0}legend{font-size:15px;font-weight:600;padding:0}.entry-line{display:grid;grid-template-columns:minmax(0,1fr) 100px 150px;align-items:center;gap:22px;border:1px solid #e5eaf0;border-radius:10px;padding:17px;margin:12px 0}.entry-line.selected{border-color:#d4001a45;background:#fffafb}.entry-line>div strong{display:block;font-size:13px;font-weight:600}.entry-line small{display:block;margin-top:4px}.entry-line label,.entry-settings label,.entry-field{display:grid;gap:7px;font-size:11px;color:#7c899a}.entry-line input,.entry-settings select,.entry-field textarea{width:100%;min-width:0;border:1px solid #dce3eb;background:#fff;border-radius:7px;padding:10px;font:inherit;font-size:12px;color:#263247}.entry-line-money{font-size:10px;color:#8c96a6;text-align:right}.entry-line-money strong{display:block;font-size:13px;font-weight:600;color:#34445b;margin-top:6px}.entry-settings{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.entry-field{margin:18px 0}.entry-field small{display:inline}.entry-total{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:18px;border-radius:9px;background:#f8fafc;border:1px solid #e5eaf1;font-size:13px;margin-top:22px}.entry-total strong{font-size:24px;color:#101827;font-variant-numeric:tabular-nums}.entry-note{padding:13px;border:1px solid #e1e7ee;border-radius:8px;background:#f8fafc;font-size:12px;line-height:1.8}.entry-note.danger{color:#ab3b53;background:#fff5f7;border-color:#f1d6de}.entry-note button,.entry-success button{border:0;padding:0;background:none;color:#d4001a;text-decoration:underline;font:inherit;cursor:pointer}.entry-success{display:flex;gap:14px;padding:20px;border:1px solid #d3e9dc;border-radius:10px;background:#f4fbf6;color:#36754f}.entry-success svg{flex-shrink:0}.entry-success p{color:#6b8775;margin:6px 0}.entry-success button{font-size:12px}.return-entry button:disabled{opacity:.5;cursor:wait}.return-entry :focus-visible{outline:2px solid #d4001a;outline-offset:3px}@media(max-width:700px){.entry-line{grid-template-columns:minmax(0,1fr) 85px;gap:13px}.entry-line-money{grid-column:1/-1;text-align:left;display:flex;gap:12px;align-items:center}.entry-line-money strong{margin:0}.entry-settings{grid-template-columns:1fr}.entry-order{flex-direction:column}.entry-order>div:last-child{text-align:left}.entry-total strong{font-size:21px}.entry-submit{width:100%}.entry-intro h2{font-size:22px}}
 </style>

@@ -3,8 +3,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { isOrderInProgress } from "@/services/orderQueue";
-import AfterSalesPanel from "../../../components/AfterSalesPanel.vue";
-import { isEmployee } from "../../../stores/authStore";
+import { remainingOrderValue } from "../../../services/afterSales";
 import {
   paymentChannel,
   paymentSearch,
@@ -25,23 +24,15 @@ import {
   buildOrderHistory,
   printInvoice,
   getOrderActions,
+  isPaymentSettled,
   runOrderAction,
   formatDate,
   formatPrice,
   notify,
   apiErrors,
-  db,
-  refreshOrders,
 } from "../adminStore";
 
-async function refreshAfterSales() {
-  await refreshOrders();
-  const latest = db.orders.find(order => order.id === orderDetail.order?.id);
-  if (latest) orderDetail.order = latest;
-}
-
 const queueView = ref("ACTIVE");
-const afterSalesPanel = ref(null);
 const paymentImagePlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88"><rect width="88" height="88" rx="8" fill="#f7f7f8"/><path d="M25 27h38v34H25z M25 53l12-12 11 11 7-7 8 8" fill="none" stroke="#b5b5bc" stroke-width="2" stroke-linejoin="round"/><circle cx="51" cy="37" r="4" fill="#b5b5bc"/></svg>')}`;
 
 function onPaymentImageError(event) {
@@ -106,8 +97,7 @@ const transitionConfirm = reactive({
   order: null,
   action: null,
   busy: false,
-  reason: '',
-  confirmed: false,
+  refundMethod: 'CASH',
 });
 
 const confirmPanel = ref(null);
@@ -157,18 +147,13 @@ function onConfirmKeydown(event) {
 
 function requestOrderAction(order, action) {
   if (!order || !action || action.locked || transitionConfirm.busy) return;
-  if (action.afterSales) {
-    if (!isEmployee.value) afterSalesPanel.value?.open({ mode: 'warehouse', reason: action.reason || '' });
-    return;
-  }
   if (action.isCancel) {
     runOrderAction(order, action);
     return;
   }
   transitionConfirm.order = order;
   transitionConfirm.action = action;
-  transitionConfirm.reason = '';
-  transitionConfirm.confirmed = false;
+  transitionConfirm.refundMethod = getPaymentMethodPill(order.payment_method).code === "Chuyển khoản" ? "BANK" : "CASH";
   transitionConfirm.open = true;
 }
 
@@ -186,11 +171,9 @@ async function confirmTransition() {
     transitionConfirm.busy
   )
     return;
-  const lost = transitionConfirm.action.key === 'lost_delivery_cancel';
-  if (lost && (!transitionConfirm.confirmed || transitionConfirm.reason.trim().length < 5)) return;
   transitionConfirm.busy = true;
   try {
-    await runOrderAction(transitionConfirm.order, { ...transitionConfirm.action, ...(lost ? { confirm_lost: true, reason: `${transitionConfirm.action.reason} ${transitionConfirm.reason.trim()}` } : {}) });
+    await runOrderAction(transitionConfirm.order, { ...transitionConfirm.action, refundMethod: transitionConfirm.refundMethod });
     transitionConfirm.open = false;
     transitionConfirm.order = null;
     transitionConfirm.action = null;
@@ -205,15 +188,7 @@ function chooseFailureResolution(option) {
   const menuAction = transitionConfirm.action;
   if (!menuAction || !Array.isArray(menuAction.menu) || transitionConfirm.busy)
     return;
-  if (option.afterSales) {
-    if (isEmployee.value) { notify('Quản trị viên cần kiểm hàng và xác nhận hoàn kho.', 'warning'); return; }
-    closeTransitionConfirm();
-    nextTick(() => afterSalesPanel.value?.open({ mode: 'warehouse', reason: option.reason }));
-    return;
-  }
   transitionConfirm.action = option;
-  transitionConfirm.reason = '';
-  transitionConfirm.confirmed = false;
 }
 
 function transitionMessage() {
@@ -223,20 +198,14 @@ function transitionMessage() {
   if (action.markPaid) {
     return `Bạn chắc chắn muốn chuyển trạng thái thanh toán của đơn #${order.id} sang “Đã thanh toán”?`;
   }
-  if (action.key === "return_warehouse") {
-    return `Xác nhận đơn #${order.id} giao không thành công? Kiện chuyển sang chờ kiểm nhận tại kho. Tồn bán chỉ được cộng sau khi kiểm nhận và hoàn kho.`;
-  }
-  if (action.key === "reship") return `Xác nhận kiện của đơn #${order.id} đã được kiểm tra nguyên vẹn và sẵn sàng giao lại? Hệ thống giữ đúng phần tồn đã xuất cho đơn.`;
+  if (action.warehouseReturn) return isPaymentSettled(order)
+    ? 'Xác nhận khách không tiếp tục nhận hàng? Hệ thống hoàn toàn bộ số lượng của đơn về kho, hủy đơn và ghi nhận khoản hoàn theo hình thức đã chọn.'
+    : 'Xác nhận khách không tiếp tục nhận hàng? Hệ thống hoàn toàn bộ số lượng của đơn về kho và hủy đơn. Đơn chưa thu tiền không phát sinh hoàn tiền.';
+  if (action.key === "reship") return `Xác nhận giao lại đơn #${order.id}? Hệ thống giữ nguyên phần hàng đã xuất.`;
   if (action.key === "delivery_failed_menu") {
     return `Chọn hướng xử lý cho đơn #${order.id}. Bạn sẽ kiểm tra và xác nhận trước khi hệ thống cập nhật.`;
   }
   if (action.key === 'retry_delivery') return `Giữ đơn #${order.id} ở trạng thái giao thất bại để liên hệ và giao lại. Hàng vẫn thuộc kiện đã xuất; chưa cộng tồn kho và chưa ghi doanh thu.`;
-  if (action.key === "delivery_accident") {
-    return `Xác nhận đơn #${order.id} gặp sự cố vận chuyển? Cửa hàng sẽ kiểm nhận kiện hàng trước khi quyết định giao lại hoặc hoàn kho.`;
-  }
-  if (action.key === "lost_delivery_cancel") {
-    return `Xác nhận đơn #${order.id} bị thất lạc khi vận chuyển? Đơn sẽ bị hủy, không ghi doanh thu và không cộng lại tồn kho.`;
-  }
   return `Bạn chắc chắn muốn chuyển đơn #${order.id} từ “${order.status}” sang “${action.next}”?`;
 }
 </script>
@@ -634,7 +603,6 @@ function transitionMessage() {
             </div>
           </div>
 
-          <div class="payment-panel mb-3"><h3 class="font-bold text-sm mb-2">Kiểm nhận & tiền hoàn</h3><p class="text-xs text-gray-500 mb-3">Xử lý kiện hàng và khoản cần hoàn ngay trong đơn, không cần lập phiếu trả hàng cho kiện chưa giao thành công.</p><AfterSalesPanel ref="afterSalesPanel" :order-id="orderDetail.order.id" :order-code="getTrackingCode(orderDetail.order)" trigger-label="Mở kiểm nhận & tiền hoàn" admin :read-only="isEmployee" @updated="refreshAfterSales" /></div>
 
           <!-- Sản phẩm -->
           <div class="payment-panel">
@@ -685,7 +653,7 @@ function transitionMessage() {
             <div v-if="orderDetail.order.refunded_amount || orderDetail.order.pending_refund_amount" class="payment-refund-summary">
               <p v-if="orderDetail.order.refunded_amount"><span>Đã hoàn tiền</span><strong>{{ formatPrice(orderDetail.order.refunded_amount) }}</strong></p>
               <p v-if="orderDetail.order.pending_refund_amount"><span>Chờ hoàn tiền</span><strong>{{ formatPrice(orderDetail.order.pending_refund_amount) }}</strong></p>
-              <p><span>Giá trị sau trả hàng</span><strong>{{ formatPrice(Math.max(0, orderDetail.order.total - Number(orderDetail.order.historical_refund_amount) - Number(orderDetail.order.return_adjustment_amount))) }}</strong></p>
+              <p><span>Giá trị còn lại</span><strong>{{ formatPrice(remainingOrderValue(orderDetail.order)) }}</strong></p>
             </div>
           </div>
         </div>
@@ -783,7 +751,7 @@ function transitionMessage() {
                 Tiến trình đơn hàng
               </p>
               <div class="grid gap-2">
-                <p v-if="['Về kho', 'Giao hàng thất bại'].includes(orderDetail.order.status)" class="text-xs text-gray-500 leading-relaxed">Giao lại khi khách vẫn muốn nhận và kiện còn nguyên vẹn. Nếu khách không nhận nữa, kiểm nhận hàng thực tế rồi hoàn kho và đóng đơn.</p>
+                <p v-if="['Về kho', 'Giao hàng thất bại'].includes(orderDetail.order.status)" class="text-xs text-gray-500 leading-relaxed">Khách chưa nghe máy có thể hẹn giao lại. Khi khách bùng hàng, chọn Hoàn kho & hủy đơn.</p>
                 <button
                   v-for="act in getOrderActions(orderDetail.order)"
                   :key="act.key"
@@ -844,10 +812,7 @@ function transitionMessage() {
             class="text-gray-600 text-sm mb-4"
             v-text="transitionMessage()"
           ></p>
-          <div v-if="transitionConfirm.action?.key === 'lost_delivery_cancel'" class="failure-validation">
-            <label>Biên bản / ghi chú xác minh mất hàng<textarea v-model="transitionConfirm.reason" rows="3" minlength="5" maxlength="400" placeholder="Nhập kết quả xác minh với đơn vị vận chuyển…" /></label>
-            <label class="failure-check"><input v-model="transitionConfirm.confirmed" type="checkbox" />Tôi xác nhận kiện đã mất, hủy đơn và không cộng lại tồn kho</label>
-          </div>
+          <label v-if="transitionConfirm.action?.warehouseReturn && isPaymentSettled(transitionConfirm.order)" class="payment-refund-method">Hình thức hoàn tiền<select v-model="transitionConfirm.refundMethod"><option value="CASH">Tiền mặt</option><option value="BANK">Chuyển khoản</option></select></label>
           <div v-if="transitionConfirm.action?.menu" class="grid gap-2 mb-3">
             <button
               v-for="option in transitionConfirm.action.menu"
@@ -887,7 +852,7 @@ function transitionMessage() {
             <button
               type="button"
               class="btn btn-sm btn-dark text-white px-3"
-              :disabled="transitionConfirm.busy || (transitionConfirm.action?.key === 'lost_delivery_cancel' && (!transitionConfirm.confirmed || transitionConfirm.reason.trim().length < 5))"
+              :disabled="transitionConfirm.busy"
               @click="confirmTransition"
             >
               <span
@@ -899,7 +864,7 @@ function transitionMessage() {
                 v-text="
                   transitionConfirm.busy
                     ? 'Đang cập nhật...'
-                    : transitionConfirm.action?.key === 'lost_delivery_cancel' ? 'Xác nhận hủy đơn' : 'Xác nhận chuyển'
+                    : transitionConfirm.action?.warehouseReturn ? 'Xác nhận hoàn kho & hủy đơn' : 'Xác nhận chuyển'
                 "
               ></span>
             </button>
@@ -911,8 +876,8 @@ function transitionMessage() {
 </template>
 
 <style scoped>
+.payment-refund-method{display:grid;gap:8px;font-size:12px;color:#7d8797;margin-bottom:20px}.payment-refund-method select{padding:10px;border:1px solid #dce3ed;border-radius:8px;font:inherit;color:#263247;background:#fff}
 .payment-returned-line{font-size:11px;color:#627466;margin:8px 0 0;line-height:1.8}.payment-refund-summary{border-top:1px solid #e7ebf0;margin-top:15px;padding-top:12px}.payment-refund-summary p{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:1.9;margin:5px 0;color:#7d8797}.payment-refund-summary strong{font-weight:550;color:#3d4d5f}
-.failure-validation{display:grid;gap:14px;margin:0 0 20px;font-size:12px;line-height:1.8}.failure-validation label{display:grid;gap:7px}.failure-validation textarea{width:100%;border:1px solid #dce3ed;border-radius:8px;padding:10px;font:inherit}.failure-validation .failure-check{display:flex;align-items:flex-start;gap:9px}.failure-check input{margin-top:5px;accent-color:#d4001a}
 .payments-page,
 .payment-detail,
 .payment-main-column,

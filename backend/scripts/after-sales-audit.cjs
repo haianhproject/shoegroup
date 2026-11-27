@@ -118,6 +118,53 @@ async function main(){
     assert.equal((await state(f.id)).Status,'Đã hủy');assert.equal((await state(f.id)).IsCountedAsRevenue,false);
     assert.equal((await inventory(f.variants[0].id)).stock,9);assert.equal((await inventory(f.variants[0].id)).damaged,1);assert.equal((await detail(f.id)).returns.length,0);
   });
+  await rows("INSERT Coupons(CouponCode,UsageLimit,UsedCount,ExpiryDate,IsActive,DiscountType,DiscountValue,MinOrderAmount,MaxDiscountAmount,StartDate,PerUserLimit) SELECT 'AUDIT-SIMPLE',UsageLimit,0,ExpiryDate,IsActive,DiscountType,DiscountValue,MinOrderAmount,MaxDiscountAmount,StartDate,PerUserLimit FROM Coupons WHERE CouponCode='AUDIT-MULTI'");
+  const simple=await fixture({coupon:'AUDIT-SIMPLE',two:true});
+  const simpleBody={simple:true,request_key:randomUUID(),refund_method:'BANK',reason:'abc',items:[{order_detail_id:simple.lines[0].order_detail_id,quantity:1}]};
+  let simpleResult;
+  await check('simple returns need only selected quantities and cash/bank, without proof or condition checkboxes',async()=>{
+    const before=await inventory(simple.variants[0].id);
+    ok(await register(simple,{...simpleBody,refund_method:'INVALID'}),400);
+    ok(await register(simple,{...simpleBody,items:[{order_detail_id:simple.lines[0].order_detail_id,quantity:4}]}),409);
+    ok(await register(simple,simpleBody,users[0]),403);
+    assert.deepEqual(await inventory(simple.variants[0].id),before);
+    simpleResult=ok(await register(simple,simpleBody));assert.equal(simpleResult.status,'COMPLETED');assert.equal(simpleResult.refund_amount,270000);
+    assert.equal((await inventory(simple.variants[0].id)).stock,before.stock+1);assert.equal((await inventory(simple.variants[0].id)).damaged,before.damaged);
+    const d=await detail(simple.id);assert.equal(d.refunds[0].status,'SUCCESS');assert.equal(d.refunds[0].refund_method,'BANK');assert.equal(d.items[0].refunded_quantity,1);
+    assert.equal((await state(simple.id)).PaymentStatus,'Đã thanh toán');assert.equal((await state(simple.id)).ReturnAdjustmentAmount,270000);
+  });
+  await check('simple receipt retries preserve refund method and cannot repeat the stock or revenue adjustment',async()=>{
+    const before=await inventory(simple.variants[0].id);assert.equal(ok(await register(simple,simpleBody)).unchanged,true);
+    ok(await register(simple,{...simpleBody,refund_method:'CASH'}),409);assert.deepEqual(await inventory(simple.variants[0].id),before);
+    assert.equal((await detail(simple.id)).returns.length,1);assert.equal((await state(simple.id)).ReturnAdjustmentAmount,270000);
+  });
+  await check('remaining products can be returned for cash without a receipt code or mandatory note',async()=>{
+    const d=await detail(simple.id);const body={simple:true,request_key:randomUUID(),refund_method:'CASH',refund_shipping:true,items:d.items.map(i=>({order_detail_id:i.order_detail_id,quantity:i.remaining_quantity}))};
+    const result=ok(await register(simple,body));assert.equal(result.status,'COMPLETED');assert.equal((await state(simple.id)).PaymentStatus,'Hoàn tiền');
+    const after=await detail(simple.id);assert.ok(after.items.every(i=>i.remaining_quantity===0));assert.equal(after.refunds[0].refund_method,'CASH');assert.equal((await state(simple.id)).ReturnAdjustmentAmount,simple.order.TotalAmount);
+  });
+  await check('simple warehouse cancellation derives all quantities from the undelivered order and creates no COD refund',async()=>{
+    const f=await fixture({delivered:false});await change(f.id,'Đã xác nhận');await change(f.id,'Đang vận chuyển');await change(f.id,'Giao hàng thất bại');
+    const before=await inventory(f.variants[0].id);ok(await request(`/orders/${f.id}/warehouse-return`,'POST',{simple:true}));
+    assert.equal((await inventory(f.variants[0].id)).stock,before.stock+3);assert.equal((await inventory(f.variants[0].id)).damaged,before.damaged);
+    assert.equal((await state(f.id)).Status,'Đã hủy');assert.equal((await state(f.id)).IsCountedAsRevenue,false);assert.equal((await detail(f.id)).refunds.length,0);
+    const closed=await inventory(f.variants[0].id);assert.equal(ok(await request(`/orders/${f.id}/warehouse-return`,'POST',{simple:true})).unchanged,true);assert.deepEqual(await inventory(f.variants[0].id),closed);
+    ok(await request(`/orders/${simple.id}/warehouse-return`,'POST',{simple:true}),409);
+  });
+  await check('simple prepaid warehouse cancellation restores stock and records the selected refund method atomically',async()=>{
+    const f=await fixture({delivered:false,bank:true});await change(f.id,'Đã xác nhận');await change(f.id,'Đang vận chuyển');
+    const before=await inventory(f.variants[0].id);ok(await request(`/orders/${f.id}/warehouse-return`,'POST',{simple:true}),400);assert.deepEqual(await inventory(f.variants[0].id),before);
+    ok(await request(`/orders/${f.id}/warehouse-return`,'POST',{simple:true,refund_method:'BANK'}));
+    assert.equal((await state(f.id)).PaymentStatus,'Hoàn tiền');assert.equal((await inventory(f.variants[0].id)).stock,10);
+    const d=await detail(f.id);assert.equal(d.refunds[0].status,'SUCCESS');assert.equal(d.refunds[0].refund_method,'BANK');assert.equal(d.refunds[0].amount,f.order.TotalAmount);
+  });
+  await check('pending refunds from ordinary cancelled orders can be settled by method without proof',async()=>{
+    const f=await fixture({delivered:false,bank:true});ok(await request(`/orders/${f.id}/status`,'PUT',{status:'Đã hủy',reason:'Khách không tiếp tục mua hàng'}));
+    const d=await detail(f.id),tx=d.refunds[0].id;const path=`/orders/${f.id}/refunds/${tx}/confirm`;
+    ok(await request(path,'POST',{refund_method:'CASH'},users[0]),403);ok(await request(path,'POST',{refund_method:'CARD'}),400);
+    ok(await request(path,'POST',{refund_method:'CASH'}));assert.equal(ok(await request(path,'POST',{refund_method:'CASH'})).unchanged,true);
+    ok(await request(path,'POST',{refund_method:'BANK'}),409);assert.equal((await detail(f.id)).refunds[0].refund_method,'CASH');assert.equal((await state(f.id)).PaymentStatus,'Hoàn tiền');
+  });
   const f=await fixture({coupon:true});let returnId,tx;
   await check('only the owner can see or request returns; customer cannot review or receive',async()=>{
     ok(await request(`/orders/${f.id}/after-sales`,'GET',undefined,users[1]),403);
@@ -203,6 +250,21 @@ async function main(){
   });
   const warehouse=async(bank=false)=>{const order=await fixture({bank,delivered:false});await change(order.id,'Đã xác nhận');await change(order.id,'Đang vận chuyển');await change(order.id,'Về kho');return order;};
   const warehouseBody=(order,good=2,bad=1)=>({confirm_received:true,reason:'Khách từ chối nhận, kiện đã về và được kiểm nhận.',items:order.lines.map(i=>({order_detail_id:i.order_detail_id,good_quantity:good,damaged_quantity:bad}))});
+  for(const bad of [0,1])await check(`a one-pair parcel with ${bad} damaged pair uses the original quantity and never invents saleable stock`,async()=>{
+    const order=await fixture({quantity:1,delivered:false});await change(order.id,'Đã xác nhận');await change(order.id,'Đang vận chuyển');
+    const before=await inventory(order.variants[0].id),body=warehouseBody(order,1-bad,bad);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',{...body,reason:'abc'}),400);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order,0,2)),409);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order,0,0)),409);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order,0.5,0.5)),400);
+    assert.deepEqual(await inventory(order.variants[0].id),before);
+    ok(await request(`/orders/${order.id}/warehouse-return`,'POST',body));const after=await inventory(order.variants[0].id);
+    assert.equal(after.stock,before.stock+1-bad);assert.equal(after.damaged,before.damaged+bad);
+    assert.equal((await state(order.id)).Status,'Đã hủy');assert.equal((await state(order.id)).IsCountedAsRevenue,false);
+    assert.equal((await detail(order.id)).refunds.length,0);
+    assert.equal(ok(await request(`/orders/${order.id}/warehouse-return`,'POST',body)).unchanged,true);
+    assert.deepEqual(await inventory(order.variants[0].id),after);
+  });
   await check('refused COD stays reserved until inspection and closes with good-only restock',async()=>{
     const order=await warehouse();assert.equal((await inventory(order.variants[0].id)).stock,7);
     ok(await request(`/orders/${order.id}/warehouse-return`,'POST',{...warehouseBody(order),confirm_received:false}),400);
