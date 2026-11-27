@@ -208,8 +208,8 @@ A nói:
   "Qua hai kênh bán, nhóm đã chứng minh dữ liệu sản phẩm theo biến thể,
   đặt hàng, quản lý trạng thái, tồn kho và doanh thu liên thông. Các đơn
   có lỗi hoặc giao chưa xong vẫn nằm trong hàng chờ để tiếp tục xử lý.
-  Phần tiếp theo nhóm đề xuất là quản lý tiếp nhận hàng trả theo tình
-  trạng thực tế và trợ lý hỗ trợ khách hàng có dữ liệu tra cứu.
+  Nhóm đã bổ sung tiếp nhận hàng trả theo tình trạng thực tế và trợ lý
+  tra cứu dữ liệu cửa hàng; nếu còn thời gian, nhóm xin trình diễn tiếp.
   Nhóm em xin cảm ơn quý thầy cô và sẵn sàng nhận câu hỏi."
 B làm: giữ màn hình đối chiếu; ngừng bấm và cùng nghe câu hỏi.
 
@@ -278,17 +278,18 @@ PHẦN 4. PHẢN BIỆN THỨ TỰ VÀ CÁC CÂU HỎI DỄ GẶP
    vì người dùng thường nghĩ đó là mọi đơn. Về UX, đề xuất sau này đổi
    tên thành "Đã kết thúc" hoặc "Lịch sử"; hiện có mô tả ngay trên bảng.
 
-PHẦN 5. ĐỀ XUẤT HOÀN HÀNG — Ý TƯỞNG CHO GIAI ĐOẠN SAU
-Các bước dưới đây chưa được triển khai trong đợt chỉnh giao diện này.
+PHẦN 5. QUY TRÌNH HẬU MÃI ĐÃ TRIỂN KHAI VÀ HƯỚNG MỞ RỘNG
+Đã có yêu cầu trả hàng, kiểm nhận tốt/hỏng, hoàn kho một lần và đối soát tiền hoàn.
+Phần đổi sang sản phẩm khác tự động hoặc kết nối ngân hàng là hướng mở rộng.
 
 1. Một nút "Hoàn kho" là chưa đủ
    Nút có thể mở một phiếu tiếp nhận gọn, gồm: mã đơn, lý do, sản phẩm,
    màu/size, số lượng thực nhận, tình trạng, người kiểm và ghi chú/ảnh.
    Chỉ cộng tồn có thể bán sau khi kiện hàng thực sự về và được kiểm tra.
    Ghi lịch sử và chống bấm lặp/chống hoàn vượt số lượng đã xuất.
-   LƯU Ý DỰ ÁN HIỆN TẠI: chuyển sang "Về kho" đã hoàn tồn một lần và cho
-   phép giao lại. Nếu bổ sung nút mới, phải dùng chung dấu vết hoàn tồn;
-   cộng thêm một lần ở nút mới sẽ làm tăng tồn sai.
+   HIỆN TẠI: chuyển sang "Về kho" giữ phần tồn đã xuất, chờ kiểm nhận.
+   Thao tác "Hoàn kho và đóng đơn" cộng hàng tốt một lần, hàng hỏng tách riêng.
+   Dữ liệu cũ đã từng hoàn tồn được đối chiếu dấu vết, không cộng lại lần nữa.
 
 2. Khách không nghe máy hoặc từ chối nhận
    Đang giao -> Giao thất bại -> Chờ hàng về -> Kiểm nhận.
@@ -327,23 +328,25 @@ Các bước dưới đây chưa được triển khai trong đợt chỉnh giao
    Đề xuất có chỉ số "Chờ hoàn tiền" để khoản đang nợ khách không bị quên.
    Báo cáo lịch sử ghi khoản điều chỉnh/hoàn, giữ dấu vết đơn gốc.
 
-6. Phạm vi tối thiểu đáng làm trước bảo vệ, nếu nhóm quyết định phát triển
-   Ưu tiên phiếu nhận hàng trả của quản lý, phân loại tốt/hỏng, hoàn tồn
-   một lần, nghĩa vụ hoàn tiền và lịch sử. Giai đoạn sau mới mở tự tạo
-   yêu cầu trả hàng cho khách hoặc chatbot xử lý thông tin hậu mãi.
-   Cần kiểm thử nhận thiếu kiện, nhấn hai lần, trả một phần, giao lại sau
-   hoàn kho, hỏng toàn bộ và đơn trả trước chưa hoàn tiền.
+6. Phạm vi đang có và phần mở rộng
+   Khách có thể tạo yêu cầu cho một phần hoặc toàn bộ hàng còn được trả.
+   Quản lý duyệt, có thể từ chối trước nhận, kiểm hàng thực tế và phân loại.
+   Tiền hoàn tính từ giá đơn gốc sau giảm; phí giao được quyết định riêng khi đủ điều kiện.
+   Khoản chờ hoàn và đã hoàn tách rõ, có chứng từ chống dùng lặp. Hàng hỏng
+   có thao tác sửa đạt đưa về bán hoặc ghi giảm kèm lịch sử.
+   Chưa có đổi tự động sang sản phẩm khác hoặc chuyển tiền ngân hàng tự động.
 
 Tham khảo mô hình kiểm hàng rồi xử lý trả và tách tồn khả dụng/hàng hỏng:
 https://help.shopify.com/en/manual/fulfillment/managing-orders/returns/processing-returns
 https://help.shopify.com/en/manual/inventory-and-locations/fundamentals/inventory-states
 Các quy tắc và ví dụ đề xuất ở trên là thiết kế dành cho ShoeGroup.
 
-PHẦN 6. ĐỀ XUẤT CHATBOT — Ý TƯỞNG CHO GIAI ĐOẠN SAU
+PHẦN 6. CHATBOT TRA CỨU ĐÃ CÓ VÀ HƯỚNG MỞ RỘNG AI
 
-Hiện trạng đã kiểm tra: nút chat trên website mở liên hệ Zalo; chưa có
-luồng chatbot AI trong mã nguồn đang dùng. Khi thuyết trình, gọi đúng là
-"hỗ trợ qua Zalo". Phân biệt chức năng hiện có và hướng phát triển.
+Hiện có trợ lý tra cứu bằng FAQ và API sản phẩm/đơn hàng, có ngữ cảnh màu,
+size và ngân sách. Bot chỉ tra đơn thuộc tài khoản đang đăng nhập, không
+thao tác tài chính và có lối chuyển nhân viên qua Zalo. Chưa dùng mô hình
+ngôn ngữ; khi thuyết trình gọi đúng là "chatbot tra cứu dữ liệu cửa hàng".
 
 1. Bản tối thiểu có giá trị sử dụng
    Mở lời bằng bốn lựa chọn: Tìm giày, Chọn size, Tra đơn, Gặp nhân viên.
@@ -399,4 +402,44 @@ PHẦN 7. KIỂM TRA NHANH NGAY TRƯỚC KHI LÊN TRÌNH BÀY
 [ ] Có ảnh/video tổng duyệt và mã đơn dự phòng.
 [ ] B biết dừng ở đâu; A biết câu chuyển cảnh và số liệu cần đọc.
 [ ] Chốt tồn 7/8 và tổng 15, phân biệt doanh thu với lợi nhuận.
-[ ] Chỉ giới thiệu hoàn hàng nâng cao và chatbot là đề xuất phát triển.
+[ ] Phân biệt chatbot tra cứu đã có với mô hình AI và đổi hàng tự động còn dự kiến.
+
+PHẦN 8. DEMO MỞ RỘNG HẬU MÃI VÀ CHATBOT (THÊM 5–7 PHÚT)
+
+1. Khách mở đơn online đã giao -> Yêu cầu trả hàng.
+   Chọn 1 đôi EU 40, nhập lý do không vừa kích cỡ và gửi.
+   A: "Khách yêu cầu theo từng biến thể. Gửi yêu cầu chưa cộng tồn hoặc trả tiền."
+
+2. Quản lý -> Trả hàng & hoàn kho -> mở đúng phiếu -> Duyệt tiếp nhận.
+   Kiểm nhận 1 hàng tốt, 0 hàng hỏng, nhập ghi chú, xác nhận đã kiểm hàng
+   và lưu. Không tích hoàn phí giao khi chỉ trả một phần.
+   A: "Hệ thống tính 270.000 đồng theo giá mua sau giảm 10%. Tồn EU 40 từ
+   7 lên 8. Doanh thu giảm phần được chấp nhận trả; tiền vẫn ở chờ hoàn."
+
+3. Ở Khoản chờ hoàn tiền, trên CƠ SỞ DỮ LIỆU DEMO, mô phỏng chứng từ
+   DEMO-HOAN-01, ghi chú rõ mô phỏng và tick xác nhận để minh họa lưu đối soát.
+   A: "Đây là mô phỏng trên dữ liệu demo. Ngoài thực tế chỉ tick sau khi
+   đã trả tiền qua ngân hàng hoặc tiền mặt. Phần mềm ghi nhận chứng từ,
+   không tự chuyển tiền. Chứng từ không được dùng cho hai khoản hoàn."
+
+4. Nếu muốn minh họa hàng hỏng, tạo yêu cầu tiếp cho 1 đôi còn lại; quản lý
+   duyệt rồi kiểm nhận 0 tốt / 1 hỏng. Tồn bán EU 40 vẫn 8, tồn hỏng tăng 1.
+   Mở nhóm Hàng hỏng: chọn sửa đạt đưa về bán hoặc ghi giảm có lý do.
+   A: "Hàng hỏng được quản lý riêng. Chỉ khi kiểm đạt mới trở lại tồn bán."
+   Nếu sửa đạt 1 đôi: EU 40 thành 9, tồn hỏng về 0. Nếu ghi giảm: tồn bán
+   vẫn 8. Không trình diễn cả hai thao tác trên cùng một đôi.
+
+5. Với kiện COD bùng hàng đã chuẩn bị: Đang giao -> Về kho -> mở hậu mãi.
+   Kiểm nhận đủ số tốt/hỏng, nhập lý do, xác nhận kiện đã về -> Hoàn kho và đóng đơn.
+   A: "Đơn chưa thu tiền nên không phát sinh doanh thu và không có tiền
+   phải hoàn. Nếu đơn trả trước thì sau hoàn kho vẫn cần đối soát khoản hoàn."
+
+6. Mở trợ lý ở trang khách. Hỏi "giày đen size 40 dưới 1 triệu"; đối chiếu
+   số tồn sau bước nhận hàng trả. Hỏi tiếp "size 41" để thấy giữ ngữ cảnh.
+   Chọn Tra đơn hàng khi đã đăng nhập; mở đơn chính chủ. Cuối cùng chọn
+   Trả hàng / hoàn tiền hoặc Gặp nhân viên để minh họa lối xử lý tiếp.
+   A: "Bot tra dữ liệu máy chủ, chỉ xem đơn của chính khách và hướng dẫn
+   đúng phạm vi. Bot không tự duyệt hoàn tiền hoặc cộng lại kho."
+
+Kết: đối chiếu tồn bán, tồn hỏng, doanh thu thuần và khoản chờ hoàn riêng.
+Giữ ví dụ gọn; chỉ mở rộng khi hội đồng có thời gian hoặc hỏi tình huống.

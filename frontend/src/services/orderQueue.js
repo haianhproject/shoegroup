@@ -10,4 +10,6 @@ const closedStatuses = new Set([
   'da hoan tat tra hang', 'returned',
 ]);
 
-export const isOrderInProgress = order => !closedStatuses.has(normalize(order?.status));
+export const isOrderInProgress = order => Number(order?.active_return_count || 0) > 0
+  || Number(order?.pending_refund_amount || 0) > 0
+  || !closedStatuses.has(normalize(order?.status));

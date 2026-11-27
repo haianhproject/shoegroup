@@ -34,7 +34,7 @@ const isAdmin = computed(() => route.path.startsWith('/admin'))
       <CartDrawer />
       <PromoModal />
 
-      <!-- BONG BÓNG CHAT ZALO -->
+      <!-- TRỢ LÝ CỬA HÀNG VÀ HỖ TRỢ ZALO -->
       <ZaloChat />
     </template>
 

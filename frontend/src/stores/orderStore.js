@@ -364,6 +364,8 @@ export const mapServerOrder = (s) => {
     receivedConfirmedDate,
     revenueEligibleDate,
     isCountedAsRevenue,
+    activeReturnCount: Number(s.active_return_count || 0),
+    returnCount: Number(s.return_count || 0),
     stockIssueStatus: s.stock_issue_status ?? s.StockIssueStatus ?? null,
     stockIssueReason: s.stock_issue_reason ?? s.StockIssueReason ?? "",
     stockRestoredAt: toTimestamp(s.stock_restored_at ?? s.StockRestoredAt),
@@ -569,7 +571,7 @@ export const reconcileOrdersFromServer = (list) => {
     }
     if (Array.isArray(s.products) || Array.isArray(s.OrderDetails)) {
       const snapshot = mapServerOrder(s);
-      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total']) {
+      for (const field of ['items', 'subtotal', 'shippingFee', 'discount', 'total', 'activeReturnCount', 'returnCount']) {
         if (JSON.stringify(o[field]) !== JSON.stringify(snapshot[field])) {
           o[field] = snapshot[field];
           changed = true;

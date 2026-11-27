@@ -43,6 +43,12 @@ const adminRoutes = [
         meta: { title: "Xác Nhận Thanh Toán" },
       },
       {
+        path: "returns",
+        name: "admin-returns",
+        component: () => import("./pages/ReturnsPage.vue"),
+        meta: { title: "Trả hàng & hoàn kho" },
+      },
+      {
         path: "pos",
         name: "admin-pos",
         component: () => import("./pages/PosPage.vue"),

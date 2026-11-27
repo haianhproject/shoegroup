@@ -32,6 +32,15 @@ public class RateLimits {
         hits.put(key, next);
         return next.count > (login ? logins : writes) ? Math.max(1, (next.expires - now + 999) / 1000) : 0;
     }
+    public synchronized long acquireChat(String ip) {
+        long now=clock.millis();
+        hits.entrySet().removeIf(entry->entry.getValue().expires<=now);
+        String key="chat:"+ip;
+        Window previous=hits.get(key);
+        Window next=new Window(previous==null?1:previous.count+1,previous==null?now+60000:previous.expires);
+        hits.put(key,next);
+        return next.count>30?Math.max(1,(next.expires-now+999)/1000):0;
+    }
     public synchronized void loginSucceeded(String ip) {
         String key = "login:" + ip;
         Window previous = hits.get(key);

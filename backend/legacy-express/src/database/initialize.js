@@ -18,6 +18,7 @@ const migrationFiles = Object.freeze([
   "20260923_variant_discount_scope.sql",
   "20261004_pos_cart_stock.sql",
   "20261004_revenue_history.sql",
+  "20261127_after_sales.sql",
 ]);
 
 const schemaVerificationSql = `

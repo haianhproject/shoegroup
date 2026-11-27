@@ -83,7 +83,8 @@ public class OrderWorkflow {
     if (current.equals(n) || cancel && cancelled) return Map.of("success", true, "unchanged", true);
     boolean deducted = false;
     if (confirm || reship) deducted = sql.stock(id, false);
-    if (warehouse || cancel && !lostCancellation) sql.stock(id, true);
+    // Hàng giao thất bại chỉ về tồn bán được sau khi kiểm nhận qua luồng hoàn kho.
+    if (cancel && !lostCancellation) sql.stock(id, true);
     if (cancel) sql.restorePromotion(id);
     sql.update(
         operation,
@@ -116,8 +117,7 @@ public class OrderWorkflow {
           customer,
           id,
           "Giao hàng thất bại",
-          "Đơn hàng của bạn giao không thành công. Vui lòng vào mục Trả hàng để báo chưa nhận được"
-              + " hàng hoặc theo dõi hướng xử lý.");
+          "Đơn hàng giao không thành công. Cửa hàng đang kiểm tra và sắp xếp hướng xử lý.");
     else if (reship)
       sql.notify(
           customer,
@@ -133,7 +133,7 @@ public class OrderWorkflow {
           customer,
           id,
           "Chưa liên hệ được người nhận",
-          "Đơn chưa giao được vì chưa liên hệ được người nhận. Shop sẽ giao lại sớm.");
+          "Đơn chưa giao được vì chưa liên hệ được người nhận. Cửa hàng đang kiểm tra kiện hàng và hướng xử lý.");
     else if (lostCancellation)
       sql.notify(
           customer,

@@ -2132,7 +2132,9 @@ app.get("/api/orders", async (req, res) => {
                SELECT 1 FROM OrderStatusHistory ach
                WHERE ach.OrderID=o.OrderID AND LEFT(ISNULL(ach.Note, N''), 17)=N'[ADDRESS_CHANGED]'
              ) THEN 1 ELSE 0 END AS bit) as address_changed,
-              o.TotalAmount as total, o.HistoricalRefundAmount as historical_refund_amount, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
+              o.TotalAmount as total, o.HistoricalRefundAmount as historical_refund_amount, o.ReturnAdjustmentAmount as return_adjustment_amount,
+  (SELECT COUNT(*) FROM OrderReturns ar WHERE ar.OrderID=o.OrderID AND ar.IsOpen=1) as active_return_count,
+  (SELECT ISNULL(SUM(apt.Amount),0) FROM PaymentTransactions apt WHERE apt.OrderID=o.OrderID AND apt.Provider IN (N'AFTERSALES_REFUND',N'MANUAL_REFUND') AND apt.Status=N'PENDING') as pending_refund_amount, o.ShippingFee as shippingFee, o.DiscountAmount as discount,
               o.DeliveryDistanceKm as shipping_distance_km,
               sm.MethodCode as shipping_method_code,
               o.EstimatedDeliveryText as estimated_delivery_text,
@@ -2188,7 +2190,7 @@ app.get("/api/orders", async (req, res) => {
                  COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                  COALESCE(NULLIF(od.ImageURLSnapshot, ''), variantImage.ImageURL, NULLIF(p.ImageURL, ''), '') as image,
                  od.Quantity as quantity,
-                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, od.UnitPrice as price,
+                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, ISNULL(od.ReturnedQuantity,0) as returned_quantity, od.UnitPrice as price,
                  ISNULL(od.Size, '') as size, ISNULL(od.Color, N'') as color
           FROM OrderDetails od LEFT JOIN Products p ON od.ProductID = p.ProductID
           LEFT JOIN ProductVariants v
@@ -2391,11 +2393,7 @@ app.put("/api/orders/:id/status", async (req, res) => {
     if (reshippingFromWarehouse) {
       stockDeducted = await reserveOrderStock(transaction, orderId) || stockDeducted;
     }
-    // Khách không nghe máy hoặc tai nạn vận chuyển: kiện quay về kho và cộng
-    // tồn đúng một lần.
-    if (returningToWarehouse) {
-      await restoreOrderStock(transaction, orderId);
-    }
+    // Về kho vẫn chờ kiểm nhận; API hậu mãi Spring hoàn tồn sau khi phân loại.
     // Hàng thất lạc khi vận chuyển: hủy đơn để không ghi doanh thu, nhưng
     // tuyệt đối không cộng tồn vì sản phẩm thực tế đã mất.
     if (isCancel && !alreadyCancelled && !lostDeliveryCancellation) {
@@ -3035,8 +3033,8 @@ app.get("/api/revenue-by-product", async (req, res) => {
           p.ProductName as name,
           p.ImageURL as image,
           p.IsActive as active,
-          SUM((od.Quantity-od.HistoricalReturnedQuantity) * od.UnitPrice) as revenue,
-          SUM(od.Quantity-od.HistoricalReturnedQuantity) as sold,
+          SUM((od.Quantity-od.HistoricalReturnedQuantity-od.ReturnedQuantity) * od.UnitPrice) as revenue,
+          SUM(od.Quantity-od.HistoricalReturnedQuantity-od.ReturnedQuantity) as sold,
           'gross_before_order_discount_and_shipping' as revenue_basis
       FROM OrderDetails od
       JOIN Orders o ON od.OrderID = o.OrderID
@@ -4140,7 +4138,9 @@ app.get("/api/customers/:id/orders", async (req, res) => {
       .request()
       .input("id", sql.Int, id)
       .query(
-        `SELECT OrderID as id, UserID as user_id, TotalAmount as total, HistoricalRefundAmount as historical_refund_amount,
+        `SELECT OrderID as id, UserID as user_id, TotalAmount as total, HistoricalRefundAmount as historical_refund_amount, ReturnAdjustmentAmount as return_adjustment_amount,
+  (SELECT COUNT(*) FROM OrderReturns ar WHERE ar.OrderID=Orders.OrderID AND ar.IsOpen=1) as active_return_count,
+  (SELECT ISNULL(SUM(apt.Amount),0) FROM PaymentTransactions apt WHERE apt.OrderID=Orders.OrderID AND apt.Provider IN (N'AFTERSALES_REFUND',N'MANUAL_REFUND') AND apt.Status=N'PENDING') as pending_refund_amount,
                 CONVERT(varchar, OrderDate, 103) + ' ' + CONVERT(varchar, OrderDate, 108) as date,
                 CONVERT(varchar(33), OrderDate, 126) as created_at,
                 ISNULL(Status, N'Cho xac nhan') as status,
@@ -4194,7 +4194,7 @@ app.get("/api/customers/:id/orders", async (req, res) => {
                   COALESCE(p.ProductName, od.ProductNameSnapshot, N'San pham') as name,
                   COALESCE(NULLIF(od.ImageURLSnapshot, ''), variantImage.ImageURL, NULLIF(p.ImageURL, ''), '') as image,
                   od.Quantity as quantity,
-                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, od.UnitPrice as price,
+                 ISNULL(od.HistoricalReturnedQuantity,0) as historical_returned_quantity, ISNULL(od.ReturnedQuantity,0) as returned_quantity, od.UnitPrice as price,
                   ISNULL(od.Size, '') as size, ISNULL(od.Color, N'') as color
            FROM OrderDetails od LEFT JOIN Products p ON od.ProductID = p.ProductID
            LEFT JOIN ProductVariants v

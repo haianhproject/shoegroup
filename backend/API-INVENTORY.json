@@ -1,6 +1,6 @@
 {
-  "total": 75,
-  "spring": 75,
+  "total": 85,
+  "spring": 85,
   "routes": [
     {
       "route": "POST /api/log-error",
@@ -451,6 +451,66 @@
       "implementation": "spring",
       "file": "backend/legacy-express/src/pos-cart.js",
       "line": 156
+    },
+    {
+      "route": "GET /api/orders/:id/after-sales",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 16
+    },
+    {
+      "route": "POST /api/orders/:id/returns",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 18
+    },
+    {
+      "route": "GET /api/returns",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 20
+    },
+    {
+      "route": "POST /api/returns/:id/review",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 22
+    },
+    {
+      "route": "POST /api/returns/:id/receive",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 24
+    },
+    {
+      "route": "POST /api/orders/:id/warehouse-return",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 26
+    },
+    {
+      "route": "POST /api/orders/:id/refunds/:transaction/confirm",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 28
+    },
+    {
+      "route": "GET /api/inventory/damaged",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 30
+    },
+    {
+      "route": "POST /api/inventory/damaged/:id/resolve",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java",
+      "line": 32
+    },
+    {
+      "route": "POST /api/chat",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/support/ChatController.java",
+      "line": 10
     }
   ]
 }
