@@ -52,7 +52,6 @@ const POLICIES = [
   ["POST", /^\/api\/orders$/, "CUSTOMER"],
   ["PUT", /^\/api\/orders\/\d+\/payment$/, "CUSTOMER"],
   ["PUT", /^\/api\/orders\/\d+\/address$/, "CUSTOMER"],
-  ["PUT", /^\/api\/orders\/\d+\/receive$/, "CUSTOMER"],
   ["*", /^\/api\/cart(\/|$)/, "CUSTOMER"],
   ["GET", /^\/api\/addresses$/, "CUSTOMER"],
   ["POST", /^\/api\/addresses$/, "CUSTOMER"],

@@ -1,19 +1,18 @@
-<!-- Mục đích: Trang đơn hàng của tôi: xem tiến độ, hủy đơn, đổi địa chỉ và xác nhận nhận hàng. -->
-﻿<script setup>
+<!-- Mục đích: Trang đơn hàng của tôi: xem tiến độ, hủy đơn, đổi địa chỉ và liên hệ hỗ trợ. -->
+<script setup>
 import StoreIllustration from '../components/StoreIllustration.vue'
 // Mục đích: Trang theo dõi lịch sử, trạng thái và thao tác trên đơn hàng của khách.
 import { computed, onMounted, onUnmounted, ref, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST, REVENUE_HOLD_DAYS,
-  loadOrders, cancelOrder, confirmReceived, runAutoCancel, daysUntilRevenue, formatCurrency, orderState, saveOrders, mapStatusToKey,
-  getOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel, getCustomerOrderCode
+  ordersByCurrentUser, ORDER_STATUS, ORDER_STATUS_LIST,
+  loadOrders, cancelOrder, runAutoCancel, formatCurrency, orderState, saveOrders, mapStatusToKey,
+  getCustomerOrderDisplayStatus, getDeliveryIssueType, getCustomerOrderStatusLabel, getCustomerOrderCode
 } from '../stores/orderStore'
 import { notify } from '../stores/uiStore'
 import { api } from "../services/apiClient"
 import { addressBookApi, formatAddress, vietnamAddressApi } from '../services/addressService'
 import OrderStatusIcon from '../components/OrderStatusIcon.vue'
-import { vDialogFocus } from '../directives/dialogFocus'
 
 const router = useRouter()
 const search = ref('')
@@ -21,6 +20,7 @@ const statusFilter = ref('ALL')
 const expanded = ref(null)
 const isLoading = ref(true)
 const orderCardRefs = new Map()
+const customerStatuses = ORDER_STATUS_LIST.filter(status => !['RECEIVED', 'COMPLETED'].includes(status.key))
 
 const isCentered = computed(() => router.currentRoute.value.query.center === 'true')
 
@@ -48,7 +48,7 @@ const stepIndex = (s) => {
 
 const filtered = computed(() => {
   let list = ordersByCurrentUser.value.map((order) => {
-    const status = getOrderDisplayStatus(order)
+    const status = getCustomerOrderDisplayStatus(order)
     return status === order.status ? order : { ...order, status }
   })
   if (statusFilter.value !== 'ALL') list = list.filter((o) => o.status === statusFilter.value)
@@ -76,49 +76,6 @@ const scrollExpandedIntoView = () => {
   const detail = card?.querySelector('.oc-detail')
   if (!detail) return
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-const receiveModal = reactive({ open: false, order: null, submitting: false, error: '' })
-const handleReceive = (order) => {
-  if (receiveModal.submitting || getOrderDisplayStatus(order) !== 'DELIVERED') return
-  receiveModal.order = order
-  receiveModal.error = ''
-  receiveModal.open = true
-}
-const closeReceiveModal = () => {
-  if (receiveModal.submitting) return
-  receiveModal.open = false
-}
-const submitReceive = async () => {
-  if (!receiveModal.open || receiveModal.submitting) return
-  const order = receiveModal.order
-  if (!order?.serverId) {
-    receiveModal.error = 'Vui lòng tải lại danh sách để đồng bộ đơn hàng trước khi xác nhận.'
-    await loadOrders()
-    return
-  }
-  receiveModal.submitting = true
-  receiveModal.error = ''
-  try {
-    const response = await api.put(`/orders/${order.serverId}/receive`, {})
-    if (!response?.success) throw new Error(response?.message || 'Chưa thể xác nhận nhận hàng.')
-    confirmReceived(order.id)
-    receiveModal.open = false
-    notify({ type: 'success', title: 'Đã xác nhận nhận hàng', message: `Đơn ${getCustomerOrderCode(order)} đã được cập nhật.` })
-    await loadOrders()
-  } catch (error) {
-    await loadOrders()
-    const liveOrder = orderState.orders.find(item => item.id === order.id)
-    if (['RECEIVED', 'COMPLETED'].includes(getOrderDisplayStatus(liveOrder))) {
-      receiveModal.open = false
-      notify({ type: 'info', message: 'Đơn hàng đã được xác nhận nhận hàng.' })
-    } else {
-      receiveModal.error = error.message || 'Chưa thể xác nhận nhận hàng. Vui lòng thử lại.'
-    }
-  } finally {
-    receiveModal.submitting = false
-    if (!receiveModal.open) nextTick(() => orderCardRefs.get(order.id)?.querySelector('[aria-expanded]')?.focus())
-  }
 }
 
 const cancelModal = reactive({ open: false, orderId: null, reason: '', serverId: null, submitting: false, error: '' })
@@ -488,12 +445,12 @@ onUnmounted(() => {
       <!-- Toolbar -->
       <div class="op-toolbar sg-card">
         <div class="op-search">
-          <i class="icon icon-search"></i>
-          <input v-model="search" type="search" placeholder="Tìm đơn theo tên sản phẩm hoặc mã đơn…">
+          <OrderStatusIcon name="search" :size="18" />
+          <input v-model="search" type="search" aria-label="Tìm đơn theo sản phẩm hoặc mã đơn" placeholder="Tìm đơn theo tên sản phẩm hoặc mã đơn…">
         </div>
         <div class="op-filters">
-          <button class="stat-pill" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">Tất cả</button>
-          <button v-for="s in ORDER_STATUS_LIST" :key="s.key" class="stat-pill" :class="{ active: statusFilter === s.key }" @click="statusFilter = s.key">{{ s.label }}</button>
+          <button class="stat-pill" :class="{ active: statusFilter === 'ALL' }" :aria-pressed="statusFilter === 'ALL'" @click="statusFilter = 'ALL'">Tất cả</button>
+          <button v-for="s in customerStatuses" :key="s.key" class="stat-pill" :class="{ active: statusFilter === s.key }" :aria-pressed="statusFilter === s.key" @click="statusFilter = s.key">{{ s.label }}</button>
         </div>
       </div>
 
@@ -558,7 +515,7 @@ onUnmounted(() => {
                 class="btn-change-addr"
                 @click.stop="openChangeAddress(o)"
               >
-                <i class="icon icon-pencil-square mr-1"></i>Đổi sổ địa chỉ
+                <OrderStatusIcon name="edit" :size="15" />Đổi sổ địa chỉ
               </button>
                 <span v-else-if="!o.addressChanged" class="order-status order-status-muted py-2 px-3 text-sm">
                 <OrderStatusIcon name="lock" :size="14" />Khóa đổi địa chỉ
@@ -595,38 +552,34 @@ onUnmounted(() => {
 
           <!-- Auto-cancel reason -->
           <div v-if="o.status === 'CANCELLED' && o.cancelReason && !isLostDelivery(o)" class="oc-cancel">
-            <i class="icon icon-exclamation-triangle"></i> {{ o.cancelReason }}
+            <OrderStatusIcon name="info" :size="18" />
+            <div><strong>Lý do hủy đơn</strong><p>{{ o.cancelReason }}</p></div>
           </div>
 
-          <!-- Revenue hold notice -->
-          <div v-if="o.status === 'RECEIVED' && !o.isCountedAsRevenue" class="oc-hold">
-            <i class="icon icon-shield-check"></i> Đơn đã nhận. Đang trong thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày — còn <strong>{{ daysUntilRevenue(o) }}</strong> ngày.
+          <div v-if="isDeliveryResolved(o)" class="oc-delivered">
+            <span class="oc-delivered-icon"><OrderStatusIcon name="delivered" :size="23" /></span>
+            <div class="oc-delivered-copy">
+              <strong>Đã giao thành công</strong>
+              <p>Cảm ơn bạn đã chọn ShoeGroup. Cần hỗ trợ? Liên hệ cửa hàng qua Zalo.</p>
+            </div>
+            <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer" class="order-support-link">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z" />
+                <path d="M8 10h8M8 14h5" />
+              </svg>
+              Sản phẩm có vấn đề?
+            </a>
           </div>
 
           <!-- Transfer notices -->
-          <div v-if="isBankTransfer(o) && o.payment_status === 'Đã thanh toán'" class="oc-hold" style="border-color: #16a34a; color: #15803d; background: #f0fdf4;">
-            <i class="icon icon-check-circle"></i> Thanh toán thành công. Cửa hàng đang xử lý đơn.
+          <div v-if="isBankTransfer(o) && o.payment_status === 'Đã thanh toán' && ['PENDING', 'CONFIRMED'].includes(o.status)" class="oc-payment-note">
+            <OrderStatusIcon name="delivered" :size="18" /><span>Thanh toán thành công. Cửa hàng đang xử lý đơn.</span>
           </div>
 
           <!-- Quick actions (always visible) -->
-          <div class="oc-actions" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <div v-if="['PENDING', 'CONFIRMED', 'CANCELLED'].includes(o.status)" class="oc-actions">
             <button v-if="['PENDING','CONFIRMED'].includes(o.status)" class="btn-sg-outline btn-cancel-outline" @click.stop="handleCancel(o)"><OrderStatusIcon name="cancelled" :size="16" />Hủy đơn</button>
-            <button v-if="o.status === 'DELIVERED' && o.serverId" type="button" class="btn-sg" @click.stop="handleReceive(o)">Xác nhận đã nhận hàng</button>
-            <!-- Trạng thái đã giao: ẩn nút trả hàng, hiện badge + nút hỗ trợ Zalo -->
-            <template v-if="['DELIVERED', 'RECEIVED', 'COMPLETED'].includes(o.status)">
-              <span class="delivery-success-pill">
-                <OrderStatusIcon name="delivered" :size="16" /> Đã giao thành công
-              </span>
-              <a href="https://zalo.me/0375990871" target="_blank" rel="noopener noreferrer"
-                class="order-support-link">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>
-                  <path d="M8 10h8M8 14h5"/>
-                </svg>
-                Sản phẩm có vấn đề?
-              </a>
-            </template>
-            <button v-if="o.status === 'CANCELLED'" class="btn-sg" @click.stop="router.push('/products')"><i class="icon icon-arrow-repeat mr-1"></i>Đặt lại</button>
+            <button v-if="o.status === 'CANCELLED'" class="btn-sg btn-reorder" @click.stop="router.push('/products')"><OrderStatusIcon name="reorder" :size="17" />Đặt lại</button>
           </div>
 
           <!-- Expanded detail -->
@@ -666,7 +619,7 @@ onUnmounted(() => {
         <div class="sg-card modal-box">
           <div class="flex justify-between items-center mb-3">
             <h5 class="font-bold mb-0">Đổi địa chỉ nhận đơn #{{ changeAddrModal.order?.id }}</h5>
-            <button class="btn-close-modal" @click="changeAddrModal.open = false"><i class="icon icon-x-lg"></i></button>
+            <button class="btn-close-modal" aria-label="Đóng đổi địa chỉ" @click="changeAddrModal.open = false"><OrderStatusIcon name="close" :size="20" /></button>
           </div>
 
           <div v-if="!changeAddrModal.showAddNew">
@@ -694,14 +647,14 @@ onUnmounted(() => {
 
             <div class="flex justify-between items-center mt-3 pt-3 border-t">
               <button class="btn-add-quick" @click="changeAddrModal.showAddNew = true">
-                <i class="icon icon-plus-lg mr-1"></i>Thêm địa chỉ mới khác
+                <OrderStatusIcon name="plus" :size="16" />Thêm địa chỉ mới khác
               </button>
               <div class="flex gap-2">
                 <button class="btn-sg-outline" @click="changeAddrModal.open = false">Hủy</button>
                 <button class="btn-sg" :disabled="changeAddrModal.updating || selectedAddressIsCurrent" @click="confirmUpdateAddress">
                   <span v-if="changeAddrModal.updating">Đang cập nhật...</span>
-                  <span v-else-if="selectedAddressIsCurrent"><i class="icon icon-check2 mr-1"></i>Địa chỉ hiện tại</span>
-                  <span v-else><i class="icon icon-check2 mr-1"></i>Xác nhận đổi</span>
+                  <span v-else-if="selectedAddressIsCurrent" class="order-action-label"><OrderStatusIcon name="check" :size="16" />Địa chỉ hiện tại</span>
+                  <span v-else class="order-action-label"><OrderStatusIcon name="check" :size="16" />Xác nhận đổi</span>
                 </button>
               </div>
             </div>
@@ -751,26 +704,12 @@ onUnmounted(() => {
             <div class="flex justify-between items-center mt-3 pt-3 border-t">
               <button class="btn-sg-outline" @click="changeAddrModal.showAddNew = false">Quay lại danh sách</button>
               <button class="btn-sg" :disabled="changeAddrModal.adding" @click="saveNewAddrQuick">
-                <i class="icon icon-save mr-1"></i>{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
+                <OrderStatusIcon name="save" :size="16" />{{ changeAddrModal.adding ? 'Đang lưu…' : 'Lưu & Chọn' }}
               </button>
             </div>
           </div>
 
         </div>
-      </div>
-    </transition>
-
-    <transition name="fade">
-      <div v-if="receiveModal.open" class="modal-overlay" @click.self="closeReceiveModal">
-        <form v-dialog-focus="closeReceiveModal" class="sg-card modal-box" role="dialog" aria-modal="true" aria-labelledby="receive-title" aria-describedby="receive-description" :aria-busy="receiveModal.submitting" @submit.prevent="submitReceive">
-          <h5 id="receive-title" class="font-bold mb-3">Xác nhận nhận hàng</h5>
-          <p id="receive-description" class="text-gray-600 mb-3">Bạn đã nhận và kiểm tra đơn <strong>#{{ getCustomerOrderCode(receiveModal.order) }}</strong>? Sau khi xác nhận, đơn bắt đầu thời gian bảo đảm đổi trả {{ REVENUE_HOLD_DAYS }} ngày.</p>
-          <p v-if="receiveModal.error" class="text-red-600 mt-2" role="alert">{{ receiveModal.error }}</p>
-          <div class="flex gap-2 mt-4 justify-end">
-            <button type="button" class="btn-sg-outline" :disabled="receiveModal.submitting" @click="closeReceiveModal">Chưa nhận hàng</button>
-            <button type="submit" class="btn-sg" :disabled="receiveModal.submitting">{{ receiveModal.submitting ? 'Đang xác nhận…' : 'Xác nhận đã nhận' }}</button>
-          </div>
-        </form>
       </div>
     </transition>
 
@@ -796,12 +735,13 @@ onUnmounted(() => {
 <style scoped>
 .orders-page { background: var(--sg-soft); min-height: calc(100dvh - var(--sg-header-height)); }
 .orders-container { max-width: 1360px; margin-inline: auto; padding: 40px 24px 72px; }
-.order-support-link { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 12px; border: 1px solid #d4001a30; border-radius: 8px; background: #fff1f2; color: var(--sg-red); font-size: 12px; font-weight: 600; text-decoration: none; transition: background .18s ease; }
-.order-support-link:hover { background: #ffe3e7; }
+.order-support-link { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 9px 12px; border: 1px solid #dce5df; border-radius: 8px; background: #fff; color: #3f5f4c; font-size: 12px; font-weight: 500; text-decoration: none; transition: background .18s ease, border-color .18s ease; }
+.order-support-link:hover { background: #eaf5ee; border-color: #a8cbb6; }
+.order-support-link:focus-visible { outline: 2px solid #27824b; outline-offset: 3px; }
 .op-title { font-weight: 900; font-size: 1.9rem; letter-spacing: -.02em; }
 .op-toolbar { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; margin: 14px 0 20px; }
 .op-search { display: flex; align-items: center; gap: 10px; background: var(--sg-canvas); border: 1.5px solid var(--sg-line); border-radius: 12px; padding: 8px 14px; }
-.op-search i { color: var(--sg-muted); }
+.op-search > svg { color: var(--sg-muted); }
 .op-search input { border: 0; background: transparent; outline: none; width: 100%; font-weight: 500; }
 .op-filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .stat-pill { border: 1px solid var(--sg-line); background: #fff; border-radius: 8px; min-height: 38px; padding: .45rem .9rem; font-size: .75rem; font-weight: 600; color: var(--sg-ink-2); transition: .2s; }
@@ -832,13 +772,25 @@ onUnmounted(() => {
 .oc-thumbs img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: var(--sg-canvas); mix-blend-mode: multiply; }
 .oc-thumbs .more { width: 52px; height: 52px; border-radius: 6px; background: var(--sg-canvas); display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--sg-muted); }
 .oc-count { margin-left: auto; font-size: .82rem; color: var(--sg-muted); }
-.oc-cancel { margin-top: 12px; background: #fff; border: 1px solid #D4001A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #D4001A; }
-.oc-hold { margin-top: 12px; background: #fff; border: 1px solid #0A0A0A; border-radius: 6px; padding: 10px 12px; font-size: .82rem; color: #0A0A0A; }
+.oc-cancel, .oc-payment-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; padding: 13px 15px; border-radius: 10px; font-size: .82rem; line-height: 1.65; }
+.oc-cancel { background: #fff7f8; border: 1px solid #ffe0e5; color: #9f3144; }
+.oc-cancel > svg, .oc-payment-note > svg { margin-top: 2px; }
+.oc-cancel strong { font-size: .78rem; font-weight: 600; }
+.oc-cancel p { margin: 2px 0 0; color: #72535b; overflow-wrap: anywhere; }
+.oc-payment-note { background: #f0fdf4; color: #15803d; border: 1px solid #dcfce7; }
+.oc-delivered { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; padding: 17px; border: 1px solid #dcefe3; border-radius: 12px; background: #f5fbf7; }
+.oc-delivered-icon { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 50%; background: #e2f3e8; color: #27824b; }
+.oc-delivered-copy { flex: 1 1 220px; min-width: 0; }
+.oc-delivered-copy strong { font-size: .9rem; font-weight: 650; color: #226b40; }
+.oc-delivered-copy p { margin: 4px 0 0; font-size: .78rem; line-height: 1.7; color: #62776a; }
+@media (min-width: 768px) { .oc-delivered .order-support-link { margin-inline-end: 44px; } }
+.btn-reorder { display: inline-flex; align-items: center; gap: 8px; }
 
 .addr-box-brief { background: #fafafa; border: 1px solid #e5e5e5; }
 .address-title { display: flex; align-items: center; gap: 5px; }
 .address-icon { color: #525252; }
-.btn-change-addr { border: 1px solid #0A0A0A; background: #fff; color: #0A0A0A; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.btn-change-addr { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #0A0A0A; background: #fff; color: #0A0A0A; font-weight: 700; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.order-action-label, .btn-add-quick, .modal-box .btn-sg { display: inline-flex; align-items: center; gap: 7px; }
 .btn-change-addr:hover { background: #0A0A0A; color: #fff; }
 
 .oc-detail { margin-top: 16px; padding: 16px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fafafa; scroll-margin-top: 88px; }
@@ -900,8 +852,8 @@ onUnmounted(() => {
 .oc-issue-step.current.success .oc-step-dot { box-shadow: 0 0 0 4px rgba(22,163,74,.14); }
 .oc-issue-step small { max-width: 110px; font-size: .68rem; font-weight: 700; line-height: 1.1; }
 .oc-issue-line { position: absolute; top: 14px; left: calc(50% + 15px); width: calc(100% - 30px); height: 2px; background: #d4d4d4; }
-.oc-status-flat { margin-top: 14px; padding: 10px 14px; border-radius: 10px; font-weight: 800; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px; }
-.oc-status-flat.red { background: #fee2e2; color: #b91c1c; }
+.oc-status-flat { margin-top: 14px; padding: 9px 12px; border-radius: 8px; font-weight: 600; font-size: .82rem; display: inline-flex; align-items: center; gap: 7px; }
+.oc-status-flat.red { background: #fff5f6; color: #9f3144; border: 1px solid #ffe0e5; }
 .oc-status-flat.amber { background: #fef3c7; color: #92400e; }
 .oc-status-flat.green { background: #f0fdf4; color: #15803d; }
 .oc-status-flat.gray { background: #e5e7eb; color: #374151; }
@@ -910,7 +862,6 @@ onUnmounted(() => {
 .oc-delivery-note { margin-top: 10px; display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; color: #1e40af; font-size: .78rem; line-height: 1.45; }
 .oc-delivery-note.danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
 .oc-delivery-note.success { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
-.delivery-success-pill { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 650; }
 @media (max-width: 576px) { .oc-meta { grid-template-columns: 1fr; } .oc-step small, .oc-issue-step small { display: none; } }
 .modal-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10,20,45,.55); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 18px; }
 .modal-box { max-width: 560px; width: 100%; padding: 28px; border-radius: 16px; }

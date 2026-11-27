@@ -8,14 +8,13 @@ import { formatOrderCode } from "../services/orderCode";
    - status luôn là KEY tiếng Anh (PENDING, CONFIRMED, ...); nhãn hiển
      thị lấy từ ORDER_STATUS[key].
    - Nghiệp vụ: tự hủy khi quá hạn nhận hàng, xác nhận đã nhận hàng kiểu
-     Shopee, giữ 14 ngày trước khi tính doanh thu, yêu cầu trả hàng.
+     Trạng thái giao hàng được đồng bộ từ quản lý; khách liên hệ shop khi cần hỗ trợ.
    ===================================================================== */
 
 const STORAGE_KEY = "shoegroup_orders_v2";
 const DAY = 864e5;
 
 export const RECEIVE_TIMEOUT_DAYS = 7; // quá hạn nhận hàng -> tự hủy
-export const REVENUE_HOLD_DAYS = 14; // chờ 14 ngày sau khi nhận -> tính doanh thu
 
 /* KEY -> nhãn tiếng Việt */
 export const ORDER_STATUS = {
@@ -176,7 +175,7 @@ export const createOrder = ({
   return { ok: true, order };
 };
 
-/* DEMO: giả lập shop đã giao để hiển thị nút "Đã nhận hàng" */
+/* DEMO cục bộ: giả lập trạng thái đã giao. Dữ liệu máy chủ luôn là nguồn chính. */
 export const markAsDelivered = (orderId) => {
   const o = orderState.orders.find((x) => x.id === orderId);
   if (!o) return;
@@ -185,28 +184,6 @@ export const markAsDelivered = (orderId) => {
   o.deliveredDate = Date.now();
   o.autoCancelDeadline = null;
   saveOrders();
-};
-
-/* Khách bấm "Đã nhận hàng" (giống Shopee).
-   Đơn xác nhận nhưng CHƯA tính doanh thu — chờ 14 ngày cho yêu cầu trả hàng. */
-export const confirmReceived = (orderId) => {
-  const o = orderState.orders.find((x) => x.id === orderId);
-  if (!o) return { ok: false, message: "Không tìm thấy đơn hàng." };
-  ordersMutationVersion++;
-  const now = Date.now();
-  o.status = "RECEIVED";
-  if (o.serverId) o.serverStatus = "RECEIVED";
-  o.receivedConfirmedDate = now;
-  o.revenueEligibleDate = now + REVENUE_HOLD_DAYS * DAY;
-  o.isCountedAsRevenue = false;
-  saveOrders();
-  return { ok: true, order: o };
-};
-
-/* Số ngày còn lại trước khi đơn được tính doanh thu */
-export const daysUntilRevenue = (order) => {
-  if (!order.revenueEligibleDate) return null;
-  return Math.max(0, Math.ceil((order.revenueEligibleDate - Date.now()) / DAY));
 };
 
 export const removeOrder = (orderId) => {
@@ -303,6 +280,13 @@ export const mapStatusToKey = (status) => {
    không còn phụ thuộc vào một giá trị status local cũ. */
 export const getOrderDisplayStatus = (order) => order?.serverStatus || order?.status || "PENDING";
 
+// Các đơn cũ đã nhận/hoàn thành cùng nằm trong bộ lọc đã giao của khách.
+// Giữ nguyên trạng thái lưu trữ để lịch sử và đồng bộ API vẫn tương thích.
+export const getCustomerOrderDisplayStatus = (order) => {
+  const status = getOrderDisplayStatus(order);
+  return ["RECEIVED", "COMPLETED"].includes(status) ? "DELIVERED" : status;
+};
+
 const deliveryIssueText = (order = {}) => {
   const historyText = (order.history || [])
     .map((item) => `${item?.status || ""} ${item?.note || ""}`)
@@ -334,7 +318,7 @@ export const getDeliveryIssueType = (order) => {
 // Chỉ đổi nhãn khi sự cố đang là trạng thái hiện tại. Sau khi shop giao lại,
 // nhãn phải trở về “Đang giao”/“Đã giao” thay vì giữ lý do cũ trên lịch sử.
 export const getCustomerOrderStatusLabel = (order) => {
-  const status = getOrderDisplayStatus(order);
+  const status = getCustomerOrderDisplayStatus(order);
   const issueType = getDeliveryIssueType(order);
   if (issueType === "LOST" && ["CANCELLED", "DELIVERY_FAILED"].includes(status)) return "Hàng bị thất lạc";
   if (status === "WAREHOUSE_RETURN" && issueType === "ACCIDENT") return "Sự cố vận chuyển";

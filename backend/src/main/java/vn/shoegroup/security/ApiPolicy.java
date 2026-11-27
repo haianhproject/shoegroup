@@ -21,7 +21,7 @@ public final class ApiPolicy {
         new Rule("GET", "^/api/products(/|$|\\?)", Level.PUBLIC),
         new Rule("GET", "^/api/(categories|brands|colors|sizes|materials|soles|cushionings|discounts|shippingmethods)(/|$)", Level.PUBLIC),
         new Rule("POST", "^/api/shipping/quote$", Level.PUBLIC),
-        new Rule("PUT", "^/api/orders/\\d+/(status|payment|address|receive)$", Level.CUSTOMER),
+        new Rule("PUT", "^/api/orders/\\d+/(status|payment|address)$", Level.CUSTOMER),
         new Rule("POST", "^/api/orders$", Level.CUSTOMER),
         new Rule("*", "^/api/cart(/|$)", Level.CUSTOMER),
         new Rule("GET", "^/api/addresses$", Level.CUSTOMER),

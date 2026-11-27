@@ -73,8 +73,10 @@
 }
 .storefront .hero-headline {
   margin: 0;
-  font-size: clamp(74px, 7.9vw, 122px);
-  line-height: 0.94;
+  display: grid;
+  row-gap: 0.08em;
+  font-size: clamp(70px, 7.4vw, 114px);
+  line-height: 1.14;
   font-weight: 800;
   letter-spacing: -0.025em;
   text-transform: uppercase;
@@ -867,7 +869,7 @@
     padding-left: 36px;
   }
   .storefront .hero-headline {
-    font-size: 90px;
+    font-size: 82px;
   }
   .hero-art-stamp {
     right: 20px;
@@ -1017,8 +1019,7 @@
     margin-bottom: 18px;
   }
   .storefront .hero-headline {
-    font-size: clamp(66px, 17vw, 88px);
-    line-height: 0.94;
+    font-size: clamp(54px, 15.6vw, 80px);
   }
   .hero-headline .hero-word-outline {
     padding-left: 72px;

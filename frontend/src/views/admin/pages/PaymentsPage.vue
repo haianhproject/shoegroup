@@ -2,6 +2,7 @@
 <!-- Trang: Quản Lý Xác Nhận Thanh Toán (Online / Offline + Chi tiết + Hóa đơn) -->
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from "vue";
+import { isOrderInProgress } from "@/services/orderQueue";
 import {
   paymentChannel,
   paymentSearch,
@@ -38,7 +39,7 @@ function onPaymentImageError(event) {
 }
 
 // FIFO: hàng đợi xử lý ưu tiên đơn đặt TRƯỚC lên đầu (cũ nhất → mới nhất)
-// Tab "Tất cả" vẫn giữ mới nhất lên đầu cho tiện tra cứu
+// Tab "Tất cả" lưu các đơn đã kết thúc, mới nhất lên đầu để tra cứu.
 function sortFIFO(list) {
   return [...list].sort((a, b) => {
     const ta = a.created_at
@@ -53,19 +54,8 @@ function sortFIFO(list) {
 }
 
 const displayedOrders = computed(() => {
-  if (queueView.value === "ALL") return paymentChannelOrders.value;
-  const active = paymentChannelOrders.value.filter(
-    (order) =>
-      ![
-        "Đã hủy",
-        "Đã nhận hàng",
-        "Đã giao hàng thành công",
-        "Yêu cầu trả hàng",
-        "Đã hoàn tất trả hàng",
-        "Về kho",
-        "Hoàn tất",
-      ].includes(order.status),
-  );
+  if (queueView.value === "ALL") return paymentChannelOrders.value.filter(order => !isOrderInProgress(order));
+  const active = paymentChannelOrders.value.filter(isOrderInProgress);
   return sortFIFO(active);
 });
 
@@ -295,6 +285,7 @@ function transitionMessage() {
                 queueView === 'ALL' ? 'btn-dark' : 'btn-white text-gray-600'
               "
               @click="queueView = 'ALL'"
+              title="Các đơn đã hoàn thành hoặc đã hủy"
             >
               Tất cả
             </button>
@@ -313,6 +304,7 @@ function transitionMessage() {
 
         <!-- Bảng đơn hàng -->
         <div class="queue-summary" role="status">
+          <span>{{ queueView === 'ACTIVE' ? 'Hàng chờ xử lý' : 'Đơn đã hoàn thành / đã hủy' }}</span>
           <span
             >Tổng đơn: <strong>{{ paymentTotalCount }}</strong></span
           >
@@ -333,7 +325,7 @@ function transitionMessage() {
         </div>
 
         <div v-if="displayedOrders.length === 0" class="admin-empty">
-          <strong>Không có đơn cần xử lý</strong>
+          <strong>{{ queueView === 'ACTIVE' ? 'Không có đơn cần xử lý' : 'Chưa có đơn đã kết thúc' }}</strong>
           <span>Thử đổi kênh bán, phạm vi hoặc từ khóa tìm kiếm.</span>
         </div>
         <div v-else class="payments-table-wrap">

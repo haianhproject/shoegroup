@@ -1,0 +1,402 @@
+﻿SHOEGROUP — KỊCH BẢN DEMO TRƯỚC HỘI ĐỒNG
+Cập nhật: 27/11/2026 | Bản chính 18 phút | A trình bày, B thao tác
+
+MỤC TIÊU
+Chứng minh một đôi giày đi qua đủ vòng đời: tạo sản phẩm, bán tại quầy,
+bán online, xử lý giao hàng và đối chiếu tồn kho/doanh thu.
+Mỗi màn hình phải phục vụ một ý đang chứng minh.
+
+PHẦN 1. CHUẨN BỊ TRƯỚC BUỔI BẢO VỆ
+
+1. Phân vai và quy ước
+   A: chào hội đồng, dẫn chuyện, giải thích kết quả và trả lời nghiệp vụ.
+   B: thao tác, quan sát thông báo thành công, nhắc mã đơn và số tồn cho A.
+   B chỉ chuyển bước khi A nói câu chuyển cảnh. A chờ giao diện phản hồi
+   rồi mới đọc kết quả. Nếu dữ liệu chưa về, nói đúng trạng thái đang chờ.
+
+2. Dùng hai phiên đăng nhập độc lập
+   Phiên QUẢN LÝ: một trình duyệt cho quản lý, mở sẵn các trang sản phẩm,
+   bán tại quầy, đơn hàng & thanh toán, tổng quan.
+   Phiên KHÁCH: trình duyệt khác hoặc cửa sổ riêng tư cho tài khoản khách.
+   Hai tab cùng trình duyệt có thể dùng chung đăng nhập theo origin;
+   đừng dùng cách đó để đóng hai vai có tài khoản khác nhau.
+   Không ghi mật khẩu thật trong kịch bản hoặc chiếu mật khẩu lên màn hình.
+
+3. Dùng dữ liệu trình diễn riêng
+   Chụp hoặc sao lưu trạng thái dữ liệu demo trước khi tổng duyệt.
+   Đảm bảo đã có danh mục, thương hiệu, màu Đen, size EU 40 và EU 41;
+   chuẩn bị ảnh có sẵn trên máy và tên sản phẩm dễ tìm.
+   Tài khoản khách đã có địa chỉ đầy đủ và số điện thoại hợp lệ.
+   Kiểm tra API, kết nối cơ sở dữ liệu, ảnh và báo giá vận chuyển trước giờ.
+   Tắt thông báo cá nhân; giữ cỡ chữ dễ đọc trên máy chiếu.
+
+4. Bộ số liệu xuyên suốt
+   Tên sản phẩm: Sneaker Demo [thêm số buổi/giờ để tránh trùng mã].
+   Màu: Đen. Size EU 40: 12 đôi, giá 300.000 đ.
+   Size EU 41: 8 đôi, giá 400.000 đ. Tổng tồn ban đầu: 20 đôi.
+   POS: bán 2 đôi EU 40, thu 1.000.000 đ, trả lại 400.000 đ.
+   Online: mua 3 đôi EU 40, dùng mã giảm 10% cho đơn, thanh toán COD.
+   Giá hàng online: 900.000 đ; tiền giảm: 90.000 đ.
+   Tổng online = 810.000 đ + phí giao hàng F do hệ thống báo.
+   Ví dụ F = 75.000 đ thì tổng = 885.000 đ.
+   Luôn đọc F trên giao diện; không hứa phí cố định trước khi báo giá.
+   Tồn sau POS: EU 40 = 10, EU 41 = 8, tổng = 18.
+   Tồn sau duyệt đơn online: EU 40 = 7, EU 41 = 8, tổng = 15.
+
+5. Mã giảm giá dành riêng cho buổi demo
+   Mã gợi ý DEMO10_[số buổi], giảm 10%, đơn tối thiểu 500.000 đ,
+   giảm tối đa 100.000 đ; chọn thời gian bắt đầu đã có hiệu lực,
+   kết thúc sau buổi bảo vệ; còn đủ lượt sử dụng cho tài khoản demo.
+   Kiểm tra quyền nhập từng trường bằng tài khoản quản lý.
+   Không áp thêm khuyến mại sản phẩm lên biến thể của ví dụ tính tiền này.
+   Nếu muốn trình diễn khuyến mại sản phẩm, dùng sản phẩm phụ để số tiền
+   trong luồng chính vẫn dễ theo dõi.
+
+6. Chuẩn bị phương án dự phòng
+   Có sẵn một sản phẩm và một đơn mẫu hoàn chỉnh trong dữ liệu demo.
+   Lưu ảnh/video tổng duyệt: tạo sản phẩm, hóa đơn POS, đơn online,
+   trạng thái đã giao và bảng tồn sau bán.
+   Ghi lại doanh thu/tồn đầu buổi. Tránh đọc tổng doanh thu hệ thống có
+   nhiều đơn cũ thành doanh thu của riêng hai giao dịch vừa trình diễn.
+
+PHẦN 2. TRÌNH TỰ 18 PHÚT
+
+00:00–00:45 | CẢNH 1: CHÀO VÀ GIỚI THIỆU BÀI TOÁN
+Màn hình: trang chủ khách hàng, ở đầu trang.
+A nói:
+  "Kính thưa quý thầy cô, nhóm em xin trình bày ShoeGroup, hệ thống bán
+  giày kết hợp cửa hàng trực tuyến và bán tại quầy. Bài toán nhóm giải
+  quyết là quản lý thống nhất sản phẩm theo màu, kích cỡ, tồn kho và
+  trạng thái đơn hàng ở cả hai kênh. Trong phần demo, nhóm sẽ theo một
+  sản phẩm từ lúc tạo đến khi bán, giao hàng và đối chiếu kết quả."
+B làm: giữ trang chủ, không kéo chuột liên tục khi A đang giới thiệu.
+Điểm cần thấy: thương hiệu, bố cục trang và một banner rõ ràng.
+Câu chuyển: "Trước hết em giới thiệu nhanh cách khách tìm sản phẩm."
+
+00:45–01:45 | CẢNH 2: GÓC NHÌN KHÁCH HÀNG
+B làm: chuyển một banner bằng chấm điều hướng hoặc kéo slide;
+  vào Cửa hàng, chỉ vị trí tìm kiếm/bộ lọc, mở một chi tiết sản phẩm.
+A nói:
+  "Khách có thể tìm theo tên, lọc danh sách và xem chi tiết giày.
+  Giá và tồn được theo dõi theo biến thể màu, size. Nhóm sẽ sử dụng
+  chính luồng này để mua sản phẩm vừa tạo ở phần tiếp theo."
+Điểm cần thấy: tìm kiếm/bộ lọc và nơi chọn size; tối đa ba thao tác.
+Không đọc toàn bộ menu/footer hoặc tất cả trang tài khoản ở cảnh này.
+Câu chuyển: "Để bán được, cửa hàng cần tạo dữ liệu sản phẩm chuẩn."
+
+01:45–04:30 | CẢNH 3: TẠO SẢN PHẨM CÓ HAI SIZE
+Màn hình: QUẢN LÝ > Tất cả sản phẩm > Thêm sản phẩm.
+B làm:
+  a. Chỉ nhanh dữ liệu Danh mục, Thương hiệu, Màu sắc và Kích thước đã có.
+     Nếu hội đồng yêu cầu tạo mới thuộc tính, tạo một giá trị phụ trước.
+  b. Nhập tên Sneaker Demo, mô tả ngắn, chọn Danh mục và Thương hiệu.
+     Chọn Chất liệu nếu dùng trong sản phẩm.
+  c. Thêm màu Đen và ảnh của màu; mở Thêm kích cỡ.
+  d. Chọn hệ EU, thêm EU 40: giá 300.000, tồn 12.
+     Thêm EU 41: giá 400.000, tồn 8. Kiểm tra lại từng dòng biến thể.
+  e. Giữ trạng thái hoạt động, lưu và tìm lại sản phẩm vừa tạo.
+A nói:
+  "Danh mục và thương hiệu mô tả sản phẩm; màu và kích cỡ tạo thành
+  biến thể thực sự được bán. Sản phẩm này có hai size, tổng 20 đôi.
+  Giá, tồn của từng size độc lập, nên bán size 40 sẽ không trừ size 41."
+Kết quả: đúng 2 biến thể, giá đúng, tổng tồn 20; ảnh hiển thị.
+Lưu ý: có thể thêm các size theo từng đợt nếu giá/tồn khác nhau.
+Câu chuyển: "Em bán sản phẩm này tại quầy trước để kiểm tra biến thể."
+
+04:30–07:00 | CẢNH 4: BÁN HÀNG TẠI QUẦY
+B làm:
+  a. Vào Bán tại quầy, tạo/chọn giỏ đang trống.
+  b. Tìm Sneaker Demo, chọn đúng Đen / EU 40, số lượng 2.
+  c. Nhập tên khách và số điện thoại demo hợp lệ.
+  d. Chọn tiền mặt, nhập khách đưa 1.000.000 đ.
+  e. Đọc tổng 600.000 đ, tiền trả 400.000 đ; thanh toán một lần.
+  f. Mở hóa đơn. Có thể mở bản xem trước in rồi đóng, tránh thao tác
+     máy in vật lý làm mất thời gian bảo vệ.
+  g. Kiểm tra tồn của sản phẩm sau thanh toán.
+A nói:
+  "Giỏ tại quầy giữ số lượng trong quá trình xử lý. Sau khi thanh toán,
+  hệ thống tạo đơn, ghi nhận tiền thu và hoàn tất hóa đơn. Hai đôi EU 40
+  đã bán, vì vậy tồn còn 10 đôi EU 40 và 8 đôi EU 41, tổng 18."
+Kết quả: hóa đơn 600.000 đ, giỏ cũ kết thúc; tồn 10/8, không trừ lặp.
+Mẹo: hãy đọc tồn sau khi đã thanh toán xong; khi giỏ đang giữ hàng,
+  lượng có thể bán đã thay đổi nên không dùng làm mốc so sánh cuối cùng.
+Câu chuyển: "Cùng sản phẩm đó, khách cũng có thể đặt trên website."
+
+07:00–08:15 | CẢNH 5: TẠO ƯU ĐÃI ĐÚNG THỜI ĐIỂM
+B làm: QUẢN LÝ > Mã giảm giá > Thêm mã giảm giá; nhập bộ số liệu
+  đã chuẩn bị, kiểm tra bắt đầu/kết thúc, lưu.
+A nói:
+  "Mã giảm giá này áp cho đơn hàng khi khách đáp ứng điều kiện.
+  Khuyến mại sản phẩm là một nghiệp vụ khác, áp vào sản phẩm hoặc màu.
+  Trong ví dụ chính em dùng một mã giảm 10% để dễ đối chiếu phép tính."
+Kết quả: mã đang có hiệu lực; không hết lượt và chưa quá ngày.
+Câu chuyển: "Em chuyển sang tài khoản khách để sử dụng mã vừa tạo."
+
+08:15–11:15 | CẢNH 6: ĐẶT HÀNG ONLINE
+B làm trên phiên KHÁCH:
+  a. Tìm Sneaker Demo, chọn Đen / EU 40; mua số lượng 3.
+  b. Kiểm tra giỏ: đúng size, giá 300.000 đ, tạm tính 900.000 đ.
+  c. Đến thanh toán, chọn địa chỉ đã lưu, chờ phí vận chuyển hiển thị.
+  d. Áp mã giảm giá: giảm 90.000 đ; đọc phí F và tổng 810.000 đ + F.
+  e. Chọn COD, đặt một lần; ghi lại mã đơn trên trang thành công.
+  f. Mở Đơn hàng của tôi, lọc/tìm đúng mã đơn, mở chi tiết.
+A nói:
+  "Khách dùng chung dữ liệu sản phẩm với quầy. Đơn có ba đôi, giảm
+  90.000 đồng và phí vận chuyển được tính theo địa chỉ. Đơn mới ở trạng
+  thái chờ xử lý; cửa hàng sẽ duyệt trước khi chuẩn bị giao. Với đơn
+  online này, tồn được trừ khi quản lý xác nhận đơn."
+Kết quả: có mã đơn duy nhất, đúng địa chỉ, phương thức COD và tổng tiền.
+Mốc tồn ngay sau đặt, trước khi duyệt: EU 40 vẫn 10, EU 41 vẫn 8.
+Câu chuyển: "Bây giờ em theo chính mã đơn đó ở phía quản lý."
+
+11:15–13:45 | CẢNH 7: DUYỆT, GIAO VÀ HOÀN TẤT
+B làm trên phiên QUẢN LÝ:
+  a. Vào Đơn hàng & thanh toán > Online > Đang xử lý.
+  b. Tìm mã vừa ghi; mở chi tiết, đối chiếu sản phẩm, địa chỉ, tổng tiền.
+  c. Xác nhận đơn; kiểm tra EU 40 còn 7 và EU 41 còn 8.
+  d. Giao vận chuyển, chờ trạng thái cập nhật.
+  e. Chọn Giao hàng thành công và xác nhận trong hộp thoại.
+  f. Chuyển sang Tất cả: tìm lại đơn đã kết thúc, xem chi tiết/hóa đơn.
+     Ở đây Tất cả là khu lịch sử các đơn đã hoàn thành hoặc đã hủy.
+  g. Quay phiên KHÁCH, chờ đồng bộ hoặc tải lại danh sách đơn.
+A nói:
+  "Mỗi bước chuyển trạng thái là một nghiệp vụ có kiểm tra điều kiện.
+  Duyệt đơn trừ đúng ba đôi EU 40. Khi quản lý xác nhận giao thành công,
+  đơn COD được ghi nhận đã thanh toán và ghi doanh thu một lần.
+  Phía khách thấy đã giao thành công và có liên kết hỗ trợ Zalo;
+  khách không phải xác nhận nhận hàng thêm lần nữa."
+Kết quả: đơn rời hàng chờ, nằm trong lịch sử; khách thấy Đã giao,
+  không có nút xác nhận đã nhận hoặc thông báo đếm ngày.
+Câu chuyển: "Ngoài luồng thành công, em minh họa một nhánh ngoại lệ."
+
+13:45–15:30 | CẢNH 8: HỦY ĐƠN VÀ KIỂM TRA TỒN
+B làm:
+  a. Khách tạo đơn COD phụ 1 đôi EU 41; ghi mã đơn phụ.
+  b. Quản lý duyệt đơn: tồn EU 41 từ 8 xuống 7.
+  c. Khách mở đơn đó, bấm Hủy đơn, nhập lý do "Cần đổi kích cỡ" và gửi.
+  d. Quản lý kiểm tra lại: EU 41 về 8; đơn hủy ở Tất cả,
+     không còn thao tác giao lại hoặc chuyển tiếp đơn đã hủy.
+  e. Khách thấy lý do hủy và có thể Đặt lại.
+A nói:
+  "Trước khi giao vận chuyển, khách có thể hủy đơn. Với đơn đã giữ tồn,
+  hệ thống hoàn đúng biến thể và chỉ hoàn một lần. Đơn COD này chưa thu
+  tiền nên không có khoản tiền hoàn và không tạo doanh thu."
+Kết quả: tồn cuối vẫn EU 40 = 7, EU 41 = 8, tổng 15.
+Nếu thời gian ngắn: dùng đơn phụ đã chuẩn bị sẵn ở trạng thái Đã xác nhận.
+Nếu được hỏi về giao thất bại: mở đơn mẫu Về kho trong Đang xử lý,
+  chỉ ra thao tác Giao lại đơn hàng; không biến nó thành đơn đã hoàn tất.
+Câu chuyển: "Em đối chiếu kết quả của cả hai kênh để kết thúc demo."
+
+15:30–17:00 | CẢNH 9: ĐỐI CHIẾU KẾT QUẢ
+B làm: mở sản phẩm và Tổng quan, chọn khoảng ngày có giao dịch demo;
+  tìm các đơn vừa tạo khi cần kiểm tra số tiền.
+A nói:
+  "Ban đầu sản phẩm có 20 đôi. Quầy bán hai đôi, online bán ba đôi,
+  đơn phụ đã hủy và hoàn tồn, nên cuối cùng còn 15 đôi. Size 41 vẫn
+  giữ 8 đôi. Doanh thu của hai đơn thành công là 600.000 cộng
+  810.000 và phí F. Đơn hủy không được cộng vào doanh thu."
+Kết quả: tổng tồn 15; chênh lệch doanh thu so với đầu buổi là
+  1.410.000 đ + F, nếu không phát sinh giao dịch khác và hai đơn thuộc
+  đúng khoảng ngày báo cáo. Số này bao gồm phí giao hàng theo cách tính
+  hiện tại của dự án; đây không phải lợi nhuận sau giá vốn và chi phí.
+Không so tổng tiền báo cáo doanh thu theo sản phẩm với tổng thanh toán
+  nếu báo cáo đó tính doanh số hàng trước giảm giá đơn và phí giao hàng.
+Câu chuyển: "Nhóm xin chốt các điểm đã chứng minh và hướng phát triển."
+
+17:00–18:00 | CẢNH 10: CHỐT VÀ MỜI HỘI ĐỒNG TRAO ĐỔI
+A nói:
+  "Qua hai kênh bán, nhóm đã chứng minh dữ liệu sản phẩm theo biến thể,
+  đặt hàng, quản lý trạng thái, tồn kho và doanh thu liên thông. Các đơn
+  có lỗi hoặc giao chưa xong vẫn nằm trong hàng chờ để tiếp tục xử lý.
+  Phần tiếp theo nhóm đề xuất là quản lý tiếp nhận hàng trả theo tình
+  trạng thực tế và trợ lý hỗ trợ khách hàng có dữ liệu tra cứu.
+  Nhóm em xin cảm ơn quý thầy cô và sẵn sàng nhận câu hỏi."
+B làm: giữ màn hình đối chiếu; ngừng bấm và cùng nghe câu hỏi.
+
+PHẦN 3. BẢN RÚT GỌN 12 PHÚT VÀ PHƯƠNG ÁN KHI CÓ LỖI
+
+12 phút: mở đầu/trang khách 1 phút; sản phẩm 2; POS 2; online 3;
+  quản lý giao hàng 2; đối chiếu và kết 2.
+  Dùng sẵn thuộc tính, mã giảm giá và đơn hủy phụ; có thể bỏ tạo mã live.
+Không cắt phần đối chiếu tồn/doanh thu, vì đây là bằng chứng liên thông.
+
+Khi mạng/API chậm: B báo nhỏ cho A, giữ màn hình hiện tại, chờ phản hồi
+  rồi kiểm tra danh sách theo mã đơn. Tránh bấm đặt/thanh toán liên tục.
+A nói: "Hệ thống đang đồng bộ, em kiểm tra lại mã đơn để bảo đảm chỉ
+  có một giao dịch." Nếu chưa khắc phục nhanh, dùng bản tổng duyệt
+  và nói rõ đó là dữ liệu/ảnh của lần chạy trước, không nhận là kết quả live.
+Nếu lỗi mã trùng: dùng tên/mã dự phòng đã chuẩn bị, đừng đổi lung tung.
+Nếu in không sẵn sàng: chỉ trình bày hóa đơn và bản xem trước.
+Nếu bị hỏi giữa chừng: A trả lời ngắn rồi nói "Em xin tiếp tục ở bước...";
+  B giữ vị trí, tránh lạc sang một chức năng không liên quan.
+
+PHẦN 4. PHẢN BIỆN THỨ TỰ VÀ CÁC CÂU HỎI DỄ GẶP
+
+1. Nên review toàn bộ quản lý trước rồi mới demo không?
+   Nên mở đầu bằng 60 giây góc nhìn khách để hội đồng hiểu sản phẩm,
+   sau đó kể một hành trình nghiệp vụ. Một cuộc dạo hết sidebar mất
+   thời gian mà chưa cho thấy dữ liệu liên thông. Màn quản lý xuất hiện
+   đúng lúc câu chuyện cần sản phẩm, xử lý đơn hoặc xem kết quả.
+
+2. Tạo loại, sản phẩm hay giảm giá trước?
+   Quan hệ dữ liệu: Danh mục/Thương hiệu/Màu/Size cần có trước khi tạo
+   sản phẩm và biến thể sử dụng chúng. Chất liệu là lựa chọn tùy sản phẩm.
+   Khuyến mại sản phẩm cần sản phẩm/màu tồn tại trước.
+   Mã giảm giá theo đơn không bắt buộc phụ thuộc sản phẩm cụ thể;
+   đặt bước này sau sản phẩm trong demo giúp hội đồng theo dõi dễ hơn.
+   Không cần tạo mới mọi thuộc tính ở mỗi lần bảo vệ. Tạo một thuộc tính
+   mẫu nếu cần chứng minh CRUD, còn lại chuẩn bị sẵn.
+
+3. Bỏ xác nhận có làm mất kiểm soát đơn không?
+   Giữ bước QUẢN LÝ XÁC NHẬN ĐƠN: kiểm tra đơn, trừ tồn, cho phép chuẩn bị
+   và giao. Bước đã bỏ là KHÁCH XÁC NHẬN ĐÃ NHẬN sau khi shop báo đã giao.
+   Một cửa hàng có thể chốt bằng kết quả giao hàng do nhân viên cập nhật.
+   Nút khách nhận hàng hữu ích nếu có cơ chế giữ tiền, giải quyết tranh
+   chấp hoặc quy tắc phát sinh từ chính việc khách xác nhận.
+   Việc hỗ trợ qua Zalo không tự quyết định cần hay không cần nút đó;
+   quyết định phải dựa vào quy tắc hoàn tất đơn của hệ thống.
+   Luồng đang dùng: đã giao + đã thanh toán => ghi doanh thu, không chờ
+   khách xác nhận và không chờ bộ đếm 14 ngày. Đơn cũ vẫn đọc được.
+
+4. Chuyển khoản trên bản demo có phải ngân hàng đã đối soát tự động?
+   Không nên cam kết như vậy. Luồng hiện tại có xác nhận chuyển khoản
+   của khách/thủ công; đó không phải bằng chứng ngân hàng đã báo có.
+   Khi bảo vệ, nói đúng phạm vi. Nếu làm tiếp, cần xác thực tiền thực nhận
+   bằng đối soát ngân hàng hoặc cổng thanh toán trước khi chốt tài chính.
+   Luồng COD là ví dụ chính để buổi demo không phụ thuộc chuyển tiền thật.
+
+5. Hai kênh tranh mua đôi cuối cùng thì sao?
+   Thao tác giữ/trừ tồn được kiểm tra ở máy chủ. Nếu không còn đủ hàng,
+   thao tác phải bị từ chối, không được âm tồn. Với online, đặt chờ chưa
+   trừ tồn nên lúc duyệt lại phải kiểm tra tồn thực tế. Có các kiểm thử
+   đồng thời, gửi lặp và rollback; chỉ trình diễn tình huống này nếu đã
+   tổng duyệt trên dữ liệu riêng và hội đồng yêu cầu.
+
+6. Vì sao "Tất cả" chỉ hiện đơn kết thúc?
+   Đây là quy ước lọc hiện được yêu cầu cho dự án: Đang xử lý là hàng chờ;
+   Tất cả là lịch sử đã hoàn thành/đã hủy. Tên "Tất cả" dễ gây hiểu nhầm
+   vì người dùng thường nghĩ đó là mọi đơn. Về UX, đề xuất sau này đổi
+   tên thành "Đã kết thúc" hoặc "Lịch sử"; hiện có mô tả ngay trên bảng.
+
+PHẦN 5. ĐỀ XUẤT HOÀN HÀNG — Ý TƯỞNG CHO GIAI ĐOẠN SAU
+Các bước dưới đây chưa được triển khai trong đợt chỉnh giao diện này.
+
+1. Một nút "Hoàn kho" là chưa đủ
+   Nút có thể mở một phiếu tiếp nhận gọn, gồm: mã đơn, lý do, sản phẩm,
+   màu/size, số lượng thực nhận, tình trạng, người kiểm và ghi chú/ảnh.
+   Chỉ cộng tồn có thể bán sau khi kiện hàng thực sự về và được kiểm tra.
+   Ghi lịch sử và chống bấm lặp/chống hoàn vượt số lượng đã xuất.
+   LƯU Ý DỰ ÁN HIỆN TẠI: chuyển sang "Về kho" đã hoàn tồn một lần và cho
+   phép giao lại. Nếu bổ sung nút mới, phải dùng chung dấu vết hoàn tồn;
+   cộng thêm một lần ở nút mới sẽ làm tăng tồn sai.
+
+2. Khách không nghe máy hoặc từ chối nhận
+   Đang giao -> Giao thất bại -> Chờ hàng về -> Kiểm nhận.
+   Hàng nguyên vẹn: hoàn tồn khả dụng; chọn Giao lại hoặc Đóng đơn không
+   giao được. Tránh bắt cửa hàng giao lại mãi khi khách đã từ chối hẳn.
+   COD chưa thu tiền: không có doanh thu và không có tiền để hoàn.
+   Đơn trả trước: còn nghĩa vụ hoàn tiền; cần theo dõi đến khi đối soát
+   khoản hoàn xong. Chỉ đóng tác vụ tài chính khi thực sự xử lý xong.
+
+3. Khách muốn kiểm ngay lúc nhận
+   Nếu phát hiện lỗi và từ chối trước khi chấp nhận/thu tiền, dùng nhánh
+   giao thất bại với lý do cụ thể; sau đó kiểm hàng tại kho.
+   Nếu khách đã nhận/đã trả tiền rồi mới báo lỗi, tạo hồ sơ hậu mãi gắn
+   đơn cũ. Đừng sửa ngược một đơn đã giao thành "chưa giao".
+   Nút phía khách nên là "Cần hỗ trợ về đơn hàng"/"Báo vấn đề", gửi mã
+   đơn cho nhân viên qua Zalo hoặc hồ sơ yêu cầu. Khách báo vấn đề không
+   đồng nghĩa shop đã chấp nhận trả hàng hay đã nhập kho.
+
+4. Tách ba kết quả kiểm nhận
+   Tốt, bán được: cộng đúng số lượng về tồn có thể bán.
+   Cần kiểm tra/sửa: đưa vào tồn chờ kiểm, chưa cho bán.
+   Hỏng: ghi tồn hỏng/phiếu xử lý, sửa chữa hoặc thanh lý theo quyết định;
+   không cộng vào tồn khả dụng. Thất lạc: chưa nhận hàng thì không hoàn kho.
+   Cho phép trả một phần: đơn ba đôi có thể nhận lại một đôi, còn hai đôi
+   bán thành công. Cần quản lý theo dòng biến thể và lượng còn được trả.
+
+5. Hoàn tồn và doanh thu là hai nghiệp vụ riêng
+   Bấm hoàn kho không tự chứng minh đã trả tiền cho khách.
+   Với COD bùng hàng chưa thu tiền, doanh thu bằng 0 ngay từ đầu.
+   Với đơn đã thanh toán, theo dõi tiền đã thu, tiền chấp nhận hoàn,
+   tiền thực hoàn và phần doanh thu còn lại; có mã giao dịch/chứng từ.
+   Ví dụ: đơn hàng 900.000 đ sau giảm 90.000, phần hàng thu 810.000;
+   trả 1/3 số hàng tương đương hoàn 270.000 nếu áp cùng tỷ lệ giảm.
+   Phí vận chuyển xử lý riêng theo chính sách được duyệt; không mặc định
+   hoàn toàn bộ phí và không xóa toàn bộ doanh thu khi chỉ trả một đôi.
+   Đề xuất có chỉ số "Chờ hoàn tiền" để khoản đang nợ khách không bị quên.
+   Báo cáo lịch sử ghi khoản điều chỉnh/hoàn, giữ dấu vết đơn gốc.
+
+6. Phạm vi tối thiểu đáng làm trước bảo vệ, nếu nhóm quyết định phát triển
+   Ưu tiên phiếu nhận hàng trả của quản lý, phân loại tốt/hỏng, hoàn tồn
+   một lần, nghĩa vụ hoàn tiền và lịch sử. Giai đoạn sau mới mở tự tạo
+   yêu cầu trả hàng cho khách hoặc chatbot xử lý thông tin hậu mãi.
+   Cần kiểm thử nhận thiếu kiện, nhấn hai lần, trả một phần, giao lại sau
+   hoàn kho, hỏng toàn bộ và đơn trả trước chưa hoàn tiền.
+
+Tham khảo mô hình kiểm hàng rồi xử lý trả và tách tồn khả dụng/hàng hỏng:
+https://help.shopify.com/en/manual/fulfillment/managing-orders/returns/processing-returns
+https://help.shopify.com/en/manual/inventory-and-locations/fundamentals/inventory-states
+Các quy tắc và ví dụ đề xuất ở trên là thiết kế dành cho ShoeGroup.
+
+PHẦN 6. ĐỀ XUẤT CHATBOT — Ý TƯỞNG CHO GIAI ĐOẠN SAU
+
+Hiện trạng đã kiểm tra: nút chat trên website mở liên hệ Zalo; chưa có
+luồng chatbot AI trong mã nguồn đang dùng. Khi thuyết trình, gọi đúng là
+"hỗ trợ qua Zalo". Phân biệt chức năng hiện có và hướng phát triển.
+
+1. Bản tối thiểu có giá trị sử dụng
+   Mở lời bằng bốn lựa chọn: Tìm giày, Chọn size, Tra đơn, Gặp nhân viên.
+   Có FAQ được cửa hàng duyệt về phí giao, thanh toán, liên hệ và đổi trả.
+   Tìm giày theo nhu cầu, ngân sách, màu, size; trả tối đa vài thẻ có ảnh,
+   giá hiện hành, size còn bán và nút xem sản phẩm.
+   Gợi ý size bằng bảng size của thương hiệu và chiều dài chân; hỏi thêm
+   khi thiếu thông tin, không hứa một size chắc chắn vừa mọi người.
+
+2. Dữ liệu thật phải đến từ máy chủ
+   Giá, tồn và khuyến mại tra API tại lúc hỏi; không trả từ đoạn văn cũ.
+   Tra đơn chỉ dùng tài khoản đã đăng nhập và kiểm tra đúng chủ đơn.
+   Khách gõ một mã đơn không được xem thông tin của người khác.
+   Giới hạn các thao tác được gọi theo vai trò; khóa API để đọc dữ liệu
+   cần thiết. Bot không tự xác nhận đã thu tiền, hoàn kho hoặc duyệt hoàn.
+
+3. Bổ sung AI sau khi các luồng trên chạy ổn
+   Có thể dùng mô hình ngôn ngữ để hiểu câu tiếng Việt và soạn câu trả
+   lời từ FAQ/dữ liệu API được phép truy cập. Máy chủ quyết định quyền,
+   tham số và dữ liệu trả về. Bot hỏi lại khi chưa rõ, nói rõ khi chưa tra
+   được và luôn có đường chuyển nhân viên kèm tóm tắt nhu cầu/mã đơn.
+   Chuyển sang Zalo là một lựa chọn tiếp nhận bởi người thật; cần giữ
+   được ngữ cảnh cần thiết với sự đồng ý của khách, tránh bắt kể lại từ đầu.
+
+4. Tiêu chí nghiệm thu cụ thể
+   Hỏi đúng giá/size đang còn; sản phẩm hết hàng phải được phản ánh đúng.
+   Mã hết hạn không được giới thiệu thành mã dùng được.
+   Không lộ đơn người khác; không làm theo câu nhắc vượt quyền.
+   Có câu trả lời hữu ích khi API chậm/lỗi hoặc câu hỏi ngoài phạm vi.
+   Lưu lịch sử tối thiểu, giới hạn thời gian lưu và tránh lưu thông tin
+   cá nhân không cần thiết; hạn chế lượt gọi và thời gian chờ.
+   Đo tỷ lệ câu trả lời đúng trên bộ câu hỏi mẫu, tỷ lệ chuyển người thật
+   và thời gian phản hồi; có cả tiếng Việt thiếu dấu/lỗi gõ để kiểm tra.
+
+Demo chatbot khi đã làm thật chỉ cần ba tình huống: gợi ý giày đúng size
+còn hàng; tra đơn của chính khách; báo sản phẩm lỗi rồi chuyển nhân viên.
+Không dựng một đoạn hội thoại trả lời sẵn rồi giới thiệu là AI tra dữ liệu.
+
+Tham khảo luồng gọi webhook lấy dữ liệu và tín hiệu chuyển người hỗ trợ:
+https://docs.cloud.google.com/dialogflow/cx/docs/basics
+https://docs.cloud.google.com/dialogflow/cx/docs/concept/fulfillment
+Đây là tham khảo kiến trúc; chưa lựa chọn hoặc cài dịch vụ chatbot trả phí.
+
+PHẦN 7. KIỂM TRA NHANH NGAY TRƯỚC KHI LÊN TRÌNH BÀY
+
+[ ] Hai người đã tổng duyệt đủ một lần với đúng máy và dữ liệu.
+[ ] Danh mục/thương hiệu/màu/size còn hoạt động, ảnh có thể mở.
+[ ] Giá và tồn ban đầu đúng 300.000/12, 400.000/8.
+[ ] Mã giảm 10% còn hiệu lực và tài khoản chưa dùng hết lượt.
+[ ] Địa chỉ hợp lệ, có báo giá giao hàng và COD dùng được.
+[ ] Đã ghi tồn/doanh thu đầu buổi và xóa giỏ demo còn dang dở đúng luồng.
+[ ] Hai phiên đăng nhập độc lập; không bị ghi đè vai trò.
+[ ] Có ảnh/video tổng duyệt và mã đơn dự phòng.
+[ ] B biết dừng ở đâu; A biết câu chuyển cảnh và số liệu cần đọc.
+[ ] Chốt tồn 7/8 và tổng 15, phân biệt doanh thu với lợi nhuận.
+[ ] Chỉ giới thiệu hoàn hàng nâng cao và chatbot là đề xuất phát triển.

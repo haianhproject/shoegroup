@@ -30,18 +30,37 @@ module.exports = async function orderAudit({ api, pool, admin, users, check, fix
     } finally { await rows('DROP TRIGGER dbo.NativeAuditReject'); }
     ok(await create(item, {}, key));
   });
-  await check('native COD lifecycle collects once and recognizes revenue only after hold', async () => {
+  await check('native COD delivery completes and recognizes paid revenue once without customer confirmation', async () => {
     const item = await fixture(5), id = ok(await create(item)).orderId;
     assert.equal(await stock(item), 5);
     ok(await change(id, 'Đã xác nhận')); ok(await change(id, 'Đã xác nhận')); assert.equal(await stock(item), 4);
     ok(await change(id, 'Đang vận chuyển')); ok(await change(id, 'Đã giao hàng thành công'));
     assert.equal((await state(id)).PaymentStatus, 'Đã thanh toán');
     assert.equal((await rows(`SELECT COUNT(*) AS n FROM PaymentTransactions WHERE OrderID=${id} AND Provider='COD_COLLECTION'`))[0].n, 1);
-    ok(await api(`/orders/${id}/receive`, { method: 'PUT', body: {} }));
-    assert.equal((await state(id)).IsCountedAsRevenue, false);
-    await rows(`UPDATE Orders SET RevenueEligibleDate=DATEADD(day,-1,GETDATE()) WHERE OrderID=${id}`);
-    await waitFor(async () => (await state(id)).IsCountedAsRevenue);
+    const completed = await state(id);
+    assert.equal(completed.Status, 'Đã giao hàng thành công');
+    assert.equal(completed.IsCountedAsRevenue, true);
+    assert.ok(completed.RevenueEligibleDate);
+    ok(await change(id, 'Đã giao hàng thành công'));
+    assert.equal((await api(`/orders/${id}/receive`, { method: 'PUT', body: {} })).status, 403);
+    assert.equal((await change(id, 'Đã nhận hàng')).status, 409);
+    assert.equal((await rows(`SELECT COUNT(*) AS n FROM PaymentTransactions WHERE OrderID=${id} AND Provider='COD_COLLECTION'`))[0].n, 1);
     assert.equal((await change(id, 'Đã hủy')).status, 409); assert.equal(await stock(item), 4);
+  });
+  await check('native revenue backfills historical deliveries without recognizing pending, cancelled or refunded orders', async () => {
+    const item = await fixture(8);
+    const delivered = ok(await create(item)).orderId;
+    const received = ok(await create(item)).orderId;
+    const pending = ok(await create(item)).orderId;
+    const cancelled = ok(await create(item)).orderId;
+    const refunded = ok(await create(item)).orderId;
+    await rows(`UPDATE Orders SET Status=N'Đã giao hàng thành công',PaymentStatus=N'Đã thanh toán',IsCountedAsRevenue=0,DeliveredDate=DATEADD(day,-2,GETDATE()),PaymentConfirmedAt=DATEADD(day,-2,GETDATE()),RevenueEligibleDate=DATEADD(day,14,GETDATE()) WHERE OrderID=${delivered};
+      UPDATE Orders SET Status=N'Đã nhận hàng',PaymentStatus=N'Đã thanh toán',IsCountedAsRevenue=0,ReceivedConfirmedDate=DATEADD(day,-1,GETDATE()),RevenueEligibleDate=DATEADD(day,14,GETDATE()) WHERE OrderID=${received};
+      UPDATE Orders SET Status=N'Đã hủy',PaymentStatus=N'Chờ hoàn tiền' WHERE OrderID=${cancelled};
+      UPDATE Orders SET Status=N'Đã giao hàng thành công',PaymentStatus=N'Hoàn tiền' WHERE OrderID=${refunded};`);
+    await waitFor(async () => (await state(delivered)).IsCountedAsRevenue && (await state(received)).IsCountedAsRevenue);
+    assert.ok(new Date((await state(delivered)).RevenueEligibleDate) < new Date());
+    for (const id of [pending, cancelled, refunded]) assert.equal((await state(id)).IsCountedAsRevenue, false);
   });
   await check('native transfer ownership and cancellation request a refund without inventing payout', async () => {
     const item = await fixture(4), id = ok(await create(item, { paymentMethod: 'BANK' })).orderId;

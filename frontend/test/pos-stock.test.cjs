@@ -11,6 +11,10 @@ const orderCodes = { exports: {} };
 vm.runInNewContext(transformSync(fs.readFileSync(path.resolve(__dirname, '../src/services/orderCode.js'), 'utf8'), { format: 'cjs' }).code, {
   module: orderCodes, exports: orderCodes.exports,
 });
+const orderQueue = { exports: {} };
+vm.runInNewContext(transformSync(fs.readFileSync(path.resolve(__dirname, '../src/services/orderQueue.js'), 'utf8'), { format: 'cjs' }).code, {
+  module: orderQueue, exports: orderQueue.exports,
+});
 
 function store(fetch, sessionStorage = {getItem(){return null},setItem(){}}) {
   const module = { exports: {} };
@@ -21,6 +25,7 @@ function store(fetch, sessionStorage = {getItem(){return null},setItem(){}}) {
     '@/services/vietQr': {},
     '@/services/posCustomer': { validatePosCustomer: () => ({ ok: true, name: 'Khách thử', phone: '0901234567' }) },
     '@/services/orderCode': orderCodes.exports,
+    '@/services/orderQueue': orderQueue.exports,
     '@/stores/authStore': { currentUser: vue.ref({ id: 1, name: 'Quầy' }), logout() {} },
     '../../services/apiClient': { API_BASE_URL: '/api', getToken: () => 'test' },
     '@/stores/orderStore': { normalizeStatusText: value => String(value || '') },

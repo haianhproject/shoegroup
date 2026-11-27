@@ -13,7 +13,7 @@ defineProps({
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    stroke-width="1.8"
+    stroke-width="1.6"
     stroke-linecap="round"
     stroke-linejoin="round"
     aria-hidden="true"
@@ -51,6 +51,27 @@ defineProps({
     <template v-else-if="name === 'returned'">
       <path d="m9 7-4 4 4 4" />
       <path d="M5 11h8a6 6 0 0 1 6 6" />
+    </template>
+    <template v-else-if="name === 'reorder'">
+      <path d="M3.5 10a8.5 8.5 0 1 1 1.8 7.5M3.5 4.5V10H9" />
+    </template>
+    <template v-else-if="name === 'search'">
+      <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" />
+    </template>
+    <template v-else-if="name === 'edit'">
+      <path d="m15 5 4 4M4 20l4.5-1L20 7.5a2.8 2.8 0 0 0-4-4L4.5 15z" />
+    </template>
+    <template v-else-if="name === 'close'">
+      <path d="m6 6 12 12M18 6 6 18" />
+    </template>
+    <template v-else-if="name === 'plus'">
+      <path d="M12 5v14M5 12h14" />
+    </template>
+    <template v-else-if="name === 'check'">
+      <path d="m5 12 4.5 4.5L19 7" />
+    </template>
+    <template v-else-if="name === 'save'">
+      <path d="M5 3h12l4 4v14H3V3zM7 3v6h9V3M7 21v-8h10v8" />
     </template>
     <template v-else-if="name === 'calendar'">
       <rect x="4" y="5.5" width="16" height="14" rx="2" />

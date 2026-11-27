@@ -598,7 +598,7 @@ const ORDER_STATUS_TRANSITIONS = {
   "dang van chuyen": new Set(["dang van chuyen", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
   "giao hang that bai": new Set(["giao hang that bai", "ve kho", "yeu cau tra hang", "da huy"]),
   "ve kho": new Set(["ve kho", "dang van chuyen", "yeu cau tra hang"]),
-  "da giao hang thanh cong": new Set(["da giao hang thanh cong", "da nhan hang", "yeu cau tra hang"]),
+  "da giao hang thanh cong": new Set(["da giao hang thanh cong"]),
   "da nhan hang": new Set(["da nhan hang", "yeu cau tra hang"]),
   "yeu cau tra hang": new Set(["yeu cau tra hang", "da nhan hang"]),
   "da huy": new Set(["da huy"]),
@@ -607,7 +607,7 @@ const ORDER_STATUS_TRANSITIONS = {
   "dang giao": new Set(["dang giao", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
   "shipped": new Set(["shipped", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
   "shipping": new Set(["shipping", "da giao hang thanh cong", "giao hang that bai", "ve kho"]),
-  "delivered": new Set(["delivered", "da nhan hang", "yeu cau tra hang"]),
+  "delivered": new Set(["delivered"]),
   "received": new Set(["received", "yeu cau tra hang"]),
 };
 
@@ -2432,7 +2432,8 @@ app.put("/api/orders/:id/status", async (req, res) => {
           PaymentConfirmedAt = CASE WHEN @s = N'Đã giao hàng thành công' AND (PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
           DeliveredDate = CASE WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(DeliveredDate,GETDATE()) ELSE DeliveredDate END,
           ReceivedConfirmedDate = CASE WHEN @s=N'Đã nhận hàng' THEN ISNULL(ReceivedConfirmedDate,GETDATE()) ELSE ReceivedConfirmedDate END,
-          RevenueEligibleDate = CASE WHEN @s=N'Đã nhận hàng' THEN DATEADD(day,14,ISNULL(ReceivedConfirmedDate,GETDATE())) WHEN @s=N'Đã giao hàng thành công' THEN ISNULL(RevenueEligibleDate,DATEADD(day,14,GETDATE())) ELSE RevenueEligibleDate END,
+          RevenueEligibleDate = CASE WHEN @s IN (N'Đã giao hàng thành công',N'Đã nhận hàng') AND (PaymentStatus IN (N'Đã thanh toán',N'Da thanh toan') OR PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN GETDATE() ELSE RevenueEligibleDate END,
+          IsCountedAsRevenue = CASE WHEN @s IN (N'Đã giao hàng thành công',N'Đã nhận hàng') AND (PaymentStatus IN (N'Đã thanh toán',N'Da thanh toan') OR PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%') THEN 1 WHEN @s IN (N'Đã hủy',N'Đã hoàn tất trả hàng') THEN 0 ELSE IsCountedAsRevenue END,
           AutoCancelDeadline = CASE WHEN @s IN (N'Đã giao hàng thành công', N'Giao hàng thất bại', N'Về kho', N'Đã hủy', N'Đã nhận hàng', N'Đã hoàn tất trả hàng') THEN NULL ELSE AutoCancelDeadline END,
           UpdatedAt=GETDATE()
         WHERE OrderID = @id`,
@@ -2565,11 +2566,14 @@ app.put("/api/orders/:id/payment", async (req, res) => {
       paymentStatus = "Đã thanh toán";
     }
     await new sql.Request(transaction).input("id", sql.Int, orderId).input("ps", sql.NVarChar, paymentStatus).query(`
+
       UPDATE Orders SET PaymentStatus=@ps,
         PaymentConfirmedAt=CASE WHEN @ps=N'Đã thanh toán' THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
         PaymentDueAt=CASE WHEN @ps=N'Đã thanh toán' THEN NULL ELSE PaymentDueAt END,
+        IsCountedAsRevenue=CASE WHEN @ps=N'Đã thanh toán' AND Status IN (N'Đã giao hàng thành công',N'Da giao hang thanh cong',N'Đã giao',N'Da giao',N'Delivered',N'Đã nhận hàng',N'Da nhan hang',N'Received',N'Hoàn thành',N'Hoàn tất',N'Completed') THEN 1 ELSE IsCountedAsRevenue END,
+        RevenueEligibleDate=CASE WHEN @ps=N'Đã thanh toán' AND Status IN (N'Đã giao hàng thành công',N'Da giao hang thanh cong',N'Đã giao',N'Da giao',N'Delivered',N'Đã nhận hàng',N'Da nhan hang',N'Received',N'Hoàn thành',N'Hoàn tất',N'Completed') AND ISNULL(IsCountedAsRevenue,0)=0 THEN GETDATE() ELSE RevenueEligibleDate END,
         UpdatedAt=GETDATE() WHERE OrderID=@id
-    `);
+        `);
     if (customerTransferConfirmation) {
       await new sql.Request(transaction).input("oid", sql.Int, orderId).input("amt", sql.Decimal(18, 2), order.TotalAmount).query(`
         IF NOT EXISTS (SELECT 1 FROM PaymentTransactions WITH (UPDLOCK,HOLDLOCK) WHERE OrderID=@oid AND Provider=N'CUSTOMER_CONFIRMED' AND Status=N'SUCCESS')
@@ -4562,67 +4566,7 @@ app.post("/api/shipping/quote", async (req, res) => {
   }
 });
 
-// 3) Khach xac nhan "Da nhan hang" (giong Shopee) - giu 14 ngay truoc khi tinh doanh thu
-app.put("/api/orders/:id/receive", async (req, res) => {
-  const authenticatedUserId = Number(req.auth && req.auth.sub);
-  const orderId = positiveInt(req.params.id);
-  if (!authenticatedUserId) {
-    return res.status(401).json({ success: false, message: "Ban chua dang nhap." });
-  }
-  if (!Number.isInteger(orderId) || orderId <= 0) {
-    return res.status(400).json({ success: false, message: "Don hang khong hop le." });
-  }
-
-  await poolConnect;
-  const transaction = new sql.Transaction(pool);
-  try {
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    const currentResult = await new sql.Request(transaction)
-      .input("id", sql.Int, orderId)
-      .query(`
-        SELECT OrderID, UserID, Status, PaymentMethod, PaymentStatus
-        FROM Orders WITH (UPDLOCK, HOLDLOCK)
-        WHERE OrderID=@id
-      `);
-    const currentOrder = currentResult.recordset[0];
-    if (!currentOrder) {
-      await transaction.rollback();
-      return res.status(404).json({ success: false, message: "Khong tim thay don hang." });
-    }
-    if (req.auth.role !== "Admin" && Number(currentOrder.UserID) !== authenticatedUserId) {
-      await transaction.rollback();
-      return res.status(403).json({ success: false, message: "Ban khong duoc cap nhat don hang nay." });
-    }
-    if (!["da giao", "da giao hang thanh cong", "delivered"].includes(normalizeOrderStatus(currentOrder.Status))) {
-      await transaction.rollback();
-      return res.status(409).json({ success: false, message: "Don hang chua o trang thai da giao." });
-    }
-
-    await new sql.Request(transaction)
-      .input("id", sql.Int, orderId)
-      .input("hold", sql.Int, 14).query(`
-        UPDATE Orders
-        SET Status = N'Đã nhận hàng',
-            ReceivedConfirmedDate = GETDATE(),
-            RevenueEligibleDate = DATEADD(day, @hold, GETDATE()),
-            IsCountedAsRevenue = 0,
-            PaymentStatus = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%' THEN N'Đã thanh toán' ELSE PaymentStatus END,
-            PaymentConfirmedAt = CASE WHEN PaymentMethod LIKE '%COD%' OR PaymentMethod LIKE N'%nhận hàng%' OR PaymentMethod LIKE N'%Tiền mặt%' THEN ISNULL(PaymentConfirmedAt,GETDATE()) ELSE PaymentConfirmedAt END,
-            UpdatedAt=GETDATE()
-        WHERE OrderID = @id
-      `);
-    await insertOrderHistory(transaction, orderId, currentOrder.Status, "Đã nhận hàng", "Khách xác nhận đã nhận hàng", authenticatedUserId);
-    await transaction.commit();
-    res.json({ success: true });
-  } catch (e) {
-    if (transaction._aborted !== true) {
-      try { await transaction.rollback(); } catch (_) {}
-    }
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// 4) Job: tu dong huy don qua han nhan hang + tinh doanh thu sau 14 ngay
+// Tự hủy đơn quá hạn; ghi nhận đơn đã giao và đã thu tiền, kể cả dữ liệu cũ.
 async function runAutoCancelJob() {
   try {
     await poolConnect;
@@ -4691,13 +4635,12 @@ async function runAutoCancelJob() {
     await pool.request().query(`
 
       UPDATE Orders SET IsCountedAsRevenue = 1,
-        RevenueEligibleDate = CASE WHEN NULLIF(LTRIM(RTRIM(HandledBy)),N'') IS NOT NULL AND UPPER(LTRIM(RTRIM(HandledBy))) NOT IN (N'ONLINE',N'WEB',N'WEBSITE')
-          THEN COALESCE(PaymentConfirmedAt,ReceivedConfirmedDate,OrderDate) ELSE RevenueEligibleDate END,
+        RevenueEligibleDate = CASE WHEN COALESCE(DeliveredDate,ReceivedConfirmedDate,OrderDate)>COALESCE(PaymentConfirmedAt,OrderDate)
+          THEN COALESCE(DeliveredDate,ReceivedConfirmedDate,OrderDate) ELSE COALESCE(PaymentConfirmedAt,OrderDate) END,
         UpdatedAt=GETDATE()
       WHERE ISNULL(IsCountedAsRevenue,0)=0
-        AND Status IN (N'Đã nhận hàng',N'Da nhan hang')
+        AND Status IN (N'Đã giao hàng thành công',N'Da giao hang thanh cong',N'Đã giao',N'Da giao',N'Delivered',N'Đã nhận hàng',N'Da nhan hang',N'Received',N'Hoàn thành',N'Hoàn tất',N'Completed')
         AND PaymentStatus IN (N'Đã thanh toán',N'Da thanh toan')
-        AND ((NULLIF(LTRIM(RTRIM(HandledBy)),N'') IS NOT NULL AND UPPER(LTRIM(RTRIM(HandledBy))) NOT IN (N'ONLINE',N'WEB',N'WEBSITE')) OR (RevenueEligibleDate IS NOT NULL AND RevenueEligibleDate<=GETDATE()))
     `);
   } catch (e) {
     console.log("AutoCancel job:", e.message);
