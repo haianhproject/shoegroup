@@ -1,7 +1,12 @@
 {
-  "total": 87,
-  "spring": 87,
+  "total": 88,
+  "spring": 88,
   "routes": [
+    {
+      "route": "DELETE /api/pos/carts/:cartId",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/pos/PosController.java"
+    },
     {
       "route": "POST /api/log-error",
       "implementation": "spring",

@@ -17,7 +17,7 @@ public class SystemController {
     @GetMapping("/api/health") public ResponseEntity<?> health() {
         try {
             jdbc.queryForObject("SELECT 1", Integer.class);
-            return ResponseEntity.ok(Map.of("success", true, "db", "connected", "uptimeSeconds", ManagementFactory.getRuntimeMXBean().getUptime() / 1000, "time", Instant.now().toString(),"catalogIdentity",identity.metadata(),"application","shoegroup","apiContract",3,"database",jdbc.queryForObject("SELECT DB_NAME()",String.class)));
+            return ResponseEntity.ok(Map.of("success", true, "db", "connected", "uptimeSeconds", ManagementFactory.getRuntimeMXBean().getUptime() / 1000, "time", Instant.now().toString(),"catalogIdentity",identity.metadata(),"application","shoegroup","apiContract",4,"database",jdbc.queryForObject("SELECT DB_NAME()",String.class)));
         } catch (RuntimeException ex) { return ResponseEntity.status(503).body(Map.of("success", false, "db", "disconnected")); }
     }
     @PostMapping("/api/log-error") public ResponseEntity<Void> logError(@RequestBody Map<String, Object> body) {

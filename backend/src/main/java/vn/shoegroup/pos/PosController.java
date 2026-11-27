@@ -20,6 +20,11 @@ public class PosController {
     public PosController(PosCartService carts, AdminEvents events, Environment env) { this.carts = carts; this.events = events; this.env = env; }
     @GetMapping("/api/pos/cart") public Map<String, Object> cart(HttpServletRequest req,@RequestParam(required=false) Integer cart_id) { return handle(req, null, null, cart_id==null?Map.of():Map.of("cart_id",cart_id)); }
     @PostMapping("/api/pos/carts") public Map<String,Object> create(HttpServletRequest req) { return handle(req,"create",null,Map.of()); }
+    @DeleteMapping("/api/pos/carts/{cartId}") public Map<String,Object> close(HttpServletRequest req, @PathVariable String cartId, @RequestBody Map<String,Object> body) {
+        var request = new LinkedHashMap<>(body);
+        request.put("cart_id", Values.integer(cartId, 1, Integer.MAX_VALUE, null));
+        return handle(req, "close", null, request);
+    }
     @PutMapping("/api/pos/cart/items/{variantId}") public Map<String, Object> change(HttpServletRequest req, @PathVariable String variantId, @RequestBody Map<String, Object> body) {
         return handle(req, "item", Values.integer(variantId, 1, Integer.MAX_VALUE, null), body);
     }

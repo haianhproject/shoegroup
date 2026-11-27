@@ -189,6 +189,70 @@ test('POS keeps each pending invoice customer and cash draft through switching a
   await vue.nextTick();const reload=store(fetch,ss);await reload.loadPosCart();assert.equal(reload.activePosOrder.value.customer_name,'Khách B');assert.equal(reload.activePosOrder.value.cash_given,900000);
 });
 
+test('cash defaults to the total, follows quantities/coupons, and preserves a cashier override', async () => {
+  let quantity=2, revision=1;
+  const state=store(async (url, options) => {
+    if(options?.method==='PUT') { quantity=JSON.parse(options.body).quantity;revision++; }
+    return json(snapshot(quantity,revision));
+  });
+  await state.loadPosCart();
+  assert.equal(state.activePosOrder.value.cash_given,600000);
+  assert.equal(state.posChange.value,0);
+  await state.validateCartItemQty(state.activePosOrder.value.cart[0],3);
+  assert.equal(state.activePosOrder.value.cash_given,900000);
+  state.db.discounts=[{id:1,code:'TEN',active:true,discount_type:'Phần trăm',value:10}];
+  state.activePosOrder.value.coupon_code='TEN';
+  assert.equal(state.posGrandTotal.value,810000);assert.equal(state.activePosOrder.value.cash_given,810000);
+  state.activePosOrder.value.cash_given=1000000;
+  await state.validateCartItemQty(state.activePosOrder.value.cart[0],2);
+  assert.equal(state.activePosOrder.value.cash_given,1000000);assert.equal(state.posChange.value,460000);
+  state.usePosExactCash();assert.equal(state.activePosOrder.value.cash_given,540000);
+  state.clearPosCoupon();assert.equal(state.activePosOrder.value.cash_given,600000);
+});
+
+test('automatic and manually edited cash stay independent across invoice switches', async () => {
+  const state=store(async url => {
+    const id=Number(new URL(url,'http://localhost').searchParams.get('cart_id') || 10);
+    return json({...snapshot(id===10?1:2,1),cart_id:id,carts:[{id:10,revision:1},{id:11,revision:1}]});
+  });
+  await state.loadPosCart();assert.equal(state.activePosOrder.value.cash_given,300000);
+  await state.switchPosCart(11);assert.equal(state.activePosOrder.value.cash_given,600000);
+  state.activePosOrder.value.cash_given=700000;
+  await state.switchPosCart(10);assert.equal(state.activePosOrder.value.cash_given,300000);
+  await state.switchPosCart(11);assert.equal(state.activePosOrder.value.cash_given,700000);
+});
+
+test('closing an inactive invoice uses its revision and keeps the selected customer/cash draft', async () => {
+  let payload, writes=0;
+  const state=store(async (url, options) => {
+    if(options?.method==='DELETE') { payload=JSON.parse(options.body);writes++;return json({...snapshot(1,4),cart_id:10,carts:[{id:10,revision:4}],stockUpdates:[{id:11,stock:2,version:5}]}); }
+    return json({...snapshot(1,4),cart_id:10,carts:[{id:10,revision:4},{id:11,revision:7,item_count:1}]});
+  });
+  await state.loadPosCart();Object.assign(state.activePosOrder.value,{customer_name:'Khách A',cash_given:500000});
+  assert.equal(await state.closePendingPosCart(11),true);
+  assert.equal(writes,1);assert.equal(payload.revision,7);assert.equal(payload.current_cart_id,10);
+  assert.equal(state.posCartId.value,10);assert.equal(state.activePosOrder.value.customer_name,'Khách A');
+  assert.equal(state.activePosOrder.value.cash_given,500000);assert.equal(state.db.inventory[0].stock,2);
+  assert.equal(await state.closePendingPosCart(11),false);assert.equal(writes,1);
+});
+
+test('a lost close response reloads the remaining invoice and stock without repeating the deletion', async () => {
+  let reads=0,writes=0;
+  const state=store(async (url, options) => {
+    if(options?.method==='DELETE') { writes++;throw Error('response lost'); }
+    if(url==='/api/inventory')return json([{id:11,stock:3,version:3}]);
+    reads++;
+    if(reads===1)return json({...snapshot(1,2),cart_id:10,carts:[{id:10,revision:2}]});
+    if(url.includes('cart_id=10'))return json({message:'Hóa đơn đã đóng'},409);
+    return json({...snapshot(0,0),cart_id:11,carts:[{id:11,revision:0}]});
+  });
+  await state.loadPosCart();
+  assert.equal(await state.closePendingPosCart(10),false);
+  assert.equal(writes,1);assert.equal(state.posCartId.value,11);assert.equal(state.activePosOrder.value.cart.length,0);
+  assert.equal(state.activePosOrder.value.cash_given,0);assert.equal(state.db.inventory[0].stock,3);
+  assert.equal(state.posCartBusy.value,false);assert.equal(state.posCartReady.value,true);
+});
+
 test('payment list has aligned header/cell counts and customer details remain in order detail', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../src/views/admin/pages/PaymentsPage.vue'), 'utf8');
   const template = parse(source).descriptor.template.content;

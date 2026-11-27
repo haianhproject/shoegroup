@@ -14,12 +14,28 @@ import {
   checkoutPos, confirmPosCheckout, posConfirmModal, formatPrice, formatDate, validateCartItemQty, posSubmitting,
   posInvoiceModal, closePosInvoice, openLastPosInvoice, printPosInvoice,
   posCartBusy, posCartReady, loadPosCart, posCartItemMax, fetchAllData,
-  posPendingCarts, posCartId, switchPosCart, addPendingPosCart,
+  posPendingCarts, posCartId, switchPosCart, addPendingPosCart, closePendingPosCart, usePosExactCash,
 } from '../adminStore'
 
 const qtyInputs = ref({})
 const posInitialized = ref(false)
-const posControlsLocked = computed(() => !posInitialized.value || posCartBusy.value || posSubmitting.value || posPayModal.open || posConfirmModal.open || !posCartReady.value)
+const closingCart = ref(null)
+const posControlsLocked = computed(() => !posInitialized.value || posCartBusy.value || posSubmitting.value || posPayModal.open || posConfirmModal.open || !!closingCart.value || !posCartReady.value)
+const activeInvoiceNumber = computed(() => posPendingCarts.value.findIndex(cart => String(cart.id) === String(posCartId.value)) + 1)
+async function requestCloseCart(cart, index) {
+  if (posControlsLocked.value) return
+  if (Number(cart.item_count) > 0 || (String(cart.id) === String(posCartId.value) && activePosOrder.value.cart.length)) {
+    closingCart.value = { id: cart.id, number: index + 1 }
+  } else await closePendingPosCart(cart.id)
+}
+function dismissCloseCart() {
+  if (!posCartBusy.value) closingCart.value = null
+}
+async function confirmCloseCart() {
+  if (!closingCart.value || posCartBusy.value) return
+  await closePendingPosCart(closingCart.value.id)
+  closingCart.value = null
+}
 const productPlaceholder = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="240" height="160" fill="#f4f4f5"/><text x="120" y="85" text-anchor="middle" fill="#71717a" font-size="14">ShoeGroup</text></svg>')}`
 function clampQuantity(value, max) {
   return Math.min(max, Math.max(1, Math.floor(Number(value) || 1)))
@@ -63,7 +79,12 @@ onUnmounted(()=>clearInterval(cartRefresh))
 <template>
   <div class="fade-in pos-page">
     <div class="flex gap-2 mb-3 items-center" style="max-width:100%;overflow-x:auto;padding-bottom:6px" role="tablist" aria-label="Hóa đơn chờ">
-      <button v-for="cart in posPendingCarts" :key="cart.id" type="button" role="tab" :aria-selected="cart.id===posCartId" :disabled="posControlsLocked" @click="switchPosCart(cart.id)" class="btn btn-sm border" :class="cart.id===posCartId?'btn-dark':'btn-light'" style="white-space:nowrap">Hóa đơn #{{ cart.id }}</button>
+      <div v-for="(cart, index) in posPendingCarts" :key="cart.id" class="pos-pending-tab" :class="{ 'is-active': cart.id===posCartId }" role="presentation">
+        <button type="button" role="tab" :aria-selected="cart.id===posCartId" :disabled="posControlsLocked" @click="switchPosCart(cart.id)" class="pos-pending-label">Hóa đơn #{{ index + 1 }}</button>
+        <button type="button" class="pos-pending-close" :aria-label="`Xóa hóa đơn #${index + 1}`" :title="`Xóa hóa đơn #${index + 1}`" :disabled="posControlsLocked" @click="requestCloseCart(cart, index)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
       <button type="button" class="btn btn-sm btn-light border" title="Thêm hóa đơn chờ" aria-label="Thêm hóa đơn chờ" :disabled="posControlsLocked" @click="addPendingPosCart"><i class="icon icon-plus-lg"></i></button>
     </div>
     <div v-if="!posCartReady" class="pos-sync-notice" role="status">
@@ -261,6 +282,10 @@ onUnmounted(()=>clearInterval(cartRefresh))
           <div v-if="activePosOrder.payment_method==='Tiền mặt'" class="mb-3">
             <label for="pos-cash-given" class="block text-sm font-medium">Tiền khách đưa <span class="form-required" aria-hidden="true">*</span></label>
             <input id="pos-cash-given" v-model.number="activePosOrder.cash_given" type="number" min="0" max="1000000000000" step="1" required inputmode="numeric" class="sg-input" :disabled="posControlsLocked">
+            <div class="pos-cash-hint">
+              <span>Mặc định bằng tổng thanh toán. Sửa khi khách đưa thêm.</span>
+              <button v-if="activePosOrder.cash_given_auto===false" type="button" :disabled="posControlsLocked" @click="usePosExactCash()">Dùng đúng số tiền</button>
+            </div>
             <p class="text-sm mt-2" role="status">{{ posChange>=0?'Trả lại khách:':'Còn thiếu:' }} {{ formatPrice(Math.abs(posChange)) }}</p>
           </div>
           <button @click="checkoutPos()" :disabled="posControlsLocked || activePosOrder.cart.length === 0" class="btn btn-dark w-full rounded-2 font-bold py-2"><i class="icon icon-check2-circle mr-2"></i>{{ posSubmitting ? 'Đang xử lý...' : 'Tạo đơn / Thanh toán' }}</button>
@@ -271,7 +296,7 @@ onUnmounted(()=>clearInterval(cartRefresh))
     <div v-if="posConfirmModal.open" class="custom-modal-overlay" @click.self="posConfirmModal.open=false">
       <div v-dialog-focus="() => { posConfirmModal.open = false }" class="custom-modal-box p-4" role="dialog" aria-modal="true" aria-label="Xác nhận thanh toán" style="max-width:420px">
         <h6 class="font-bold mb-3">Xác nhận thanh toán</h6>
-        <p>Bạn có muốn thanh toán hóa đơn #{{ posCartId }} không?</p>
+        <p>Bạn có muốn thanh toán hóa đơn #{{ activeInvoiceNumber }} không?</p>
         <p class="font-bold">{{ formatPrice(posGrandTotal) }} · {{ activePosOrder.payment_method }}</p>
         <p v-if="activePosOrder.payment_method==='Tiền mặt'">Khách đưa {{ formatPrice(activePosOrder.cash_given) }} · Trả lại {{ formatPrice(posChange) }}</p>
         <div class="flex justify-end gap-2 mt-3"><button type="button" class="btn btn-light border" @click="posConfirmModal.open=false">Quay lại</button><button type="button" class="btn btn-dark" @click="confirmPosCheckout" :disabled="posSubmitting">Xác nhận</button></div>
@@ -279,6 +304,16 @@ onUnmounted(()=>clearInterval(cartRefresh))
     </div>
 
     <!-- MODAL QR chuyển khoản tại quầy (hiện 1 lần khi bấm thanh toán) -->
+    <div v-if="closingCart" class="custom-modal-overlay" @click.self="dismissCloseCart()">
+      <div v-dialog-focus="dismissCloseCart" class="custom-modal-box p-4" role="dialog" aria-modal="true" aria-labelledby="pos-close-title" style="max-width:420px">
+        <h6 id="pos-close-title" class="font-bold mb-3">Xóa hóa đơn #{{ closingCart.number }}?</h6>
+        <p class="text-sm text-gray-600 mb-4">Các sản phẩm đang giữ sẽ được trả lại tồn kho. Thông tin nhập cho hóa đơn này sẽ được xóa.</p>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-light border" :disabled="posCartBusy" @click="dismissCloseCart()">Giữ hóa đơn</button>
+          <button type="button" class="btn btn-dark" :disabled="posCartBusy" @click="confirmCloseCart()">{{ posCartBusy ? 'Đang xóa...' : 'Xóa hóa đơn & hoàn kho' }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="posPayModal.open" class="custom-modal-overlay" @click.self="cancelPosPay()">
         <div v-dialog-focus="cancelPosPay" class="custom-modal-box fade-in-scale" role="dialog" aria-modal="true" aria-label="Quét mã chuyển khoản" style="max-width:380px;">
           <div class="p-4 text-center">
@@ -427,6 +462,17 @@ onUnmounted(()=>clearInterval(cartRefresh))
 </template>
 
 <style scoped>
+.pos-pending-tab { display: inline-flex; flex: 0 0 auto; align-items: center; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #334155; overflow: hidden; }
+.pos-pending-tab.is-active { border-color: #dc0025; background: #dc0025; color: #fff; box-shadow: 0 3px 9px #dc002518; }
+.pos-pending-label, .pos-pending-close { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.pos-pending-label { padding: 7px 4px 7px 12px; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.pos-pending-close { width: 32px; margin: 2px; min-height: 32px; border-radius: 6px; opacity: .75; }
+.pos-pending-close:hover { background: #0f172a0d; opacity: 1; }
+.is-active .pos-pending-close:hover { background: #ffffff26; }
+.pos-pending-label:focus-visible, .pos-pending-close:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+.pos-pending-label:disabled, .pos-pending-close:disabled { cursor: not-allowed; opacity: .55; }
+.pos-cash-hint { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-top: 6px; color: #64748b; font-size: 11px; line-height: 1.5; }
+.pos-cash-hint button { padding: 0; border: 0; background: none; color: #dc0025; cursor: pointer; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .pos-catalog-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .pos-catalog-filters label { flex: 1; min-width: 140px; font-size: 12px; color: #52525b; }
 .pos-catalog-filters select { display: block; width: 100%; margin-top: 5px; }

@@ -1717,6 +1717,7 @@ function newPosOrder() {
     coupon_code: "",
     payment_method: "Tiền mặt",
     cash_given: 0,
+    cash_given_auto: true,
   });
 }
 const posOrder = ref(newPosOrder());
@@ -1739,7 +1740,9 @@ function restorePosDraft(id) {
     const saved=JSON.parse(sessionStorage.getItem(draftStorageKey()) || 'null');
     if(saved?.day===new Date().toLocaleDateString('en-CA')) for(const [key,draft] of saved.drafts) posDrafts.set(key,draft);
   } catch {}
-  return posDrafts.get(String(id)) || newPosOrder();
+  const draft = posDrafts.get(String(id)) || newPosOrder();
+  if (draft.cash_given_auto === undefined) draft.cash_given_auto = !(Number(draft.cash_given) > 0);
+  return draft;
 }
 watch(posOrder,rememberPosDrafts,{deep:true});
 
@@ -1843,6 +1846,30 @@ export async function addPendingPosCart() {
     rememberPosDrafts();
     posOrder.value=newPosOrder(); applyPosCart(result.data);
   } finally { posCartBusy.value=false; }
+}
+export async function closePendingPosCart(id) {
+  if (posCartBusy.value || posSubmitting.value || posPayModal.open || posConfirmModal.open || !posCartReady.value) return false;
+  const cart = posPendingCarts.value.find(row => String(row.id) === String(id));
+  if (!cart) return false;
+  posCartBusy.value = true;
+  try {
+    rememberPosDrafts();
+    const result = await apiWrite('/pos/carts/' + cart.id, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: cart.revision, current_cart_id: posCartId.value }),
+    });
+    if (!result.ok) {
+      notify(result.data?.message || 'Chưa xác nhận được việc xóa hóa đơn. Đang tải lại để kiểm tra.', 'error');
+      await readPosCart();
+      const inventory = await api('/inventory');
+      if (Array.isArray(inventory)) applyPosStockUpdates(inventory);
+      return false;
+    }
+    applyPosCart(result.data);
+    rememberPosDrafts();
+    notify('Đã xóa hóa đơn chờ và trả lại hàng đang giữ vào kho.', 'success');
+    return true;
+  } finally { posCartBusy.value = false; }
 }
 export const posPayModal = reactive({
   open: false,
@@ -2084,6 +2111,20 @@ export const posDiscountAmount = computed(() => {
 export const posGrandTotal = computed(() =>
   Math.max(0, posSubtotal.value - posDiscountAmount.value),
 );
+let fillingPosCash = false;
+// Keep automatic cash per draft, and preserve an amount edited by the cashier.
+watch(() => [posOrder.value, posOrder.value.cash_given], ([order, cash], previous) => {
+  if (!fillingPosCash && previous && order === previous[0] && cash !== previous[1]) order.cash_given_auto = false;
+}, { flush: 'sync' });
+export function usePosExactCash() {
+  activePosOrder.value.cash_given_auto = true;
+  fillingPosCash = true;
+  try { activePosOrder.value.cash_given = posGrandTotal.value; }
+  finally { fillingPosCash = false; }
+}
+watch(() => [posOrder.value, posGrandTotal.value], () => {
+  if (activePosOrder.value.cash_given_auto !== false) usePosExactCash();
+}, { flush: 'sync', immediate: true });
 export const posChange = computed(
   () => (Number(activePosOrder.value.cash_given) || 0) - posGrandTotal.value,
 );
