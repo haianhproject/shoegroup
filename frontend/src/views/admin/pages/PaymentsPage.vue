@@ -106,6 +106,8 @@ const transitionConfirm = reactive({
   order: null,
   action: null,
   busy: false,
+  reason: '',
+  confirmed: false,
 });
 
 const confirmPanel = ref(null);
@@ -133,7 +135,7 @@ function onConfirmKeydown(event) {
   }
   if (event.key !== "Tab") return;
   const controls = [
-    ...(confirmPanel.value?.querySelectorAll("button:not([disabled])") || []),
+    ...(confirmPanel.value?.querySelectorAll("button:not([disabled]), input:not([disabled]), textarea:not([disabled])") || []),
   ];
   if (!controls.length) {
     event.preventDefault();
@@ -156,7 +158,7 @@ function onConfirmKeydown(event) {
 function requestOrderAction(order, action) {
   if (!order || !action || action.locked || transitionConfirm.busy) return;
   if (action.afterSales) {
-    if (!isEmployee.value) afterSalesPanel.value?.open();
+    if (!isEmployee.value) afterSalesPanel.value?.open({ mode: 'warehouse', reason: action.reason || '' });
     return;
   }
   if (action.isCancel) {
@@ -165,6 +167,8 @@ function requestOrderAction(order, action) {
   }
   transitionConfirm.order = order;
   transitionConfirm.action = action;
+  transitionConfirm.reason = '';
+  transitionConfirm.confirmed = false;
   transitionConfirm.open = true;
 }
 
@@ -182,9 +186,11 @@ async function confirmTransition() {
     transitionConfirm.busy
   )
     return;
+  const lost = transitionConfirm.action.key === 'lost_delivery_cancel';
+  if (lost && (!transitionConfirm.confirmed || transitionConfirm.reason.trim().length < 5)) return;
   transitionConfirm.busy = true;
   try {
-    await runOrderAction(transitionConfirm.order, transitionConfirm.action);
+    await runOrderAction(transitionConfirm.order, { ...transitionConfirm.action, ...(lost ? { confirm_lost: true, reason: `${transitionConfirm.action.reason} ${transitionConfirm.reason.trim()}` } : {}) });
     transitionConfirm.open = false;
     transitionConfirm.order = null;
     transitionConfirm.action = null;
@@ -195,15 +201,19 @@ async function confirmTransition() {
   }
 }
 
-async function chooseFailureResolution(option) {
+function chooseFailureResolution(option) {
   const menuAction = transitionConfirm.action;
   if (!menuAction || !Array.isArray(menuAction.menu) || transitionConfirm.busy)
     return;
+  if (option.afterSales) {
+    if (isEmployee.value) { notify('Quản trị viên cần kiểm hàng và xác nhận hoàn kho.', 'warning'); return; }
+    closeTransitionConfirm();
+    nextTick(() => afterSalesPanel.value?.open({ mode: 'warehouse', reason: option.reason }));
+    return;
+  }
   transitionConfirm.action = option;
-  await confirmTransition();
-  // Nếu API từ chối (ví dụ hết tồn kho khi giao lại), giữ menu để quản lý
-  // chọn lại nguyên nhân thay vì biến thành một trạng thái trung gian.
-  if (transitionConfirm.open) transitionConfirm.action = menuAction;
+  transitionConfirm.reason = '';
+  transitionConfirm.confirmed = false;
 }
 
 function transitionMessage() {
@@ -218,8 +228,9 @@ function transitionMessage() {
   }
   if (action.key === "reship") return `Xác nhận kiện của đơn #${order.id} đã được kiểm tra nguyên vẹn và sẵn sàng giao lại? Hệ thống giữ đúng phần tồn đã xuất cho đơn.`;
   if (action.key === "delivery_failed_menu") {
-    return `Chọn lý do giao hàng thất bại cho đơn #${order.id}. Hệ thống sẽ chốt và cập nhật đúng nhánh ngay sau khi bạn chọn.`;
+    return `Chọn hướng xử lý cho đơn #${order.id}. Bạn sẽ kiểm tra và xác nhận trước khi hệ thống cập nhật.`;
   }
+  if (action.key === 'retry_delivery') return `Giữ đơn #${order.id} ở trạng thái giao thất bại để liên hệ và giao lại. Hàng vẫn thuộc kiện đã xuất; chưa cộng tồn kho và chưa ghi doanh thu.`;
   if (action.key === "delivery_accident") {
     return `Xác nhận đơn #${order.id} gặp sự cố vận chuyển? Cửa hàng sẽ kiểm nhận kiện hàng trước khi quyết định giao lại hoặc hoàn kho.`;
   }
@@ -653,6 +664,7 @@ function transitionMessage() {
                   <span v-text="p.size"></span> · SL:
                   <span v-text="p.quantity"></span>
                 </p>
+                <p v-if="p.returned_quantity || p.historical_returned_quantity" class="payment-returned-line">Đã trả {{ p.returned_quantity + Number(p.historical_returned_quantity) }}/{{ p.quantity }} · {{ p.refunded_quantity ? `Đã hoàn tiền ${p.refunded_quantity} sản phẩm` : 'Chờ hoàn tiền' }}</p>
               </div>
               <span
                 class="font-medium text-gray-900 text-sm payment-product-price"
@@ -669,6 +681,11 @@ function transitionMessage() {
             <div v-if="orderDetail.order.cash_given!=null" class="pt-3 text-sm">
               <div class="flex justify-between"><span>Tiền khách đưa</span><strong>{{ formatPrice(orderDetail.order.cash_given) }}</strong></div>
               <div class="flex justify-between"><span>Trả lại khách</span><strong>{{ formatPrice(orderDetail.order.cash_given-orderDetail.order.total) }}</strong></div>
+            </div>
+            <div v-if="orderDetail.order.refunded_amount || orderDetail.order.pending_refund_amount" class="payment-refund-summary">
+              <p v-if="orderDetail.order.refunded_amount"><span>Đã hoàn tiền</span><strong>{{ formatPrice(orderDetail.order.refunded_amount) }}</strong></p>
+              <p v-if="orderDetail.order.pending_refund_amount"><span>Chờ hoàn tiền</span><strong>{{ formatPrice(orderDetail.order.pending_refund_amount) }}</strong></p>
+              <p><span>Giá trị sau trả hàng</span><strong>{{ formatPrice(Math.max(0, orderDetail.order.total - Number(orderDetail.order.historical_refund_amount) - Number(orderDetail.order.return_adjustment_amount))) }}</strong></p>
             </div>
           </div>
         </div>
@@ -827,6 +844,10 @@ function transitionMessage() {
             class="text-gray-600 text-sm mb-4"
             v-text="transitionMessage()"
           ></p>
+          <div v-if="transitionConfirm.action?.key === 'lost_delivery_cancel'" class="failure-validation">
+            <label>Biên bản / ghi chú xác minh mất hàng<textarea v-model="transitionConfirm.reason" rows="3" minlength="5" maxlength="400" placeholder="Nhập kết quả xác minh với đơn vị vận chuyển…" /></label>
+            <label class="failure-check"><input v-model="transitionConfirm.confirmed" type="checkbox" />Tôi xác nhận kiện đã mất, hủy đơn và không cộng lại tồn kho</label>
+          </div>
           <div v-if="transitionConfirm.action?.menu" class="grid gap-2 mb-3">
             <button
               v-for="option in transitionConfirm.action.menu"
@@ -866,7 +887,7 @@ function transitionMessage() {
             <button
               type="button"
               class="btn btn-sm btn-dark text-white px-3"
-              :disabled="transitionConfirm.busy"
+              :disabled="transitionConfirm.busy || (transitionConfirm.action?.key === 'lost_delivery_cancel' && (!transitionConfirm.confirmed || transitionConfirm.reason.trim().length < 5))"
               @click="confirmTransition"
             >
               <span
@@ -878,7 +899,7 @@ function transitionMessage() {
                 v-text="
                   transitionConfirm.busy
                     ? 'Đang cập nhật...'
-                    : 'Xác nhận chuyển'
+                    : transitionConfirm.action?.key === 'lost_delivery_cancel' ? 'Xác nhận hủy đơn' : 'Xác nhận chuyển'
                 "
               ></span>
             </button>
@@ -890,6 +911,8 @@ function transitionMessage() {
 </template>
 
 <style scoped>
+.payment-returned-line{font-size:11px;color:#627466;margin:8px 0 0;line-height:1.8}.payment-refund-summary{border-top:1px solid #e7ebf0;margin-top:15px;padding-top:12px}.payment-refund-summary p{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:1.9;margin:5px 0;color:#7d8797}.payment-refund-summary strong{font-weight:550;color:#3d4d5f}
+.failure-validation{display:grid;gap:14px;margin:0 0 20px;font-size:12px;line-height:1.8}.failure-validation label{display:grid;gap:7px}.failure-validation textarea{width:100%;border:1px solid #dce3ed;border-radius:8px;padding:10px;font:inherit}.failure-validation .failure-check{display:flex;align-items:flex-start;gap:9px}.failure-check input{margin-top:5px;accent-color:#d4001a}
 .payments-page,
 .payment-detail,
 .payment-main-column,

@@ -813,32 +813,24 @@ export async function processOrderFlow(ord) {
 export function getDeliveryFailureOptions() {
   return [
     {
-      key: "return_warehouse",
-      text: "Khách chưa bắt máy / chưa nhận hàng",
-      next: "Về kho",
-      reason: "Khách chưa bắt máy / chưa nhận hàng; kiện chờ kiểm nhận tại kho.",
-      issueStatus: "RETURNED_TO_WAREHOUSE",
+      key: "retry_delivery",
+      text: "Có thể giao lại · chưa nghe máy / trục trặc vận chuyển",
+      next: "Giao hàng thất bại",
+      reason: "Chưa liên hệ được khách hoặc trục trặc vận chuyển; chờ sắp xếp giao lại.",
+      issueStatus: "DELIVERY_FAILED",
       class: "btn-dark text-white",
     },
     {
       key: "delivery_refused",
-      text: "Hàng có vấn đề / khách từ chối nhận",
-      next: "Về kho",
-      reason: "Khách từ chối nhận vì hàng có vấn đề; kiện chờ kiểm nhận để hoàn kho và đóng đơn.",
+      text: "Không nhận hàng · kiểm hàng, hoàn kho & hủy đơn",
+      afterSales: true,
+      reason: "Khách từ chối nhận / hàng có vấn đề; cửa hàng xử lý theo kết quả kiểm hàng.",
       issueStatus: "RETURNED_TO_WAREHOUSE",
       class: "btn-outline-danger",
     },
     {
-      key: "delivery_accident",
-      text: "Tai nạn / trục trặc vận chuyển",
-      next: "Về kho",
-      reason: "Tai nạn / trục trặc trong quá trình vận chuyển; kiện chờ kiểm nhận và xác định hướng xử lý.",
-      issueStatus: "DELIVERY_ACCIDENT",
-      class: "btn-outline-dark",
-    },
-    {
       key: "lost_delivery_cancel",
-      text: "Thất lạc hàng (hủy đơn)",
+      text: "Mất hàng · hủy đơn, không hoàn kho",
       next: "Đã hủy",
       reason: "Mất hàng khi vận chuyển - đơn đã hủy và không hoàn lại tồn kho.",
       issueStatus: "LOST_IN_TRANSIT",
@@ -868,7 +860,7 @@ export function getOrderActions(o) {
     class: "btn-outline-danger",
   }];
   const preShipping = ["Chờ xác nhận", "Đã xác nhận"].includes(o.status);
-  if (o.status === "Về kho") {
+  if (["Về kho", "Giao hàng thất bại"].includes(o.status)) {
     if (method === "Chuyển khoản" && !paid) return [{
       key: "wait_bank",
       text: "Chờ khách chuyển khoản",
@@ -881,14 +873,8 @@ export function getOrderActions(o) {
       next: "Đang vận chuyển",
       reason: "Shop đã sắp xếp giao lại đơn hàng vào ngày gần nhất.",
       class: "btn-dark text-white",
-    }, ...warehouseInspection];
+    }, ...warehouseInspection, { key: "delivery_failed_menu", text: "Đổi hướng xử lý", menu: getDeliveryFailureOptions(), class: "btn-outline-danger" }];
   }
-  if (o.status === "Giao hàng thất bại") return [{
-    key: "delivery_failed_menu",
-    text: "Giao hàng thất bại",
-    menu: getDeliveryFailureOptions(),
-    class: "btn-outline-danger",
-  }, ...warehouseInspection];
   if (method === "Chuyển khoản") {
     if (!paid) {
       const unpaidActions = [
@@ -1026,7 +1012,7 @@ export async function runOrderAction(o, act) {
     const res = await apiWrite("/orders/" + o.id + "/status", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: act.next, ...(act.reason ? { reason: act.reason } : {}) }),
+      body: JSON.stringify({ status: act.next, ...(act.reason ? { reason: act.reason } : {}), ...(act.confirm_lost ? { confirm_lost: true } : {}) }),
     });
 
     if (!res.ok) {
@@ -1063,12 +1049,12 @@ export async function runOrderAction(o, act) {
         o.stock_issue_reason = act.reason;
       }
     }
-    if (act.next === "Về kho") {
+    if (["Về kho", "Giao hàng thất bại"].includes(act.next)) {
       // Chỉ API kiểm nhận hoàn kho mới được đánh dấu đã hoàn tồn.
       o.stock_issue_status = act.issueStatus || "RETURNED_TO_WAREHOUSE";
       o.stock_issue_reason = act.reason || "";
     }
-    if (act.next === "Đang vận chuyển" && prev === "Về kho") {
+    if (act.next === "Đang vận chuyển" && ["Về kho", "Giao hàng thất bại"].includes(prev)) {
       o.stock_restored_at = null;
       if (["DELIVERY_FAILED", "RETURNED_TO_WAREHOUSE", "DELIVERY_ACCIDENT"].includes(o.stock_issue_status)) {
         o.stock_issue_status = null;
@@ -1261,6 +1247,8 @@ export function getPaymentMethodPill(pm) {
 
 export function effectivePaymentStatus(o) {
   const rawStatus = String(o?.payment_status || "");
+  if (Number(o?.pending_refund_amount) > 0) return 'Chờ hoàn tiền';
+  if (Number(o?.refunded_amount) > 0) return Number(o.refunded_amount) >= Number(o.total) ? 'Hoàn tiền' : 'Đã hoàn tiền một phần';
   if (normalizeStatusText(rawStatus) === "hoan tien") return "Hoàn tiền";
   if (normalizeStatusText(o?.status) === "da huy") return "Chưa thanh toán";
   const pill = getPaymentMethodPill(o.payment_method);
@@ -1278,10 +1266,11 @@ export function effectivePaymentStatus(o) {
 }
 export function getPaymentStatusPill(o) {
   const st = effectivePaymentStatus(o);
+  if (st === 'Đã hoàn tiền một phần' || st === 'Chờ hoàn tiền') return { label: st, cls: 'bg-light text-dark border' };
   if (st === "Đã thanh toán")
     return { label: "Đã thanh toán", cls: "bg-dark text-white" };
   if (st === "Hoàn tiền")
-    return { label: "Hoàn tiền", cls: "bg-light text-dark border" };
+    return { label: "Đã hoàn tiền", cls: "bg-light text-dark border" };
   if (st === "Khách báo đã chuyển")
     return { label: "Khách báo đã chuyển", cls: "bg-dark text-white" };
   if (st === "Chờ chuyển khoản")
@@ -4300,6 +4289,8 @@ export function mapOrder(o) {
     return_adjustment_amount: o.ReturnAdjustmentAmount ?? o.return_adjustment_amount ?? 0,
     active_return_count: Number(o.active_return_count || 0),
     pending_refund_amount: Number(o.pending_refund_amount || 0),
+    refunded_amount: Number(o.refunded_amount || 0),
+    return_count: Number(o.return_count || 0),
     shipping_fee: o.ShippingFee ?? o.shippingFee ?? o.shipping_fee ?? 0,
     discount: o.DiscountAmount ?? o.discountAmount ?? o.discount ?? 0,
     status: canonicalAdminOrderStatus(o.Status ?? o.status ?? "Chờ xác nhận"),
@@ -4336,6 +4327,7 @@ export function mapOrder(o) {
       quantity: d.Quantity ?? d.quantity ?? 1,
       historical_returned_quantity: d.HistoricalReturnedQuantity ?? d.historical_returned_quantity ?? 0,
       returned_quantity: Number(d.ReturnedQuantity ?? d.returned_quantity ?? 0),
+      refunded_quantity: Number(d.refunded_quantity || 0),
       price: d.UnitPrice ?? d.price ?? 0,
       image: d.ImageURL ?? d.image ?? "",
     })),

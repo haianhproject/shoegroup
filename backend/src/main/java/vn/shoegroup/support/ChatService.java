@@ -108,14 +108,14 @@ public class ChatService {
       if(!supplied.isEmpty()&&!canonical.equals(supplied))continue;
       cards.add(params("code",canonical,"status",row.get("Status"),"payment_status",row.get("PaymentStatus"),"total",row.get("TotalAmount"),"has_open_return",number(row.get("active_returns"))>0,"href","/orders"));
     }
-    var result=reply("ORDERS",cards.isEmpty()?"Mình chưa tìm thấy đơn phù hợp trong tài khoản của bạn. Hãy kiểm tra lại mã đơn hoặc mở Đơn hàng của tôi.":"Đây là trạng thái mới nhất của đơn thuộc tài khoản bạn đang đăng nhập. Bạn có thể mở đơn để xem chi tiết hoặc gửi yêu cầu trả hàng.",List.of("Trả hàng / hoàn tiền","Gặp nhân viên"),Map.of());
+    var result=reply("ORDERS",cards.isEmpty()?"Mình chưa tìm thấy đơn phù hợp trong tài khoản của bạn. Hãy kiểm tra lại mã đơn hoặc mở Đơn hàng của tôi.":"Đây là trạng thái mới nhất của đơn thuộc tài khoản bạn đang đăng nhập. Bạn có thể mở đơn để xem chi tiết hàng trả và tiền hoàn; liên hệ Zalo khi cần hỗ trợ.",List.of("Trả hàng / hoàn tiền","Gặp nhân viên"),Map.of());
     result.put("orders",cards);result.put("links",List.of(link("Đơn hàng của tôi","/orders")));return result;
   }
   public Map<String,Object> chat(Map<String,Object> body,ApiUser user) {
     if(!(body.get("message") instanceof String message)||message.isBlank()||message.length()>500)throw new ApiException(400,"Tin nhắn cần có từ 1 đến 500 ký tự.");
     String text=normalize(message);
     if(contains(text,"gap nhan vien","nguoi that","lien he","zalo","hotline"))return info("HANDOFF","Bạn có thể gửi mã đơn và mô tả vấn đề cho nhân viên qua Zalo 0375 990 871. Mình chưa gửi nội dung cuộc trò chuyện sang Zalo; bạn chọn thông tin cần chia sẻ khi liên hệ.","Liên hệ nhân viên qua Zalo","https://zalo.me/0375990871");
-    if(contains(text,"tra hang","doi tra","hoan tien","hang hong","bi loi","khong vua"))return info("RETURNS","Với đơn đã giao, mở Đơn hàng của tôi và chọn Yêu cầu trả hàng. Bạn chọn từng sản phẩm và số lượng; cửa hàng duyệt, kiểm hàng thực nhận rồi đối soát tiền hoàn. Hàng hỏng được ghi riêng và không đưa ngay về tồn bán. Phí giao hàng được xem xét riêng khi kiểm nhận.","Mở đơn để yêu cầu hỗ trợ","/orders");
+    if(contains(text,"tra hang","doi tra","hoan tien","hang hong","bi loi","khong vua"))return info("RETURNS","Bạn liên hệ cửa hàng qua Zalo và cung cấp mã đơn, sản phẩm cùng số lượng cần trả để thống nhất cách xử lý. Khi đã nhận hàng thực tế, cửa hàng kiểm nhận từng sản phẩm và cập nhật khoản hoàn. Mở Đơn hàng của tôi để xem sản phẩm đã trả, tiền chờ hoàn và tiền đã hoàn.","Liên hệ Zalo để trao đổi","https://zalo.me/0375990871");
     if(contains(text,"tra don","don hang","don #","order","sgvn")||Pattern.compile("\\bdon\\s*#?\\s*\\d").matcher(text).find())return orders(message,user);
     if(contains(text,"huong dan chon size","bang size","do chan","chan dai","tu van size"))return info("SIZE_GUIDE","Bạn hãy đo chiều dài bàn chân và đối chiếu bảng size của đúng thương hiệu trên trang sản phẩm. Các hệ EU/US/UK và phom từng mẫu có thể khác nhau. Mình có thể tìm giày còn size bạn chọn, ví dụ: “giày đen size 40 dưới 1 triệu”.","Xem các mẫu giày","/products");
     if(shipping.question(text)||body.containsKey("shipping_address_id"))return shipping.chat(message,body.get("context"),user,body.get("shipping_address_id"));

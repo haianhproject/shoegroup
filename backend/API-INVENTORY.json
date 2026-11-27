@@ -1,6 +1,6 @@
 {
-  "total": 85,
-  "spring": 85,
+  "total": 87,
+  "spring": 87,
   "routes": [
     {
       "route": "POST /api/log-error",
@@ -511,6 +511,16 @@
       "implementation": "spring",
       "file": "backend/src/main/java/vn/shoegroup/support/ChatController.java",
       "line": 10
+    },
+    {
+      "route": "GET /api/returns/order",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java"
+    },
+    {
+      "route": "POST /api/orders/:id/return-receipts",
+      "implementation": "spring",
+      "file": "backend/src/main/java/vn/shoegroup/orders/AfterSalesController.java"
     }
   ]
 }

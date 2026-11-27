@@ -94,7 +94,7 @@ public class AfterSalesService {
         SELECT ReturnID AS id,Status AS status,Reason AS reason,ReviewNote AS review_note,
           ReceiptNote AS receipt_note,CreatedAt AS created_at,ReviewedAt AS reviewed_at,ReceivedAt AS received_at,
           RefundedAt AS refunded_at,RefundAmount AS refund_amount,ShippingRefundAmount AS shipping_refund_amount,
-          RefundTransactionID AS refund_transaction_id,IsOpen AS is_open
+          RefundTransactionID AS refund_transaction_id,IsOpen AS is_open,Source AS source
         FROM OrderReturns WHERE OrderID=:id ORDER BY ReturnID DESC
         """,params("id",orderId));
     for(var r:caseRows) {
@@ -122,18 +122,86 @@ public class AfterSalesService {
       view.put("name",Objects.toString(line.get("ProductNameSnapshot"),"Sản phẩm"));
       view.put("size",Objects.toString(line.get("Size"),"")); view.put("color",Objects.toString(line.get("Color"),""));
       view.put("quantity",quantity(line)); view.put("returned_quantity",returned(line));
+      view.put("refunded_quantity",jdbc.queryForObject("SELECT ISNULL(SUM(ri.GoodQuantity+ri.DamagedQuantity),0) FROM OrderReturnItems ri JOIN OrderReturns r ON r.ReturnID=ri.ReturnID WHERE ri.OrderDetailID=:id AND r.Status='COMPLETED'",params("id",line.get("OrderDetailID")),Integer.class));
       view.put("remaining_quantity",Math.max(0,quantity(line)-returned(line)));
       view.put("net_line_total",net.get(integer(line.get("OrderDetailID"))));
       lineViews.add(view);
     }
     boolean open=caseRows.stream().anyMatch(r->Boolean.TRUE.equals(r.get("is_open")));
-    return params("order_id",orderId,"status",o.get("Status"),"payment_status",o.get("PaymentStatus"),
+    BigDecimal shippingRefunded=jdbc.queryForObject("SELECT ISNULL(SUM(ShippingRefundAmount),0) FROM OrderReturns WHERE OrderID=:id",params("id",orderId),BigDecimal.class);
+    return params("order_id",orderId,"order_code",OrderCodes.format(orderId,((java.sql.Timestamp)o.get("OrderDate")).toLocalDateTime().toLocalDate()),"status",o.get("Status"),"payment_status",o.get("PaymentStatus"),
+        "total",o.get("TotalAmount"),"shipping_refundable_amount",money(o.get("ShippingFee")).subtract(shippingRefunded).max(BigDecimal.ZERO),
+        "remaining_refundable_amount",money(o.get("TotalAmount")).subtract(money(o.get("HistoricalRefundAmount"))).subtract(money(o.get("ReturnAdjustmentAmount"))).max(BigDecimal.ZERO),
         "items",lineViews,"returns",caseRows,"refunds",refunds,
         "can_request",delivered(o)&&paid(o.get("PaymentStatus"))&&!open&&lineViews.stream().anyMatch(i->integer(i.get("remaining_quantity"))>0),
         "return_adjustment_amount",o.get("ReturnAdjustmentAmount"),
         "can_warehouse",Set.of("dang van chuyen","dang giao","giao hang that bai","ve kho","shipping","shipped").contains(normalize(o.get("Status")))&&o.get("WarehouseClosedAt")==null,
         "warehouse_closed",o.get("WarehouseClosedAt")!=null,
         "already_restocked",o.get("StockRestoredAt")!=null);
+  }
+
+  @Transactional(readOnly=true)
+  public Map<String,Object> lookup(String input,ApiUser user) {
+    admin(user); String code=Values.text(input,100).replaceFirst("^#","").strip();
+    if(code.isEmpty())throw new ApiException(400,"Nhập mã đơn hàng cần nhận trả.");
+    Integer candidate=null;
+    try {
+      if(code.matches("[0-9]{1,10}"))candidate=Integer.valueOf(code);
+      var matcher=java.util.regex.Pattern.compile("(?i)^SGVN\\d{6}(\\d{5,10})[A-Z]\\d$").matcher(code);
+      if(matcher.matches())candidate=Integer.valueOf(matcher.group(1));
+    } catch(NumberFormatException ignored) {}
+    var rows=jdbc.queryForList("SELECT OrderID,OrderDate,TrackingNumber FROM Orders WHERE OrderID=:id OR TrackingNumber=:code",params("id",candidate==null?0:candidate,"code",code));
+    for(var row:rows) {
+      int id=integer(row.get("OrderID"));
+      String canonical=OrderCodes.format(id,((java.sql.Timestamp)row.get("OrderDate")).toLocalDateTime().toLocalDate());
+      if(code.equals(String.valueOf(id)) || code.equalsIgnoreCase(canonical) || code.equalsIgnoreCase(Objects.toString(row.get("TrackingNumber"),"")))return detail(id,user);
+    }
+    throw new ApiException(404,"Không tìm thấy đơn theo mã đã nhập. Kiểm tra lại toàn bộ mã đơn.");
+  }
+
+  @Transactional(isolation=Isolation.SERIALIZABLE)
+  public Map<String,Object> register(int orderId,ApiUser user,Map<String,Object> body) {
+    admin(user); var o=order(orderId,true);
+    if(!Values.bool(body.get("confirm_received"),false))throw new ApiException(400,"Chỉ xác nhận khi đã nhận và kiểm tra hàng trả thực tế.");
+    String key=requestKey(body.get("request_key")),reason=note(body.get("reason"),true);
+    var selected=indexed(items(body.get("items")),"order_detail_id");
+    List<String> signature=new ArrayList<>();
+    for(var e:selected.entrySet()) {
+      int q=Values.integer(e.getValue().get("quantity"),1,1000000,null);
+      int damaged=Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
+      signature.add(e.getKey()+":"+q+":"+damaged);
+    }
+    boolean paidNow=Values.bool(body.get("confirm_paid"),false),shipping=Values.bool(body.get("refund_shipping"),false);
+    String reference=Objects.toString(body.get("reference"),"").strip().toUpperCase(Locale.ROOT),refundNote=Objects.toString(body.get("refund_note"),"").strip();
+    String fingerprint=hash("ZALO|"+reason+"|"+signature+"|"+shipping+"|"+paidNow+"|"+reference+"|"+refundNote);
+    var prior=jdbc.queryForList("SELECT ReturnID,RequestHash,RefundAmount,Status FROM OrderReturns WHERE OrderID=:id AND RequestKey=CONVERT(uniqueidentifier,:key)",params("id",orderId,"key",key));
+    if(!prior.isEmpty()) {
+      var row=prior.get(0);
+      if(!fingerprint.equals(row.get("RequestHash")))throw conflict("Mã thao tác đã được dùng cho nội dung khác. Kiểm tra phiếu đã lưu.");
+      return params("success",true,"unchanged",true,"order_id",orderId,"return_id",row.get("ReturnID"),"refund_amount",row.get("RefundAmount"),"status",row.get("Status"));
+    }
+    if(!delivered(o)||!paid(o.get("PaymentStatus")))throw conflict("Chỉ nhận trả theo mã đơn đã giao thành công và đã thanh toán.");
+    if(!jdbc.queryForList("SELECT ReturnID FROM OrderReturns WHERE OrderID=:id AND IsOpen=1",params("id",orderId)).isEmpty())throw conflict("Đơn đang có phiếu chưa hoàn tất. Xử lý khoản chờ hoàn hoặc phiếu cũ trước.");
+    var details=indexed(lines(orderId),"OrderDetailID");
+    for(var e:selected.entrySet()) {
+      var line=details.get(e.getKey()); int q=Values.integer(e.getValue().get("quantity"),1,1000000,null);
+      if(line==null || q>quantity(line)-returned(line))throw conflict("Sản phẩm không thuộc đơn hoặc số lượng vượt phần còn được trả.");
+    }
+    int id=jdbc.queryForObject("""
+        INSERT OrderReturns(OrderID,RequestKey,RequestHash,Reason,RequestedByUserID,Source,Status,IsOpen,ReviewedAt,ReviewNote)
+        OUTPUT INSERTED.ReturnID VALUES(:oid,CONVERT(uniqueidentifier,:key),:hash,:reason,:uid,'ZALO','APPROVED',1,SYSDATETIME(),N'Tiếp nhận theo trao đổi qua Zalo')
+        """,params("oid",orderId,"key",key,"hash",fingerprint,"reason",reason,"uid",user.id()),Integer.class);
+    List<Map<String,Object>> received=new ArrayList<>();
+    for(var e:selected.entrySet()) {
+      int q=Values.integer(e.getValue().get("quantity"),1,1000000,null),bad=Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
+      int item=jdbc.queryForObject("INSERT OrderReturnItems(ReturnID,OrderDetailID,RequestedQuantity) OUTPUT INSERTED.ReturnItemID VALUES(:id,:detail,:q)",params("id",id,"detail",e.getKey(),"q",q),Integer.class);
+      received.add(params("return_item_id",item,"good_quantity",q-bad,"damaged_quantity",bad));
+    }
+    event(id,"APPROVED","Đã trao đổi với khách qua Zalo; tiếp nhận và kiểm hàng tại cửa hàng.",user);
+    var result=receive(id,user,params("items",received,"note",reason,"refund_shipping",shipping,"confirm_received",true));
+    if(paidNow && result.get("refund_transaction_id")!=null)
+      confirmRefund(orderId,integer(result.get("refund_transaction_id")),user,params("reference",reference,"note",refundNote,"confirm_paid",true));
+    return params("success",true,"order_id",orderId,"return_id",id,"refund_amount",result.get("refund_amount"),"status",paidNow||result.get("refund_transaction_id")==null?"COMPLETED":"REFUND_PENDING");
   }
 
   @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -170,8 +238,8 @@ public class AfterSalesService {
     String q=Values.text(input.get("q"),100);
     var code=java.util.regex.Pattern.compile("(?i)^#?SGVN\\d{6}(\\d{5,10})[A-Z]\\d$").matcher(q);
     if(code.matches())try { q=String.valueOf(Integer.parseInt(code.group(1))); }catch(NumberFormatException ignored) {}
-    return jdbc.queryForList("""
-        SELECT TOP 200 r.ReturnID AS id,r.OrderID AS order_id,r.Status AS status,r.Reason AS reason,
+    var rows=jdbc.queryForList("""
+        SELECT TOP 200 r.ReturnID AS id,r.OrderID AS order_id,r.Status AS status,r.Reason AS reason,r.Source AS source,
           r.RefundAmount AS refund_amount,r.CreatedAt AS created_at,r.IsOpen AS is_open,
           o.OrderDate AS order_date,o.CustomerName AS customer_name,o.TrackingNumber AS tracking_code
         FROM OrderReturns r JOIN Orders o ON o.OrderID=r.OrderID
@@ -179,6 +247,14 @@ public class AfterSalesService {
           AND (:q='' OR o.CustomerName LIKE :like OR CONVERT(varchar(20),r.OrderID)=:q OR CONVERT(varchar(20),r.ReturnID)=:q OR o.TrackingNumber LIKE :like)
         ORDER BY CASE WHEN r.IsOpen=1 THEN 0 ELSE 1 END,r.CreatedAt DESC,r.ReturnID DESC
         """,params("scope",scope,"q",q,"like","%"+q+"%"));
+    var items=jdbc.queryForList("""
+        SELECT ri.ReturnID AS return_id,od.ProductNameSnapshot AS name,od.Size AS size,od.Color AS color,
+          ri.RequestedQuantity AS requested_quantity,ri.GoodQuantity AS good_quantity,ri.DamagedQuantity AS damaged_quantity,ri.RefundAmount AS refund_amount
+        FROM OrderReturnItems ri JOIN OrderDetails od ON od.OrderDetailID=ri.OrderDetailID
+        WHERE ri.ReturnID IN (:ids) ORDER BY ri.ReturnItemID
+        """,params("ids",rows.isEmpty()?List.of(0):rows.stream().map(r->r.get("id")).toList()));
+    for(var row:rows)row.put("items",items.stream().filter(i->Objects.equals(i.get("return_id"),row.get("id"))).toList());
+    return rows;
   }
 
   @Transactional(isolation=Isolation.SERIALIZABLE)

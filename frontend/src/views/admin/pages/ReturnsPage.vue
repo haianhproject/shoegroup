@@ -3,19 +3,21 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RotateCcw, PackageCheck, Wallet, TriangleAlert, RefreshCw, ArrowUpRight } from 'lucide-vue-next'
 import AfterSalesPanel from '../../../components/AfterSalesPanel.vue'
+import OrderReturnForm from '../../../components/OrderReturnForm.vue'
+import { useRoute } from 'vue-router'
 import AdminDrawer from '../components/AdminDrawer.vue'
 import { afterSalesApi, returnStatuses, formatAfterSalesMoney as money } from '../../../services/afterSales'
 import { formatOrderCode } from '../../../services/orderCode'
 import { db, refreshOrders, notify } from '../adminStore'
-const tab = ref('REQUESTS'), scope = ref('OPEN'), search = ref(''), cases = ref([]), damaged = ref([]), history = ref([])
+const route = useRoute()
+const tab = ref('NEW'), scope = ref('ALL'), search = ref(''), cases = ref([]), damaged = ref([]), history = ref([])
 const loading = ref(false), error = ref(''), selected = ref(null)
 const repair = reactive({ open: false, item: null, action: 'REPAIR', quantity: 1, note: '', confirmed: false, key: '', busy: false, error: '' })
 let timer, searchTimer, generation = 0
 const code = order => formatOrderCode(order.order_id ?? order.id, order.order_date ?? order.created_at ?? order.date)
-const parcelOrders = computed(() => db.orders.filter(o => ['Về kho', 'Giao hàng thất bại'].includes(o.status)))
 const refundOrders = computed(() => db.orders.filter(o => Number(o.pending_refund_amount) > 0))
 const matched = order => !search.value.trim() || `${code(order)} ${order.customer_name || ''} ${order.id || ''}`.toLowerCase().includes(search.value.trim().toLowerCase())
-const parcels = computed(() => parcelOrders.value.filter(matched)), refunds = computed(() => refundOrders.value.filter(matched))
+const refunds = computed(() => refundOrders.value.filter(matched))
 const totalDamaged = computed(() => damaged.value.reduce((sum, i) => sum + Number(i.damaged_quantity), 0))
 const movements = { RETURN_RECEIVED: 'Nhận hàng trả', WAREHOUSE_RECEIVED: 'Nhận kiện hoàn kho', DAMAGE_REPAIRED: 'Sửa đạt, đưa về bán', DAMAGE_WRITEOFF: 'Ghi giảm hàng hỏng' }
 const date = value => value ? new Date(value).toLocaleString('vi-VN') : '—'
@@ -30,7 +32,7 @@ async function reload() {
   if (results[2].status === 'rejected') error.value ||= 'Danh sách đơn hàng chưa đồng bộ. Vui lòng thử tải lại.'
   loading.value = false
 }
-function show(order) { selected.value = { id: order.order_id ?? order.id, code: code(order) } }
+function show(order) { selected.value = { id: order.order_id ?? order.id, code: order.order_code || code(order) } }
 function openRepair(item) { Object.assign(repair, { open: true, item, action: 'REPAIR', quantity: 1, note: '', confirmed: false, key: crypto.randomUUID(), busy: false, error: '' }) }
 async function saveRepair() {
   if (repair.busy || !repair.confirmed) return
@@ -50,27 +52,28 @@ onBeforeUnmount(() => { generation++; clearInterval(timer); clearTimeout(searchT
 
 <template>
   <div class="returns-page">
-    <div class="returns-heading"><div><span class="returns-eyebrow">CHĂM SÓC SAU BÁN HÀNG</span><h1>Trả hàng & hoàn kho</h1><p>Kiểm nhận đúng hàng, theo dõi đúng tiền và giữ trọn lịch sử.</p></div><button type="button" class="btn btn-light border" :disabled="loading" @click="reload"><RefreshCw :size="15" />{{ loading ? 'Đang đồng bộ…' : 'Làm mới' }}</button></div>
+    <div class="returns-heading"><div><span class="returns-eyebrow">CHĂM SÓC SAU BÁN HÀNG</span><h1>Trả hàng & tiền hoàn</h1><p>Kiểm nhận đúng hàng, theo dõi đúng tiền và giữ trọn lịch sử.</p></div><button type="button" class="btn btn-light border" :disabled="loading" @click="reload"><RefreshCw :size="15" />{{ loading ? 'Đang đồng bộ…' : 'Làm mới' }}</button></div>
     <div class="returns-stats" role="group" aria-label="Nhóm xử lý hậu mãi">
-      <button type="button" :class="{ active: tab === 'REQUESTS' }" :aria-pressed="tab === 'REQUESTS'" @click="tab = 'REQUESTS'"><RotateCcw :size="21" :stroke-width="1.5" /><span>Yêu cầu trả hàng<strong>{{ cases.length }}</strong></span></button>
-      <button type="button" :class="{ active: tab === 'PARCELS' }" :aria-pressed="tab === 'PARCELS'" @click="tab = 'PARCELS'"><PackageCheck :size="21" :stroke-width="1.5" /><span>Kiện chờ kiểm nhận<strong>{{ parcelOrders.length }}</strong></span></button>
+      <button type="button" :class="{ active: tab === 'NEW' }" :aria-pressed="tab === 'NEW'" @click="tab = 'NEW'"><PackageCheck :size="21" :stroke-width="1.5" /><span>Tiếp nhận qua Zalo<strong>Nhận trả</strong></span></button>
+      <button type="button" :class="{ active: tab === 'REQUESTS' }" :aria-pressed="tab === 'REQUESTS'" @click="tab = 'REQUESTS'"><RotateCcw :size="21" :stroke-width="1.5" /><span>Lịch sử phiếu trả<strong>{{ cases.length }}</strong></span></button>
       <button type="button" :class="{ active: tab === 'REFUNDS' }" :aria-pressed="tab === 'REFUNDS'" @click="tab = 'REFUNDS'"><Wallet :size="21" :stroke-width="1.5" /><span>Đơn chờ hoàn tiền<strong>{{ refundOrders.length }}</strong></span></button>
       <button type="button" :class="{ active: tab === 'DAMAGED' }" :aria-pressed="tab === 'DAMAGED'" @click="tab = 'DAMAGED'"><TriangleAlert :size="21" :stroke-width="1.5" /><span>Hàng hỏng chưa xử lý<strong>{{ totalDamaged }} <small>đôi</small></strong></span></button>
     </div>
     <p v-if="error" class="returns-error" role="alert">{{ error }}</p>
     <section class="admin-surface returns-surface">
-      <div class="returns-toolbar"><h2>{{ { REQUESTS: 'Phiếu trả hàng', PARCELS: 'Kiện giao không thành công', REFUNDS: 'Khoản cần đối soát', DAMAGED: 'Tồn hàng hỏng' }[tab] }}</h2><div v-if="tab === 'REQUESTS'" class="returns-scope"><button v-for="s in [{ key: 'OPEN', label: 'Đang xử lý' }, { key: 'CLOSED', label: 'Đã kết thúc' }, { key: 'ALL', label: 'Tất cả' }]" :key="s.key" type="button" :class="{ active: scope === s.key }" :aria-pressed="scope === s.key" @click="scope = s.key">{{ s.label }}</button></div><input v-if="tab !== 'DAMAGED'" v-model="search" type="search" maxlength="100" placeholder="Tìm mã đơn, phiếu hoặc khách…" aria-label="Tìm dữ liệu hậu mãi" /></div>
-      <div v-if="loading && !cases.length" class="returns-empty" role="status">Đang tải thông tin…</div>
+      <OrderReturnForm v-if="tab === 'NEW'" :initial-code="String(route.query.order || '')" @updated="reload" @history="show" />
+      <div v-if="tab !== 'NEW'" class="returns-toolbar"><h2>{{ { REQUESTS: 'Phiếu trả hàng', REFUNDS: 'Khoản cần đối soát', DAMAGED: 'Tồn hàng hỏng' }[tab] }}</h2><div v-if="tab === 'REQUESTS'" class="returns-scope"><button v-for="s in [{ key: 'OPEN', label: 'Đang xử lý' }, { key: 'CLOSED', label: 'Đã kết thúc' }, { key: 'ALL', label: 'Tất cả' }]" :key="s.key" type="button" :class="{ active: scope === s.key }" :aria-pressed="scope === s.key" @click="scope = s.key">{{ s.label }}</button></div><input v-if="tab !== 'DAMAGED'" v-model="search" type="search" maxlength="100" placeholder="Tìm mã đơn, phiếu hoặc khách…" aria-label="Tìm dữ liệu hậu mãi" /></div>
+      <div v-if="tab !== 'NEW' && loading && !cases.length" class="returns-empty" role="status">Đang tải thông tin…</div>
       <template v-else-if="tab === 'REQUESTS'">
-        <div v-if="!cases.length" class="returns-empty"><RotateCcw :size="30" :stroke-width="1.2" /><strong>Chưa có phiếu phù hợp</strong><span>Yêu cầu của khách được tiếp nhận tại đây để duyệt và kiểm hàng.</span></div>
-        <div v-else class="returns-table-wrap"><table class="returns-table"><thead><tr><th>Phiếu / Đơn hàng</th><th>Khách hàng & lý do</th><th>Trạng thái</th><th>Khoản hoàn</th><th>Thao tác</th></tr></thead><tbody><tr v-for="r in cases" :key="r.id"><td data-label="Phiếu / Đơn hàng"><strong>#{{ r.id }}</strong><small>{{ code(r) }}</small><small>{{ date(r.created_at) }}</small></td><td data-label="Khách hàng & lý do"><strong>{{ r.customer_name || 'Khách hàng' }}</strong><small>{{ r.reason }}</small></td><td data-label="Trạng thái"><span class="returns-status" :class="r.status">{{ returnStatuses[r.status] }}</span></td><td class="returns-amount" data-label="Khoản hoàn">{{ r.refund_amount > 0 ? money(r.refund_amount) : 'Chờ kiểm nhận' }}</td><td data-label="Thao tác"><button type="button" class="returns-open" :aria-label="`Mở phiếu trả hàng ${r.id}`" @click="show(r)">Xử lý <ArrowUpRight :size="14" /></button></td></tr></tbody></table></div>
+        <div v-if="!cases.length" class="returns-empty"><RotateCcw :size="30" :stroke-width="1.2" /><strong>Chưa có phiếu phù hợp</strong><span>Phiếu nhận trả và kết quả hoàn tiền được lưu tại đây.</span></div>
+        <div v-else class="returns-table-wrap"><table class="returns-table"><thead><tr><th>Phiếu / Đơn hàng</th><th>Khách hàng & lý do</th><th>Trạng thái</th><th>Khoản hoàn</th><th>Thao tác</th></tr></thead><tbody><tr v-for="r in cases" :key="r.id"><td data-label="Phiếu / Đơn hàng"><strong>#{{ r.id }}</strong><small>{{ code(r) }}</small><small>{{ date(r.created_at) }}</small></td><td data-label="Khách hàng & lý do"><strong>{{ r.customer_name || 'Khách hàng' }}</strong><small>{{ r.reason }}</small><small v-for="(i, index) in r.items" :key="index">{{ i.name }} · {{ i.color }} / {{ i.size }} · {{ i.good_quantity + i.damaged_quantity }} đã trả <span v-if="i.damaged_quantity">({{ i.damaged_quantity }} hỏng)</span></small></td><td data-label="Trạng thái"><span class="returns-status" :class="r.status">{{ returnStatuses[r.status] }}</span></td><td class="returns-amount" data-label="Khoản hoàn">{{ r.refund_amount > 0 ? money(r.refund_amount) : 'Chưa phát sinh' }}</td><td data-label="Thao tác"><button type="button" class="returns-open" :aria-label="`Mở phiếu trả hàng ${r.id}`" @click="show(r)">Xử lý <ArrowUpRight :size="14" /></button></td></tr></tbody></table></div>
       </template>
-      <template v-else-if="tab === 'PARCELS' || tab === 'REFUNDS'">
-        <p class="returns-explanation">{{ tab === 'PARCELS' ? 'Kiện về kho vẫn giữ phần hàng đã xuất. Chỉ cộng tồn bán sau khi đã kiểm nhận; hàng hỏng được tách riêng.' : 'Chỉ lưu xác nhận sau khi đã thực sự hoàn tiền và có chứng từ đối soát. Đơn còn nghĩa vụ hoàn tiền vẫn ở hàng chờ.' }}</p>
-        <div v-if="!(tab === 'PARCELS' ? parcels : refunds).length" class="returns-empty"><strong>Không có đơn cần xử lý trong nhóm này</strong></div>
-        <div v-else class="returns-table-wrap"><table class="returns-table"><thead><tr><th>Đơn hàng</th><th>Khách hàng</th><th>Trạng thái</th><th>{{ tab === 'REFUNDS' ? 'Cần hoàn' : 'Giá trị đơn' }}</th><th>Thao tác</th></tr></thead><tbody><tr v-for="o in tab === 'PARCELS' ? parcels : refunds" :key="o.id"><td data-label="Đơn hàng"><strong>{{ code(o) }}</strong><small>{{ date(o.date) }}</small></td><td data-label="Khách hàng">{{ o.customer_name }}</td><td data-label="Trạng thái">{{ o.status }}</td><td class="returns-amount" data-label="Giá trị">{{ money(tab === 'REFUNDS' ? o.pending_refund_amount : o.total) }}</td><td data-label="Thao tác"><button type="button" class="returns-open" :aria-label="`Mở hậu mãi đơn ${code(o)}`" @click="show(o)">Mở đơn <ArrowUpRight :size="14" /></button></td></tr></tbody></table></div>
+      <template v-else-if="tab === 'REFUNDS'">
+        <p class="returns-explanation">Chỉ lưu xác nhận sau khi đã thực sự hoàn tiền và có chứng từ đối soát. Đơn còn nghĩa vụ hoàn tiền vẫn ở hàng chờ.</p>
+        <div v-if="!refunds.length" class="returns-empty"><strong>Không có đơn cần xử lý trong nhóm này</strong></div>
+        <div v-else class="returns-table-wrap"><table class="returns-table"><thead><tr><th>Đơn hàng</th><th>Khách hàng</th><th>Trạng thái</th><th>Cần hoàn</th><th>Thao tác</th></tr></thead><tbody><tr v-for="o in refunds" :key="o.id"><td data-label="Đơn hàng"><strong>{{ code(o) }}</strong><small>{{ date(o.date) }}</small></td><td data-label="Khách hàng">{{ o.customer_name }}</td><td data-label="Trạng thái">{{ o.status }}</td><td class="returns-amount" data-label="Giá trị">{{ money(o.pending_refund_amount) }}</td><td data-label="Thao tác"><button type="button" class="returns-open" :aria-label="`Mở hậu mãi đơn ${code(o)}`" @click="show(o)">Mở đơn <ArrowUpRight :size="14" /></button></td></tr></tbody></table></div>
       </template>
-      <template v-else>
+      <template v-else-if="tab === 'DAMAGED'">
         <p class="returns-explanation">Hàng hỏng được giữ riêng và không xuất hiện trong tồn có thể bán. Sau khi xử lý, chọn đưa về bán hoặc ghi giảm có lý do.</p>
         <div v-if="!damaged.length" class="returns-empty"><PackageCheck :size="30" :stroke-width="1.3" /><strong>Không còn hàng hỏng chờ xử lý</strong></div>
         <div v-else class="returns-table-wrap"><table class="returns-table returns-stock-table"><thead><tr><th>Sản phẩm / biến thể</th><th>Tồn bán</th><th>Tồn hỏng</th><th>Thao tác</th></tr></thead><tbody><tr v-for="i in damaged" :key="i.id"><td data-label="Sản phẩm / biến thể"><strong>{{ i.name }}</strong><small>{{ i.color }} / {{ i.size }} · {{ i.sku }}</small></td><td data-label="Tồn bán">{{ i.available_quantity }} đôi</td><td data-label="Tồn hỏng"><span class="returns-status REFUND_PENDING">{{ i.damaged_quantity }} đôi</span></td><td data-label="Thao tác"><button type="button" class="returns-open" :aria-label="`Xử lý hàng hỏng ${i.sku || i.id}`" @click="openRepair(i)">Xử lý <ArrowUpRight :size="14" /></button></td></tr></tbody></table></div>

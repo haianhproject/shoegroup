@@ -22,7 +22,7 @@ async function fixture({quantity=3,coupon=false,bank=false,delivered=true,two=fa
     variants:[{color_id:color.id,size_id:sizes[0].id,price:300000,stock:10,sku:`AFTER-${Date.now()}-${serial}-40`},...(two?[{color_id:color.id,size_id:sizes[1].id,price:400000,stock:8,sku:`AFTER-${Date.now()}-${serial}-41`}]:[])]}));
   const product=ok(await request('/products')).find(p=>p.id===created.ProductID);
   const variants=product.variants;
-  const createdOrder=ok(await request('/orders','POST',{addressId:users[0].addressId,paymentMethod:bank?'BANK':'COD',...(coupon?{couponCode:'AUDIT-MULTI'}:{}),items:variants.map(v=>({product_id:product.id,product_variant_id:v.id,quantity}))},users[0]));
+  const createdOrder=ok(await request('/orders','POST',{addressId:users[0].addressId,paymentMethod:bank?'BANK':'COD',...(coupon?{couponCode:typeof coupon==='string'?coupon:'AUDIT-MULTI'}:{}),items:variants.map(v=>({product_id:product.id,product_variant_id:v.id,quantity}))},users[0]));
   const id=createdOrder.orderId;
   if(bank)ok(await request(`/orders/${id}/payment`,'PUT',{payment_status:'Đã thanh toán'},users[0]));
   if(delivered){await change(id,'Đã xác nhận');await change(id,'Đang vận chuyển');await change(id,'Đã giao hàng thành công');}
@@ -50,6 +50,73 @@ async function main(){
     for(const route of ['/orders','/returns','/inventory/damaged','/v2/dashboard/summary','/chart-data','/revenue-by-product'])ok(await request(route));
     const catalog=ok(await request('/products'));const variant=catalog.find(p=>p.id===1).variants.find(v=>v.id===1);
     assert.equal(variant.size,'40');assert.equal(variant.standard,'EU');assert.equal(variant.color,'Black');assert.equal(variant.hex,'#000000');
+  });
+  await rows("INSERT Coupons(CouponCode,UsageLimit,UsedCount,ExpiryDate,IsActive,DiscountType,DiscountValue,MinOrderAmount,MaxDiscountAmount,StartDate,PerUserLimit) SELECT 'AUDIT-MANUAL',UsageLimit,0,ExpiryDate,IsActive,DiscountType,DiscountValue,MinOrderAmount,MaxDiscountAmount,StartDate,PerUserLimit FROM Coupons WHERE CouponCode='AUDIT-MULTI'");
+  const manual=await fixture({two:true,coupon:'AUDIT-MANUAL'});let manualReceipt;
+  const manualBody=(f,extra={})=>({request_key:randomUUID(),reason:'Đã thống nhất qua Zalo, cửa hàng kiểm nhận hàng trả thực tế.',confirm_received:true,confirm_paid:false,refund_shipping:false,items:f.lines.map((i,index)=>({order_detail_id:i.order_detail_id,quantity:index===0?2:1,damaged_quantity:index===0?1:0})),...extra});
+  const register=(f,body,user=admin)=>request(`/orders/${f.id}/return-receipts`,'POST',body,user);
+  await check('manual lookup accepts the exact original order code and protects admin-only data',async()=>{
+    const d=await detail(manual.id);assert.equal(ok(await request(`/returns/order?code=${d.order_code}`)).order_id,manual.id);
+    assert.equal(ok(await request(`/returns/order?code=${encodeURIComponent('#'+d.order_code.toLowerCase())}`)).order_id,manual.id);
+    assert.equal(ok(await request(`/returns/order?code=${manual.id}`)).order_id,manual.id);
+    ok(await request(`/returns/order?code=${d.order_code.slice(0,-1)}X`),404);
+    ok(await request('/returns/order?code=not-an-order'),404);
+    ok(await request(`/returns/order?code=${manual.id}`,'GET',undefined,users[0]),403);
+    ok(await register(manual,manualBody(manual),users[0]),403);
+  });
+  await check('invalid manual inspections and payment proof roll back the entire receipt',async()=>{
+    const before=await Promise.all(manual.variants.map(v=>inventory(v.id)));
+    ok(await register(manual,manualBody(manual,{confirm_received:false})),400);
+    ok(await register(manual,manualBody(manual,{confirm_paid:true,reference:'x',refund_note:'Đã trả tiền cho khách'})),400);
+    const bad=manualBody(manual);bad.items[1].quantity=4;ok(await register(manual,bad),409);
+    const duplicate=manualBody(manual);duplicate.items.push({...duplicate.items[0]});ok(await register(manual,duplicate),400);
+    assert.deepEqual(await Promise.all(manual.variants.map(v=>inventory(v.id))),before);
+    assert.equal((await detail(manual.id)).returns.length,0);assert.equal((await state(manual.id)).ReturnAdjustmentAmount,0);
+  });
+  await check('a Zalo receipt handles selected quantities, damage and the original discount in one transaction',async()=>{
+    const body=manualBody(manual);manualReceipt={body,result:ok(await register(manual,body))};
+    assert.equal(manualReceipt.result.refund_amount,900000);assert.equal(manualReceipt.result.status,'REFUND_PENDING');
+    const d=await detail(manual.id);assert.equal(d.returns[0].source,'ZALO');assert.equal(d.returns[0].items.length,2);
+    assert.deepEqual(d.items.map(i=>i.returned_quantity),[2,1]);assert.deepEqual(d.items.map(i=>i.remaining_quantity),[1,2]);
+    assert.equal((await inventory(manual.variants[0].id)).stock,8);assert.equal((await inventory(manual.variants[0].id)).damaged,1);
+    assert.equal((await inventory(manual.variants[1].id)).stock,6);
+    const row=ok(await request('/orders')).find(o=>o.id===manual.id);assert.equal(row.pending_refund_amount,900000);assert.equal(row.refunded_amount,0);assert.equal(row.return_adjustment_amount,900000);
+  });
+  await check('manual receipt replay never repeats stock, and a changed replay conflicts',async()=>{
+    const before=await Promise.all(manual.variants.map(v=>inventory(v.id)));
+    const responses=await Promise.all([register(manual,manualReceipt.body),register(manual,manualReceipt.body)]);
+    responses.forEach(r=>assert.equal(ok(r).unchanged,true));
+    ok(await register(manual,{...manualReceipt.body,reason:'Nội dung mới khác với phiếu đã xác nhận'}),409);
+    ok(await register(manual,manualBody(manual)),409);
+    assert.deepEqual(await Promise.all(manual.variants.map(v=>inventory(v.id))),before);assert.equal((await detail(manual.id)).returns.length,1);
+  });
+  await check('admin and customer line details show exactly what was returned and refunded',async()=>{
+    const d=await detail(manual.id);ok(await confirm(manual,d.refunds[0].id,'ZALO-PARTIAL-ONE'));
+    const adminRow=ok(await request('/orders')).find(o=>o.id===manual.id);
+    const customerRow=ok(await request(`/customers/${users[0].id}/orders`,'GET',undefined,users[0])).find(o=>o.id===manual.id);
+    for(const row of [adminRow,customerRow]){assert.equal(row.refunded_amount,900000);assert.equal(row.pending_refund_amount,0);assert.deepEqual(row.products.map(i=>i.refunded_quantity),[2,1]);}
+    assert.equal((await state(manual.id)).PaymentStatus,'Đã thanh toán');
+    const history=ok(await request('/returns?scope=CLOSED')).find(r=>r.id===manualReceipt.result.return_id);assert.equal(history.items.length,2);assert.equal(history.items[0].damaged_quantity,1);
+    assert.ok((await detail(manual.id)).refunds.every(r=>!Object.hasOwn(r,'reference')));
+  });
+  await check('the remaining products and shipping can be received and settled together once',async()=>{
+    const d=await detail(manual.id),body=manualBody(manual,{refund_shipping:true,confirm_paid:true,reference:'ZALO-FINAL-TWO',refund_note:'Đã hoàn phần còn lại theo chứng từ thực tế.',items:d.items.map(i=>({order_detail_id:i.order_detail_id,quantity:i.remaining_quantity,damaged_quantity:0}))});
+    const result=ok(await register(manual,body));assert.equal(result.status,'COMPLETED');
+    assert.equal((await state(manual.id)).PaymentStatus,'Hoàn tiền');assert.equal((await state(manual.id)).ReturnAdjustmentAmount,manual.order.TotalAmount);
+    assert.equal(ok(await register(manual,body)).unchanged,true);
+    assert.equal((await detail(manual.id)).can_request,false);assert.deepEqual((await detail(manual.id)).items.map(i=>i.refunded_quantity),[3,3]);
+  });
+  await check('retryable delivery failure retains stock, can be reshipped and has no revenue until delivered',async()=>{
+    const f=await fixture({delivered:false});await change(f.id,'Đã xác nhận');await change(f.id,'Đang vận chuyển');await change(f.id,'Giao hàng thất bại');
+    assert.equal((await inventory(f.variants[0].id)).stock,7);assert.equal((await state(f.id)).IsCountedAsRevenue,false);
+    await change(f.id,'Đang vận chuyển');assert.equal((await inventory(f.variants[0].id)).stock,7);assert.equal((await state(f.id)).StockIssueStatus,null);
+    await change(f.id,'Đã giao hàng thành công');assert.equal((await state(f.id)).IsCountedAsRevenue,true);
+  });
+  await check('refused goods can be inspected directly from a shipping order without a second returns-page confirmation',async()=>{
+    const f=await fixture({delivered:false});await change(f.id,'Đã xác nhận');await change(f.id,'Đang vận chuyển');
+    ok(await request(`/orders/${f.id}/warehouse-return`,'POST',{confirm_received:true,reason:'Khách từ chối nhận, đã nhận lại và kiểm tra đủ kiện.',items:f.lines.map(i=>({order_detail_id:i.order_detail_id,good_quantity:2,damaged_quantity:1}))}));
+    assert.equal((await state(f.id)).Status,'Đã hủy');assert.equal((await state(f.id)).IsCountedAsRevenue,false);
+    assert.equal((await inventory(f.variants[0].id)).stock,9);assert.equal((await inventory(f.variants[0].id)).damaged,1);assert.equal((await detail(f.id)).returns.length,0);
   });
   const f=await fixture({coupon:true});let returnId,tx;
   await check('only the owner can see or request returns; customer cannot review or receive',async()=>{
@@ -174,7 +241,8 @@ async function main(){
   await check('delivered and lost orders cannot be restocked through failed-delivery flow',async()=>{
     ok(await request(`/orders/${f.id}/warehouse-return`,'POST',warehouseBody(f)),409);
     const order=await fixture({delivered:false});await change(order.id,'Đã xác nhận');await change(order.id,'Đang vận chuyển');
-    ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Đã hủy',reason:'Thất lạc hàng trong quá trình vận chuyển'}));
+    ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Đã hủy',reason:'Thất lạc hàng trong quá trình vận chuyển'}),400);
+    ok(await request(`/orders/${order.id}/status`,'PUT',{status:'Đã hủy',reason:'Thất lạc hàng trong quá trình vận chuyển',confirm_lost:true}));
     ok(await request(`/orders/${order.id}/warehouse-return`,'POST',warehouseBody(order)),409);
     assert.equal((await inventory(order.variants[0].id)).stock,7);
   });

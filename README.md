@@ -87,15 +87,18 @@ là thư viện/build cần dùng, được ẩn trong VS Code. Tiến độ m�
 
 ## Trả hàng, hoàn kho và trợ lý cửa hàng
 
-Khách mở **Đơn hàng của tôi → Yêu cầu trả hàng**, chọn đúng biến thể/số lượng và gửi lý do.
-Quản trị viên xử lý ở **Trả hàng & hoàn kho** hoặc trong chi tiết **Đơn hàng & thanh toán**:
-duyệt tiếp nhận → kiểm nhận hàng tốt/hỏng → theo dõi khoản cần hoàn → ghi chứng từ sau khi thực sự hoàn tiền.
-Có thể từ chối có lý do trước khi nhận hàng; hàng không nhận không được nhập kho hoặc tạo tiền hoàn.
+Khách trao đổi qua Zalo và cung cấp mã đơn gốc. Quản trị viên vào **Trả hàng → Nhận trả**, nhập mã đơn,
+chọn từng màu/size và số lượng thực nhận, phân loại hàng hỏng rồi xác nhận một lần.
+Có thể ghi nhận chứng từ ngay nếu đã thực sự trả tiền; nếu chưa chi trả, phiếu ở trạng thái **Chờ hoàn tiền**.
+Khách và quản lý đều xem được từng sản phẩm đã trả, số lượng và khoản tiền đã hoàn trong chi tiết đơn.
+Các phiếu tạo theo quy trình cũ vẫn giữ lịch sử và có thể được xử lý tiếp.
 
 Chuyển đơn giao thất bại sang **Về kho** giữ phần tồn đã xuất. **Hoàn kho và đóng đơn** chỉ cộng hàng tốt,
 đưa hàng hỏng vào tồn riêng và chỉ thực hiện một lần. Đơn cũ đã từng được hoàn tồn được đối chiếu qua dấu vết cũ để không cộng lặp.
-Ngay trong **Đơn hàng & thanh toán → Chi tiết đơn**, kiện Về kho có cả **Giao lại đơn hàng** và **Kiểm nhận, hoàn kho & đóng đơn**.
-Khách chưa bắt máy có thể giao lại; khách từ chối nhận vì hàng có vấn đề dùng kiểm nhận cùng đơn gốc, không lập phiếu trả hàng.
+Ngay trong **Đơn hàng & thanh toán → Chi tiết đơn**, chọn một trong ba hướng giao thất bại:
+**Có thể giao lại** (chưa nghe máy/trục trặc), **Không nhận hàng** (kiểm hàng, hoàn kho và hủy trực tiếp), hoặc **Mất hàng**.
+Chọn hướng xử lý chưa làm thay đổi dữ liệu; thao tác hủy vì mất hàng yêu cầu ghi chú xác minh và xác nhận không hoàn tồn.
+Đơn giao thất bại có thể giao lại bằng phần hàng đã xuất, không bị trừ tồn lần thứ hai. Kiện bị từ chối không cần sang trang trả hàng để xác nhận thêm.
 COD chưa thu tiền không có tiền phải hoàn/doanh thu; đơn trả trước tiếp tục đối soát khoản hoàn. Hàng mất không được hoàn tồn.
 Kho hàng hỏng có thao tác đưa về bán sau khi kiểm đạt hoặc ghi giảm; cả hai đều có lịch sử theo người xử lý.
 
@@ -111,3 +114,8 @@ Bot gọi cùng `ShippingService.quote` như checkout để báo phí tiêu chu�
 Nơi nhận chưa rõ hoặc có nhiều tỉnh/thành sẽ được hỏi lại; không lấy mức phí dự phòng làm báo giá cho một địa chỉ chưa xác định.
 Hội thoại chỉ giữ trong bộ nhớ phiên trang, xóa khi đổi tài khoản; bot không tự hủy đơn, hoàn kho hay xác nhận thanh toán.
 Migration `20261127_after_sales.sql` được Spring áp dụng tự động, giữ nguyên số liệu hoàn lịch sử và làm mới view sau khi thêm cột tồn hỏng.
+Migration `20261127_return_workflow.sql` bổ sung nguồn tiếp nhận Zalo và chỉ mục tra dòng hàng, giữ các phiếu/chứng từ cũ.
+
+Trong môi trường dev, frontend kiểm tra hợp đồng API qua `/health` trước khi nạp store. Nếu cổng mặc định 5000 còn chạy bản cũ,
+frontend chỉ chọn 5001 khi đây là bản ShoeGroup tương thích và thông tin database/catalog khớp nếu bản cũ có cung cấp.
+Việc chọn API diễn ra trước phiên làm việc; không gửi lại POST/PUT qua máy chủ khác. Khi backend 5000 đã được cập nhật, cổng này luôn được ưu tiên.

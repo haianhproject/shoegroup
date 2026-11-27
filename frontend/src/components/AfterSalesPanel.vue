@@ -7,20 +7,14 @@ import { afterSalesApi, returnStatuses, formatAfterSalesMoney as money, validate
 const props = defineProps({ orderId: [Number, String], orderCode: String, admin: Boolean, readOnly: Boolean, triggerLabel: String, startOpen: Boolean })
 const emit = defineEmits(['updated', 'close'])
 const panel = ref(null), opened = ref(false), data = ref(null), loading = ref(false), busy = ref(false), error = ref(''), success = ref('')
-const request = reactive({ reason: '', quantities: {}, key: '' })
 const inspections = reactive({}), reviews = reactive({}), refunds = reactive({})
 const warehouse = reactive({ lines: [], reason: '', confirmed: false })
+const warehouseOnly = ref(false)
 let previousFocus, previousOverflow, controller, generation = 0, timer
 const pendingRefunds = computed(() => (data.value?.refunds || []).filter(r => r.status === 'PENDING'))
-const requestedItems = computed(() => (data.value?.items || []).map(i => ({ order_detail_id: i.order_detail_id, quantity: Number(request.quantities[i.order_detail_id] || 0) })).filter(i => i.quantity > 0))
-const requestReady = computed(() => requestedItems.value.length > 0 && request.reason.trim().length >= 5 && request.reason.length <= 500
-  && (data.value?.items || []).every(i => Number.isSafeInteger(Number(request.quantities[i.order_detail_id] || 0)) && Number(request.quantities[i.order_detail_id] || 0) >= 0 && Number(request.quantities[i.order_detail_id] || 0) <= i.remaining_quantity))
-const isOpenCase = r => ['REQUESTED', 'APPROVED', 'REFUND_PENDING'].includes(r.status)
 const date = value => value ? new Date(value).toLocaleString('vi-VN') : '—'
 
 function seedForms(snapshot) {
-  if (!request.key) request.key = crypto.randomUUID()
-  for (const item of snapshot.items) request.quantities[item.order_detail_id] ??= 0
   if (!warehouse.lines.length) warehouse.lines = snapshot.items.map(i => ({ ...i, expected_quantity: i.quantity, good_quantity: i.quantity, damaged_quantity: 0 }))
   for (const r of snapshot.returns) {
     reviews[r.id] ??= ''
@@ -39,8 +33,12 @@ async function load(silent = false) {
   } catch (e) { if (current === generation && e.name !== 'AbortError') error.value = e.message || 'Chưa tải được thông tin hậu mãi.' }
   finally { if (current === generation) loading.value = false }
 }
-async function open() {
+async function open(options = {}) {
   if (opened.value) return
+  warehouseOnly.value = options.mode === 'warehouse'
+  warehouse.confirmed = false
+  warehouse.reason = options.reason || ''
+  warehouse.lines = []
   previousFocus = document.activeElement; opened.value = true; error.value = ''; success.value = ''
   previousOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'
   await nextTick(); panel.value?.showModal(); await load()
@@ -58,12 +56,6 @@ async function mutate(action, message, after) {
   try { await action(); after?.(); success.value = message; await load(true); emit('updated') }
   catch (e) { error.value = e.message || 'Chưa lưu được thao tác. Vui lòng kiểm tra trạng thái mới nhất trước khi thử lại.'; await load(true) }
   finally { busy.value = false }
-}
-function submitRequest() {
-  if (!requestReady.value) return
-  const items = requestedItems.value
-  if (items.some(i => !Number.isSafeInteger(i.quantity) || i.quantity > Number(data.value.items.find(row => row.order_detail_id === i.order_detail_id)?.remaining_quantity))) { error.value = 'Số lượng trả không hợp lệ.'; return }
-  return mutate(() => afterSalesApi.request(props.orderId, { items, reason: request.reason.trim(), request_key: request.key }), 'Yêu cầu đã được gửi. Cửa hàng sẽ kiểm tra và phản hồi.', () => { request.reason = ''; request.key = crypto.randomUUID(); Object.keys(request.quantities).forEach(k => request.quantities[k] = 0) })
 }
 function review(r, decision) {
   if (decision === 'REJECT' && reviews[r.id].trim().length < 5) { error.value = 'Nhập lý do từ chối để khách biết cách xử lý.'; return }
@@ -84,14 +76,14 @@ function confirmRefund(r) {
   if (!f.confirmed || f.reference.trim().length < 3 || f.note.trim().length < 5) { error.value = 'Cần chứng từ, ghi chú và xác nhận tiền đã thực sự được hoàn.'; return }
   mutate(() => afterSalesApi.refund(props.orderId, r.id, { reference: f.reference.trim(), note: f.note.trim(), confirm_paid: true }), 'Đã lưu đối soát khoản hoàn. Lịch sử và trạng thái yêu cầu đã cập nhật.')
 }
-watch(() => props.orderId, () => { data.value = null; request.key = ''; warehouse.lines = []; if (opened.value) load() })
+watch(() => props.orderId, () => { data.value = null; warehouse.lines = []; if (opened.value) load() })
 watch(() => props.startOpen, value => { if (value) open() }, { immediate: true })
 onBeforeUnmount(() => { clearInterval(timer); controller?.abort(); generation++; panel.value?.close(); if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow })
 defineExpose({ open })
 </script>
 
 <template>
-  <button v-if="!startOpen" type="button" class="as-trigger" @click="open"><RotateCcw :size="16" :stroke-width="1.6" />{{ triggerLabel || (admin ? 'Trả hàng, hoàn kho & tiền hoàn' : 'Yêu cầu trả hàng') }}</button>
+  <button v-if="!startOpen" type="button" class="as-trigger" @click="open()"><RotateCcw :size="16" :stroke-width="1.6" />{{ triggerLabel || (admin ? 'Kiểm nhận & tiền hoàn' : 'Chi tiết hàng trả & tiền hoàn') }}</button>
   <Teleport to="body">
     <dialog v-if="opened" ref="panel" class="as-dialog" :aria-label="admin ? 'Xử lý hậu mãi đơn hàng' : 'Trả hàng và hỗ trợ'" :aria-busy="busy" @cancel.prevent="close" @click="e => { if (e.target === panel) close() }">
       <header class="as-head"><div><span class="as-eyebrow">SHOEGROUP / SAU MUA HÀNG</span><h2>{{ admin ? (data?.can_warehouse || data?.warehouse_closed ? 'Kiểm nhận & hoàn kho' : 'Hỗ trợ sau bán & tiền hoàn') : 'Trả hàng & hỗ trợ' }}</h2><p>Đơn {{ orderCode || `#${orderId}` }}</p></div><button type="button" class="as-icon-btn" aria-label="Đóng thông tin hậu mãi" :disabled="busy" @click="close"><X :size="20" /></button></header>
@@ -101,7 +93,7 @@ defineExpose({ open })
         <p v-if="success" class="as-note success" role="status">{{ success }}</p>
         <p v-if="loading" class="as-note" role="status">Đang tải thông tin…</p>
         <template v-if="data">
-          <p v-if="readOnly" class="as-note">Tài khoản này có quyền xem. Quản trị viên xử lý kiểm nhận và đối soát khoản hoàn.</p>
+          <p v-if="readOnly && admin" class="as-note">Tài khoản này có quyền xem. Quản trị viên xử lý kiểm nhận và đối soát khoản hoàn.</p>
           <section v-if="data.can_warehouse && admin && !readOnly" class="as-section as-warehouse">
             <div class="as-section-title"><Package :size="19" /><h3>Kiểm nhận kiện giao không thành công</h3></div>
             <p>Chỉ thực hiện khi đã nhận lại kiện hàng. Hàng tốt được cộng tồn bán; hàng hỏng được ghi riêng. Thao tác này đóng đơn và giữ lịch sử.</p>
@@ -113,7 +105,7 @@ defineExpose({ open })
             </div>
             <label class="as-field">Lý do đóng đơn / kết quả kiểm hàng<textarea v-model="warehouse.reason" maxlength="500" rows="2" placeholder="Ví dụ: Khách từ chối nhận, kiện đã về và được kiểm tra…" /></label>
             <label class="as-check"><input v-model="warehouse.confirmed" type="checkbox" />Tôi đã nhận và kiểm tra đủ số hàng trong kiện</label>
-            <button type="button" class="as-btn primary" :disabled="busy || !warehouse.confirmed || !validateInspection(warehouse.lines, true) || warehouse.reason.trim().length < 5" @click="closeWarehouse">Hoàn kho và đóng đơn</button>
+            <button type="button" class="as-btn primary" :disabled="busy || !warehouse.confirmed || !validateInspection(warehouse.lines, true) || warehouse.reason.trim().length < 5" @click="closeWarehouse">Xác nhận hoàn kho & hủy đơn</button>
           </section>
 
           <section v-if="pendingRefunds.length" class="as-section">
@@ -131,23 +123,13 @@ defineExpose({ open })
             </article>
           </section>
 
-          <section v-if="data.can_request && !readOnly" class="as-section">
-            <h3>{{ admin ? 'Tạo yêu cầu theo phản ánh của khách' : 'Chọn hàng muốn trả' }}</h3>
-            <p>Chọn đúng màu, size và số lượng. Yêu cầu cần được cửa hàng duyệt và kiểm nhận trước khi hoàn tồn, hoàn tiền.</p>
-            <div v-for="line in data.items.filter(i => i.remaining_quantity > 0)" :key="line.order_detail_id" class="as-request-row">
-              <div><strong>{{ line.name }}</strong><small>{{ line.color }} / {{ line.size }} · Còn được yêu cầu {{ line.remaining_quantity }}</small></div>
-              <label>Số lượng<input v-model.number="request.quantities[line.order_detail_id]" type="number" min="0" :max="line.remaining_quantity" step="1" :aria-label="`Số lượng trả dòng ${line.order_detail_id}`" /></label>
-            </div>
-            <label class="as-field">Lý do trả hàng<textarea v-model="request.reason" maxlength="500" rows="3" placeholder="Mô tả vấn đề hoặc nhu cầu đổi trả của bạn…" /></label>
-            <button type="button" class="as-btn primary" :disabled="busy || !requestReady" @click="submitRequest">{{ busy ? 'Đang gửi…' : 'Gửi yêu cầu trả hàng' }}</button>
-          </section>
-
-          <section v-if="data.returns.length" class="as-section">
+          <p v-if="data.can_request && admin && !readOnly && !warehouseOnly" class="as-note">Khách đã liên hệ qua Zalo và gửi hàng về? Mở <RouterLink :to="{ path: '/admin/panel/returns', query: { order: data.order_code } }" @click="close">Trả hàng</RouterLink> để chọn từng sản phẩm và kiểm nhận một lần.</p>
+          <section v-if="data.returns.length && !warehouseOnly" class="as-section">
             <h3>Lịch sử yêu cầu</h3>
             <article v-for="r in data.returns" :key="r.id" class="as-case">
               <div class="as-case-head"><div><strong>Phiếu #{{ r.id }}</strong><small>{{ date(r.created_at) }}</small></div><span class="as-badge" :class="r.status">{{ returnStatuses[r.status] || r.status }}</span></div>
               <p>{{ r.reason }}</p>
-              <ul class="as-case-lines"><li v-for="i in r.items" :key="i.id"><span>{{ i.name }} · {{ i.color }} / {{ i.size }}</span><strong>{{ i.requested_quantity }} sản phẩm</strong><small v-if="r.received_at">Đã nhận: {{ i.good_quantity }} tốt · {{ i.damaged_quantity }} hỏng</small></li></ul>
+              <ul class="as-case-lines"><li v-for="i in r.items" :key="i.id"><span>{{ i.name }} · {{ i.color }} / {{ i.size }}</span><strong>{{ r.received_at ? i.good_quantity + i.damaged_quantity : i.requested_quantity }} sản phẩm</strong><small v-if="r.received_at">Đã nhận: {{ i.good_quantity }} tốt · {{ i.damaged_quantity }} hỏng · {{ r.status === 'COMPLETED' ? 'Đã hoàn' : 'Chờ hoàn' }} {{ money(i.refund_amount) }}</small></li></ul>
               <p v-if="r.refund_amount > 0">Khoản hoàn được duyệt: <strong>{{ money(r.refund_amount) }}</strong><span v-if="r.shipping_refund_amount > 0"> · Gồm phí giao {{ money(r.shipping_refund_amount) }}</span></p>
               <template v-if="admin && !readOnly && r.status === 'REQUESTED'">
                 <label class="as-field">Phản hồi của cửa hàng<textarea v-model="reviews[r.id]" maxlength="500" rows="2" :aria-label="`Phản hồi phiếu ${r.id}`" /></label>

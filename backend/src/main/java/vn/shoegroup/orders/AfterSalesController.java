@@ -22,6 +22,10 @@ public class AfterSalesController {
   public Map<String,Object> create(HttpServletRequest req,@PathVariable String id,@RequestBody Map<String,Object> body) { return service.create(id(id),user(req),body); }
   @GetMapping("/api/returns")
   public Object list(@RequestParam Map<String,String> query) { return service.list(query); }
+  @GetMapping("/api/returns/order")
+  public Object lookup(HttpServletRequest req,@RequestParam String code) { return service.lookup(code,user(req)); }
+  @PostMapping("/api/orders/{id}/return-receipts")
+  public Map<String,Object> register(HttpServletRequest req,@PathVariable String id,@RequestBody Map<String,Object> body) { var result=service.register(id(id),user(req),body);stock(id(id),0);return result; }
   @PostMapping("/api/returns/{id}/review")
   public Map<String,Object> review(HttpServletRequest req,@PathVariable String id,@RequestBody Map<String,Object> body) { return service.review(id(id),user(req),body); }
   @PostMapping("/api/returns/{id}/receive")

@@ -1,7 +1,7 @@
 // Mục đích: Điểm khởi động frontend Vue, cài router, interceptor và mount ứng dụng.
 /* [TOI UU] Tu dong gan JWT vao moi request API + doc dia chi may chu tu .env */
 import { installHttpInterceptor } from './services/httpInterceptor'
-import { API_BASE_URL } from './services/apiClient'
+import { API_BASE_URL, initializeApiEndpoint } from './services/apiClient'
 import { initializeCatalogIdentity } from './services/catalogIdentity'
 
 import { createApp } from 'vue'
@@ -16,6 +16,7 @@ window.addEventListener('vite:preloadError', () => {
 })
 
 async function bootstrap() {
+  await initializeApiEndpoint()
   await initializeCatalogIdentity(API_BASE_URL)
   const [{default:App},{default:router},{logout}]=await Promise.all([import('./App.vue'),import('./router'),import('./stores/authStore')])
   installHttpInterceptor({onUnauthorized:()=>{
