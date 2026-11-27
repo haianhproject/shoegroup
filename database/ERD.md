@@ -77,6 +77,19 @@ erDiagram
     datetime StartDate
     int PerUserLimit
   }
+  InventoryMovements {
+    int MovementID PK
+    int ProductVariantID FK
+    int OrderID FK
+    int ReturnItemID FK
+    varchar EventKey
+    varchar Kind
+    int AvailableDelta
+    int DamagedDelta
+    nvarchar Note
+    int CreatedByUserID FK
+    datetime2 CreatedAt
+  }
   Materials {
     int MaterialID PK
     nvarchar MaterialName
@@ -108,6 +121,44 @@ erDiagram
     varchar ImageURLSnapshot
     int VariantDiscountID
     int HistoricalReturnedQuantity
+    int ReturnedQuantity
+  }
+  OrderReturnEvents {
+    int EventID PK
+    int ReturnID FK
+    varchar Status
+    nvarchar Note
+    int UserID FK
+    datetime2 CreatedAt
+  }
+  OrderReturnItems {
+    int ReturnItemID PK
+    int ReturnID FK
+    int OrderDetailID FK
+    int RequestedQuantity
+    int GoodQuantity
+    int DamagedQuantity
+    decimal RefundAmount
+  }
+  OrderReturns {
+    int ReturnID PK
+    int OrderID FK
+    uniqueidentifier RequestKey
+    char RequestHash
+    varchar Status
+    bit IsOpen
+    nvarchar Reason
+    nvarchar ReviewNote
+    nvarchar ReceiptNote
+    int RequestedByUserID FK
+    datetime2 CreatedAt
+    datetime2 ReviewedAt
+    datetime2 ReceivedAt
+    datetime2 RefundedAt
+    decimal RefundAmount
+    decimal ShippingRefundAmount
+    int RefundTransactionID FK
+    varchar Source
   }
   Orders {
     int OrderID PK
@@ -146,6 +197,8 @@ erDiagram
     decimal HistoricalRefundAmount
     int HandledByUserID FK
     decimal CashGiven
+    decimal ReturnAdjustmentAmount
+    datetime2 WarehouseClosedAt
   }
   OrderStatusHistory {
     int HistoryID PK
@@ -212,6 +265,15 @@ erDiagram
     int SizeID FK
     int Version
     decimal SalePrice
+    int DamagedQuantity
+  }
+  RefundConfirmations {
+    int TransactionID PK
+    nvarchar Reference
+    nvarchar Note
+    int ConfirmedByUserID FK
+    datetime2 ConfirmedAt
+    varchar RefundMethod
   }
   Roles {
     int RoleID PK
@@ -294,11 +356,24 @@ erDiagram
   Coupons ||--o{ CouponRedemptions : "CouponID"
   Orders ||--o{ CouponRedemptions : "OrderID"
   Users |o--o{ CouponRedemptions : "UserID"
+  Users ||--o{ InventoryMovements : "CreatedByUserID"
+  Orders |o--o{ InventoryMovements : "OrderID"
+  ProductVariants ||--o{ InventoryMovements : "ProductVariantID"
+  OrderReturnItems |o--o{ InventoryMovements : "ReturnItemID"
   Orders |o--o{ OrderDetails : "OrderID"
   Products |o--o{ OrderDetails : "ProductID"
+  Orders ||--o{ OrderReturns : "OrderID"
+  OrderDetails ||--o{ OrderReturnItems : "OrderDetailID"
+  PaymentTransactions |o--o{ OrderReturns : "RefundTransactionID"
+  Users ||--o{ OrderReturns : "RequestedByUserID"
+  OrderReturns ||--o{ OrderReturnItems : "ReturnID"
+  OrderReturns ||--o{ OrderReturnEvents : "ReturnID"
+  Users ||--o{ OrderReturnEvents : "UserID"
   Users |o--o{ Orders : "UserID"
   Brands |o--o{ Products : "BrandID"
   Categories |o--o{ Products : "CategoryID"
+  Users ||--o{ RefundConfirmations : "ConfirmedByUserID"
+  PaymentTransactions ||--o{ RefundConfirmations : "TransactionID"
   Roles |o--o{ Users : "RoleID"
   Carts ||--o{ CartItems : "CartID"
   ProductVariants ||--o{ CartItems : "ProductVariantID"

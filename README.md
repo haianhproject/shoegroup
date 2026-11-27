@@ -37,7 +37,7 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 | `read-queries.json`, `order-queries.json` trong resources | Truy vấn SQL dùng bởi các API Java |
 | `order-rules.json`, `shipping-distances.json` trong resources | Quy tắc trạng thái đơn và khoảng cách tính phí giao hàng |
 | `backend/API-INVENTORY.json` | Danh sách API dùng trong kiểm thử controller Java |
-| `database/ShoegroupDB_FULL_20261025.sql` | DB đầy đủ mới nhất, có lệnh xóa/tạo lại DB; dùng cho cả nhóm cập nhật |
+| `database/ShoegroupDB_FULL_20261128.sql` | DB đầy đủ mới nhất, có lệnh xóa/tạo lại DB; dùng cho cả nhóm cập nhật |
 | `backend/legacy-express/test/fixtures/legacy-schema.sql` | Chỉ cấu trúc gốc để kiểm thử migration; không chứa dữ liệu, không dùng cài DB |
 | `database/migrations/` | Các bản cập nhật SQL; Spring chạy những bản đã đăng ký trong SchemaInitializer |
 | `database/ERD.drawio`, `database/ERD.md`, `database/schema-current.json` | Sơ đồ và cấu trúc DB thực tế, xuất tự động từ SQL Server |
@@ -49,14 +49,14 @@ Chạy ứng dụng bằng `npm run dev`: Vue tại http://localhost:3000, Sprin
 ### Thay Database Cho Cả Nhóm
 
 1. Lấy code mới từ `main`, dừng ứng dụng và sao lưu database riêng trước khi thay.
-2. Mở `database/ShoegroupDB_FULL_20261025.sql` trong SSMS, kết nối SQL Server của mình rồi chạy toàn bộ file (F5). File **xóa hoàn toàn ShoegroupDB cũ**, tạo lại và nhập đủ cấu trúc/dữ liệu ngày 25/10/2026; không cần đổi đường dẫn MDF/LDF.
+2. Mở `database/ShoegroupDB_FULL_20261128.sql` trong SSMS, kết nối SQL Server của mình rồi chạy toàn bộ file (F5). File **xóa hoàn toàn ShoegroupDB cũ**, tạo lại và nhập đủ cấu trúc/dữ liệu ngày 28/11/2026, gồm trả hàng, hoàn tiền và giỏ tại quầy; không cần đổi đường dẫn MDF/LDF.
 3. Cấu hình `backend/.env` theo máy mình, để `DB_NAME=ShoegroupDB`; lần đầu chạy `npm run setup`, sau đó `npm run dev`. Spring tự kiểm tra các migration đã áp dụng.
 
 Bản full có dữ liệu tài khoản/đơn hàng; chỉ chia sẻ với thành viên được phép. Không có mật khẩu kết nối SQL/JWT/SMTP từ `.env`.
-Thư mục `database` chỉ giữ một bản full mới nhất để tránh nhập nhầm; các bản cũ nằm trong lịch sử Git. Bản ngày 25/10/2026 đã phục hồi và đối chiếu thành công trên SQL Server 2022: 27 bảng (gồm bảng hỗ trợ sơ đồ SSMS), toàn bộ dữ liệu từng dòng, bộ đếm ID, view, procedure, function, index và ràng buộc khớp DB nguồn. Giữ `migrations`, ERD và bảng đối chiếu ID; không cần chạy các migration thủ công sau khi nhập full.
+Thư mục `database` chỉ giữ một bản full mới nhất để tránh nhập nhầm; các bản cũ nằm trong lịch sử Git. Bản ngày 28/11/2026 đã phục hồi và đối chiếu thành công trên SQL Server 2022: 32 bảng (gồm bảng hỗ trợ sơ đồ SSMS), toàn bộ dữ liệu từng dòng, bộ đếm ID, view, procedure, function, index và ràng buộc khớp bản sao DB nguồn tại thời điểm sao lưu. Giữ `migrations`, ERD và bảng đối chiếu ID; không cần chạy các migration thủ công sau khi nhập full.
 Đã đánh lại ID thật của sản phẩm, biến thể và danh mục từ 1, giữ toàn bộ dữ liệu và liên kết. Dùng bản full mới nhất cùng code mới; frontend tự chuyển giỏ/fingerprint lưu trên trình duyệt sang phiên ID mới. Không trộn code cũ với DB mới.
 `npm run db:verify` thử phục hồi bản full mới nhất vào DB riêng, đối chiếu rồi dọn DB thử; không thay DB đang dùng.
-`npm run db:export` sao lưu `.bak` và xuất lại SQL theo ngày hiện tại; máy xuất cần công cụ SMO 16 của SQL Server 2022 và quyền sao lưu DB. Dừng ứng dụng trước khi xuất để dữ liệu không thay đổi giữa các bảng.
+`npm run db:export` sao lưu `.bak`, phục hồi thành bản sao chỉ đọc và xuất SQL nhất quán từ bản sao này; máy xuất cần SMO 16 của SQL Server 2022 và quyền sao lưu/phục hồi DB. Công cụ tự thử nhập SQL vào DB riêng, đối chiếu với bản sao trước khi thay file full và dọn các DB tạm. Có thể xuất khi ứng dụng đang chạy. Nếu dùng `npm run db:verify` riêng, tránh thay dữ liệu DB nguồn trong lúc đối chiếu.
 
 ### Nâng Cấp Không Xóa Dữ Liệu
 
@@ -84,6 +84,14 @@ VietQR khi thanh toán online dùng cùng các biến `POS_BANK_*` trong `backen
 Khi thông tin ngân hàng chưa được cấu hình, trang thanh toán hiển thị số hỗ trợ để khách nhận hướng dẫn chuyển khoản.
 `node_modules/`, `frontend/dist/`, `backend/target/` và `tools/.cache/`
 là thư viện/build cần dùng, được ẩn trong VS Code. Tiến độ mới nhất: [MIGRATION.md](MIGRATION.md).
+
+## Bán hàng tại quầy
+
+Hóa đơn chờ hiển thị từ **#1** theo thứ tự tab, tách biệt với ID lưu trong database. Bấm **×** để đóng từng hóa đơn;
+hóa đơn có sản phẩm cần xác nhận trước khi hoàn lại toàn bộ hàng đang giữ. Đóng tab khác giữ nguyên khách hàng và tiền nhập ở tab đang làm.
+Đóng tab cuối tạo lại một hóa đơn trống. Hóa đơn đã thanh toán được giữ nguyên lịch sử, không xóa qua nút này.
+**Tiền khách đưa** tự bằng tổng thanh toán, cập nhật theo số lượng và ưu đãi. Sau khi nhân viên sửa số tiền, hệ thống giữ giá trị riêng cho hóa đơn;
+bấm **Dùng đúng số tiền** để trở về tự động. Tiền thừa được tính từ tiền khách đưa trừ tổng thanh toán.
 
 ## Trả hàng, hoàn kho và trợ lý cửa hàng
 

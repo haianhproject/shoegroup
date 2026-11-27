@@ -60,7 +60,7 @@ test('simple returns submit only selected quantities and a cash/bank method, wit
 test('development API selection uses only compatible local read probes before stores load', async () => {
   const { resolveDevelopmentApi: resolve }=load('src/services/apiEndpoint.js',{}, {AbortSignal});
   const base='http://localhost:5000/api', calls=[];
-  const current={success:true,db:'connected',application:'shoegroup',apiContract:3,database:'SameDB',catalogIdentity:{revision:'same'}};
+  const current={success:true,db:'connected',application:'shoegroup',apiContract:4,database:'SameDB',catalogIdentity:{revision:'same'}};
   const fetcher=async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:current};};
   assert.equal(await resolve(base,{development:true,fetcher}),'http://localhost:5001/api');
   assert.equal(calls.length,2);assert.ok(calls.every(c=>c.url.endsWith('/health')&&!c.options.method&&!c.options.headers));

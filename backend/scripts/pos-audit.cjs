@@ -127,6 +127,32 @@ async function main(){
     ok(await request('/pos/cart'));ok(await request('/pos/cart'));
     assert.equal((await pool.request().query(`SELECT StockQuantity FROM ProductVariants WHERE ProductVariantID=${Number(v2.id)}`)).recordset[0].StockQuantity,10);
   });
+  await check('closing a reserved invoice releases stock once and preserves another active invoice',async()=>{
+    const selected=ok(await request('/pos/cart'));
+    let closing=ok(await request('/pos/carts','POST'));
+    closing=ok(await request('/pos/cart/items/'+v2.id,'PUT',{cart_id:closing.cart_id,revision:closing.revision,quantity:2}));
+    assert.equal(closing.carts.find(c=>c.id===closing.cart_id).item_count,1);
+    const stock=async()=>(await pool.request().query(`SELECT StockQuantity FROM ProductVariants WHERE ProductVariantID=${Number(v2.id)}`)).recordset[0].StockQuantity;
+    assert.equal(await stock(),8);
+    const route='/pos/carts/'+closing.cart_id,body={revision:closing.revision,current_cart_id:selected.cart_id};
+    ok(await request(route,'DELETE',{...body,revision:body.revision-1}),409);
+    assert.equal(await stock(),8);
+    ok(await request('/accounts','POST',{username:'close-employee@example.test',name:'Close employee',password:'close-employee-password',role_id:3}));
+    const employee={id:(await pool.request().query("SELECT UserID FROM Users WHERE Email='close-employee@example.test'")).recordset[0].UserID,email:'close-employee@example.test',role:'Employee'};
+    ok(await request(route,'DELETE',body,employee),409);
+    assert.equal(await stock(),8);
+    const result=ok(await request(route,'DELETE',body));
+    assert.equal(result.cart_id,selected.cart_id);assert.equal(result.carts.some(c=>c.id===closing.cart_id),false);assert.equal(await stock(),10);
+    const repeated=ok(await request(route,'DELETE',body));assert.equal(repeated.cart_id,selected.cart_id);assert.equal(await stock(),10);
+    assert.equal((await pool.request().query(`SELECT Status FROM PosCarts WHERE PosCartID=${Number(closing.cart_id)}`)).recordset[0].Status,'Closed');
+    ok(await request('/pos/carts/'+c1.cart_id,'DELETE',{revision:c1.revision}),409);
+    assert.equal((await pool.request().query(`SELECT COUNT(*) n FROM Orders WHERE OrderID=${Number(oid)}`)).recordset[0].n,1);
+    const own=ok(await request('/pos/cart','GET',undefined,employee));
+    const fresh=ok(await request('/pos/carts/'+own.cart_id,'DELETE',{revision:own.revision,current_cart_id:own.cart_id},employee));
+    assert.equal(fresh.carts.length,1);assert.equal(fresh.items.length,0);assert.notEqual(fresh.cart_id,own.cart_id);
+    const again=ok(await request('/pos/carts/'+own.cart_id,'DELETE',{revision:own.revision,current_cart_id:fresh.cart_id},employee));
+    assert.equal(again.cart_id,fresh.cart_id);assert.equal(again.carts.length,1);
+  });
   await check('parent inactive disables children, history price remains',async()=>{
     ok(await request('/products/'+product+'/status','PUT',{active:false}));
     assert.equal((await pool.request().query(`SELECT COUNT(*) AS n FROM ProductVariants WHERE ProductID=${Number(product)} AND IsActive=1`)).recordset[0].n,0);

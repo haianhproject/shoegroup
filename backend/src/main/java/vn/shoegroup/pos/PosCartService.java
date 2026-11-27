@@ -57,6 +57,28 @@ public class PosCartService {
     }
     return updates;
   }
+  private int close(long user, Map<String,Object> body, List<Map<String,Object>> updates) {
+    int id=Values.integer(body.get("cart_id"),1,Integer.MAX_VALUE,null);
+    int expected=revision(body.get("revision"));
+    var rows=jdbc.queryForList("SELECT Status,Revision FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE UserID=? AND PosCartID=?",user,id);
+    if(rows.isEmpty()) throw new ApiException(409,"POS_CART_CONFLICT","Hóa đơn không còn khả dụng. Hãy tải lại.");
+    String status=String.valueOf(rows.get(0).get("Status"));
+    if("Open".equals(status)) {
+      if(expected!=((Number)rows.get(0).get("Revision")).intValue()) throw new ApiException(409,"POS_CART_CONFLICT","Giỏ đã thay đổi. Hãy tải lại trước khi xóa.");
+      updates.addAll(clear(id));
+      jdbc.update("UPDATE PosCarts SET Status='Closed',Revision=Revision+1,UpdatedAt=SYSDATETIME() WHERE PosCartID=?",id);
+    } else if(!"Closed".equals(status)&&!"Expired".equals(status)) {
+      throw new ApiException(409,"POS_CART_CONFLICT","Hóa đơn đã thanh toán, không thể xóa tại quầy.");
+    }
+    // A repeated close never releases stock again. Keep the selected invoice when another tab closes.
+    Object current=body.get("current_cart_id");
+    if(current!=null) {
+      int preferred=Values.integer(current,1,Integer.MAX_VALUE,null);
+      var open=jdbc.queryForList("SELECT PosCartID FROM PosCarts WITH(UPDLOCK,HOLDLOCK) WHERE UserID=? AND PosCartID=? AND Status='Open' AND ExpiresAt>SYSDATETIME()",user,preferred);
+      if(!open.isEmpty()) return preferred;
+    }
+    return lock(user,null,null);
+  }
   @Transactional
   public void expireAll() {
     for(long user:jdbc.queryForList("SELECT DISTINCT UserID FROM PosCarts WHERE Status='Open' AND ExpiresAt<=SYSDATETIME() ORDER BY UserID",Long.class)) expire(user);
@@ -64,14 +86,14 @@ public class PosCartService {
   @Transactional
   public Map<String,Object> handle(long user,String action,Integer variant,Map<String,Object> body) {
     var updates=new ArrayList<>(expire(user));
-    int cart="create".equals(action)?create(user):lock(user,body.get("cart_id"),action==null?null:revision(body.get("revision")));
+    int cart="close".equals(action)?close(user,body,updates):"create".equals(action)?create(user):lock(user,body.get("cart_id"),action==null?null:revision(body.get("revision")));
     if("item".equals(action)) {
       if(!(body.get("quantity") instanceof Number)) throw new ApiException(400,"INVALID_QUANTITY","Số lượng phải là số nguyên không âm.");
       int qty=Values.integer(body.get("quantity"),0,1000000,null);
       if(variant==null) throw new ApiException(400,"Thiếu biến thể.");
       updates.add(change(cart,variant,qty));
     } else if("clear".equals(action)) updates.addAll(clear(cart));
-    if(action!=null&&!action.equals("create")) jdbc.update("UPDATE PosCarts SET Revision=Revision+1,UpdatedAt=SYSDATETIME() WHERE PosCartID=?",cart);
+    if(action!=null&&!action.equals("create")&&!action.equals("close")) jdbc.update("UPDATE PosCarts SET Revision=Revision+1,UpdatedAt=SYSDATETIME() WHERE PosCartID=?",cart);
     int rev=jdbc.queryForObject("SELECT Revision FROM PosCarts WHERE PosCartID=?",Integer.class,cart);
     var items=jdbc.queryForList("""
       SELECT ci.ProductVariantID AS variant_id,v.ProductID AS product_id,ci.Quantity AS quantity,
@@ -82,7 +104,7 @@ public class PosCartService {
       OUTER APPLY(SELECT TOP 1 ImageURL FROM ProductImages pi WHERE pi.ProductID=v.ProductID AND pi.ColorID=v.ColorID ORDER BY pi.IsPrimary DESC,pi.SortOrder) img
       WHERE ci.PosCartID=? ORDER BY ci.ProductVariantID
       """,cart);
-    var carts=jdbc.queryForList("SELECT PosCartID AS id,Revision AS revision,UpdatedAt AS updated_at,ExpiresAt AS expires_at FROM PosCarts WHERE UserID=? AND Status='Open' AND ExpiresAt>SYSDATETIME() ORDER BY PosCartID",user);
+    var carts=jdbc.queryForList("SELECT c.PosCartID AS id,c.Revision AS revision,c.UpdatedAt AS updated_at,c.ExpiresAt AS expires_at,(SELECT COUNT(*) FROM PosCartItems i WHERE i.PosCartID=c.PosCartID) AS item_count FROM PosCarts c WHERE c.UserID=? AND c.Status='Open' AND c.ExpiresAt>SYSDATETIME() ORDER BY c.PosCartID",user);
     return Map.of("success",true,"cart_id",cart,"revision",rev,"items",items,"stockUpdates",updates,"carts",carts);
   }
 }

@@ -7,6 +7,9 @@ const config = require('../legacy-express/src/security/env');
 const folder = path.resolve(__dirname, '../../database');
 const latest = fs.readdirSync(folder).filter(name => /_FULL_\d{8}\.sql$/.test(name)).sort().at(-1);
 const file = path.resolve(process.argv[2] || path.join(folder,latest));
+const sourceIndex = process.argv.indexOf('--source');
+const sourceDatabase = sourceIndex === -1 ? config.db.database : process.argv[sourceIndex + 1];
+if (sourceIndex !== -1 && !/^ShoegroupExportSnapshot_\d+_\d+$/.test(sourceDatabase || '')) throw Error('Unsafe export snapshot name');
 const database = `ShoegroupRestoreCheck_${Date.now()}_${process.pid}`;
 const quote = name => '[' + name.replaceAll(']', ']]') + ']';
 const literal = name => "N'" + name.replaceAll("'", "''") + "'";
@@ -27,7 +30,7 @@ async function main() {
     try { await restored.request().batch(batches[i]); }
     catch(e) { throw Error(`Restore batch ${i+1}: ${e.message}`); }
   }
-  source = await new sql.ConnectionPool(config.db).connect();
+  source = await new sql.ConnectionPool({...config.db,database:sourceDatabase}).connect();
   const tables = (await source.request().query('SELECT SCHEMA_NAME(schema_id) AS s,name AS t FROM sys.tables WHERE is_ms_shipped=0 ORDER BY s,t')).recordset;
   for (const table of tables) {
     const name=quote(table.s)+'.'+quote(table.t);

@@ -606,6 +606,127 @@
       "pk": 0
     },
     {
+      "tbl": "InventoryMovements",
+      "col": "MovementID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": true,
+      "pk": 1
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "ProductVariantID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "OrderID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "ReturnItemID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "EventKey",
+      "typ": "varchar",
+      "max_length": 100,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "Kind",
+      "typ": "varchar",
+      "max_length": 24,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "AvailableDelta",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "DamagedDelta",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "Note",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "CreatedByUserID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "InventoryMovements",
+      "col": "CreatedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
       "tbl": "Materials",
       "col": "MaterialID",
       "typ": "int",
@@ -886,6 +1007,358 @@
       "typ": "int",
       "max_length": 4,
       "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderDetails",
+      "col": "ReturnedQuantity",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "EventID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": true,
+      "pk": 1
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "ReturnID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "Status",
+      "typ": "varchar",
+      "max_length": 24,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "Note",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "UserID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnEvents",
+      "col": "CreatedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "ReturnItemID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": true,
+      "pk": 1
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "ReturnID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "OrderDetailID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "RequestedQuantity",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "GoodQuantity",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "DamagedQuantity",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturnItems",
+      "col": "RefundAmount",
+      "typ": "decimal",
+      "max_length": 9,
+      "precision": 18,
+      "scale": 2,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ReturnID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": true,
+      "pk": 1
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "OrderID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RequestKey",
+      "typ": "uniqueidentifier",
+      "max_length": 16,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RequestHash",
+      "typ": "char",
+      "max_length": 64,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "Status",
+      "typ": "varchar",
+      "max_length": 24,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "IsOpen",
+      "typ": "bit",
+      "max_length": 1,
+      "precision": 1,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "Reason",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ReviewNote",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ReceiptNote",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RequestedByUserID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "CreatedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ReviewedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ReceivedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RefundedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RefundAmount",
+      "typ": "decimal",
+      "max_length": 9,
+      "precision": 18,
+      "scale": 2,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "ShippingRefundAmount",
+      "typ": "decimal",
+      "max_length": 9,
+      "precision": 18,
+      "scale": 2,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "RefundTransactionID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "OrderReturns",
+      "col": "Source",
+      "typ": "varchar",
+      "max_length": 16,
+      "precision": 0,
       "scale": 0,
       "is_nullable": false,
       "is_identity": false,
@@ -1283,6 +1756,28 @@
       "max_length": 9,
       "precision": 18,
       "scale": 0,
+      "is_nullable": true,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "Orders",
+      "col": "ReturnAdjustmentAmount",
+      "typ": "decimal",
+      "max_length": 9,
+      "precision": 18,
+      "scale": 2,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "Orders",
+      "col": "WarehouseClosedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
       "is_nullable": true,
       "is_identity": false,
       "pk": 0
@@ -1854,6 +2349,83 @@
       "typ": "decimal",
       "max_length": 9,
       "precision": 18,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "ProductVariants",
+      "col": "DamagedQuantity",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "TransactionID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 1
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "Reference",
+      "typ": "nvarchar",
+      "max_length": 200,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "Note",
+      "typ": "nvarchar",
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "ConfirmedByUserID",
+      "typ": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "ConfirmedAt",
+      "typ": "datetime2",
+      "max_length": 8,
+      "precision": 27,
+      "scale": 7,
+      "is_nullable": false,
+      "is_identity": false,
+      "pk": 0
+    },
+    {
+      "tbl": "RefundConfirmations",
+      "col": "RefundMethod",
+      "typ": "varchar",
+      "max_length": 10,
+      "precision": 0,
       "scale": 0,
       "is_nullable": false,
       "is_identity": false,
@@ -2574,6 +3146,30 @@
       "parent": "Users"
     },
     {
+      "name": "FK__Inventory__Creat__436BFEE3",
+      "child": "InventoryMovements",
+      "col": "CreatedByUserID",
+      "parent": "Users"
+    },
+    {
+      "name": "FK__Inventory__Order__4183B671",
+      "child": "InventoryMovements",
+      "col": "OrderID",
+      "parent": "Orders"
+    },
+    {
+      "name": "FK__Inventory__Produ__408F9238",
+      "child": "InventoryMovements",
+      "col": "ProductVariantID",
+      "parent": "ProductVariants"
+    },
+    {
+      "name": "FK__Inventory__Retur__4277DAAA",
+      "child": "InventoryMovements",
+      "col": "ReturnItemID",
+      "parent": "OrderReturnItems"
+    },
+    {
       "name": "FK__OrderDeta__Order__73852659",
       "child": "OrderDetails",
       "col": "OrderID",
@@ -2584,6 +3180,48 @@
       "child": "OrderDetails",
       "col": "ProductID",
       "parent": "Products"
+    },
+    {
+      "name": "FK__OrderRetu__Order__25DB9BFC",
+      "child": "OrderReturns",
+      "col": "OrderID",
+      "parent": "Orders"
+    },
+    {
+      "name": "FK__OrderRetu__Order__3335971A",
+      "child": "OrderReturnItems",
+      "col": "OrderDetailID",
+      "parent": "OrderDetails"
+    },
+    {
+      "name": "FK__OrderRetu__Refun__2C88998B",
+      "child": "OrderReturns",
+      "col": "RefundTransactionID",
+      "parent": "PaymentTransactions"
+    },
+    {
+      "name": "FK__OrderRetu__Reque__28B808A7",
+      "child": "OrderReturns",
+      "col": "RequestedByUserID",
+      "parent": "Users"
+    },
+    {
+      "name": "FK__OrderRetu__Retur__324172E1",
+      "child": "OrderReturnItems",
+      "col": "ReturnID",
+      "parent": "OrderReturns"
+    },
+    {
+      "name": "FK__OrderRetu__Retur__3AD6B8E2",
+      "child": "OrderReturnEvents",
+      "col": "ReturnID",
+      "parent": "OrderReturns"
+    },
+    {
+      "name": "FK__OrderRetu__UserI__3BCADD1B",
+      "child": "OrderReturnEvents",
+      "col": "UserID",
+      "parent": "Users"
     },
     {
       "name": "FK__Orders__UserID__76619304",
@@ -2602,6 +3240,18 @@
       "child": "Products",
       "col": "CategoryID",
       "parent": "Categories"
+    },
+    {
+      "name": "FK__RefundCon__Confi__4A18FC72",
+      "child": "RefundConfirmations",
+      "col": "ConfirmedByUserID",
+      "parent": "Users"
+    },
+    {
+      "name": "FK__RefundCon__Trans__4924D839",
+      "child": "RefundConfirmations",
+      "col": "TransactionID",
+      "parent": "PaymentTransactions"
     },
     {
       "name": "FK__Users__RoleID__1C873BEC",
