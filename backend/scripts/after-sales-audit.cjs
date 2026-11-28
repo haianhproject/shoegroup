@@ -128,20 +128,42 @@ async function main(){
     ok(await register(simple,{...simpleBody,items:[{order_detail_id:simple.lines[0].order_detail_id,quantity:4}]}),409);
     ok(await register(simple,simpleBody,users[0]),403);
     assert.deepEqual(await inventory(simple.variants[0].id),before);
-    simpleResult=ok(await register(simple,simpleBody));assert.equal(simpleResult.status,'COMPLETED');assert.equal(simpleResult.refund_amount,270000);
+    simpleResult=ok(await register(simple,{...simpleBody,refund_shipping:true}));assert.equal(simpleResult.status,'COMPLETED');assert.equal(simpleResult.refund_amount,270000);
+    assert.equal(simpleResult.goods_refund_amount,270000);assert.equal(simpleResult.shipping_refund_amount,0);
     assert.equal((await inventory(simple.variants[0].id)).stock,before.stock+1);assert.equal((await inventory(simple.variants[0].id)).damaged,before.damaged);
     const d=await detail(simple.id);assert.equal(d.refunds[0].status,'SUCCESS');assert.equal(d.refunds[0].refund_method,'BANK');assert.equal(d.items[0].refunded_quantity,1);
     assert.equal((await state(simple.id)).PaymentStatus,'Đã thanh toán');assert.equal((await state(simple.id)).ReturnAdjustmentAmount,270000);
   });
   await check('simple receipt retries preserve refund method and cannot repeat the stock or revenue adjustment',async()=>{
-    const before=await inventory(simple.variants[0].id);assert.equal(ok(await register(simple,simpleBody)).unchanged,true);
-    ok(await register(simple,{...simpleBody,refund_method:'CASH'}),409);assert.deepEqual(await inventory(simple.variants[0].id),before);
+    const before=await inventory(simple.variants[0].id);assert.equal(ok(await register(simple,{...simpleBody,refund_shipping:true})).unchanged,true);
+    ok(await register(simple,{...simpleBody,refund_shipping:true,refund_method:'CASH'}),409);assert.deepEqual(await inventory(simple.variants[0].id),before);
     assert.equal((await detail(simple.id)).returns.length,1);assert.equal((await state(simple.id)).ReturnAdjustmentAmount,270000);
   });
   await check('remaining products can be returned for cash without a receipt code or mandatory note',async()=>{
-    const d=await detail(simple.id);const body={simple:true,request_key:randomUUID(),refund_method:'CASH',refund_shipping:true,items:d.items.map(i=>({order_detail_id:i.order_detail_id,quantity:i.remaining_quantity}))};
+    const d=await detail(simple.id);assert.equal(d.shipping_fee,simple.order.ShippingFee);assert.equal(d.goods_total,simple.order.TotalAmount-simple.order.ShippingFee);
+    const body={simple:true,request_key:randomUUID(),refund_method:'CASH',items:d.items.map(i=>({order_detail_id:i.order_detail_id,quantity:i.remaining_quantity}))};
     const result=ok(await register(simple,body));assert.equal(result.status,'COMPLETED');assert.equal((await state(simple.id)).PaymentStatus,'Hoàn tiền');
+    const remainingGoods=d.goods_total-270000;assert.equal(result.goods_refund_amount,remainingGoods);assert.equal(result.shipping_refund_amount,simple.order.ShippingFee);assert.equal(result.refund_amount,remainingGoods+Number(simple.order.ShippingFee));
+    const again=ok(await register(simple,body));assert.equal(again.unchanged,true);assert.equal(again.shipping_refund_amount,result.shipping_refund_amount);assert.equal(again.goods_refund_amount,remainingGoods);
     const after=await detail(simple.id);assert.ok(after.items.every(i=>i.remaining_quantity===0));assert.equal(after.refunds[0].refund_method,'CASH');assert.equal((await state(simple.id)).ReturnAdjustmentAmount,simple.order.TotalAmount);
+    assert.equal(after.shipping_refundable_amount,0);assert.equal(after.returns.reduce((sum,r)=>sum+Number(r.shipping_refund_amount),0),Number(simple.order.ShippingFee));
+  });
+  await check('whole-order returns automatically refund actual shipping across all variants and cannot be repeated',async()=>{
+    const f=await fixture({quantity:1,two:true,bank:true});const d=await detail(f.id);
+    const body={simple:true,request_key:randomUUID(),refund_method:'BANK',refund_shipping:false,items:d.items.map(i=>({order_detail_id:i.order_detail_id,quantity:i.remaining_quantity})),refund_amount:999999999};
+    const result=ok(await register(f,body));assert.equal(result.refund_amount,f.order.TotalAmount);assert.equal(result.goods_refund_amount,700000);assert.equal(result.shipping_refund_amount,f.order.ShippingFee);
+    const after=await detail(f.id);assert.equal(after.returns[0].shipping_refund_amount,result.shipping_refund_amount);assert.equal(after.shipping_refundable_amount,0);
+    const listed=ok(await request('/returns?scope=ALL')).find(r=>r.id===result.return_id);assert.equal(listed.shipping_refund_amount,result.shipping_refund_amount);
+    const before=await Promise.all(f.variants.map(v=>inventory(v.id)));ok(await register(f,{...body,request_key:randomUUID()}),409);assert.deepEqual(await Promise.all(f.variants.map(v=>inventory(v.id))),before);
+  });
+  await check('freeship coupons keep product refunds intact and never refund shipping that the customer did not pay',async()=>{
+    ok(await request('/discounts','POST',{code:'AUDIT-FREE-SHIP',name:'Free shipping audit',discount_type:'freeship',value:0,quantity:null,expiry:'2099-12-31',active:true}));
+    const f=await fixture({quantity:2,coupon:'AUDIT-FREE-SHIP'});assert.ok(f.order.ShippingFee>0);assert.equal(f.order.TotalAmount,600000);
+    const original=await detail(f.id);assert.equal(original.shipping_fee,0);assert.equal(original.shipping_refundable_amount,0);assert.equal(original.goods_total,600000);assert.equal(original.items[0].net_line_total,600000);
+    const body={simple:true,request_key:randomUUID(),refund_method:'CASH',items:[{order_detail_id:f.lines[0].order_detail_id,quantity:1}]};
+    const first=ok(await register(f,body));assert.equal(first.refund_amount,300000);assert.equal(first.shipping_refund_amount,0);
+    const last=ok(await register(f,{...body,request_key:randomUUID(),refund_shipping:true}));assert.equal(last.refund_amount,300000);assert.equal(last.shipping_refund_amount,0);
+    const after=await detail(f.id);assert.equal(after.shipping_fee,0);assert.equal(after.returns.reduce((sum,r)=>sum+r.refund_amount,0),600000);assert.equal((await state(f.id)).ReturnAdjustmentAmount,600000);
   });
   await check('simple warehouse cancellation derives all quantities from the undelivered order and creates no COD refund',async()=>{
     const f=await fixture({delivered:false});await change(f.id,'Đã xác nhận');await change(f.id,'Đang vận chuyển');await change(f.id,'Giao hàng thất bại');

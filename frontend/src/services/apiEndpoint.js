@@ -11,7 +11,7 @@ export async function resolveDevelopmentApi(base, { development = false, fetcher
     } catch { return null }
   }
   const primary = await health(base)
-  const compatible = value => value?.success === true && value.application === 'shoegroup' && value.apiContract >= 4 && value.db === 'connected'
+  const compatible = value => value?.success === true && value.application === 'shoegroup' && value.apiContract >= 5 && value.db === 'connected'
   if (compatible(primary)) return base
   const alternateUrl = new URL(url); alternateUrl.port = '5001'
   const alternate = alternateUrl.href.replace(/\/$/, ''), candidate = await health(alternate)

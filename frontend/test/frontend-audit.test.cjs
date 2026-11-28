@@ -53,14 +53,35 @@ test('simple returns submit only selected quantities and a cash/bank method, wit
   page.form.lines[0].quantity=3;await page.save();assert.equal(sent,undefined);
   page.form.lines[0].quantity=1;page.form.method='BANK';await page.save();
   assert.equal(sent.simple,true);assert.equal(sent.refund_method,'BANK');assert.equal(sent.reason,'');assert.equal(sent.items[0].quantity,1);
-  for(const key of ['reference','confirm_received','confirm_paid','refund_note'])assert.equal(Object.hasOwn(sent,key),false);
-  const source=fs.readFileSync(path.join(root,'src/components/OrderReturnForm.vue'),'utf8');assert.doesNotMatch(source,/type="checkbox"|damaged_quantity|form\.reference/);
+  for(const key of ['reference','confirm_received','confirm_paid','refund_note','refund_shipping'])assert.equal(Object.hasOwn(sent,key),false);
+  const source=fs.readFileSync(path.join(root,'src/components/OrderReturnForm.vue'),'utf8');assert.doesNotMatch(source,/type="checkbox"|damaged_quantity|form\.reference|form\.shipping|Giữ nguyên phí vận chuyển|Hoàn thêm/);
+});
+
+test('shipping is refunded only with the last remaining products, including earlier partial returns', async () => {
+  let sent;
+  const page=load('src/components/OrderReturnForm.vue',{'lucide-vue-next':{},'../services/afterSales':{afterSalesApi:{register:async(id,body)=>{sent=body;return {return_id:2,refund_amount:1275000,goods_refund_amount:1200000,shipping_refund_amount:75000}}}}},{defineProps:()=>({}),defineEmits:()=>()=>{}},['seed','form','save','goodsRefund','shippingRefund','refund','ready']);
+  page.seed({order_id:7,can_request:true,total:1395000,goods_total:1320000,shipping_fee:75000,shipping_refundable_amount:75000,remaining_refundable_amount:1275000,items:[{order_detail_id:1,quantity:11,returned_quantity:1,remaining_quantity:10,net_line_total:1320000},{order_detail_id:2,quantity:1,returned_quantity:1,remaining_quantity:0,net_line_total:0}]});
+  page.form.lines[0].quantity=1;
+  assert.equal(page.goodsRefund.value,120000);assert.equal(page.shippingRefund.value,0);assert.equal(page.refund.value,120000);
+  page.form.lines[0].quantity=10;
+  assert.equal(page.goodsRefund.value,1200000);assert.equal(page.shippingRefund.value,75000);assert.equal(page.refund.value,1275000);assert.equal(page.ready.value,true);
+  page.form.lines[0].quantity=11;assert.equal(page.ready.value,false);assert.equal(page.shippingRefund.value,0);
+  page.form.lines[0].quantity=9;assert.equal(page.shippingRefund.value,0);
+  page.form.lines[0].quantity=10;await page.save();assert.equal(sent.items.length,1);assert.equal(sent.items[0].quantity,10);assert.equal(Object.hasOwn(sent,'refund_shipping'),false);
+});
+
+test('free or previously refunded shipping cannot increase a final return amount', () => {
+  const page=load('src/components/OrderReturnForm.vue',{'lucide-vue-next':{},'../services/afterSales':{}},{defineProps:()=>({}),defineEmits:()=>()=>{}},['seed','form','goodsRefund','shippingRefund','refund']);
+  for(const shippingFee of [0,75000]) {
+    page.seed({shipping_fee:shippingFee,shipping_refundable_amount:0,items:[{order_detail_id:1,quantity:3,returned_quantity:2,remaining_quantity:1,net_line_total:100}]});
+    page.form.lines[0].quantity=1;assert.equal(page.goodsRefund.value,33);assert.equal(page.shippingRefund.value,0);assert.equal(page.refund.value,33);
+  }
 });
 
 test('development API selection uses only compatible local read probes before stores load', async () => {
   const { resolveDevelopmentApi: resolve }=load('src/services/apiEndpoint.js',{}, {AbortSignal});
   const base='http://localhost:5000/api', calls=[];
-  const current={success:true,db:'connected',application:'shoegroup',apiContract:4,database:'SameDB',catalogIdentity:{revision:'same'}};
+  const current={success:true,db:'connected',application:'shoegroup',apiContract:5,database:'SameDB',catalogIdentity:{revision:'same'}};
   const fetcher=async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes(':5000')?{...current,apiContract:1}:current};};
   assert.equal(await resolve(base,{development:true,fetcher}),'http://localhost:5001/api');
   assert.equal(calls.length,2);assert.ok(calls.every(c=>c.url.endsWith('/health')&&!c.options.method&&!c.options.headers));
