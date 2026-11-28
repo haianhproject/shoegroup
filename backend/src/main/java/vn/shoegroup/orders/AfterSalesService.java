@@ -35,7 +35,7 @@ public class AfterSalesService {
     if(user==null || !user.staff() && user.id()!=number(order.get("UserID")))throw new ApiException(403,"Bạn không có quyền xem đơn hàng này.");
   }
   private Map<String,Object> order(int id,boolean lock) {
-    return one("SELECT * FROM Orders "+(lock?"WITH(UPDLOCK,HOLDLOCK) ":"")+"WHERE OrderID=:id",params("id",id));
+    return one("SELECT o.*,(SELECT ISNULL(SUM(cr.DiscountAmount),0) FROM CouponRedemptions cr WHERE cr.OrderID=o.OrderID AND cr.DiscountType=N'freeship') AS ShippingDiscountAmount FROM Orders o "+(lock?"WITH(UPDLOCK,HOLDLOCK) ":"")+"WHERE o.OrderID=:id",params("id",id));
   }
   private List<Map<String,Object>> lines(int id) {
     return jdbc.queryForList("SELECT * FROM OrderDetails WHERE OrderID=:id ORDER BY OrderDetailID",params("id",id));
@@ -74,8 +74,12 @@ public class AfterSalesService {
       throw new ApiException(400,"Một dòng sản phẩm chỉ được chọn một lần.");
     return result;
   }
+  private BigDecimal paidShipping(Map<String,Object> order) {
+    // The redemption snapshots the original promotion, even if the coupon is edited later.
+    return money(order.get("ShippingFee")).subtract(money(order.get("ShippingDiscountAmount"))).max(BigDecimal.ZERO).min(money(order.get("TotalAmount")).max(BigDecimal.ZERO));
+  }
   private Map<Integer,BigDecimal> allocations(Map<String,Object> order,List<Map<String,Object>> lines) {
-    return ReturnAmounts.allocate(lines,money(order.get("TotalAmount")).subtract(money(order.get("ShippingFee"))));
+    return ReturnAmounts.allocate(lines,money(order.get("TotalAmount")).subtract(paidShipping(order)));
   }
   private String hash(String s) {
     try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8))); }
@@ -135,7 +139,8 @@ public class AfterSalesService {
     boolean open=caseRows.stream().anyMatch(r->Boolean.TRUE.equals(r.get("is_open")));
     BigDecimal shippingRefunded=jdbc.queryForObject("SELECT ISNULL(SUM(ShippingRefundAmount),0) FROM OrderReturns WHERE OrderID=:id",params("id",orderId),BigDecimal.class);
     return params("order_id",orderId,"order_code",OrderCodes.format(orderId,((java.sql.Timestamp)o.get("OrderDate")).toLocalDateTime().toLocalDate()),"status",o.get("Status"),"payment_status",o.get("PaymentStatus"),"payment_method",o.get("PaymentMethod"),
-        "total",o.get("TotalAmount"),"shipping_refundable_amount",money(o.get("ShippingFee")).subtract(shippingRefunded).max(BigDecimal.ZERO),
+        "total",o.get("TotalAmount"),"goods_total",money(o.get("TotalAmount")).subtract(paidShipping(o)).max(BigDecimal.ZERO),"shipping_fee",paidShipping(o),
+        "shipping_refundable_amount",paidShipping(o).subtract(shippingRefunded).max(BigDecimal.ZERO),
         "remaining_refundable_amount",money(o.get("TotalAmount")).subtract(money(o.get("HistoricalRefundAmount"))).subtract(money(o.get("ReturnAdjustmentAmount"))).max(BigDecimal.ZERO),
         "items",lineViews,"returns",caseRows,"refunds",refunds,
         "can_request",delivered(o)&&paid(o.get("PaymentStatus"))&&!open&&lineViews.stream().anyMatch(i->integer(i.get("remaining_quantity"))>0),
@@ -179,14 +184,15 @@ public class AfterSalesService {
       int damaged=simple?0:Values.integer(e.getValue().get("damaged_quantity"),0,q,null);
       signature.add(e.getKey()+":"+q+":"+damaged);
     }
-    boolean paidNow=simple||Values.bool(body.get("confirm_paid"),false),shipping=Values.bool(body.get("refund_shipping"),false);
+    // Keep old request hashes valid; the former shipping option no longer controls the refund.
+    boolean paidNow=simple||Values.bool(body.get("confirm_paid"),false),legacyShippingChoice=Values.bool(body.get("refund_shipping"),false);
     String reference=Objects.toString(body.get("reference"),"").strip().toUpperCase(Locale.ROOT),refundNote=Objects.toString(body.get("refund_note"),"").strip();
-    String fingerprint=hash("ZALO|"+reason+"|"+signature+"|"+shipping+"|"+paidNow+"|"+reference+"|"+refundNote+(simple?"|SIMPLE|"+method:""));
-    var prior=jdbc.queryForList("SELECT ReturnID,RequestHash,RefundAmount,Status FROM OrderReturns WHERE OrderID=:id AND RequestKey=CONVERT(uniqueidentifier,:key)",params("id",orderId,"key",key));
+    String fingerprint=hash("ZALO|"+reason+"|"+signature+"|"+legacyShippingChoice+"|"+paidNow+"|"+reference+"|"+refundNote+(simple?"|SIMPLE|"+method:""));
+    var prior=jdbc.queryForList("SELECT ReturnID,RequestHash,RefundAmount,ShippingRefundAmount,Status FROM OrderReturns WHERE OrderID=:id AND RequestKey=CONVERT(uniqueidentifier,:key)",params("id",orderId,"key",key));
     if(!prior.isEmpty()) {
       var row=prior.get(0);
       if(!fingerprint.equals(row.get("RequestHash")))throw conflict("Mã thao tác đã được dùng cho nội dung khác. Kiểm tra phiếu đã lưu.");
-      return params("success",true,"unchanged",true,"order_id",orderId,"return_id",row.get("ReturnID"),"refund_amount",row.get("RefundAmount"),"status",row.get("Status"));
+      return params("success",true,"unchanged",true,"order_id",orderId,"return_id",row.get("ReturnID"),"refund_amount",row.get("RefundAmount"),"shipping_refund_amount",row.get("ShippingRefundAmount"),"goods_refund_amount",money(row.get("RefundAmount")).subtract(money(row.get("ShippingRefundAmount"))),"status",row.get("Status"));
     }
     if(!delivered(o)||!paid(o.get("PaymentStatus")))throw conflict("Chỉ nhận trả theo mã đơn đã giao thành công và đã thanh toán.");
     if(!jdbc.queryForList("SELECT ReturnID FROM OrderReturns WHERE OrderID=:id AND IsOpen=1",params("id",orderId)).isEmpty())throw conflict("Đơn đang có phiếu chưa hoàn tất. Xử lý khoản chờ hoàn hoặc phiếu cũ trước.");
@@ -206,10 +212,10 @@ public class AfterSalesService {
       received.add(params("return_item_id",item,"good_quantity",q-bad,"damaged_quantity",bad));
     }
     event(id,"APPROVED","Đã trao đổi với khách qua Zalo; tiếp nhận và kiểm hàng tại cửa hàng.",user);
-    var result=receive(id,user,params("items",received,"note",simple?"Trả hàng theo mã đơn. "+reason:reason,"refund_shipping",shipping,"confirm_received",true));
+    var result=receive(id,user,params("items",received,"note",simple?"Trả hàng theo mã đơn. "+reason:reason,"confirm_received",true));
     if(paidNow && result.get("refund_transaction_id")!=null)
       confirmRefund(orderId,integer(result.get("refund_transaction_id")),user,simple?params("refund_method",method):params("reference",reference,"note",refundNote,"confirm_paid",true));
-    return params("success",true,"order_id",orderId,"return_id",id,"refund_amount",result.get("refund_amount"),"status",paidNow||result.get("refund_transaction_id")==null?"COMPLETED":"REFUND_PENDING");
+    return params("success",true,"order_id",orderId,"return_id",id,"refund_amount",result.get("refund_amount"),"shipping_refund_amount",result.get("shipping_refund_amount"),"goods_refund_amount",result.get("goods_refund_amount"),"status",paidNow||result.get("refund_transaction_id")==null?"COMPLETED":"REFUND_PENDING");
   }
 
   @Transactional(isolation=Isolation.SERIALIZABLE)
@@ -248,7 +254,7 @@ public class AfterSalesService {
     if(code.matches())try { q=String.valueOf(Integer.parseInt(code.group(1))); }catch(NumberFormatException ignored) {}
     var rows=jdbc.queryForList("""
         SELECT TOP 200 r.ReturnID AS id,r.OrderID AS order_id,r.Status AS status,r.Reason AS reason,r.Source AS source,
-          r.RefundAmount AS refund_amount,r.CreatedAt AS created_at,r.IsOpen AS is_open,
+          r.RefundAmount AS refund_amount,r.ShippingRefundAmount AS shipping_refund_amount,r.CreatedAt AS created_at,r.IsOpen AS is_open,
           o.OrderDate AS order_date,o.CustomerName AS customer_name,o.TrackingNumber AS tracking_code
         FROM OrderReturns r JOIN Orders o ON o.OrderID=r.OrderID
         WHERE (:scope='ALL' OR (:scope='OPEN' AND r.IsOpen=1) OR (:scope='CLOSED' AND r.IsOpen=0))
@@ -325,11 +331,12 @@ public class AfterSalesService {
     }
     if(received==0)throw new ApiException(400,"Chưa có hàng thực nhận. Chỉ kiểm nhận khi kiện hàng đã về.");
     BigDecimal shipping=BigDecimal.ZERO;
-    if(Values.bool(body.get("refund_shipping"),false)) {
-      int remaining=details.stream().mapToInt(i->quantity(i)-returned(i)).sum()-received;
-      if(remaining!=0)throw conflict("Chỉ hoàn phí giao hàng khi đã nhận lại toàn bộ phần hàng còn lại.");
+    // Shipping is returned once, on receipt of the final remaining items, regardless of client flags.
+    int remaining=details.stream().mapToInt(i->quantity(i)-returned(i)).sum()-received;
+    BigDecimal goodsRefund=refund;
+    if(remaining==0) {
       BigDecimal prior=jdbc.queryForObject("SELECT ISNULL(SUM(ShippingRefundAmount),0) FROM OrderReturns WHERE OrderID=:id",params("id",orderId),BigDecimal.class);
-      shipping=money(o.get("ShippingFee")).subtract(prior).max(BigDecimal.ZERO);
+      shipping=paidShipping(o).subtract(prior).max(BigDecimal.ZERO);
       refund=refund.add(shipping);
     }
     BigDecimal balance=money(o.get("TotalAmount")).subtract(money(o.get("HistoricalRefundAmount"))).subtract(money(o.get("ReturnAdjustmentAmount")));
@@ -341,7 +348,7 @@ public class AfterSalesService {
     jdbc.update("UPDATE Orders SET ReturnAdjustmentAmount=ReturnAdjustmentAmount+:amount,UpdatedAt=GETDATE() WHERE OrderID=:id",params("amount",refund,"id",orderId));
     event(id,next,"Đã kiểm nhận "+received+" sản phẩm. "+receiptNote,user);
     changed(o,user,"[RETURN] Đã kiểm nhận yêu cầu #"+id+"; điều chỉnh doanh thu "+refund+" VND, chờ đối soát khoản hoàn.","return_received");
-    return params("success",true,"refund_amount",refund,"refund_transaction_id",transaction,"order_id",orderId);
+    return params("success",true,"refund_amount",refund,"goods_refund_amount",goodsRefund,"shipping_refund_amount",shipping,"refund_transaction_id",transaction,"order_id",orderId);
   }
 
   @Transactional(isolation=Isolation.SERIALIZABLE)

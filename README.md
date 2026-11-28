@@ -101,7 +101,9 @@ Hoàn kho lấy toàn bộ số lượng từ đơn gốc, thực hiện đúng 
 Đơn đã giao thành công sử dụng trang **Trả hàng & tiền hoàn**: nhập mã đơn, nhập số lượng từng sản phẩm cần trả,
 chọn hình thức hoàn tiền và xác nhận. Số lượng 0 giữ nguyên sản phẩm; số trả không vượt phần còn được trả.
 Không yêu cầu chứng từ, ô tích điều kiện hoặc phân loại hàng tốt/hỏng. Ghi chú là tùy chọn.
-Khoản hoàn tính từ giá thực trả sau giảm giá; tùy chọn hoàn phí vận chuyển chỉ hiện khi nhận lại toàn bộ hàng còn lại.
+Khoản hoàn tính từ giá thực trả sau giảm giá. Trả một phần hàng thì giữ phí vận chuyển; khi nhận lại toàn bộ hàng còn lại,
+hệ thống tự hoàn phí vận chuyển khách đã trả đúng một lần, kể cả khi trả lẻ qua nhiều phiếu. Đơn dùng mã miễn phí vận chuyển
+không phát sinh tiền hoàn ship. Biểu mẫu và lịch sử hiển thị riêng tiền sản phẩm, phí vận chuyển và tổng tiền hoàn, không cần ô lựa chọn.
 Khách và quản lý đều xem được từng sản phẩm đã trả cùng số tiền và hình thức hoàn.
 Nút xác nhận ghi nhận tiền cửa hàng đã hoàn; ứng dụng không tự chuyển khoản ngân hàng.
 Các khoản chờ hoàn từ đơn hủy cũ vẫn được xử lý ở **Khoản chờ hoàn**, chỉ chọn hình thức và bấm **Xác nhận đã hoàn tiền**.
